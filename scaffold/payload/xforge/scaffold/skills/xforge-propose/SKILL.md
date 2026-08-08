@@ -1,61 +1,41 @@
 ---
 name: xforge-propose
-description: Create a governed Change and generate every planning artifact allowed by its Flow.
+description: 创建受治理的 Change，并仅生成 Propose Stage 允许的 change.yaml、proposal 与 delta Specs；用于用户要求把已足够明确的想法、缺陷或功能正式规格化，但尚未授权实现时。
 license: MIT
-compatibility: Requires a matching XForge protocol 1 CLI for dynamic Flow state.
 metadata:
-  author: xforge (adapted from OpenSpec)
-  version: "1.0"
+  author: xforge（基于 OpenSpec 工作流适配）
+  version: "2.0"
   source: OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab
 ---
 
-# Purpose
+# 不变量
 
-Turn a sufficiently clear request into project-owned planning artifacts. This
-Skill plans; it does not implement code in the same invocation.
+- 先运行 `xforge state`，从 State 读取 Changes 路径、Flows、policy、Constitution、Rules、Specs 和项目模块。
+- 只消费 `xforge-propose` 对应的 ready Action；每次写入前重读 Action inputs，写入后刷新 State。
+- Flow 表达交付侧重点与治理量级：Quick 强调快速，限低风险、单模块、易回滚且无关键影响；Solid 强调稳定，适合常规产品与工程变更；Major 强调重大影响治理，用于高风险、跨系统或关键影响变更。不确定时升级或请求决定。
+- Specs 使用机器约定的 `ADDED|MODIFIED|REMOVED|RENAMED Requirements`、`Requirement`、`Scenario`、`WHEN`、`THEN` 标题。
 
-# Preconditions
+# 权限
 
-Understand observable scope and material compatibility decisions. Derive a
-lowercase kebab-case Change ID. Planning requires Managed mode because Artifact
-instructions and dependencies must come from the resolved Flow.
+- 可以在 State 解析的 Changes 目录创建一个 kebab-case Change ID，写 `change.yaml` 以及 Propose Action 明确返回的 Proposal/delta Spec 路径。
+- 不得写 Design、Clarifications、Check report、长期 Tasks、产品代码、主 Specs、Evidence 或 Archive。
+- 不得替用户决定材料性兼容、数据、安全、隐私或范围问题。
 
-# State Query
+# 执行
 
-Run `xforge state`, read the resolved paths, Constitution, modules, Flows,
-Rules, Specs, and diagnostics. Select `quick` only for low-risk single-module
-work; use `prime` for high risk or any security, privacy, public API, or data
-migration impact; otherwise use `solid`. When unsure, choose the stricter Flow.
+1. 解析唯一目标；若要新建 Change，检查是否已有覆盖同一问题的 active Change。
+2. 基于项目事实填写 `flow`、完整 classification、modules 和有边界的项目相对 path scope，并在 Proposal 解释 Flow 选择。
+3. 创建最小 `change.yaml` 后运行 `xforge state --change <id>`；只处理返回给 Propose 的 ready Artifact/Action。
+4. 从磁盘重读依赖，写 Why、Scope、Non-goals、Actors、Success criteria，并生成带稳定 Requirement ID 的成功、失败、边界和兼容性场景。
+5. 每完成一个 Artifact 都刷新 State；当下一 Action 属于 Clarify、Design、Apply 或其他 Skill 时停止。
+6. 运行 `xforge check --change <id>`，修复本 Stage 的结构问题，不把提示性文本称为已通过 Gate。
 
-# Allowed Writes
+# 证据
 
-Only `<changes>/<id>/change.yaml` and planning Artifacts returned by repeated
-`xforge state --change <id>` queries. Never edit product source or main Specs.
+- 按 Action 的 `doneWhen` 与 `requiredEvidence` 报告 Change ID、Flow/classification、实际文件路径、假设和下一合法 Action。
+- 只有当前 CLI 输出能证明结构、policy 与路径校验结果。
 
-# Procedure
+# 停止与返工
 
-1. Create `change.yaml` with explicit Flow, full classification flags, module
-   IDs, and bounded repository-relative path scopes. Explain the Flow choice in
-   `proposal.md`.
-2. Query `xforge state --change <id>`. Take the first `nextArtifact`; never
-   assume a hard-coded proposal/design/tasks sequence.
-3. For that Artifact, re-read completed dependencies and use the returned
-   instruction and outline. Apply Constitution and matching Rules as constraints
-   without copying their text into the Artifact.
-4. Write only to the returned Artifact pattern. For a glob, choose a concrete,
-   capability-oriented path and keep existing Specs organization.
-5. Re-query state after each Artifact. Continue in Flow order until all planning
-   Artifacts reachable without implementation or external approval are done.
-6. Prime approval remains pending. An Agent may prepare the request but must not
-   mark itself or another Agent as an authorized approver.
-
-# Verification
-
-Run `xforge check --change <id>` and resolve structural diagnostics. Present the
-Change path, Flow, classification, artifacts, assumptions, and next action. Do
-not describe a Gate as passed unless current CLI evidence says so.
-
-# Stop Conditions
-
-Stop before implementation. Stop on path/identity/protocol diagnostics, unknown
-module scope, critical ambiguity, or an approval boundary.
+- 在未知模块、路径/身份/协议诊断、材料性歧义、Flow policy 不满足或权限边界处停止。
+- 上游事实改变时交给 `xforge-revise`；不要在本 Skill 中顺便实现。

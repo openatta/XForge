@@ -62,10 +62,10 @@ export async function runCli(root: string, args: string[], env: NodeJS.ProcessEn
   return { ...result, json };
 }
 
-export function changeYaml(flow: 'quick' | 'solid' | 'prime', overrides: Record<string, unknown> = {}): string {
+export function changeYaml(flow: 'quick' | 'solid' | 'major', overrides: Record<string, unknown> = {}): string {
   const value = {
     flow,
-    classification: { risk: flow === 'quick' ? 'low' : flow === 'prime' ? 'high' : 'medium', security: false, privacy: false, publicApi: false, dataMigration: false },
+    classification: { risk: flow === 'quick' ? 'low' : flow === 'major' ? 'high' : 'medium', security: false, privacy: false, publicApi: false, dataMigration: false },
     scope: { modules: ['root'], paths: ['src/**'] },
     ...overrides,
   };
@@ -78,5 +78,6 @@ export async function createCompleteSolidChange(root: string, id = 'add-feature'
   await write(root, `${base}/proposal.md`, '## Why\nTest\n\n## Flow choice\nsolid\n');
   await write(root, `${base}/specs/widget/spec.md`, '## ADDED Requirements\n\n### Requirement: Widget works\n\n#### Scenario: success\n- **WHEN** used\n- **THEN** it works\n');
   await write(root, `${base}/design.md`, '## Decisions\nUse a deterministic fixture.\n');
-  await write(root, `${base}/tasks.md`, '## Tasks\n\n- [x] 1. Implement\n- [x] 2. Test\n');
+  await write(root, `${base}/assurance.md`, '## Completeness\nAll requirements are covered.\n');
+  await write(root, `${base}/evidence/verification-receipt.yaml`, 'status: passed\nrevision: fixture\n');
 }

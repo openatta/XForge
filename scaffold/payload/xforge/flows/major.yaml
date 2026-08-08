@@ -1,0 +1,138 @@
+apiVersion: xforge.dev/v1alpha2
+kind: Flow
+metadata:
+  name: major
+  version: 2
+  description: 强调重大变更治理，适用于高风险、跨系统或具有关键影响的高保障交付
+policy:
+  assuranceLevel: major
+  eligibleWhen:
+    risk: [low, medium, high]
+    criticalImpacts: allowed
+  requiredWhen:
+    risk: [high]
+    anyImpact: [security, privacy, publicApi, dataMigration]
+  onUncertain: escalate
+artifacts:
+  - id: proposal
+    generates: proposal.md
+    description: 说明受治理变更的原因、边界与成功标准
+    instruction: 说明 Why、Scope、Non-goals、Actors、Success criteria、关键影响、Flow 选择和回滚边界。
+    outline: |
+      ## Why
+      ## Scope
+      ## Non-goals
+      ## Actors and success criteria
+      ## Flow choice
+      ## Critical impacts and rollback
+  - id: delta-specs
+    generates: specs/**/*.md
+    description: 定义可观察的需求与场景增量
+    instruction: 使用稳定 Requirement ID，覆盖成功、失败、边界、安全、隐私和兼容性场景，不写实现细节。
+    outline: |
+      ## ADDED Requirements
+      ### Requirement: <REQ-ID> <名称>
+      #### Scenario: <名称>
+      - **WHEN** ...
+      - **THEN** ...
+  - id: clarifications
+    generates: clarifications.md
+    description: 记录会改变范围、风险、兼容性或验收的关键问题与决定
+    instruction: 记录问题、影响、决定、来源和状态；所有 material question 必须 resolved，并原子回写 Proposal 与 delta Specs。
+    outline: |
+      ## Material questions
+      ## Decisions
+      ## Sources
+      ## Resolved updates
+  - id: design
+    generates: design.md
+    description: 记录高保障技术设计、风险控制和交付边界
+    instruction: 覆盖架构决策、替代方案、trust boundaries、失败模式、兼容性、风险缓解、测试、rollout、monitoring、stop signals、owner、并行边界和 rollback。
+    outline: |
+      ## Context and constraints
+      ## Decisions and alternatives
+      ## Trust boundaries
+      ## Risks and mitigations
+      ## Test strategy
+      ## Rollout, monitoring and stop signals
+      ## Owners and parallel boundaries
+      ## Migration and rollback
+  - id: check-report
+    generates: check-report.md
+    description: 记录实现前跨 Artifact 语义审查
+    instruction: 按 blocker、warning、suggestion 检查完整性、一致性、可测试性、风险和可实施性，并指出 rework Stage。
+    outline: |
+      ## Completeness
+      ## Consistency
+      ## Feasibility and risk
+      ## Findings
+      ## Rework
+  - id: assurance
+    generates: assurance.md
+    description: 记录实现与需求、设计、风险和约束的核验结果
+    instruction: 按完整性、正确性、一致性、风险和 Gate 汇总验证结论，并给出可定位证据。
+    outline: |
+      ## Completeness
+      ## Correctness
+      ## Coherence
+      ## Risk controls
+      ## Gates and evidence
+      ## Findings
+  - id: verification-receipt
+    generates: evidence/verification-receipt.yaml
+    description: 绑定当前修订与 Gate Evidence 的验证回执
+    instruction: 只记录当前 Change revision、Git HEAD、Flow 版本、输入摘要和已通过的 Evidence 引用。
+    outline: ''
+stages:
+  - id: propose
+    skill: xforge-propose
+    authority: planning-write
+    requires: []
+    produces: [proposal, delta-specs]
+    gates: [structure]
+    reworkTo: [propose]
+  - id: clarify
+    skill: xforge-clarify
+    authority: planning-write
+    requires: [propose]
+    produces: [clarifications]
+    revises: [proposal, delta-specs]
+    reworkTo: [propose, clarify]
+    exit:
+      materialQuestions: resolved
+  - id: design
+    skill: xforge-design
+    authority: planning-write
+    requires: [clarify]
+    produces: [design]
+    reworkTo: [propose, clarify, design]
+  - id: check
+    skill: xforge-check
+    authority: assurance-write
+    requires: [design]
+    produces: [check-report]
+    gates: [structure]
+    reworkTo: [propose, clarify, design]
+  - id: apply
+    skill: xforge-apply
+    authority: implementation-write
+    requires: [check]
+    produces: []
+    reworkTo: [propose, clarify, design, apply]
+    execution:
+      planning: just-in-time
+      workPackages: adaptive
+  - id: verify
+    skill: xforge-verify
+    authority: assurance-write
+    requires: [apply]
+    produces: [assurance, verification-receipt]
+    gates: [structure, unit-tests, security-scan]
+    reworkTo: [apply]
+terminal:
+  archive:
+    handler: xforge-verify
+    authority: archive-write
+    requires: [verify]
+    syncSpecs: true
+    evidencePolicy: current-revision

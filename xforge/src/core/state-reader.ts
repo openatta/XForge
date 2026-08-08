@@ -6,7 +6,7 @@ import { TARGETS } from '../constants.js';
 import { capabilityMatrix } from '../adapters/index.js';
 import type { ChangeState, Diagnostic, ProjectContext } from '../types.js';
 import { diagnostic } from './errors.js';
-import { loadFlows, resolveChangeState } from './flow-resolver.js';
+import { flowApplyOperation, flowArchiveOperation, flowArtifacts, isStageFlow, loadFlows, resolveChangeState } from './flow-resolver.js';
 import { safeResolve } from './path-safety.js';
 import { loadSelectedResources } from './resource-loader.js';
 import { resolvedResourceEntries } from './lockfile.js';
@@ -57,15 +57,28 @@ export async function readState(project: ProjectContext, options: StateOptions):
     ? (await fg('**/*.md', { cwd: specsAbsolute, onlyFiles: true, followSymbolicLinks: false })).sort()
     : [];
   const changes = await directoriesAt(changesAbsolute);
-  const flowSummaries = [...flowResult.flows.values()].map((flow) => ({
-    id: flow.metadata.name,
-    version: flow.metadata.version,
-    description: flow.metadata.description,
-    artifacts: flow.artifacts.map((artifact) => ({ id: artifact.id, generates: artifact.generates, requires: artifact.requires })),
-    applyRequires: flow.operations.apply.requires,
-    archiveRequires: flow.operations.archive.requires,
-    mandatoryGates: flow.operations.archive.mandatoryGates,
-  }));
+  const flowSummaries = [...flowResult.flows.values()].map((flow) => {
+    const apply = flowApplyOperation(flow);
+    const archive = flowArchiveOperation(flow);
+    return {
+      id: flow.metadata.name,
+      version: flow.metadata.version,
+      apiVersion: flow.apiVersion,
+      description: flow.metadata.description,
+      policy: isStageFlow(flow) ? flow.policy : null,
+      stages: isStageFlow(flow) ? flow.stages.map((stage) => ({
+        id: stage.id,
+        skill: stage.skill,
+        authority: stage.authority,
+        requires: stage.requires,
+        produces: stage.produces,
+      })) : null,
+      artifacts: flowArtifacts(flow).map((artifact) => ({ id: artifact.id, generates: artifact.generates, requires: artifact.requires })),
+      applyRequires: apply.requires,
+      archiveRequires: archive.requires,
+      mandatoryGates: archive.mandatoryGates,
+    };
+  });
 
   let selectedChange: ChangeState | null = null;
   let context: Record<string, unknown> | null = null;

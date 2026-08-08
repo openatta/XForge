@@ -1,56 +1,97 @@
-apiVersion: xforge.dev/v1alpha1
+apiVersion: xforge.dev/v1alpha2
 kind: Flow
 metadata:
   name: solid
-  version: 1
-  description: Default product and engineering change flow
+  version: 2
+  description: 强调稳定、可维护交付，适用于常规产品功能和工程变更
+policy:
+  assuranceLevel: solid
+  eligibleWhen:
+    risk: [low, medium]
+    criticalImpacts: forbidden
+  onUncertain: escalate
 artifacts:
   - id: proposal
     generates: proposal.md
-    description: Explain why the change is needed
-    instruction: Focus on problem, scope, impact, Flow choice, and rollback.
+    description: 说明变更原因、边界与 Flow 选择
+    instruction: 说明 Why、Scope、Non-goals、Success criteria、影响、回滚方式及选择 Solid 的事实依据。
     outline: |
       ## Why
       ## Scope
+      ## Non-goals
+      ## Success criteria
       ## Flow choice
-      ## Impact
-      ## Rollback
-    requires: []
-  - id: specs
+      ## Impact and rollback
+  - id: delta-specs
     generates: specs/**/*.md
-    description: Define observable requirements and scenarios
-    instruction: Describe what the system must do, not implementation details.
+    description: 定义可观察的需求与场景增量
+    instruction: 使用稳定 Requirement ID 描述成功、失败、边界及兼容性场景，不写实现细节。
     outline: |
       ## ADDED Requirements
-      ### Requirement: <name>
-      #### Scenario: <name>
+      ### Requirement: <REQ-ID> <名称>
+      #### Scenario: <名称>
       - **WHEN** ...
       - **THEN** ...
-    requires: [proposal]
   - id: design
     generates: design.md
-    description: Explain the technical approach
-    instruction: Evaluate alternatives and Constitution constraints.
+    description: 记录技术方案、替代方案和验证要点
+    instruction: 覆盖现状、目标集成点、主要决策、失败模式、兼容性、迁移、回滚和验证，不退化为逐文件任务表。
     outline: |
       ## Context
-      ## Decisions
-      ## Alternatives
-      ## Risks
-    requires: [proposal, specs]
-  - id: tasks
-    generates: tasks.md
-    description: Track implementation work
-    instruction: Produce verifiable, dependency-aware implementation and test tasks.
+      ## Goals and non-goals
+      ## Decisions and alternatives
+      ## Failure modes and compatibility
+      ## Migration and rollback
+      ## Verification notes
+  - id: assurance
+    generates: assurance.md
+    description: 记录实现与需求、设计、测试和约束的核验结果
+    instruction: 按完整性、正确性、一致性和 Gate 汇总验证结论，并给出可定位证据。
     outline: |
-      ## Tasks
-      - [ ] 1. Implement
-      - [ ] 2. Verify
+      ## Completeness
+      ## Correctness
+      ## Coherence
+      ## Gates and evidence
+      ## Findings
+  - id: verification-receipt
+    generates: evidence/verification-receipt.yaml
+    description: 绑定当前修订与 Gate Evidence 的验证回执
+    instruction: 只记录当前 Change revision、Git HEAD、Flow 版本、输入摘要和已通过的 Evidence 引用。
+    outline: ''
+stages:
+  - id: propose
+    skill: xforge-propose
+    authority: planning-write
+    requires: []
+    produces: [proposal, delta-specs]
+    gates: [structure]
+    reworkTo: [propose]
+  - id: design
+    skill: xforge-design
+    authority: planning-write
+    requires: [propose]
+    produces: [design]
+    reworkTo: [propose, design]
+  - id: apply
+    skill: xforge-apply
+    authority: implementation-write
     requires: [design]
-operations:
-  apply:
-    requires: [tasks]
-    tracks: tasks.md
+    produces: []
+    reworkTo: [propose, design, apply]
+    execution:
+      planning: just-in-time
+      workPackages: adaptive
+  - id: verify
+    skill: xforge-verify
+    authority: assurance-write
+    requires: [apply]
+    produces: [assurance, verification-receipt]
+    gates: [structure, unit-tests]
+    reworkTo: [apply]
+terminal:
   archive:
-    requires: [specs, tasks]
+    handler: xforge-verify
+    authority: archive-write
+    requires: [verify]
     syncSpecs: true
-    mandatoryGates: [structure, unit-tests]
+    evidencePolicy: current-revision

@@ -48,14 +48,20 @@ describe('XForge product contract', () => {
     expect(await exists(path.join(scaffold, 'payload', 'xforge', 'src'))).toBe(false);
     expect(await exists(path.join(scaffold, 'payload', '.git'))).toBe(false);
 
-    const ids = ['explore', 'propose', 'apply', 'verify', 'archive'];
+    const ids = ['explore', 'propose', 'clarify', 'design', 'check', 'apply', 'verify', 'status', 'continue', 'revise', 'scaffold', 'archive'];
     for (const id of ids) {
       const skill = await readFile(path.join(scaffold, 'payload', 'xforge', 'scaffold', 'skills', `xforge-${id}`, 'SKILL.md'), 'utf8');
-      for (const heading of ['# Purpose', '# Preconditions', '# State Query', '# Allowed Writes', '# Procedure', '# Verification', '# Stop Conditions']) expect(skill).toContain(heading);
+      for (const heading of ['# 不变量', '# 权限', '# 执行', '# 证据', '# 停止与返工']) expect(skill).toContain(heading);
       expect(skill).toContain('OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab');
       expect(skill).toContain('xforge state');
       expect(skill).not.toMatch(/`openspec\s/);
     }
+    const apply = await readFile(path.join(scaffold, 'payload', 'xforge', 'scaffold', 'skills', 'xforge-apply', 'SKILL.md'), 'utf8');
+    expect(apply).toContain('work-packages.yaml');
+    expect(apply).toContain('并行激活 Worker');
+    expect(await exists(path.join(scaffold, 'payload', 'xforge', 'flows', 'major.yaml'))).toBe(true);
+    expect(await exists(path.join(scaffold, 'payload', 'xforge', 'flows', 'prime.yaml'))).toBe(false);
+    expect(await exists(path.join(scaffold, 'payload', 'xforge', 'flows', 'macro.yaml'))).toBe(false);
 
     for (const id of ['worker', 'integrator', 'reviewer']) {
       expect(await exists(path.join(scaffold, 'payload', 'xforge', 'scaffold', 'agents', `${id}.yaml`))).toBe(true);
@@ -85,7 +91,7 @@ describe('XForge product contract', () => {
     const releaseRoot = await mkdtemp(path.join(os.tmpdir(), 'xforge-http-'));
     const build = await command(process.execPath, [path.join(xforgeRoot, 'scripts', 'build-scaffold.mjs'), releaseRoot], repositoryRoot);
     expect(build.code, build.stderr).toBe(0);
-    const archive = path.join(releaseRoot, 'xforge-scaffold-0.1.0.tar.gz');
+    const archive = path.join(releaseRoot, 'xforge-scaffold-0.2.0.tar.gz');
     const listing = await command('tar', ['-tzf', archive], releaseRoot);
     expect(listing.code).toBe(0);
     expect(listing.stdout.split('\n').filter(Boolean).every((entry) => entry === 'scaffold.yaml' || entry === 'files.sha256' || entry.startsWith('payload/'))).toBe(true);

@@ -52,8 +52,11 @@ export async function planArchive(project: ProjectContext, changeId: string): Pr
       const incomplete = structure.change.artifacts.filter((item) => structure.change!.archive.requires.includes(item.id) && item.status !== 'done').map((item) => item.id);
       diagnostics.push(diagnostic('XFORGE_ARCHIVE_ARTIFACTS_INCOMPLETE', `Archive prerequisites are incomplete: ${incomplete.join(', ')}`, `${project.changesPath}/${changeId}`));
     }
-    const tasks = await incompleteTasks(project, changeId, structure.change.apply.tracks);
-    if (tasks.length > 0) diagnostics.push(diagnostic('XFORGE_ARCHIVE_TASKS_INCOMPLETE', `${tasks.length} task(s) are incomplete.`, `${project.changesPath}/${changeId}/${structure.change.apply.tracks}`, 'error', tasks));
+    const tracker = structure.change.apply.tracks;
+    if (tracker) {
+      const tasks = await incompleteTasks(project, changeId, tracker);
+      if (tasks.length > 0) diagnostics.push(diagnostic('XFORGE_ARCHIVE_TASKS_INCOMPLETE', `${tasks.length} task(s) are incomplete.`, `${project.changesPath}/${changeId}/${tracker}`, 'error', tasks));
+    }
   }
   if (diagnostics.some((item) => item.severity === 'error')) {
     return { changeId, target: '', mutations: [], changes: [], diagnostics, mandatoryGates: structure.change?.archive.mandatoryGates ?? [] };

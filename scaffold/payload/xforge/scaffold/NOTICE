@@ -1,6 +1,8 @@
-The workflow guidance in skills/xforge-explore, xforge-propose, xforge-apply,
-xforge-verify, and xforge-archive is adapted from OpenSpec's default workflow
-skills at commit e50bd0983dc8dc48250e3181f36e28450542f2ab.
+The workflow guidance under skills/xforge-* is adapted from OpenSpec's default
+workflow skills and schema patterns at commit
+e50bd0983dc8dc48250e3181f36e28450542f2ab. It is translated into Chinese and
+adapted to XForge's Quick/Solid/Major Stage model, authority boundaries,
+work-package protocol, Gates, Evidence, and archive transaction.
 
 Copyright (c) 2024 OpenSpec Contributors
 

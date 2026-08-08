@@ -12,7 +12,7 @@ project:
       path: .
       kind: application
 scaffold:
-  version: 0.1.0
+  version: 0.2.0
   source:
     type: git
     repository: https://github.com/openatta/XForge.git
@@ -20,8 +20,15 @@ scaffold:
   skills:
     - xforge-explore
     - xforge-propose
+    - xforge-clarify
+    - xforge-design
+    - xforge-check
     - xforge-apply
     - xforge-verify
+    - xforge-status
+    - xforge-continue
+    - xforge-revise
+    - xforge-scaffold
     - xforge-archive
   agents:
     - worker
@@ -38,7 +45,7 @@ scripts:
 xforge:
   source: npm
   package: "@xforge/cli"
-  version: 0.1.0
+  version: 0.2.0
   protocol: "1"
 flow: solid
 targets:

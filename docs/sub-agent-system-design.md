@@ -26,7 +26,7 @@ Skill 完成，集成测试由 Integrator 运行，探索由 Main Agent 或 Revi
 
 ### 2.1 目标
 
-- 从当前 Change 的 Specs、Design 和 Tasks 派生可审计的工作包 DAG；
+- 在 Apply 中从当前 Change 的 Specs、可选 Design 和 Check report 即时派生可审计的工作包 DAG；
 - 只在依赖独立且写路径不冲突时并行；
 - 使用固定 base commit、独立 branch 和 worktree 隔离写入型任务；
 - 通过 Git diff、命令退出状态和 Gate Evidence 验证 Agent 交付；
@@ -153,7 +153,7 @@ worktree:
 delivery_mode: commit
 ```
 
-把运行信息移出工作包可以保持 Tasks 到工作包的转换简单，并避免规划文件记录
+把运行信息移出工作包可以保持 governing artifacts 到工作包的转换简单，并避免规划文件记录
 一次性机器路径。派发时，静态工作包和调度元数据共同构成一次执行请求。
 
 ### 4.4 固定的交付契约
@@ -257,7 +257,7 @@ Reviewer 不参与原始实现，默认不修改产品代码。它审查最终
 
 Reviewer 必须核对：
 
-- Specs、Design、Tasks 和 Constitution；
+- Specs、可选 Design/Check report 和 Constitution；
 - 工作包的 `inputs`、`write_paths`、`verify` 和 `done_when`；
 - 最终 Git diff 和共享文件所有权；
 - 兼容性、安全性、测试覆盖和实际 Gate Evidence；
@@ -279,7 +279,7 @@ Prompt 只提供指导，以下事实必须由 Main Agent、Git 或 XForge Gate 
 - 交付时不存在未声明的可提交修改；
 - 所有 `verify` 命令均有真实执行记录且退出状态为零；
 - `done_when` 均有实现、测试、契约或 Gate Evidence 支撑；
-- Prime 审批来自人或授权外部系统，而不是 Agent 自我声明。
+- 删除、不可逆迁移、生产写入或权限扩大等敏感 Action 的确认来自用户或授权外部系统，而不是 Agent 自我声明。
 
 项目可以通过 scoped Rule 的 `writePolicy: integrator-only` 声明额外共享路径。
 XForge 还内建保护 Manifest、Lockfile、Constitution、主 Specs 和当前 Change
@@ -307,14 +307,14 @@ XForge 状态提供 Constitution、相关 Specs、Design、Rules 和 Gate 要求
 ## 9. 与 XForge Flow 和 Skills 的关系
 
 - `quick`：默认由 Main Agent 直接完成，原则上不引入并行编排；
-- `solid`：可以从 Design 和 Tasks 派生工作包 DAG；
-- `prime`：可以并行，但继续受风险评估、测试计划、发布计划和外部审批约束；
+- `solid`：Apply 可以从 Specs 和 Design 即时派生工作包 DAG，以稳定集成为优先；
+- `major`：Apply 可以从 Specs、Clarifications、Design 和 Check report 即时派生工作包 DAG，并受重大风险、rollout、monitoring 与 Action 级确认约束；
 - `xforge-propose`：由 Main Agent 用于规划，不交给 Worker；
 - `xforge-apply`：Main Agent、Worker 和 Integrator 的主要执行流程；
 - `xforge-verify`：供 Integrator 和 Reviewer 获取确定性检查与 Evidence；
-- `xforge-archive`：仅在集成和审查完成后由 Main Agent 调用。
+- `xforge-verify` 在明确授权时执行协议层 Archive action；`xforge-archive` 只保留迁移 shim。
 
-工作包是 Tasks 的执行层表示，不替代 Proposal、Specs、Design 或 Tasks。默认流程
+工作包是 Apply 的执行资产，不替代 Proposal、Specs、Clarifications、Design 或 Check report。默认流程
 不调用 Spec Kit；如未来提供 Spec Kit 兼容能力，应作为显式可选 Adapter，并单独
 定义导入映射、所有权和冲突处理。
 

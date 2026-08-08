@@ -13,4 +13,4 @@ Resolve genuine integration conflicts with the smallest compatible change,
 update shared outputs, and run contract, integration, end-to-end, and mandatory
 project verification. Commit the integrated result and return its commit,
 included Worker commits, changed shared paths, validation results, and issues.
-Never grant Prime approval or archive the Change.
+Never approve a Major exception or archive the Change.

@@ -1,58 +1,33 @@
 ---
 name: xforge-archive
-description: Preview, gate, synchronize Specs, and atomically archive one completed Change.
+description: 兼容旧入口，把明确的归档请求转交 xforge-verify 的 archive-current 模式；仅用于迁移期用户仍调用旧 Archive Skill 时，不再直接同步 Specs 或移动 Change。
 license: MIT
-compatibility: Requires a matching XForge protocol 1 CLI.
 metadata:
-  author: xforge (adapted from OpenSpec)
-  version: "1.0"
+  author: xforge（基于 OpenSpec 工作流适配）
+  version: "2.0"
   source: OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab
 ---
 
-# Purpose
+# 不变量
 
-Close a completed Change without a separate sync command: preview all writes,
-enforce mandatory Gates, merge delta Specs, and move the Change to its dated
-archive location.
+- 运行 `xforge state --change <id>`，解析唯一 active Change，不猜测 readiness 或 Evidence freshness。
+- 本 Skill 仅是迁移 shim；归档语义、验证与权限全部由 `xforge-verify` 的 `archive-current` 模式承担。
 
-# Preconditions
+# 权限
 
-Resolve one active Change. Required Artifacts and tasks must be complete and any
-Prime approval must be externally granted. The running CLI must be Managed and
-identity-compatible.
+- 本 Skill 不直接写 Specs、Evidence 或 Archive，不直接移动 Change。
+- 只有用户明确要求归档才可转交 archive-current；仅要求验证时改用 verify-only。
 
-# State Query
+# 执行
 
-Run `xforge state --change <id>` and read resolved logical paths, archive
-requirements, Specs, Constitution, Rules, classification, and Gate list. Never
-hard-code `xforge/specs` or `xforge/changes`.
+1. 查询 State 并说明旧入口已并入 `xforge-verify`。
+2. 使用 `xforge-verify` 的 `archive-current` 流程：检查当前 receipt，必要时重新 Verify，执行 archive dry-run，确认后再归档。
+3. 刷新 State 并报告最终结果。
 
-# Allowed Writes
+# 证据
 
-Only writes planned by `xforge archive --change <id>`: Gate Evidence, resolved
-main Specs, and the dated Change move. Do not manually copy delta Specs or move
-the directory.
+- 只引用 Verify receipt、Gate Evidence、dry-run 计划和 CLI 归档事务结果。
 
-# Procedure
+# 停止与返工
 
-1. Run `xforge archive --change <id> --dry-run`. Confirm `ok: true`, zero
-   filesystem writes, the complete write/move plan, merge behavior, and target.
-2. Review conflicts and all mandatory Gate requirements. Present any destructive
-   or compatibility-significant effect before execution.
-3. Run `xforge archive --change <id>`. The CLI rechecks structure, executes
-   mandatory Gates, records Evidence, stages Spec merges, and performs the
-   recoverable archive transaction.
-4. Inspect the JSON envelope and changed paths. Run `xforge state` to confirm the
-   Change left the active set and the main Specs are visible.
-
-# Verification
-
-Report the archive location, synced capability Specs and digests, Evidence paths,
-and any Adapter/quality diagnostics. A moved directory without successful Gates
-and verified Spec writes is not a completed archive.
-
-# Stop Conditions
-
-Stop on dry-run diagnostics, target collision, incomplete Artifacts/tasks,
-approval ambiguity, failed Gate, merge conflict, path safety failure, or any
-unplanned write. Never bypass a mandatory Gate or create a standalone sync step.
+- 未明确授权、receipt stale、Gate 失败或 dry-run 有诊断时停止；不得绕过 Verify。

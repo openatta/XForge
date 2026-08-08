@@ -1,53 +1,39 @@
 ---
 name: xforge-explore
-description: Explore a problem or design without creating a Change or modifying files.
+description: 只读调查代码、规格、约束、缺陷或方案，并把模糊想法收敛为可提案范围；用于用户要求分析、诊断、比较方案或判断 Flow，但尚未授权创建 Change 或修改项目时。
 license: MIT
-compatibility: XForge protocol 1; Portable read-only operation is supported.
 metadata:
-  author: xforge (adapted from OpenSpec)
-  version: "1.0"
+  author: xforge（基于 OpenSpec 工作流适配）
+  version: "2.0"
   source: OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab
 ---
 
-# Purpose
+# 不变量
 
-Act as a grounded thinking partner. Investigate the real project, challenge
-assumptions, compare options, and clarify scope without committing the project
-to an implementation.
+- 先运行 `xforge state`；涉及已有 Change 时再运行 `xforge state --change <id>`，不猜测 Flow、路径、约束或状态。
+- 以实际代码、Constitution、Rules、Specs 和 CLI 诊断为事实；明确区分观察、假设与建议。
+- 全程只读，不把探索结果伪装成 Artifact、Gate Evidence 或完成声明。
 
-# Preconditions
+# 权限
 
-No active Change is required. Exploration is strictly read-only: do not create
-Change artifacts, edit code, install assets, run write-capable Hooks, or claim a
-Gate has passed.
+- 可以读取和搜索项目、运行无副作用的诊断、比较方案并建议 Change 范围与 Flow。
+- 不得创建或修改 Change、代码、Specs、Scaffold、Evidence、生成目录或外部系统。
+- 用户要求记录或实施时，停止 Explore，转交 `xforge-propose` 或对应 ready Action 的 Skill。
 
-# State Query
+# 执行
 
-Start with `xforge state`. If a Change is relevant, query
-`xforge state --change <id>`. Read the resolved Constitution, Rules, Specs,
-modules, capability degradations, and existing Change artifacts returned by
-state. In Portable mode, call out that constraints are guidance only.
+1. 查询 State，解析相关模块、active Changes、Constitution、Rules、Specs 和 Adapter 降级。
+2. 先调查代码与运行事实，再建立集成点、约束、未知项和影响范围。
+3. 比较可行方案，说明兼容性、风险、回滚成本与验证方式；只询问无法从项目查明且会改变结果的问题。
+4. 问题足够清楚时，给出有边界的 Change 描述、classification、path scope 与 Quick/Solid/Major 建议。
+5. 结束前再次确认工作区没有因本 Skill 产生修改。
 
-# Allowed Writes
+# 证据
 
-None. Notes remain in the conversation. If the user wants findings captured,
-hand off to `xforge-propose` rather than writing them in explore mode.
+- 引用具体文件、命令结果或现有 Spec；自然语言推测不是机器证据。
+- 报告只读检查范围、关键事实、剩余未知和推荐下一步。
 
-# Procedure
+# 停止与返工
 
-- Read/search the codebase before theorizing about its behavior.
-- Map integration points, constraints, hidden complexity, and unknowns.
-- Compare viable options and make tradeoffs explicit; visualize when useful.
-- Follow promising threads without forcing a fixed questionnaire or output.
-- When the problem is concrete enough, offer a bounded Change description,
-  likely module scope, risk classification, and appropriate Flow.
-
-# Verification
-
-Before concluding, confirm no files were changed and distinguish observed facts
-from hypotheses and recommendations.
-
-# Stop Conditions
-
-Stop before any project write. Stop and request direction when material scope or
-authority remains ambiguous. Transition only when the user authorizes planning.
+- 一旦需要写入、扩大权限、访问敏感外部状态或替用户做材料性决定，立即停止并请求授权。
+- Portable 模式必须说明治理约束未被 CLI 强制执行。

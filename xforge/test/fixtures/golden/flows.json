@@ -1,38 +1,39 @@
 {
   "quick": {
-    "artifacts": [
-      ["proposal", []],
-      ["specs", ["proposal"]],
-      ["tasks", ["proposal", "specs"]]
+    "assuranceLevel": "quick",
+    "stages": [
+      ["propose", []],
+      ["apply", ["propose"]],
+      ["verify", ["apply"]]
     ],
-    "apply": ["tasks"],
-    "archive": ["specs", "tasks"],
-    "gates": ["structure", "unit-tests"]
+    "artifacts": ["proposal", "delta-specs", "assurance", "verification-receipt"],
+    "gates": ["structure", "unit-tests"],
+    "archiveHandler": "xforge-verify"
   },
   "solid": {
-    "artifacts": [
-      ["proposal", []],
-      ["specs", ["proposal"]],
-      ["design", ["proposal", "specs"]],
-      ["tasks", ["design"]]
+    "assuranceLevel": "solid",
+    "stages": [
+      ["propose", []],
+      ["design", ["propose"]],
+      ["apply", ["design"]],
+      ["verify", ["apply"]]
     ],
-    "apply": ["tasks"],
-    "archive": ["specs", "tasks"],
-    "gates": ["structure", "unit-tests"]
+    "artifacts": ["proposal", "delta-specs", "design", "assurance", "verification-receipt"],
+    "gates": ["structure", "unit-tests"],
+    "archiveHandler": "xforge-verify"
   },
-  "prime": {
-    "artifacts": [
-      ["proposal", []],
-      ["specs", ["proposal"]],
-      ["design", ["proposal", "specs"]],
-      ["risk-assessment", ["design"]],
-      ["test-plan", ["design", "risk-assessment"]],
-      ["rollout-plan", ["design", "risk-assessment"]],
-      ["tasks", ["design", "test-plan", "rollout-plan"]],
-      ["approval", ["tasks", "test-plan", "rollout-plan"]]
+  "major": {
+    "assuranceLevel": "major",
+    "stages": [
+      ["propose", []],
+      ["clarify", ["propose"]],
+      ["design", ["clarify"]],
+      ["check", ["design"]],
+      ["apply", ["check"]],
+      ["verify", ["apply"]]
     ],
-    "apply": ["approval"],
-    "archive": ["specs", "tasks", "approval"],
-    "gates": ["structure", "unit-tests", "security-scan"]
+    "artifacts": ["proposal", "delta-specs", "clarifications", "design", "check-report", "assurance", "verification-receipt"],
+    "gates": ["structure", "unit-tests", "security-scan"],
+    "archiveHandler": "xforge-verify"
   }
 }

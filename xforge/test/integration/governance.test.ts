@@ -14,7 +14,7 @@ describe('governance validation', () => {
     }));
     const result = await runCli(root, ['check', '--change', 'unsafe']);
     expect(result.code).toBe(1);
-    expect(result.json.diagnostics.map((item: any) => item.code)).toEqual(expect.arrayContaining(['XFORGE_FLOW_TOO_WEAK', 'XFORGE_FLOW_PRIME_REQUIRED']));
+    expect(result.json.diagnostics.map((item: any) => item.code)).toEqual(expect.arrayContaining(['XFORGE_FLOW_TOO_WEAK', 'XFORGE_FLOW_REQUIRED_POLICY']));
     expect(result.json.changes).toEqual([]);
   });
 

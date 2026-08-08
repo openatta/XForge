@@ -124,7 +124,7 @@ export interface ArtifactDefinition {
   requires: string[];
 }
 
-export interface Flow {
+export interface LegacyFlow {
   apiVersion: 'xforge.dev/v1alpha1';
   kind: 'Flow';
   metadata: Metadata & { version: string | number; description: string };
@@ -134,6 +134,58 @@ export interface Flow {
     archive: { requires: string[]; syncSpecs: boolean; mandatoryGates: string[] };
   };
 }
+
+export type FlowAuthority = 'read-only' | 'planning-write' | 'assurance-write' | 'implementation-write' | 'archive-write';
+
+export interface StageFlowArtifact extends Omit<ArtifactDefinition, 'requires'> {}
+
+export interface FlowStage {
+  id: string;
+  skill: string;
+  authority: FlowAuthority;
+  requires: string[];
+  produces: string[];
+  revises?: string[];
+  gates?: string[];
+  reworkTo?: string[];
+  exit?: Record<string, string>;
+  execution?: {
+    planning: 'just-in-time';
+    workPackages: 'internal' | 'adaptive' | 'required';
+  };
+}
+
+export interface StageFlow {
+  apiVersion: 'xforge.dev/v1alpha2';
+  kind: 'Flow';
+  metadata: Metadata & { version: string | number; description: string };
+  policy: {
+    assuranceLevel: 'quick' | 'solid' | 'major';
+    eligibleWhen: {
+      risk: Array<'low' | 'medium' | 'high'>;
+      criticalImpacts: 'forbidden' | 'allowed';
+      maxModules?: number;
+    };
+    requiredWhen?: {
+      risk?: Array<'low' | 'medium' | 'high'>;
+      anyImpact?: Array<'security' | 'privacy' | 'publicApi' | 'dataMigration'>;
+    };
+    onUncertain: 'escalate' | 'request-decision';
+  };
+  artifacts: StageFlowArtifact[];
+  stages: FlowStage[];
+  terminal: {
+    archive: {
+      handler: string;
+      authority: 'archive-write';
+      requires: string[];
+      syncSpecs: boolean;
+      evidencePolicy: 'current-revision';
+    };
+  };
+}
+
+export type Flow = LegacyFlow | StageFlow;
 
 export interface ChangeConfig {
   flow: string;
@@ -204,7 +256,7 @@ export interface ChangeState {
   scope: ChangeConfig['scope'];
   artifacts: ArtifactState[];
   nextArtifact: ArtifactState | null;
-  apply: { ready: boolean; requires: string[]; tracks: string };
+  apply: { ready: boolean; requires: string[]; tracks: string | null };
   archive: { ready: boolean; requires: string[]; mandatoryGates: string[]; syncSpecs: boolean };
   workPackages: WorkPackagePlanState | null;
 }

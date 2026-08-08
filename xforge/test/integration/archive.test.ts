@@ -1,4 +1,4 @@
-import { access, readFile, readdir } from 'node:fs/promises';
+import { access, readFile, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createCompleteSolidChange, fixture, runCli, updateYaml } from '../helpers.js';
@@ -44,14 +44,13 @@ describe('archive transaction', () => {
     expect(await exists(path.join(archiveRoot, archiveNames[0]!, 'evidence', 'tests.json'))).toBe(true);
   });
 
-  it('blocks archive on an incomplete task or failed mandatory Gate', async () => {
+  it('blocks archive on a missing verification receipt or failed mandatory Gate', async () => {
     const incompleteRoot = await fixture();
     await createCompleteSolidChange(incompleteRoot);
-    const { write } = await import('../helpers.js');
-    await write(incompleteRoot, 'xforge/changes/add-feature/tasks.md', '- [ ] Not done\n');
+    await rm(path.join(incompleteRoot, 'xforge', 'changes', 'add-feature', 'evidence', 'verification-receipt.yaml'));
     const incomplete = await runCli(incompleteRoot, ['archive', '--change', 'add-feature', '--dry-run']);
     expect(incomplete.code).toBe(1);
-    expect(incomplete.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_ARCHIVE_TASKS_INCOMPLETE');
+    expect(incomplete.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_ARCHIVE_ARTIFACTS_INCOMPLETE');
 
     const failedRoot = await fixture();
     await createCompleteSolidChange(failedRoot);

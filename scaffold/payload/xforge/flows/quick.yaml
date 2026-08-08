@@ -1,46 +1,81 @@
-apiVersion: xforge.dev/v1alpha1
+apiVersion: xforge.dev/v1alpha2
 kind: Flow
 metadata:
   name: quick
-  version: 1
-  description: Low-risk, single-module change flow
+  version: 2
+  description: 强调快速交付，适用于低风险、单模块、范围明确且易回滚的变更
+policy:
+  assuranceLevel: quick
+  eligibleWhen:
+    risk: [low]
+    criticalImpacts: forbidden
+    maxModules: 1
+  onUncertain: escalate
 artifacts:
   - id: proposal
     generates: proposal.md
-    description: Explain the small, bounded change
-    instruction: Explain why this is low risk, single-module, and reversible.
+    description: 说明变更原因、边界与 Flow 选择
+    instruction: 说明 Why、Scope、Non-goals、Success criteria、影响、回滚方式及选择 Quick 的事实依据。
     outline: |
       ## Why
       ## Scope
+      ## Non-goals
+      ## Success criteria
       ## Flow choice
-      ## Impact
-      ## Rollback
-    requires: []
-  - id: specs
+      ## Impact and rollback
+  - id: delta-specs
     generates: specs/**/*.md
-    description: Define observable requirements and scenarios
-    instruction: Describe observable behavior, including failure scenarios.
+    description: 定义可观察的需求与场景增量
+    instruction: 使用稳定 Requirement ID 描述成功、失败、边界及兼容性场景，不写实现细节。
     outline: |
       ## ADDED Requirements
-      ### Requirement: <name>
-      #### Scenario: <name>
+      ### Requirement: <REQ-ID> <名称>
+      #### Scenario: <名称>
       - **WHEN** ...
       - **THEN** ...
-    requires: [proposal]
-  - id: tasks
-    generates: tasks.md
-    description: Track implementation work
-    instruction: Produce small, verifiable tasks and include tests.
+  - id: assurance
+    generates: assurance.md
+    description: 记录实现与需求、测试和约束的核验结果
+    instruction: 按完整性、正确性、一致性和 Gate 汇总验证结论，并给出可定位证据。
     outline: |
-      ## Tasks
-      - [ ] 1. Implement the bounded change
-      - [ ] 2. Add and run verification
-    requires: [proposal, specs]
-operations:
-  apply:
-    requires: [tasks]
-    tracks: tasks.md
+      ## Completeness
+      ## Correctness
+      ## Coherence
+      ## Gates and evidence
+      ## Findings
+  - id: verification-receipt
+    generates: evidence/verification-receipt.yaml
+    description: 绑定当前修订与 Gate Evidence 的验证回执
+    instruction: 只记录当前 Change revision、Git HEAD、Flow 版本、输入摘要和已通过的 Evidence 引用。
+    outline: ''
+stages:
+  - id: propose
+    skill: xforge-propose
+    authority: planning-write
+    requires: []
+    produces: [proposal, delta-specs]
+    gates: [structure]
+    reworkTo: [propose]
+  - id: apply
+    skill: xforge-apply
+    authority: implementation-write
+    requires: [propose]
+    produces: []
+    reworkTo: [propose, apply]
+    execution:
+      planning: just-in-time
+      workPackages: internal
+  - id: verify
+    skill: xforge-verify
+    authority: assurance-write
+    requires: [apply]
+    produces: [assurance, verification-receipt]
+    gates: [structure, unit-tests]
+    reworkTo: [apply]
+terminal:
   archive:
-    requires: [specs, tasks]
+    handler: xforge-verify
+    authority: archive-write
+    requires: [verify]
     syncSpecs: true
-    mandatoryGates: [structure, unit-tests]
+    evidencePolicy: current-revision

@@ -1,46 +1,186 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://xforge.dev/schemas/v1alpha1/flow.schema.json",
-  "type": "object",
-  "additionalProperties": false,
-  "required": ["apiVersion", "kind", "metadata", "artifacts", "operations"],
-  "properties": {
-    "apiVersion": { "const": "xforge.dev/v1alpha1" },
-    "kind": { "const": "Flow" },
-    "metadata": { "$ref": "#/$defs/metadata" },
-    "artifacts": {
-      "type": "array", "minItems": 1,
-      "items": {
-        "type": "object", "additionalProperties": false,
-        "required": ["id", "generates", "description", "instruction", "outline", "requires"],
-        "properties": {
-          "id": { "$ref": "#/$defs/id" }, "generates": { "$ref": "#/$defs/path" },
-          "description": { "type": "string", "minLength": 1 }, "instruction": { "type": "string", "minLength": 1 },
-          "outline": { "type": "string" }, "requires": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/id" } }
-        }
-      }
-    },
-    "operations": {
-      "type": "object", "additionalProperties": false, "required": ["apply", "archive"],
-      "properties": {
-        "apply": {
-          "type": "object", "additionalProperties": false, "required": ["requires", "tracks"],
-          "properties": { "requires": { "$ref": "#/$defs/idList" }, "tracks": { "$ref": "#/$defs/path" } }
-        },
-        "archive": {
-          "type": "object", "additionalProperties": false, "required": ["requires", "syncSpecs", "mandatoryGates"],
-          "properties": { "requires": { "$ref": "#/$defs/idList" }, "syncSpecs": { "type": "boolean" }, "mandatoryGates": { "$ref": "#/$defs/idList" } }
-        }
-      }
-    }
-  },
+  "$id": "https://xforge.dev/schemas/flow.schema.json",
+  "oneOf": [
+    { "$ref": "#/$defs/v1alpha1" },
+    { "$ref": "#/$defs/v1alpha2" }
+  ],
   "$defs": {
     "id": { "type": "string", "pattern": "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$" },
     "idList": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/id" } },
     "path": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\u0000).+$" },
     "metadata": {
-      "type": "object", "additionalProperties": false, "required": ["name", "version", "description"],
-      "properties": { "name": { "$ref": "#/$defs/id" }, "version": { "type": ["string", "integer"] }, "description": { "type": "string" } }
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "description"],
+      "properties": {
+        "name": { "$ref": "#/$defs/id" },
+        "version": { "type": ["string", "integer"] },
+        "description": { "type": "string", "minLength": 1 }
+      }
+    },
+    "legacyArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "generates", "description", "instruction", "outline", "requires"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "generates": { "$ref": "#/$defs/path" },
+        "description": { "type": "string", "minLength": 1 },
+        "instruction": { "type": "string", "minLength": 1 },
+        "outline": { "type": "string" },
+        "requires": { "$ref": "#/$defs/idList" }
+      }
+    },
+    "stageArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "generates", "description", "instruction", "outline"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "generates": { "$ref": "#/$defs/path" },
+        "description": { "type": "string", "minLength": 1 },
+        "instruction": { "type": "string", "minLength": 1 },
+        "outline": { "type": "string" }
+      }
+    },
+    "v1alpha1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["apiVersion", "kind", "metadata", "artifacts", "operations"],
+      "properties": {
+        "apiVersion": { "const": "xforge.dev/v1alpha1" },
+        "kind": { "const": "Flow" },
+        "metadata": { "$ref": "#/$defs/metadata" },
+        "artifacts": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/legacyArtifact" } },
+        "operations": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["apply", "archive"],
+          "properties": {
+            "apply": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["requires", "tracks"],
+              "properties": {
+                "requires": { "$ref": "#/$defs/idList" },
+                "tracks": { "$ref": "#/$defs/path" }
+              }
+            },
+            "archive": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["requires", "syncSpecs", "mandatoryGates"],
+              "properties": {
+                "requires": { "$ref": "#/$defs/idList" },
+                "syncSpecs": { "type": "boolean" },
+                "mandatoryGates": { "$ref": "#/$defs/idList" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "v1alpha2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["apiVersion", "kind", "metadata", "policy", "artifacts", "stages", "terminal"],
+      "properties": {
+        "apiVersion": { "const": "xforge.dev/v1alpha2" },
+        "kind": { "const": "Flow" },
+        "metadata": { "$ref": "#/$defs/metadata" },
+        "policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["assuranceLevel", "eligibleWhen", "onUncertain"],
+          "properties": {
+            "assuranceLevel": { "enum": ["quick", "solid", "major"] },
+            "eligibleWhen": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["risk", "criticalImpacts"],
+              "properties": {
+                "risk": { "$ref": "#/$defs/riskList" },
+                "criticalImpacts": { "enum": ["forbidden", "allowed"] },
+                "maxModules": { "type": "integer", "minimum": 1 }
+              }
+            },
+            "requiredWhen": {
+              "type": "object",
+              "additionalProperties": false,
+              "minProperties": 1,
+              "properties": {
+                "risk": { "$ref": "#/$defs/riskList" },
+                "anyImpact": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": { "enum": ["security", "privacy", "publicApi", "dataMigration"] }
+                }
+              }
+            },
+            "onUncertain": { "enum": ["escalate", "request-decision"] }
+          }
+        },
+        "artifacts": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/stageArtifact" } },
+        "stages": {
+          "type": "array",
+          "minItems": 3,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "skill", "authority", "requires", "produces"],
+            "properties": {
+              "id": { "$ref": "#/$defs/id" },
+              "skill": { "$ref": "#/$defs/id" },
+              "authority": { "enum": ["read-only", "planning-write", "assurance-write", "implementation-write", "archive-write"] },
+              "requires": { "$ref": "#/$defs/idList" },
+              "produces": { "$ref": "#/$defs/idList" },
+              "revises": { "$ref": "#/$defs/idList" },
+              "gates": { "$ref": "#/$defs/idList" },
+              "reworkTo": { "$ref": "#/$defs/idList" },
+              "exit": {
+                "type": "object",
+                "minProperties": 1,
+                "additionalProperties": { "type": "string", "minLength": 1 }
+              },
+              "execution": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["planning", "workPackages"],
+                "properties": {
+                  "planning": { "const": "just-in-time" },
+                  "workPackages": { "enum": ["internal", "adaptive", "required"] }
+                }
+              }
+            }
+          }
+        },
+        "terminal": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["archive"],
+          "properties": {
+            "archive": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["handler", "authority", "requires", "syncSpecs", "evidencePolicy"],
+              "properties": {
+                "handler": { "$ref": "#/$defs/id" },
+                "authority": { "const": "archive-write" },
+                "requires": { "$ref": "#/$defs/idList" },
+                "syncSpecs": { "type": "boolean" },
+                "evidencePolicy": { "const": "current-revision" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "riskList": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "enum": ["low", "medium", "high"] }
     }
   }
 }
