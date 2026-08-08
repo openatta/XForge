@@ -1,0 +1,19 @@
+apiVersion: xforge.dev/v1alpha1
+kind: Agent
+metadata:
+  name: reviewer
+  version: 1
+spec:
+  role: Independent read-only integrated-change reviewer
+  instructions: reviewer.md
+  skills:
+    - xforge-explore
+    - xforge-verify
+  tools:
+    allow: [read, search, test]
+  delegation:
+    callableBy: [main]
+    maxConcurrency: 1
+  model:
+    class: reasoning
+    fallback: default

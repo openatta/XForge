@@ -1,0 +1,27 @@
+{
+  "claude": {
+    "skill": ".claude/skills/xforge-explore/SKILL.md",
+    "command": ".claude/commands/xforge/explore.md",
+    "capability": { "skills": "native", "commands": "native", "agents": "native", "rules": "native", "hooks": "unsupported" }
+  },
+  "codex": {
+    "skill": ".agents/skills/xforge-explore/SKILL.md",
+    "command": null,
+    "capability": { "skills": "native", "commands": "unsupported", "agents": "unsupported", "rules": "degraded", "hooks": "unsupported" }
+  },
+  "cursor": {
+    "skill": ".cursor/skills/xforge-explore/SKILL.md",
+    "command": ".cursor/commands/xforge-explore.md",
+    "capability": { "skills": "native", "commands": "native", "agents": "native", "rules": "native", "hooks": "unsupported" }
+  },
+  "opencode": {
+    "skill": ".opencode/skills/xforge-explore/SKILL.md",
+    "command": ".opencode/commands/xforge-explore.md",
+    "capability": { "skills": "native", "commands": "native", "agents": "native", "rules": "degraded", "hooks": "unsupported" }
+  },
+  "github-copilot": {
+    "skill": ".github/skills/xforge-explore/SKILL.md",
+    "command": ".github/prompts/xforge-explore.prompt.md",
+    "capability": { "skills": "native", "commands": "native", "agents": "native", "rules": "native", "hooks": "unsupported" }
+  }
+}

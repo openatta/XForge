@@ -1,0 +1,13 @@
+apiVersion: xforge.dev/v1alpha1
+kind: Gate
+metadata:
+  name: security-scan
+  version: 1
+spec:
+  stage: before-archive
+  required: true
+  command: [npm, audit, "--offline", "--audit-level=high"]
+  workingDirectory: .
+  timeoutSeconds: 900
+  maxOutputBytes: 65536
+  evidence: security.json

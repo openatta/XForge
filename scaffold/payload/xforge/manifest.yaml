@@ -1,0 +1,53 @@
+apiVersion: xforge.dev/v1alpha1
+kind: Project
+metadata:
+  name: xforge-project
+project:
+  layout: single
+  paths:
+    specs: xforge/specs
+    changes: xforge/changes
+  modules:
+    - id: root
+      path: .
+      kind: application
+scaffold:
+  version: 0.1.0
+  source:
+    type: git
+    repository: https://github.com/openatta/XForge.git
+    commit: 99b8726f67ad337e257a52fc606d296927097730
+  skills:
+    - xforge-explore
+    - xforge-propose
+    - xforge-apply
+    - xforge-verify
+    - xforge-archive
+  agents:
+    - worker
+    - integrator
+    - reviewer
+  rules: []
+  hooks: []
+  gates:
+    - structure
+    - unit-tests
+    - security-scan
+scripts:
+  - project-context
+xforge:
+  source: npm
+  package: "@xforge/cli"
+  version: 0.1.0
+  protocol: "1"
+flow: solid
+targets:
+  - codex
+  - claude
+  - cursor
+  - opencode
+  - github-copilot
+install:
+  conflictPolicy: fail
+  prune: managed-only
+  commitGeneratedFiles: true

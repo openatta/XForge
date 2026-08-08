@@ -1,0 +1,41 @@
+{
+  "name": "@xforge/cli",
+  "version": "0.1.0",
+  "description": "Git-native enterprise framework for governed AI-assisted software development",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "xforge": "dist/cli.js"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "schemas",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "clean": "node scripts/clean.mjs",
+    "build": "npm run clean && tsc -p tsconfig.json && node scripts/copy-license.mjs",
+    "test": "npm run build && vitest run test",
+    "test:product": "npm run build && vitest run --root .. tests",
+    "check:scaffold": "node scripts/scaffold-integrity.mjs ../scaffold",
+    "verify": "npm run check:scaffold && npm run build && vitest run test && vitest run --root .. tests",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "fast-glob": "3.3.3",
+    "typescript": "5.9.2",
+    "yaml": "2.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.9",
+    "tar": "7.5.22",
+    "vitest": "4.1.10"
+  }
+}

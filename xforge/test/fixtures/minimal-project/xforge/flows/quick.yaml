@@ -1,0 +1,37 @@
+apiVersion: xforge.dev/v1alpha1
+kind: Flow
+metadata:
+  name: quick
+  version: 1
+  description: Minimal example Flow
+artifacts:
+  - id: proposal
+    generates: proposal.md
+    description: Explain the change
+    instruction: Explain scope and rollback.
+    outline: |
+      ## Why
+      ## Rollback
+    requires: []
+  - id: specs
+    generates: specs/**/*.md
+    description: Define behavior
+    instruction: Define observable behavior.
+    outline: |
+      ## ADDED Requirements
+    requires: [proposal]
+  - id: tasks
+    generates: tasks.md
+    description: Track work
+    instruction: Use verifiable checkboxes.
+    outline: |
+      - [ ] Implement
+    requires: [proposal, specs]
+operations:
+  apply:
+    requires: [tasks]
+    tracks: tasks.md
+  archive:
+    requires: [specs, tasks]
+    syncSpecs: true
+    mandatoryGates: [structure, unit-tests]

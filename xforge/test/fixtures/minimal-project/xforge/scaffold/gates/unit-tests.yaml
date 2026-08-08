@@ -1,0 +1,12 @@
+apiVersion: xforge.dev/v1alpha1
+kind: Gate
+metadata:
+  name: unit-tests
+  version: 1
+spec:
+  stage: before-archive
+  required: true
+  command: [npm, test]
+  timeoutSeconds: 60
+  workingDirectory: .
+  evidence: tests.json

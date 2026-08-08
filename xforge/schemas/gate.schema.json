@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xforge.dev/schemas/v1alpha1/gate.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "apiVersion": { "const": "xforge.dev/v1alpha1" }, "kind": { "const": "Gate" },
+    "metadata": { "$ref": "#/$defs/metadata" },
+    "spec": {
+      "type": "object", "additionalProperties": false,
+      "required": ["stage", "required", "timeoutSeconds", "evidence"],
+      "properties": {
+        "stage": { "enum": ["check", "before-archive"] }, "required": { "type": "boolean" },
+        "builtin": { "const": "structure" }, "command": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "shell": { "type": "boolean" }, "workingDirectory": { "$ref": "#/$defs/path" },
+        "timeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 3600 },
+        "maxOutputBytes": { "type": "integer", "minimum": 1024, "maximum": 1048576 },
+        "evidence": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]*\\.json$" }
+      },
+      "oneOf": [ { "required": ["builtin"] }, { "required": ["command"] } ]
+    }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$" },
+    "path": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$" },
+    "metadata": { "type": "object", "required": ["name"], "properties": { "name": { "$ref": "#/$defs/id" }, "version": { "type": ["string", "integer"] } }, "additionalProperties": false }
+  }
+}

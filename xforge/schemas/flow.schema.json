@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xforge.dev/schemas/v1alpha1/flow.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "metadata", "artifacts", "operations"],
+  "properties": {
+    "apiVersion": { "const": "xforge.dev/v1alpha1" },
+    "kind": { "const": "Flow" },
+    "metadata": { "$ref": "#/$defs/metadata" },
+    "artifacts": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "generates", "description", "instruction", "outline", "requires"],
+        "properties": {
+          "id": { "$ref": "#/$defs/id" }, "generates": { "$ref": "#/$defs/path" },
+          "description": { "type": "string", "minLength": 1 }, "instruction": { "type": "string", "minLength": 1 },
+          "outline": { "type": "string" }, "requires": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/id" } }
+        }
+      }
+    },
+    "operations": {
+      "type": "object", "additionalProperties": false, "required": ["apply", "archive"],
+      "properties": {
+        "apply": {
+          "type": "object", "additionalProperties": false, "required": ["requires", "tracks"],
+          "properties": { "requires": { "$ref": "#/$defs/idList" }, "tracks": { "$ref": "#/$defs/path" } }
+        },
+        "archive": {
+          "type": "object", "additionalProperties": false, "required": ["requires", "syncSpecs", "mandatoryGates"],
+          "properties": { "requires": { "$ref": "#/$defs/idList" }, "syncSpecs": { "type": "boolean" }, "mandatoryGates": { "$ref": "#/$defs/idList" } }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$" },
+    "idList": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/id" } },
+    "path": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\u0000).+$" },
+    "metadata": {
+      "type": "object", "additionalProperties": false, "required": ["name", "version", "description"],
+      "properties": { "name": { "$ref": "#/$defs/id" }, "version": { "type": ["string", "integer"] }, "description": { "type": "string" } }
+    }
+  }
+}

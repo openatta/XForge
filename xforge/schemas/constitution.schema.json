@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xforge.dev/schemas/v1alpha1/constitution.schema.json",
+  "description": "Schema for parsed xforge/constitution.md frontmatter; Markdown sections are validated separately.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "ratified", "lastAmended"],
+  "properties": {
+    "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "ratified": { "type": "string", "format": "date" },
+    "lastAmended": { "type": "string", "format": "date" }
+  }
+}

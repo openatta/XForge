@@ -1,0 +1,38 @@
+{
+  "quick": {
+    "artifacts": [
+      ["proposal", []],
+      ["specs", ["proposal"]],
+      ["tasks", ["proposal", "specs"]]
+    ],
+    "apply": ["tasks"],
+    "archive": ["specs", "tasks"],
+    "gates": ["structure", "unit-tests"]
+  },
+  "solid": {
+    "artifacts": [
+      ["proposal", []],
+      ["specs", ["proposal"]],
+      ["design", ["proposal", "specs"]],
+      ["tasks", ["design"]]
+    ],
+    "apply": ["tasks"],
+    "archive": ["specs", "tasks"],
+    "gates": ["structure", "unit-tests"]
+  },
+  "prime": {
+    "artifacts": [
+      ["proposal", []],
+      ["specs", ["proposal"]],
+      ["design", ["proposal", "specs"]],
+      ["risk-assessment", ["design"]],
+      ["test-plan", ["design", "risk-assessment"]],
+      ["rollout-plan", ["design", "risk-assessment"]],
+      ["tasks", ["design", "test-plan", "rollout-plan"]],
+      ["approval", ["tasks", "test-plan", "rollout-plan"]]
+    ],
+    "apply": ["approval"],
+    "archive": ["specs", "tasks", "approval"],
+    "gates": ["structure", "unit-tests", "security-scan"]
+  }
+}

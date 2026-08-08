@@ -1,0 +1,86 @@
+apiVersion: xforge.dev/v1alpha1
+kind: Lock
+protocol: "1"
+scaffold:
+  version: 0.1.0
+  source:
+    type: git
+    repository: https://github.com/openatta/XForge.git
+    commit: 99b8726f67ad337e257a52fc606d296927097730
+xforge:
+  integrity: sha256:902a9be59eb9792405136a958bbb15c95195a060420dd4971e0c8bdf771004e5
+  source: npm
+  package: "@xforge/cli"
+  version: 0.1.0
+  protocol: "1"
+paths:
+  specs: xforge/specs
+  changes: xforge/changes
+resources:
+  - id: integrator
+    kind: agent
+    version: 1
+    digest: d3e0074d8120baafbf27ba2c7e5e2256d3a7b4d0d361183e7eb592c5b225c192
+    license: project
+  - id: reviewer
+    kind: agent
+    version: 1
+    digest: 7ea36680761c5802b5ee042a9ef3064583ee8c49fd717969045c936e25b4a527
+    license: project
+  - id: worker
+    kind: agent
+    version: 1
+    digest: 371c513bfe1c95dd7a63ebe32a5bed847a0a0b62fc39ee83941bac28cffce5be
+    license: project
+  - id: security-scan
+    kind: gate
+    version: 1
+    digest: 422072bcaf0441808b131b5f9ceb0277e90262387253ca79daa68e16ae2571ad
+    license: project
+  - id: structure
+    kind: gate
+    version: 1
+    digest: 25ff82152311f0ceddf12f9f09ceb2ed4609a8429c1ed595dee8925cce2b4358
+    license: project
+  - id: unit-tests
+    kind: gate
+    version: 1
+    digest: 4a76cb31fdae41e88e4aa1866d93aa32cacb6b9327704269e5b5136dc09091a1
+    license: project
+  - id: project-context
+    kind: script
+    version: 1
+    digest: ec29d19d015fe53c97000a6a2a673bc1fae0cd0236a7b2c200062cc8efb419e4
+    license: project
+  - id: xforge-apply
+    kind: skill
+    version: "1.0"
+    digest: e4eb47f0227802a79e20487c767ab1a4ba859fb70c73273697f0cb18fdd92076
+    license: MIT
+  - id: xforge-archive
+    kind: skill
+    version: "1.0"
+    digest: cc2fde405d0ee1ae672802de0f816487df5769e8469fb715b21fc00c5d96f860
+    license: MIT
+  - id: xforge-explore
+    kind: skill
+    version: "1.0"
+    digest: 62ec29bed1342eef07e7e94306316e097b9f75e985b3b1fea665064625162e97
+    license: MIT
+  - id: xforge-propose
+    kind: skill
+    version: "1.0"
+    digest: 895bafe3d8217873a661f1e4f63de898b38278e3c77e7032e1628f6df19b9f14
+    license: MIT
+  - id: xforge-verify
+    kind: skill
+    version: "1.0"
+    digest: c56aaf595dd75f66fd9a48cd38e28b3c0a85d46cabdefce1c339d93960fc27aa
+    license: MIT
+targets:
+  - codex
+  - claude
+  - cursor
+  - opencode
+  - github-copilot
+generatedProtocol: "1"

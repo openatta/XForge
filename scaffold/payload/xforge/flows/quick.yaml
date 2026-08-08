@@ -1,0 +1,46 @@
+apiVersion: xforge.dev/v1alpha1
+kind: Flow
+metadata:
+  name: quick
+  version: 1
+  description: Low-risk, single-module change flow
+artifacts:
+  - id: proposal
+    generates: proposal.md
+    description: Explain the small, bounded change
+    instruction: Explain why this is low risk, single-module, and reversible.
+    outline: |
+      ## Why
+      ## Scope
+      ## Flow choice
+      ## Impact
+      ## Rollback
+    requires: []
+  - id: specs
+    generates: specs/**/*.md
+    description: Define observable requirements and scenarios
+    instruction: Describe observable behavior, including failure scenarios.
+    outline: |
+      ## ADDED Requirements
+      ### Requirement: <name>
+      #### Scenario: <name>
+      - **WHEN** ...
+      - **THEN** ...
+    requires: [proposal]
+  - id: tasks
+    generates: tasks.md
+    description: Track implementation work
+    instruction: Produce small, verifiable tasks and include tests.
+    outline: |
+      ## Tasks
+      - [ ] 1. Implement the bounded change
+      - [ ] 2. Add and run verification
+    requires: [proposal, specs]
+operations:
+  apply:
+    requires: [tasks]
+    tracks: tasks.md
+  archive:
+    requires: [specs, tasks]
+    syncSpecs: true
+    mandatoryGates: [structure, unit-tests]

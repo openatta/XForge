@@ -1,4 +1,5 @@
 # Logs
+.DS_Store
 logs
 *.log
 npm-debug.log*
@@ -82,6 +83,11 @@ out
 .nuxt
 dist
 .output
+
+# XForge local/generated state
+**/xforge/.state.json
+**/.xforge-archive-*
+tests/.tmp/
 
 # Gatsby files
 .cache/

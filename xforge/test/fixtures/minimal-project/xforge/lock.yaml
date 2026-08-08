@@ -1,0 +1,36 @@
+apiVersion: xforge.dev/v1alpha1
+kind: Lock
+protocol: "1"
+scaffold:
+  version: 0.1.0
+  source:
+    type: git
+    repository: https://github.com/openatta/XForge.git
+    commit: 99b8726f67ad337e257a52fc606d296927097730
+xforge:
+  integrity: sha256:902a9be59eb9792405136a958bbb15c95195a060420dd4971e0c8bdf771004e5
+  source: npm
+  package: "@xforge/cli"
+  version: 0.1.0
+  protocol: "1"
+paths:
+  specs: xforge/specs
+  changes: xforge/changes
+resources:
+  - id: structure
+    kind: gate
+    version: 1
+    digest: 25ff82152311f0ceddf12f9f09ceb2ed4609a8429c1ed595dee8925cce2b4358
+    license: project
+  - id: unit-tests
+    kind: gate
+    version: 1
+    digest: e6f0f528c5a94fa9f99fe0232c85e195c7b5c2745a7be3f7bc9046497735bf34
+    license: project
+  - id: xforge-explore
+    kind: skill
+    version: "1"
+    digest: b4ac9b37105ec90ccdbe208d021792b532d979be1f4662492519ab234986935f
+    license: MIT
+targets: [codex, claude]
+generatedProtocol: "1"

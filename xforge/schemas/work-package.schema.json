@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xforge.dev/schemas/v1alpha1/work-package.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "packages"],
+  "properties": {
+    "apiVersion": { "const": "xforge.dev/v1alpha1" },
+    "kind": { "const": "WorkPackagePlan" },
+    "packages": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/workPackage" }
+    }
+  },
+  "$defs": {
+    "taskId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$"
+    },
+    "skillId": {
+      "type": "string",
+      "pattern": "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$"
+    },
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\u0000)(?!.*\\\\).+$"
+    },
+    "inputPath": {
+      "allOf": [
+        { "$ref": "#/$defs/path" },
+        { "pattern": "^[^*?{}\\[\\]]+$" }
+      ]
+    },
+    "workPackage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "goal", "depends_on", "inputs", "write_paths", "skills", "verify", "done_when"],
+      "properties": {
+        "id": { "$ref": "#/$defs/taskId" },
+        "goal": { "type": "string", "minLength": 1 },
+        "depends_on": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/taskId" }
+        },
+        "inputs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/inputPath" }
+        },
+        "write_paths": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/path" }
+        },
+        "skills": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/skillId" }
+        },
+        "verify": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 4096 }
+        },
+        "done_when": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

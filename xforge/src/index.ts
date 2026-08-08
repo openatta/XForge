@@ -1,0 +1,14 @@
+export { readState } from './core/state-reader.js';
+export { executeInstall } from './commands/install.js';
+export { executeCheck } from './commands/check.js';
+export { executeArchive } from './core/archiver.js';
+export { loadProject, findProjectRoot } from './core/project-loader.js';
+export { loadFlows, resolveChangeState } from './core/flow-resolver.js';
+export { checkStructure } from './core/checker.js';
+export { planInstall } from './install/planner.js';
+export { planSpecMutations } from './core/spec-merger.js';
+export { capabilityMatrix, getAdapter } from './adapters/index.js';
+export { runProjectScript } from './runners/script.js';
+export { runtimeCliIntegrity, actualGitIdentity } from './core/identity.js';
+export { resolveWorkPackages, workPackageVerificationGates } from './core/work-packages.js';
+export * from './types.js';

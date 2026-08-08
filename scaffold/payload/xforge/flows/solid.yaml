@@ -1,0 +1,56 @@
+apiVersion: xforge.dev/v1alpha1
+kind: Flow
+metadata:
+  name: solid
+  version: 1
+  description: Default product and engineering change flow
+artifacts:
+  - id: proposal
+    generates: proposal.md
+    description: Explain why the change is needed
+    instruction: Focus on problem, scope, impact, Flow choice, and rollback.
+    outline: |
+      ## Why
+      ## Scope
+      ## Flow choice
+      ## Impact
+      ## Rollback
+    requires: []
+  - id: specs
+    generates: specs/**/*.md
+    description: Define observable requirements and scenarios
+    instruction: Describe what the system must do, not implementation details.
+    outline: |
+      ## ADDED Requirements
+      ### Requirement: <name>
+      #### Scenario: <name>
+      - **WHEN** ...
+      - **THEN** ...
+    requires: [proposal]
+  - id: design
+    generates: design.md
+    description: Explain the technical approach
+    instruction: Evaluate alternatives and Constitution constraints.
+    outline: |
+      ## Context
+      ## Decisions
+      ## Alternatives
+      ## Risks
+    requires: [proposal, specs]
+  - id: tasks
+    generates: tasks.md
+    description: Track implementation work
+    instruction: Produce verifiable, dependency-aware implementation and test tasks.
+    outline: |
+      ## Tasks
+      - [ ] 1. Implement
+      - [ ] 2. Verify
+    requires: [design]
+operations:
+  apply:
+    requires: [tasks]
+    tracks: tasks.md
+  archive:
+    requires: [specs, tasks]
+    syncSpecs: true
+    mandatoryGates: [structure, unit-tests]

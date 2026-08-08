@@ -1,0 +1,11 @@
+apiVersion: xforge.dev/v1alpha1
+kind: Scaffold
+metadata:
+  version: 0.1.0
+protocol: "1"
+payload: payload
+integrity:
+  algorithm: sha256
+  manifest: files.sha256
+xforgeCompatibility:
+  protocol: "1"
