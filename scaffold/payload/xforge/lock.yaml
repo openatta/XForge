@@ -51,72 +51,72 @@ resources:
     kind: script
     license: project
     version: 1
-  - digest: 8b171ca8dd4ad3c56208da9087fe125fa1714745c672e196f2f7d29e71831e26
+  - digest: 997c0a7b4eefbe26e598dc578cff5f944700fc91dd043f9ded3e65fad402b308
     id: xforge-apply
     kind: skill
     license: MIT
     version: "3.0"
-  - digest: 7116246a70ae9c7d96fa5869e7f831fc5215fcb4572d0429de455c548b8bd453
+  - digest: f807504a9be522bdf823c9cc133a40d396e829e7a3ddf959bd4f450168630914
     id: xforge-archive
     kind: skill
     license: MIT
     version: "3.0"
-  - digest: 1330a853e20882c959e26646408da463ec7b0274485c4c9f0cb2f36c46a2ef36
+  - digest: f862eee5d663953c99961f93115e5ea69df2d695410e4e218e4fb0d7f161c03c
     id: xforge-check
     kind: skill
     license: MIT
     version: "3.0"
-  - digest: 47cc9399ca2023be07abaf7132729a1314e0b0867757c7ce4286230bb447fd9a
+  - digest: 64efd63a02447605b2b3488207b3e0b9ee1659274183565c465a838d7bc2e5ff
     id: xforge-clarify
     kind: skill
     license: MIT
     version: "3.0"
-  - digest: ffca7293312277eeed3aafd354153e3ad2856b897d9451aa0189babb64c8de17
+  - digest: 059c6eb1be4c3b370607168e1adb5814b1720d10885b501a91cedf77a894bc6a
     id: xforge-continue
     kind: skill
     license: MIT
     version: "3.0"
-  - digest: ff0efe63c097300bd56c1b1a54dbd6c0d6e2085f3e3bb1dee6f710f1acafc26d
+  - digest: 0225a87524c3c0ff7cb81ba9f283c734c8920f30dea459f9b0e390e2337252a6
     id: xforge-design
     kind: skill
     license: MIT
     version: "3.0"
-  - digest: c475cb0f08536c38251ebe99de14a81b6f478661ba9fdf73a24ffbfd6fd7a0e9
+  - digest: 979406931186531628e3590666239a1b260985c4a20057fcd8067ae1e86b4375
     id: xforge-explore
     kind: skill
     license: MIT
     version: "3.0"
-  - digest: 89561b94ec580ca72a73439c0c7d05e3efffa7e18091d77ee309fd7f66cfde83
+  - digest: f74ea193b38005e90b33db7ca0e7ea506d7d6060ea65f1866952e5bd0e151ef8
     id: xforge-propose
     kind: skill
     license: MIT
     version: "3.0"
-  - digest: b6101555d0381387f01e7404b06e921b092be6d0be81678570b0cb91b15bb642
+  - digest: 0a24bba1190f9ec269ff08b9b45929c9f95ffff41adff9bf486f4e739a2a4730
     id: xforge-revise
     kind: skill
     license: MIT
     version: "3.0"
-  - digest: 9bbfca34c934976474623d000db7ea63377d96e0591d7d3b6d71d63ab41eb2c6
+  - digest: d7ae403f6e2740c233eb657853dd1ed17637721b52fe56484ccb7a4dd928ad30
     id: xforge-scaffold
     kind: skill
     license: MIT
     version: "3.0"
-  - digest: 9210af14bbd4ae1e7fd17916de5016cf96ce398fe29439f1b89a847a9cbdfceb
+  - digest: 74589a86269dd589cfeafa3f95a51df11d0868b3b1b2a792382fea9ac0044b3e
     id: xforge-status
     kind: skill
     license: MIT
     version: "3.0"
-  - digest: e2f95bd53f6202f9851348c498b67c2bb4b0b381fa7bd03387fd48c0dd42a430
+  - digest: fd9dc4fafbbf7dc005495c99fc22b422e34fb427d299660aecf25f0f95cc3f3a
     id: xforge-verify
     kind: skill
     license: MIT
     version: "3.0"
 scaffold:
   source:
-    commit: 99b8726f67ad337e257a52fc606d296927097730
-    repository: https://github.com/openatta/XForge.git
-    type: git
-  version: 0.4.1
+    package: "@xforge/cli"
+    type: npm
+    version: 0.5.0
+  version: 0.5.0
 targets:
   - codex
   - claude
@@ -124,8 +124,8 @@ targets:
   - opencode
   - github-copilot
 xforge:
-  integrity: sha256:2c2d3f0e4e01126984b13f2607dbf7ff6279226a9006a434c656f0703e555fff
+  integrity: sha256:e22f90779cf9257f660da4a50516fc698fa729947b51db350f989b8e1147dae0
   package: "@xforge/cli"
   protocol: "2"
   source: npm
-  version: 0.4.1
+  version: 0.5.0

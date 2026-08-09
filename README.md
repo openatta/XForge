@@ -12,9 +12,9 @@ XForge is not another Agent runtime. Models and coding tools still explore,
 design, and implement the change; XForge defines what is true, which transition
 is legal, and what evidence is required before the change can advance or close.
 
-> **Current release:** `@xforge/cli 0.4.1`, Protocol 2, Node.js 20 or newer.
-> Install the exact CLI version from npm or build the same release from source.
-> The implementation remains under active development.
+> **Current release:** `@xforge/cli 0.5.0`, Protocol 2, Node.js 20 or newer.
+> Install the exact CLI version from npm. Source-based installation is not
+> supported. The implementation remains under active development.
 
 ## Design goals
 
@@ -89,10 +89,11 @@ claiming that work is complete.
 
 ### Safe, reproducible Agent-tool projection
 
-`install`, `sync`, `update`, and `uninstall` maintain per-target ownership and
-content digests. Dry runs show the complete plan. Unknown files, user edits,
-symlinks, path traversal, and ownership conflicts are rejected. XForge only
-removes files that it owns and whose digest still matches.
+The npm package contains the exact verified project Scaffold paired with the
+CLI. `init`, `install`, `sync`, `update`, and `uninstall` maintain per-target
+ownership and content digests. Dry runs show the complete plan. Unknown files,
+user edits, symlinks, path traversal, and ownership conflicts are rejected.
+XForge only removes files that it owns and whose digest still matches.
 
 Supported projection targets are:
 
@@ -136,31 +137,53 @@ the degradation is reported.
 
 ## Getting started
 
-XForge installation has two parts: localize the verified Scaffold into the
-target repository, then make the exact CLI available to both shell commands and
-Agent-tool hooks. There is intentionally no unpinned one-line bootstrap.
+Install the exact npm package in the target project, then let that CLI verify
+and initialize its bundled Scaffold:
 
-The reliable way to install XForge is to hand a coding Agent the root-level
-[Agent installation runbook](AGENT_INSTALL.md). For example:
+```bash
+npm install --save-dev --save-exact @xforge/cli@0.5.0
+npx --no-install xforge init --dry-run
+npx --no-install xforge init
+```
+
+Project the canonical Skills, agents, Rules, permission/MCP policies, Hooks, and
+other supported assets into one Agent tool:
+
+```bash
+npx --no-install xforge install --target codex --dry-run
+npx --no-install xforge install --target codex
+```
+
+For a new project whose default Scaffold needs no customization, combine both
+steps:
+
+```bash
+npx --no-install xforge init --target codex --dry-run
+npx --no-install xforge init --target codex
+```
+
+Omit `--target` from `install` to project every target enabled in the Manifest.
+Source checkouts, locally packed tarballs, Git sparse checkouts, and separate
+HTTP Scaffold archives are not supported installation inputs.
+
+For a coding Agent, provide the root-level [Agent installation
+runbook](AGENT_INSTALL.md):
 
 ```text
 Install XForge into this repository by following AGENT_INSTALL.md exactly.
-Use source mode from <absolute-XForge-source-path> at <full-commit>.
 Do not overwrite existing files or commit changes. Stop and report conflicts.
 ```
 
-The runbook covers both the published npm package and a source-built local
-package. It also requires the Agent to verify Scaffold hashes, adapt
-modules/targets/Gates, preserve existing files, confirm Managed mode, review
-the install dry run, and prove that the bare `xforge` command is visible to
-runtime hooks.
+The runbook requires the Agent to use the exact npm package, verify the bundled
+Scaffold, adapt modules/targets/Gates, preserve existing files, review every dry
+run, and confirm Managed mode and platform trust.
 
 After installation, verify the project from its root:
 
 ```bash
-xforge version --text
-xforge state --text
-xforge check --text
+npx --no-install xforge version --text
+npx --no-install xforge state --text
+npx --no-install xforge check --text
 ```
 
 Use the default JSON output instead of `--text` when another program or Agent
@@ -186,20 +209,20 @@ assets.
 The underlying CLI loop is:
 
 ```bash
-xforge state --change <change-id>
-xforge check --change <change-id>
-xforge transition --change <change-id> --to <next-stage> --dry-run
-xforge transition --change <change-id> --to <next-stage>
+npx --no-install xforge state --change <change-id>
+npx --no-install xforge check --change <change-id>
+npx --no-install xforge transition --change <change-id> --to <next-stage> --dry-run
+npx --no-install xforge transition --change <change-id> --to <next-stage>
 
 # When state reports a ready work package:
-xforge work-package dispatch --change <change-id> --package <package-id>
+npx --no-install xforge work-package dispatch --change <change-id> --package <package-id>
 
 # When state reports a required approval:
-xforge approve --change <change-id> --for <stage-or-archive> ...
+npx --no-install xforge approve --change <change-id> --for <stage-or-archive> ...
 
-xforge audit verify --change <change-id>
-xforge archive --change <change-id> --dry-run
-xforge archive --change <change-id>
+npx --no-install xforge audit verify --change <change-id>
+npx --no-install xforge archive --change <change-id> --dry-run
+npx --no-install xforge archive --change <change-id>
 ```
 
 Do not copy this sequence blindly: `state.nextActions` is authoritative, and a
@@ -212,8 +235,8 @@ After editing canonical resources under `xforge/scaffold/` or changing the
 selected resources in `xforge/manifest.yaml`, use:
 
 ```bash
-xforge sync --dry-run
-xforge sync --verify-digests
+npx --no-install xforge sync --dry-run
+npx --no-install xforge sync --verify-digests
 ```
 
 Use `xforge update --dry-run` followed by `xforge update` when targets,
@@ -227,9 +250,8 @@ files.
   explicit project trust step in the coding tool.
 - The default `runtime-audit` Hook is selected but disabled until a project
   deliberately enables it.
-- Generated Hooks currently invoke the bare `xforge` executable; it must be on
-  the Agent tool's runtime `PATH`, not merely callable through an absolute Node
-  command in one terminal.
+- Generated Hooks invoke `npx --no-install xforge` from the project root so they
+  resolve the exact local package without downloading a replacement.
 - Gate success proves the configured command ran for the recorded revision; it
   does not prove every semantic requirement is correct.
 - Local approval attestation is repository-level evidence, not enterprise

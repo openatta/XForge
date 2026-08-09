@@ -13,6 +13,7 @@ import { executeUninstall } from './commands/uninstall.js';
 import { executeUpdate } from './commands/update.js';
 import { executeTransition } from './commands/transition.js';
 import { executeHookDispatch, hookFailureOutput } from './commands/hook.js';
+import { executeInit } from './commands/init.js';
 import { executeWorkPackageDispatch } from './commands/work-package.js';
 import { XForgeError, diagnostic } from './core/errors.js';
 import { actualGitIdentity, runtimeCliIntegrity } from './core/identity.js';
@@ -20,7 +21,7 @@ import { loadProject } from './core/project-loader.js';
 import { envelope, present } from './protocol/envelope.js';
 import type { Diagnostic, Envelope, NextAction } from './types.js';
 
-type CommandName = 'help' | 'version' | 'state' | 'install' | 'sync' | 'update' | 'uninstall' | 'check' | 'transition' | 'approve' | 'audit' | 'work-package' | 'hook' | 'archive';
+type CommandName = 'help' | 'version' | 'init' | 'state' | 'install' | 'sync' | 'update' | 'uninstall' | 'check' | 'transition' | 'approve' | 'audit' | 'work-package' | 'hook' | 'archive';
 
 interface ParsedArguments {
   command: string;
@@ -48,13 +49,14 @@ interface ParsedArguments {
   packageId?: string;
 }
 
-const COMMANDS: CommandName[] = ['help', 'version', 'state', 'install', 'sync', 'update', 'uninstall', 'check', 'transition', 'approve', 'audit', 'work-package', 'hook', 'archive'];
+const COMMANDS: CommandName[] = ['help', 'version', 'init', 'state', 'install', 'sync', 'update', 'uninstall', 'check', 'transition', 'approve', 'audit', 'work-package', 'hook', 'archive'];
 const VALID_KINDS = ['skills', 'agents', 'rules', 'policies', 'hooks', 'gates', 'scripts'] as const;
 const VALUE_OPTIONS = ['--root', '--change', '--kind', '--target', '--gate', '--to', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--receipt', '--output', '--event', '--package'] as const;
 
 const HELP: Record<CommandName, { usage: string; description: string; options: string[] }> = {
   help: { usage: 'xforge help [command] [--text]', description: 'Show general or command-specific help.', options: ['--text'] },
   version: { usage: 'xforge version [--text]', description: 'Show CLI, protocol, runtime, and build identity.', options: ['--text'] },
+  init: { usage: 'xforge [--root <path>] init [--target <target>] [--dry-run] [--text]', description: 'Initialize the bundled npm Scaffold and optionally project it into one Agent tool.', options: ['--root', '--target', '--dry-run', '--text'] },
   state: { usage: 'xforge [--root <path>] state [--change <id>] [--kind <kind>] [--target <target>] [--text]', description: 'Read resolved project and Change state.', options: ['--root', '--change', '--kind', '--target', '--text'] },
   install: { usage: 'xforge [--root <path>] install [--target <target>] [--dry-run] [--text]', description: 'Install or idempotently reconcile selected project assets.', options: ['--root', '--target', '--dry-run', '--text'] },
   sync: { usage: 'xforge [--root <path>] sync [--target <target>] [--dry-run] [--verify-digests] [--text]', description: 'Incrementally sync localized Scaffold changes to installed targets.', options: ['--root', '--target', '--dry-run', '--verify-digests', '--text'] },
@@ -207,9 +209,15 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
   if (parsed.command === 'help') return helpEnvelope(parsed.helpCommand);
   if (parsed.command === 'version') return versionEnvelope();
 
+  if (parsed.command === 'init') {
+    const root = path.resolve(process.cwd(), parsed.root ?? '.');
+    const result = await executeInit(root, { target: parsed.target, dryRun: parsed.dryRun });
+    return envelope({ command: 'init', root, ...result });
+  }
+
   const root = parsed.root ? path.resolve(process.cwd(), parsed.root) : process.cwd();
   const project = await loadProject(root, { exactRoot: Boolean(parsed.root) });
-  const command = parsed.command as Exclude<CommandName, 'help' | 'version'>;
+  const command = parsed.command as Exclude<CommandName, 'help' | 'version' | 'init'>;
   if (command === 'state') {
     const result = await executeState(project, { change: parsed.change, kind: parsed.kind, target: parsed.target });
     const nextActions: NextAction[] = [];

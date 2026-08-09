@@ -10,8 +10,8 @@ XForge 不是另一个 Agent Runtime。模型和编程工具仍然负责探索�
 XForge 负责定义什么是当前事实、下一次状态转换是否合法，以及一个 Change 在推进或
 关闭前必须具备哪些证据。
 
-> **当前版本：** `@xforge/cli 0.4.1`、Protocol 2，需要 Node.js 20 或更高
-> 版本。可以从 npm 安装精确版本，也可以从同一版本源码构建。项目仍在积极开发中。
+> **当前版本：** `@xforge/cli 0.5.0`、Protocol 2，需要 Node.js 20 或更高
+> 版本。只支持从 npm 安装精确版本，不再支持源码安装。项目仍在积极开发中。
 
 ## 设计目标
 
@@ -78,9 +78,10 @@ Transition 推进，Agent 不能靠修改状态字段或声称“已经完成”
 
 ### 安全、可复现的 Agent 工具投影
 
-`install`、`sync`、`update` 和 `uninstall` 使用按 Target 记录的所有权与内容摘要。
-Dry run 会展示完整写入计划；未知文件、用户修改、符号链接、路径穿越和所有权冲突都
-会被拒绝。卸载只会删除 XForge 拥有且摘要仍匹配的文件。
+npm 包内置与 CLI 精确配套、经过校验的项目 Scaffold。`init`、`install`、`sync`、
+`update` 和 `uninstall` 使用按 Target 记录的所有权与内容摘要。Dry run 会展示完整
+写入计划；未知文件、用户修改、符号链接、路径穿越和所有权冲突都会被拒绝。卸载只会
+删除 XForge 拥有且摘要仍匹配的文件。
 
 当前支持的投影目标：
 
@@ -118,29 +119,50 @@ Apply 可以生成带依赖关系、且写入路径互不重叠的 work packages
 
 ## 开始使用
 
-安装 XForge 包含两个步骤：把经过完整性校验的 Scaffold 本地化到目标仓库，再让精确
-版本的 CLI 同时对命令行和 Agent 工具的 Hooks 可用。项目有意不提供依赖浮动版本的
-一行式安装脚本。
+先在目标项目中安装精确 npm 包，再由 CLI 校验并初始化包内置的 Scaffold：
 
-最可靠的方式，是让编程 Agent 严格执行根目录中的
+```bash
+npm install --save-dev --save-exact @xforge/cli@0.5.0
+npx --no-install xforge init --dry-run
+npx --no-install xforge init
+```
+
+把规范 Skills、Agents、Rules、权限/MCP Policies、Hooks 等资产投影到指定工具：
+
+```bash
+npx --no-install xforge install --target codex --dry-run
+npx --no-install xforge install --target codex
+```
+
+新项目无需先调整默认 Scaffold 时，可以合并初始化和单 Target 投影：
+
+```bash
+npx --no-install xforge init --target codex --dry-run
+npx --no-install xforge init --target codex
+```
+
+`install` 不指定 `--target` 时会安装 Manifest 启用的全部 Target。源码 checkout、
+本地打包 tarball、Git sparse checkout 和独立 HTTP Scaffold 制品都不再是受支持的安装
+输入。
+
+交给编程 Agent 安装时，让它严格执行根目录中的
 [Agent 安装手册](../AGENT_INSTALL.md)：
 
 ```text
 请严格按照 AGENT_INSTALL.md 把 XForge 安装到当前仓库。
-使用源码模式，源码位于 <XForge源码绝对路径>，固定提交为 <完整commit>。
 不要覆盖已有文件，不要提交 Git；遇到冲突时停止并报告。
 ```
 
-该手册同时覆盖 npm 精确版本和“源码构建本地包”路径。它还要求 Agent 校验
-Scaffold 摘要、调整 modules/targets/Gates、保留已有文件、确认 Managed mode、
-审查安装 dry run，并验证 Runtime Hook 能找到裸命令 `xforge`。
+该手册要求 Agent 只使用精确 npm 包，校验内置 Scaffold，调整
+modules/targets/Gates，保留已有文件，审查全部 dry run，并确认 Managed mode 与平台
+信任状态。
 
 安装完成后，在目标项目根目录执行：
 
 ```bash
-xforge version --text
-xforge state --text
-xforge check --text
+npx --no-install xforge version --text
+npx --no-install xforge state --text
+npx --no-install xforge check --text
 ```
 
 给程序或 Agent 消费时应去掉 `--text`，使用默认 JSON 输出。
@@ -162,20 +184,20 @@ Action。生命周期 Skills 包括 `xforge-clarify`、`xforge-design`、
 底层 CLI 的典型闭环是：
 
 ```bash
-xforge state --change <change-id>
-xforge check --change <change-id>
-xforge transition --change <change-id> --to <next-stage> --dry-run
-xforge transition --change <change-id> --to <next-stage>
+npx --no-install xforge state --change <change-id>
+npx --no-install xforge check --change <change-id>
+npx --no-install xforge transition --change <change-id> --to <next-stage> --dry-run
+npx --no-install xforge transition --change <change-id> --to <next-stage>
 
 # state 报告 work package ready 时：
-xforge work-package dispatch --change <change-id> --package <package-id>
+npx --no-install xforge work-package dispatch --change <change-id> --package <package-id>
 
 # state 报告需要审批时：
-xforge approve --change <change-id> --for <stage-or-archive> ...
+npx --no-install xforge approve --change <change-id> --for <stage-or-archive> ...
 
-xforge audit verify --change <change-id>
-xforge archive --change <change-id> --dry-run
-xforge archive --change <change-id>
+npx --no-install xforge audit verify --change <change-id>
+npx --no-install xforge archive --change <change-id> --dry-run
+npx --no-install xforge archive --change <change-id>
 ```
 
 不要机械地一次执行完这些命令：`state.nextActions` 才是当前事实。Flow 可能要求先
@@ -187,8 +209,8 @@ rework、运行额外 Gate、取得外部签名 Approval，或清理远端 Audit
 后，运行：
 
 ```bash
-xforge sync --dry-run
-xforge sync --verify-digests
+npx --no-install xforge sync --dry-run
+npx --no-install xforge sync --verify-digests
 ```
 
 Targets、Scaffold/CLI 身份或 Adapter 输出变化时，先运行 `xforge update
@@ -200,8 +222,8 @@ uninstall --target <target> --dry-run` 查看只针对受管文件的删除计�
 - Runtime Hook 和权限覆盖取决于平台，通常还需要用户在编程工具中显式信任项目
   配置。
 - 默认 `runtime-audit` Hook 已被选择但处于 disabled 状态，项目必须主动启用。
-- 当前生成的 Hook 调用裸命令 `xforge`；它必须出现在 Agent 工具运行环境的
-  `PATH` 中，仅在某个终端里能用绝对路径执行 Node 脚本还不够。
+- 生成的 Hook 从项目根目录调用 `npx --no-install xforge`，只解析项目本地的精确
+  npm 包，缺包时不会在线下载替代版本。
 - Gate 成功只能证明指定命令在记录的 revision 上运行成功，不能自动证明所有语义
   需求都正确。
 - 本地 Approval attestation 是仓库级证明，不等于企业身份。高保障 Flow 应使用

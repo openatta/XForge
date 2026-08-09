@@ -2,7 +2,7 @@
 
 ## 1. 目标与判定原则
 
-本文基于当前 `0.4.1 / Protocol 2` 文档、CLI 实现和既有测试设计，覆盖 XForge 从项目接入、Adapter 投影、Change 治理、工作包、Gate、Approval、Audit 到 Archive 的主流程，并加入真实 Anthropic 兼容引擎驱动的行为测试。
+本文基于当前 `0.5.0 / Protocol 2` 文档、CLI 实现和既有测试设计，覆盖 XForge 从项目接入、Adapter 投影、Change 治理、工作包、Gate、Approval、Audit 到 Archive 的主流程，并加入真实 Anthropic 兼容引擎驱动的行为测试。
 
 测试遵循四个判定原则：
 
@@ -17,7 +17,7 @@
 
 - 固定版本 Bootstrap 与 Scaffold payload 完整性；
 - Manifest、Lock、Constitution、Flow、Skill、Agent、Rule、PermissionPolicy、Hook、Gate 和 Script；
-- Portable/Managed 身份与 npm/Git 来源；
+- Portable/Managed 身份与 npm 精确版本、CLI integrity；
 - Codex、Claude、Cursor、OpenCode、GitHub Copilot 五种 Adapter；
 - `help`、`version`、`state`、`install`、`sync`、`update`、`uninstall`、`check`、`transition`、`approve`、`work-package`、`hook`、`audit`、`archive`；
 - Quick、Solid、Major 三个 Flow；
@@ -66,7 +66,7 @@ L5 失败需要区分 `product_failure`、`model_behavior_failure`、`provider_f
 
 | 能力 | 主成功场景 | 关键失败场景 |
 |---|---|---|
-| help/version | 无项目也输出合法结果 | 未知命令、重复/未知参数 |
+| help/version/init | 无项目输出合法帮助/版本；空项目可 dry-run 或初始化 npm 内置 Scaffold | 未知命令、重复/未知参数、已有文件冲突、包内摘要不一致 |
 | state | 项目、资源、Change、nextActions、ready set | Portable 写限制、资源/审批签名无效 |
 | install | dry-run、全 Target、幂等、discoverable | 未知目标文件、人工修改、身份不匹配 |
 | sync | localized source 增量和 digest 复验 | Target identity 改变要求 update |

@@ -71,8 +71,9 @@ git push origin "v<version>"
 
 ```sh
 npm view @xforge/cli@<version> name version dist-tags dist.integrity
-npm install --save-exact @xforge/cli@<version>
-npx xforge version
+npm install --save-dev --save-exact @xforge/cli@<version>
+npx --no-install xforge version
+npx --no-install xforge init --dry-run
 ```
 
 确认 npm 正常后，可以生成 GitHub Release 说明：

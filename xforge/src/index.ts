@@ -1,4 +1,5 @@
 export { readState } from './core/state-reader.js';
+export { executeInit } from './commands/init.js';
 export { executeInstall } from './commands/install.js';
 export { executeSync } from './commands/sync.js';
 export { executeUpdate } from './commands/update.js';

@@ -27,7 +27,7 @@ const EVENT_MAP: Record<TargetId, Record<string, string>> = {
 };
 
 function dispatcher(target: TargetId, event: string): string {
-  return `xforge hook dispatch --target ${target} --event ${event}`;
+  return `npx --no-install xforge hook dispatch --target ${target} --event ${event}`;
 }
 
 function desired(target: TargetId, version: string, path: string, content: string, id: string, sources: string[]): DesiredFile {
@@ -146,7 +146,7 @@ function renderOpenCode(input: GovernanceProjectionInput, version: string): Desi
   if (hooks.length > 0 || input.policies.length > 0) {
     const before = input.policies.length > 0 || hooks.some((item) => ['agent.tool.before', 'agent.permission.request'].includes(item.value.spec.event));
     const after = hooks.some((item) => item.value.spec.event === 'agent.tool.after');
-    const plugin = `import { spawn } from "node:child_process";\nimport { Plugin } from "@opencode-ai/plugin";\n\nasync function dispatch(event, phase) {\n  const output = await new Promise((resolve, reject) => {\n    const child = spawn("xforge", ["hook", "dispatch", "--target", "opencode", "--event", phase], { stdio: ["pipe", "pipe", "inherit"] });\n    const chunks = []; child.stdout.on("data", chunk => chunks.push(chunk)); child.on("error", reject); child.on("close", code => code === 0 ? resolve(Buffer.concat(chunks).toString("utf8")) : reject(new Error("XForge hook dispatcher failed"))); child.stdin.end(JSON.stringify(event));\n  });\n  const decision = JSON.parse(output || "{}");\n  if (decision.decision === "deny") throw new Error(decision.reason || "Denied by XForge policy");\n}\n\nexport default Plugin.define({\n  id: "xforge.governance",\n  setup: async (ctx) => {\n${before ? '    await ctx.tool.hook("execute.before", event => dispatch(event, "agent.tool.before"));\n' : ''}${after ? '    await ctx.tool.hook("execute.after", event => dispatch(event, "agent.tool.after"));\n' : ''}  },\n});\n`;
+    const plugin = `import { spawn } from "node:child_process";\nimport { Plugin } from "@opencode-ai/plugin";\n\nasync function dispatch(event, phase) {\n  const output = await new Promise((resolve, reject) => {\n    const child = spawn("npx", ["--no-install", "xforge", "hook", "dispatch", "--target", "opencode", "--event", phase], { stdio: ["pipe", "pipe", "inherit"] });\n    const chunks = []; child.stdout.on("data", chunk => chunks.push(chunk)); child.on("error", reject); child.on("close", code => code === 0 ? resolve(Buffer.concat(chunks).toString("utf8")) : reject(new Error("XForge hook dispatcher failed"))); child.stdin.end(JSON.stringify(event));\n  });\n  const decision = JSON.parse(output || "{}");\n  if (decision.decision === "deny") throw new Error(decision.reason || "Denied by XForge policy");\n}\n\nexport default Plugin.define({\n  id: "xforge.governance",\n  setup: async (ctx) => {\n${before ? '    await ctx.tool.hook("execute.before", event => dispatch(event, "agent.tool.before"));\n' : ''}${after ? '    await ctx.tool.hook("execute.after", event => dispatch(event, "agent.tool.after"));\n' : ''}  },\n});\n`;
     files.push(desired('opencode', version, '.opencode/plugins/xforge-governance.ts', plugin, 'hooks', [...input.policies.map((item) => item.yamlPath), ...hooks.map((item) => item.yamlPath)]));
   }
   return files;

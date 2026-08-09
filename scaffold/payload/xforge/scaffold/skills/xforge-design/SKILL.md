@@ -10,7 +10,7 @@ metadata:
 
 # 不变量
 
-- 先运行 `xforge state --change <id>`，只消费当前 revision 的 ready Design Action，并重读全部 Action inputs。
+- 先运行 `npx --no-install xforge state --change <id>`，只消费当前 revision 的 ready Design Action，并重读全部 Action inputs。
 - Design 解释 HOW、决策与边界，不重复 Proposal，不退化为逐文件任务列表或长期 Plan。
 - Constitution、Rules、现有架构和 Specs 是约束；不把约束原文机械复制进设计。
 
@@ -25,7 +25,7 @@ metadata:
 2. 记录主要决策、可行替代方案及拒绝理由，覆盖失败模式、兼容性、迁移和回滚。
 3. Solid 至少写清 implementation approach 与 verification notes，服务稳定交付。
 4. Major 额外覆盖 trust boundaries、风险与缓解、测试策略、rollout、monitoring、stop signals、owner 和安全并行边界。
-5. 刷新 State 并运行 `xforge check --change <id>`；只修复 Design 权限内的结构问题。若下一步需要 Approval，停止并请求人类决定；receipt 满足后才调用 typed nextAction 中的 Transition。
+5. 刷新 State 并运行 `npx --no-install xforge check --change <id>`；只修复 Design 权限内的结构问题。若下一步需要 Approval，停止并请求人类决定；receipt 满足后才调用 typed nextAction 中的 Transition。
 
 # 证据
 

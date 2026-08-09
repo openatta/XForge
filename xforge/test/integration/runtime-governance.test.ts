@@ -14,7 +14,7 @@ describe('runtime governance adapters', () => {
 
     const claude = JSON.parse(await readFile(path.join(root, '.claude', 'settings.json'), 'utf8'));
     expect(claude.permissions.deny).toEqual(expect.arrayContaining(['Edit(xforge/manifest.yaml)', 'Write(xforge/manifest.yaml)']));
-    expect(claude.hooks.PreToolUse[0].hooks[0].command).toContain('xforge hook dispatch');
+    expect(claude.hooks.PreToolUse[0].hooks[0].command).toContain('npx --no-install xforge hook dispatch');
 
     const codex = JSON.parse(await readFile(path.join(root, '.codex', 'hooks.json'), 'utf8'));
     expect(codex.hooks.PreToolUse[0].hooks[0].statusMessage).toContain('XForge');

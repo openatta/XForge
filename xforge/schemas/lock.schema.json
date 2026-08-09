@@ -14,31 +14,12 @@
       "required": ["version", "source"],
       "properties": {
         "version": { "type": "string" },
-        "source": {
-          "oneOf": [
-            {
-              "type": "object", "additionalProperties": false, "required": ["type", "repository", "commit"],
-              "properties": { "type": { "const": "git" }, "repository": { "type": "string" }, "commit": { "type": "string", "pattern": "^[0-9a-fA-F]{40}$" } }
-            },
-            {
-              "type": "object", "additionalProperties": false, "required": ["type", "url", "sha256"],
-              "properties": { "type": { "const": "http" }, "url": { "type": "string", "format": "uri" }, "sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" } }
-            }
-          ]
-        }
+        "source": { "$ref": "#/$defs/npmScaffoldSource" }
       }
     },
     "xforge": {
-      "oneOf": [
-        {
-          "type": "object", "additionalProperties": false, "required": ["source", "package", "version", "protocol", "integrity"],
-          "properties": { "source": { "const": "npm" }, "package": { "type": "string" }, "version": { "type": "string" }, "protocol": { "enum": ["1", "2"] }, "integrity": { "$ref": "#/$defs/integrity" } }
-        },
-        {
-          "type": "object", "additionalProperties": false, "required": ["source", "repository", "commit", "path", "protocol", "integrity"],
-          "properties": { "source": { "const": "git" }, "repository": { "type": "string" }, "commit": { "type": "string", "pattern": "^[0-9a-fA-F]{40}$" }, "path": { "const": "xforge" }, "protocol": { "enum": ["1", "2"] }, "integrity": { "$ref": "#/$defs/integrity" } }
-        }
-      ]
+      "type": "object", "additionalProperties": false, "required": ["source", "package", "version", "protocol", "integrity"],
+      "properties": { "source": { "const": "npm" }, "package": { "const": "@xforge/cli" }, "version": { "type": "string" }, "protocol": { "enum": ["1", "2"] }, "integrity": { "$ref": "#/$defs/integrity" } }
     },
     "paths": {
       "type": "object", "additionalProperties": false, "required": ["specs", "changes"],
@@ -59,6 +40,10 @@
     "generatedProtocol": { "enum": ["1", "2"] }
   },
   "$defs": {
-    "integrity": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+    "integrity": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "npmScaffoldSource": {
+      "type": "object", "additionalProperties": false, "required": ["type", "package", "version"],
+      "properties": { "type": { "const": "npm" }, "package": { "const": "@xforge/cli" }, "version": { "type": "string" } }
+    }
   }
 }

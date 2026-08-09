@@ -10,7 +10,7 @@ metadata:
 
 # 不变量
 
-- 先运行 `xforge state` 并解析唯一 Change，再运行 `xforge state --change <id>`；不硬编码 Quick/Solid/Major 顺序。
+- 先运行 `npx --no-install xforge state` 并解析唯一 Change，再运行 `npx --no-install xforge state --change <id>`；不硬编码 Quick/Solid/Major 顺序。
 - 只选择 CLI typed `nextActions` 中 actor、authority 和用户授权匹配的 `status=ready` Action，并执行其 command；不得从 Markdown 或熟悉的 Flow 猜下一步。
 - 每个 Action 完成后刷新 State，不依赖旧会话或模型记忆推进。
 

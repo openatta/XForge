@@ -1,22 +1,8 @@
 import { createHash } from 'node:crypto';
-import { access, cp, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises';
-import os from 'node:os';
+import { access, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import { fixture, repositoryRoot, runCli, xforgeRoot } from '../xforge/test/helpers.js';
-
-async function command(command: string, args: string[], cwd: string): Promise<{ code: number; stdout: string; stderr: string }> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd, shell: false, stdio: ['ignore', 'pipe', 'pipe'] });
-    const stdout: Buffer[] = [];
-    const stderr: Buffer[] = [];
-    child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk));
-    child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk));
-    child.on('error', reject);
-    child.on('close', (code) => resolve({ code: code ?? 1, stdout: Buffer.concat(stdout).toString(), stderr: Buffer.concat(stderr).toString() }));
-  });
-}
 
 async function exists(filePath: string): Promise<boolean> {
   try { await access(filePath); return true; } catch { return false; }
@@ -73,31 +59,17 @@ describe('XForge product contract', () => {
     expect(await readFile(path.join(scaffold, 'payload', 'AGENTS.md'), 'utf8')).toContain('work-packages.yaml');
   });
 
-  it('proves Git sparse checkout and HTTP artifact content equivalence', async () => {
-    const source = await mkdtemp(path.join(os.tmpdir(), 'xforge-dist-source-'));
-    await cp(path.join(repositoryRoot, 'scaffold'), path.join(source, 'scaffold'), { recursive: true });
-    await cp(path.join(repositoryRoot, 'docs'), path.join(source, 'docs'), { recursive: true });
-    expect((await command('git', ['init', '-q'], source)).code).toBe(0);
-    expect((await command('git', ['add', 'scaffold', 'docs'], source)).code).toBe(0);
-    expect((await command('git', ['-c', 'user.name=XForge Test', '-c', 'user.email=test@example.test', 'commit', '-qm', 'fixture'], source)).code).toBe(0);
-
-    const cloneRoot = await mkdtemp(path.join(os.tmpdir(), 'xforge-sparse-'));
-    const clonePath = path.join(cloneRoot, 'checkout');
-    expect((await command('git', ['clone', '--quiet', '--filter=blob:none', '--sparse', source, clonePath], cloneRoot)).code).toBe(0);
-    expect((await command('git', ['sparse-checkout', 'set', 'scaffold'], clonePath)).code).toBe(0);
-    expect(await exists(path.join(clonePath, 'scaffold', 'payload', 'AGENTS.md'))).toBe(true);
-    expect(await exists(path.join(clonePath, 'docs', 'bootstrap.md'))).toBe(false);
-
-    const releaseRoot = await mkdtemp(path.join(os.tmpdir(), 'xforge-http-'));
-    const build = await command(process.execPath, [path.join(xforgeRoot, 'scripts', 'build-scaffold.mjs'), releaseRoot], repositoryRoot);
-    expect(build.code, build.stderr).toBe(0);
-    const archive = path.join(releaseRoot, 'xforge-scaffold-0.4.1.tar.gz');
-    const listing = await command('tar', ['-tzf', archive], releaseRoot);
-    expect(listing.code).toBe(0);
-    expect(listing.stdout.split('\n').filter(Boolean).every((entry) => entry === 'scaffold.yaml' || entry === 'files.sha256' || entry.startsWith('payload/'))).toBe(true);
-    expect(await readFile(path.join(clonePath, 'scaffold', 'files.sha256'), 'utf8')).toBe(await readFile(path.join(repositoryRoot, 'scaffold', 'files.sha256'), 'utf8'));
-    const archiveDigest = createHash('sha256').update(await readFile(archive)).digest('hex');
-    expect(await readFile(`${archive}.sha256`, 'utf8')).toContain(archiveDigest);
+  it('bundles the exact verified Scaffold inside the npm CLI package', async () => {
+    const canonical = path.join(repositoryRoot, 'scaffold');
+    const bundled = path.join(xforgeRoot, 'scaffold');
+    expect(await exists(path.join(bundled, 'scaffold.yaml'))).toBe(true);
+    expect(await readFile(path.join(bundled, 'scaffold.yaml'), 'utf8')).toBe(await readFile(path.join(canonical, 'scaffold.yaml'), 'utf8'));
+    expect(await readFile(path.join(bundled, 'files.sha256'), 'utf8')).toBe(await readFile(path.join(canonical, 'files.sha256'), 'utf8'));
+    expect(await payloadDigest(path.join(bundled, 'payload'))).toBe(await readFile(path.join(canonical, 'files.sha256'), 'utf8'));
+    const manifest = await readFile(path.join(bundled, 'payload', 'xforge', 'manifest.yaml'), 'utf8');
+    expect(manifest).toContain('type: npm');
+    expect(manifest).toContain('package: "@xforge/cli"');
+    expect(manifest).not.toContain('type: git');
   });
 
   it('installs assets where at least Codex and Claude actually discover Skills', async () => {
@@ -125,8 +97,10 @@ describe('XForge product contract', () => {
     for (const heading of ['## 设计目标', '## 主要特性', '## 开始使用', '## 用 XForge 开发一个 Change']) {
       expect(chinese).toContain(heading);
     }
-    expect(runbook).toContain('## Path A — install from source (available now)');
-    expect(runbook).toContain('## Path B — install from npm');
+    expect(runbook).toContain('npm install --save-dev --save-exact @xforge/cli');
+    expect(runbook).toContain('xforge init');
+    expect(runbook).toContain('xforge install --target');
+    expect(runbook).not.toContain('install from source');
     expect(runbook).toContain('## Acceptance criteria');
   });
 
@@ -137,11 +111,14 @@ describe('XForge product contract', () => {
     const workflow = await readFile(path.join(repositoryRoot, '.github', 'workflows', 'publish-npm.yml'), 'utf8');
     expect(rootPackage.private).toBe(true);
     expect(cliPackage.name).toBe('@xforge/cli');
-    expect(cliPackage.version).toBe('0.4.1');
+    expect(cliPackage.version).toBe('0.5.0');
+    expect(cliPackage.files).toContain('scaffold');
     expect(cliPackage.publishConfig).toEqual({ access: 'public', registry: 'https://registry.npmjs.org/' });
     expect(cliPackage.scripts.prepublishOnly).toBe('npm run verify');
-    expect(packageReadme).toContain('npm install --save-dev --save-exact @xforge/cli@0.4.1');
-    expect(packageReadme).toContain('/blob/v0.4.1/AGENT_INSTALL.md');
+    expect(packageReadme).toContain('npm install --save-dev --save-exact @xforge/cli@0.5.0');
+    expect(packageReadme).toContain('npx --no-install xforge init --target codex');
+    expect(packageReadme).not.toMatch(/npm install[^\n]*(?:file:|git\+)/);
+    expect(packageReadme).toContain('/blob/v0.5.0/AGENT_INSTALL.md');
     expect(workflow).toContain('workflow_dispatch:');
     expect(workflow).toContain('id-token: write');
     expect(workflow).toContain('working-directory: xforge');

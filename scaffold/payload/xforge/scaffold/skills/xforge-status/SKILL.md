@@ -10,7 +10,7 @@ metadata:
 
 # 不变量
 
-- 运行 `xforge state`，解析唯一 Change 后运行 `xforge state --change <id>`；State 是唯一状态事实源。
+- 运行 `npx --no-install xforge state`，解析唯一 Change 后运行 `npx --no-install xforge state --change <id>`；State 是唯一状态事实源。
 - 严格只读，不维护第二份进度，不顺便继续、修复或勾选任务。
 
 # 权限

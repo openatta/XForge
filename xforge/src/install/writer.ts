@@ -10,7 +10,7 @@ interface Backup {
   content: Buffer | null;
 }
 
-async function backup(project: ProjectContext, relative: string): Promise<Backup> {
+async function backup(project: Pick<ProjectContext, 'root'>, relative: string): Promise<Backup> {
   try { return { path: relative, content: await readFile(await safeResolve(project.root, relative)) }; }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { path: relative, content: null };
@@ -18,7 +18,7 @@ async function backup(project: ProjectContext, relative: string): Promise<Backup
   }
 }
 
-async function restore(project: ProjectContext, items: Backup[]): Promise<void> {
+async function restore(project: Pick<ProjectContext, 'root'>, items: Backup[]): Promise<void> {
   for (const item of [...items].reverse()) {
     if (item.content === null) await rm(await safeResolve(project.root, item.path), { force: true });
     else await atomicWrite(project.root, item.path, item.content);
@@ -47,7 +47,7 @@ export async function applyInstallPlan(
 }
 
 export async function applyManagedTransaction(
-  project: ProjectContext,
+  project: Pick<ProjectContext, 'root'>,
   writes: Map<string, string | Buffer | null>,
 ): Promise<void> {
   const backupPaths = [...writes.keys()];

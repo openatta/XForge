@@ -13,7 +13,7 @@ import { XForgeError, diagnostic } from './errors.js';
 import { assertLogicalPaths, normalizeRelative, safeResolve } from './path-safety.js';
 import { validateSchema } from './validator.js';
 import { loadYaml } from './yaml.js';
-import { actualGitIdentity, runtimeCliIntegrity } from './identity.js';
+import { runtimeCliIntegrity } from './identity.js';
 
 async function exists(filePath: string): Promise<boolean> {
   try {
@@ -43,7 +43,7 @@ export async function findProjectRoot(start = process.cwd(), options: { exact?: 
     if (parent === cursor) {
       throw new XForgeError(
         diagnostic('XFORGE_PROJECT_NOT_FOUND', 'No xforge/manifest.yaml was found from the current directory upward.'),
-        { nextActions: [{ action: 'bootstrap-project', reason: 'Localize a verified XForge scaffold first.' }] },
+        { nextActions: [{ action: 'init', reason: 'Initialize the verified Scaffold bundled with the installed npm package.', command: ['xforge', 'init'] }] },
       );
     }
     cursor = parent;
@@ -68,29 +68,18 @@ function detectSecrets(value: unknown, filePath: string, prefix = ''): Diagnosti
 }
 
 function declaredIdentity(manifest: Manifest): string {
-  return manifest.xforge.source === 'npm'
-    ? `npm:${manifest.xforge.package}@${manifest.xforge.version}`
-    : `git:${manifest.xforge.repository}#${manifest.xforge.commit}:${manifest.xforge.path}`;
+  return `npm:${manifest.xforge.package}@${manifest.xforge.version}`;
 }
 
-function actualIdentity(manifest: Manifest): string {
-  if (manifest.xforge.source === 'npm') return `npm:${CLI_NAME}@${CLI_VERSION}`;
-  const identity = actualGitIdentity();
-  return `git:${identity.repository ?? '(unavailable)'}#${identity.commit ?? '(unavailable)'}:xforge`;
-}
-
-function normalizedRepository(value: string | null): string | null {
-  return value?.replace(/\.git$/, '').replace(/\/$/, '') ?? null;
+function actualIdentity(): string {
+  return `npm:${CLI_NAME}@${CLI_VERSION}`;
 }
 
 function lockCliMatches(manifest: Manifest, lock: Lockfile | null): boolean | null {
   if (!lock?.xforge) return null;
   const locked = lock.xforge;
   if (locked.integrity !== runtimeCliIntegrity()) return false;
-  if (manifest.xforge.source === 'npm') {
-    return locked.source === 'npm' && locked.package === manifest.xforge.package && locked.version === manifest.xforge.version && locked.protocol === manifest.xforge.protocol;
-  }
-  return locked.source === 'git' && locked.repository === manifest.xforge.repository && locked.commit === manifest.xforge.commit && locked.protocol === manifest.xforge.protocol;
+  return locked.source === 'npm' && locked.package === manifest.xforge.package && locked.version === manifest.xforge.version && locked.protocol === manifest.xforge.protocol;
 }
 
 function resolveCompatibility(manifest: Manifest, lock: Lockfile | null): { value: Compatibility; diagnostics: Diagnostic[] } {
@@ -98,12 +87,7 @@ function resolveCompatibility(manifest: Manifest, lock: Lockfile | null): { valu
   const protocolMatches = manifest.xforge.protocol === PROTOCOL_VERSION;
   let cliMatches = false;
 
-  if (manifest.xforge.source === 'npm') {
-    cliMatches = manifest.xforge.package === CLI_NAME && manifest.xforge.version === CLI_VERSION;
-  } else {
-    const actual = actualGitIdentity();
-    cliMatches = actual.commit === manifest.xforge.commit && normalizedRepository(actual.repository) === normalizedRepository(manifest.xforge.repository);
-  }
+  cliMatches = manifest.xforge.package === CLI_NAME && manifest.xforge.version === CLI_VERSION;
 
   if (!protocolMatches) {
     diagnostics.push(diagnostic('XFORGE_PROTOCOL_MISMATCH', `Project protocol ${manifest.xforge.protocol} does not match running protocol ${PROTOCOL_VERSION}.`, 'xforge/manifest.yaml'));
@@ -111,7 +95,7 @@ function resolveCompatibility(manifest: Manifest, lock: Lockfile | null): { valu
   if (!cliMatches) {
     diagnostics.push(diagnostic(
       'XFORGE_CLI_IDENTITY_MISMATCH',
-      `Declared CLI ${declaredIdentity(manifest)} does not match running CLI ${actualIdentity(manifest)}.`,
+      `Declared CLI ${declaredIdentity(manifest)} does not match running CLI ${actualIdentity()}.`,
       'xforge/manifest.yaml',
     ));
   }
@@ -134,7 +118,7 @@ function resolveCompatibility(manifest: Manifest, lock: Lockfile | null): { valu
   return {
     value: {
       mode: managed ? 'managed' : 'portable',
-      cli: { declared: declaredIdentity(manifest), actual: actualIdentity(manifest), matches: cliMatches },
+        cli: { declared: declaredIdentity(manifest), actual: actualIdentity(), matches: cliMatches },
       protocol: { declared: manifest.xforge.protocol, actual: PROTOCOL_VERSION, matches: protocolMatches },
       scaffold: { declared: manifest.scaffold.version, locked: lockedScaffold, matches: scaffoldMatches },
     },
@@ -221,7 +205,7 @@ export function assertManaged(project: ProjectContext, command: string): void {
     compatibilityErrors.length > 0 ? compatibilityErrors : diagnostic('XFORGE_MANAGED_REQUIRED', `${command} requires Managed mode.`),
     {
       root: project.root,
-      nextActions: [{ action: 'resolve-declared-xforge', reason: 'Use the exact CLI package/version or Git commit declared by the project.' }],
+      nextActions: [{ action: 'resolve-declared-xforge', reason: 'Install the exact @xforge/cli npm version declared by the project.' }],
     },
   );
 }

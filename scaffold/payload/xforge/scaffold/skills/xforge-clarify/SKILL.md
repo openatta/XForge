@@ -10,7 +10,7 @@ metadata:
 
 # 不变量
 
-- 先运行 `xforge state --change <id>`，只消费当前 revision 的 ready Clarify Action，不因熟悉 Major 顺序而猜路径。
+- 先运行 `npx --no-install xforge state --change <id>`，只消费当前 revision 的 ready Clarify Action，不因熟悉 Major 顺序而猜路径。
 - 优先从代码、Specs、Rules 与 Proposal 查明事实；只询问会材料性改变结果且项目无法回答的少量问题。
 - Clarifications 与对 Proposal/delta Specs 的获授权回写必须保持一次一致修订；未解决的 material question 继续阻塞。
 
@@ -24,7 +24,7 @@ metadata:
 1. 重读 Action inputs，列出会影响范围、兼容性、风险、实现边界或验收的未知项及其影响。
 2. 调查能由项目事实回答的问题；对剩余问题一次提出最小、可决策的问题集。
 3. 记录问题、影响、决定、来源和状态；将已确认结果同步回 Proposal 与 delta Specs，保持 Requirement/Scenario 可测试。
-4. 刷新 State，确认 `materialQuestions: resolved`；运行 `xforge check --change <id>` 检查结构和 policy，再请求 typed nextAction 给出的 `xforge transition --change <id> --to <stage>`。
+4. 刷新 State，确认 `materialQuestions: resolved`；运行 `npx --no-install xforge check --change <id>` 检查结构和 policy，再请求 typed nextAction 给出的 `npx --no-install xforge transition --change <id> --to <stage>`。
 
 # 证据
 

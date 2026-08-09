@@ -26,7 +26,6 @@ for (const [file, pattern] of [
   ['scaffold/scaffold.yaml', `version: ${version}`],
   ['scaffold/payload/xforge/manifest.yaml', `version: ${version}`],
   ['scaffold/payload/xforge/lock.yaml', `version: ${version}`],
-  ['xforge/scripts/build-scaffold.mjs', `xforge-scaffold-${version}.tar.gz`],
 ]) {
   assert(readFileSync(file, 'utf8').includes(pattern), `${file} does not declare ${version}.`);
 }
@@ -40,7 +39,7 @@ if (requireTag) {
 
 run(process.execPath, ['scripts/privacy-check.mjs']);
 run('npm', ['--prefix', 'xforge', 'run', 'verify']);
-run(process.execPath, ['scripts/privacy-check.mjs', '--include', 'xforge/dist']);
+run(process.execPath, ['scripts/privacy-check.mjs', '--include', 'xforge/dist', '--include', 'xforge/scaffold']);
 
 const versionEnvelope = JSON.parse(run(process.execPath, ['xforge/dist/cli.js', 'version'], true));
 const builtIntegrity = versionEnvelope?.data?.integrity;
@@ -52,7 +51,7 @@ const packed = packResult[0];
 assert(packed?.name === '@xforge/cli', 'Packed npm name is not @xforge/cli.');
 assert(packed?.version === version, 'Packed npm version is stale.');
 const packedFiles = new Set((packed?.files ?? []).map((file) => file.path));
-for (const required of ['README.md', 'dist/LICENSE', 'dist/NOTICE', 'dist/cli.js', 'package.json']) {
+for (const required of ['README.md', 'dist/LICENSE', 'dist/NOTICE', 'dist/cli.js', 'package.json', 'scaffold/scaffold.yaml', 'scaffold/files.sha256', 'scaffold/payload/xforge/manifest.yaml']) {
   assert(packedFiles.has(required), `Packed npm artifact is missing ${required}.`);
 }
 for (const file of packedFiles) {

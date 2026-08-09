@@ -1,11 +1,11 @@
-# XForge 命令行使用指南（0.4.1 / Protocol 2）
+# XForge 命令行使用指南（0.5.0 / Protocol 2）
 
-`@xforge/cli 0.4.1` 同时提供投影生命周期命令和治理控制面命令。默认输出单个 Protocol 2 JSON envelope；加 `--text` 只改变展示，不改变退出码与语义。
+`@xforge/cli 0.5.0` 同时提供投影生命周期命令和治理控制面命令。默认输出单个 Protocol 2 JSON envelope；加 `--text` 只改变展示，不改变退出码与语义。
 
 ## 1. 基本约定
 
 ```bash
-xforge [--root <exact-project-root>] <command> [options] [--text]
+npx --no-install xforge [--root <exact-project-root>] <command> [options] [--text]
 ```
 
 - `--root` 使用精确根目录，不向父目录回退。
@@ -16,10 +16,10 @@ xforge [--root <exact-project-root>] <command> [options] [--text]
 ## 2. 查询状态
 
 ```bash
-xforge state
-xforge state --change add-login
-xforge state --kind policies
-xforge state --target codex --text
+npx --no-install xforge state
+npx --no-install xforge state --change add-login
+npx --no-install xforge state --kind policies
+npx --no-install xforge state --target codex --text
 ```
 
 Change 状态包括：
@@ -35,21 +35,34 @@ Change 状态包括：
 
 `state` 不写项目；不要用 Markdown checkbox 或会话记忆替代它。
 
-## 3. 安装与同步
+## 3. npm 安装、初始化与投影
 
 ```bash
-xforge install --dry-run
-xforge install
-xforge install --target codex
+npm install --save-dev --save-exact @xforge/cli@0.5.0
 
-xforge sync --dry-run
-xforge sync --verify-digests
-xforge update --dry-run
-xforge update
-xforge uninstall --target cursor --dry-run
+npx --no-install xforge init --dry-run
+npx --no-install xforge init
+
+# 新项目可一步完成 Scaffold 初始化和单 Target 投影
+npx --no-install xforge init --target codex --dry-run
+npx --no-install xforge init --target codex
+
+# 已初始化项目增加 Target
+npx --no-install xforge install --target claude --dry-run
+npx --no-install xforge install --target claude
+
+npx --no-install xforge sync --dry-run
+npx --no-install xforge sync --verify-digests
+npx --no-install xforge update --dry-run
+npx --no-install xforge update
+npx --no-install xforge uninstall --target cursor --dry-run
 ```
 
-- `install` 首次创建或幂等协调选定 Target。
+- `init` 只从已安装 npm 包读取 Scaffold，校验 descriptor、完整 inventory、摘要、
+  symlink/path 边界与 CLI/Protocol 版本；不接受源码、Git 或 HTTP Scaffold 输入。
+- `init --target` 会在首次写入前同时预检 Scaffold 和目标 Adapter 路径。
+- `install` 为已初始化项目首次创建或幂等协调选定 Target；不指定 `--target` 时处理
+  Manifest 中全部 Target。
 - `sync` 只处理 localized canonical source 变化；Target/Adapter identity 变化会要求 `update`。
 - `update` 完整重投影并迁移安装记录；没有安装记录时不会静默充当 `install`。
 - `uninstall` 只删除 ownership 中且 digest 仍匹配的 generated file。
@@ -68,13 +81,15 @@ opencode.json
 ```
 
 这些文件属于 Adapter 输出，不直接编辑。安装成功不等于平台已信任或 runtime 已激活项目 Hook。
+生成的 Hook 使用 `npx --no-install xforge`，缺少项目本地精确包时直接失败，不通过
+网络下载替代 CLI。
 
 ## 4. 结构检查与 Machine Gates
 
 ```bash
-xforge check
-xforge check --change add-login
-xforge check --change add-login --gate structure
+npx --no-install xforge check
+npx --no-install xforge check --change add-login
+npx --no-install xforge check --change add-login --gate structure
 ```
 
 `check` 校验 schema、引用、Flow eligibility、路径、work-package/DAG/delivery 和 Lock freshness，并运行选定或当前阶段要求的 Gates。Gate Evidence 只能由 runner 写入；命令 argv、runner identity、revision、Git HEAD、输出摘要和 digest 都被记录。
@@ -84,8 +99,8 @@ LLM 写出的 Check report 或 `PASS` 不会成为 Machine Gate Evidence。
 ## 5. Stage Transition
 
 ```bash
-xforge transition --change add-login --to design --dry-run
-xforge transition --change add-login --to design
+npx --no-install xforge transition --change add-login --to design --dry-run
+npx --no-install xforge transition --change add-login --to design
 ```
 
 CLI 只允许 Flow 声明的下一 Stage 或 rework Stage，并检查当前 revision 的 Artifact、exit condition、Gate、Approval 和 Audit chain。成功后在：
@@ -101,7 +116,7 @@ CLI 只允许 Flow 声明的下一 Stage 或 rework Stage，并检查当前 revi
 本地交互式决定：
 
 ```bash
-xforge approve \
+npx --no-install xforge approve \
   --change add-login \
   --for apply \
   --policy planning-solid \
@@ -118,7 +133,7 @@ xforge approve \
 
 ```bash
 export XFORGE_APPROVAL_HMAC_SECRET='provided-out-of-band'
-xforge approve \
+npx --no-install xforge approve \
   --change add-login \
   --for apply \
   --policy implementation-major \
@@ -130,12 +145,12 @@ receipt 必须绑定当前 Change/Flow/Stage/transition/contentRevision/stateRev
 ## 7. Work-package dispatch
 
 ```bash
-xforge work-package dispatch \
+npx --no-install xforge work-package dispatch \
   --change add-login \
   --package T001 \
   --dry-run
 
-xforge work-package dispatch --change add-login --package T001
+npx --no-install xforge work-package dispatch --change add-login --package T001
 ```
 
 只允许在 `apply` Stage 派发 ready package。返回 receipt 的 `executionId`、`stateRevision`、`policySnapshotDigest`、Git base/head 和 `auditCorrelationId` 必须随任务传给 Worker；delivery 必须回带对应的 snake_case 字段。静态 `work-packages.yaml` 仍只有八字段。
@@ -143,12 +158,12 @@ xforge work-package dispatch --change add-login --package T001
 ## 8. Audit
 
 ```bash
-xforge audit status
-xforge audit status --change add-login
-xforge audit verify --change add-login
-xforge audit export --change add-login
-xforge audit export --change add-login --output reports/add-login-audit.json
-xforge audit retry
+npx --no-install xforge audit status
+npx --no-install xforge audit status --change add-login
+npx --no-install xforge audit verify --change add-login
+npx --no-install xforge audit export --change add-login
+npx --no-install xforge audit export --change add-login --output reports/add-login-audit.json
+npx --no-install xforge audit retry
 ```
 
 - `status` 汇总 event classes、coverage gaps、remote pending 和本地 retention 状态。
@@ -175,8 +190,8 @@ audit:
 ## 9. Archive
 
 ```bash
-xforge archive --change add-login --dry-run
-xforge archive --change add-login
+npx --no-install xforge archive --change add-login --dry-run
+npx --no-install xforge archive --change add-login
 ```
 
 Archive 要求 Stage 已为 `ready-to-archive`，Gate/Approval/Audit/Transition receipts 均绑定当前 revision。执行时重新运行 mandatory Gates，重新规划 Specs merge 和 move，最后原子提交。任何 Gate failure、stale receipt、Spec conflict、远端审计欠账或用户文件冲突都会停止事务。
@@ -188,7 +203,7 @@ Archive 是 repository closure，不等于 deploy/release 授权。
 Adapter 使用：
 
 ```bash
-xforge hook dispatch --target codex --event agent.tool.before
+npx --no-install xforge hook dispatch --target codex --event agent.tool.before
 ```
 
 事件 JSON 从 stdin 输入，stdout 只返回目标平台要求的决定 JSON。它不是普通 CRUD 接口。before/permission 处理失败时 fail closed；after/audit-only 失败按 Hook failure policy spool/warn。

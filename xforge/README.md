@@ -10,25 +10,36 @@ Cursor, OpenCode, and GitHub Copilot without becoming another Agent runtime.
 ## Requirements
 
 - Node.js 20 or newer
-- An XForge project Scaffold using Protocol 2
+- npm 7 or newer
 
 ## Install
 
-Install an exact version in the project or in an external CLI cache:
+Install an exact version in the target project:
 
 ```bash
-npm install --save-dev --save-exact @xforge/cli@0.4.1
+npm install --save-dev --save-exact @xforge/cli@0.5.0
 npx --no-install xforge version --text
 ```
 
-Installing the npm package provides the CLI and protocol Schemas. A new project
-must also localize the matching, integrity-checked XForge Scaffold. Follow the
-[Agent installation runbook](https://github.com/openatta/XForge/blob/v0.4.1/AGENT_INSTALL.md)
-for a collision-safe setup.
+The npm package contains the CLI, protocol Schemas, and its exact verified
+Scaffold. Initialize a project and project one Agent-tool target in a single
+collision-safe operation:
 
-Generated runtime Hooks invoke the bare `xforge` command. Ensure the package's
-`node_modules/.bin` directory is on the Agent tool's inherited `PATH` when
-runtime policies or Hooks are enabled.
+```bash
+npx --no-install xforge init --target codex --dry-run
+npx --no-install xforge init --target codex
+```
+
+Alternatively, run `init` without a target, review and customize
+`xforge/manifest.yaml`, then run `xforge install --target <target>` for each
+tool. Source checkouts, local tarballs, Git/HTTP Scaffold distributions, and
+source-built installation are not supported.
+
+Follow the [Agent installation
+runbook](https://github.com/openatta/XForge/blob/v0.5.0/AGENT_INSTALL.md) for the
+full npm-only procedure. Generated runtime Hooks invoke `npx --no-install
+xforge` from the project root, resolving the exact local package without a
+network fallback.
 
 ## Quick check
 
@@ -36,7 +47,7 @@ From an initialized XForge project:
 
 ```bash
 npx --no-install xforge state --text
-npx --no-install xforge install --dry-run --text
+npx --no-install xforge install --target codex --dry-run --text
 npx --no-install xforge check --text
 ```
 
@@ -57,8 +68,8 @@ change command semantics or exit status.
 
 Run `xforge help --text` for the complete command list. Full documentation is
 available in the [XForge repository](https://github.com/openatta/XForge),
-including the [CLI guide](https://github.com/openatta/XForge/blob/v0.4.1/docs/cli-tool-usage.md)
-and [governance design](https://github.com/openatta/XForge/blob/v0.4.1/docs/governance-control-plane-design.md).
+including the [CLI guide](https://github.com/openatta/XForge/blob/v0.5.0/docs/cli-tool-usage.md)
+and [governance design](https://github.com/openatta/XForge/blob/v0.5.0/docs/governance-control-plane-design.md).
 
 ## Important boundary
 
@@ -68,5 +79,5 @@ deployment and production access.
 
 ## License
 
-Apache-2.0. See the repository [LICENSE](https://github.com/openatta/XForge/blob/v0.4.1/LICENSE)
-and [NOTICE](https://github.com/openatta/XForge/blob/v0.4.1/NOTICE).
+Apache-2.0. See the repository [LICENSE](https://github.com/openatta/XForge/blob/v0.5.0/LICENSE)
+and [NOTICE](https://github.com/openatta/XForge/blob/v0.5.0/NOTICE).

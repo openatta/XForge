@@ -49,13 +49,14 @@ const versionedTextFiles = [
   'scaffold/scaffold.yaml',
   'tests/product-validation.test.ts',
   'xforge/README.md',
-  'xforge/scripts/build-scaffold.mjs',
   'xforge/src/constants.ts',
   'xforge/test/integration/cli-protocol.test.ts',
+  'xforge/test/integration/init.test.ts',
   'xforge/test/integration/projection-lifecycle.test.ts',
 ];
 for (const file of versionedTextFiles) replaceVersion(file, currentVersion, nextVersion);
 
+run(process.execPath, ['xforge/scripts/scaffold-integrity.mjs', 'scaffold', '--write']);
 run('npm', ['--prefix', 'xforge', 'run', 'build']);
 const versionEnvelope = JSON.parse(run(process.execPath, ['xforge/dist/cli.js', 'version'], true));
 const integrity = versionEnvelope?.data?.integrity;

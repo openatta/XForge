@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { fixture, runCli, updateYaml } from '../helpers.js';
-import { runtimeCliIntegrity } from '../../src/core/identity.js';
 
 describe('CLI protocol', () => {
   it('emits exactly one JSON document on stdout and nothing on stderr', async () => {
@@ -33,7 +32,7 @@ describe('CLI protocol', () => {
     expect(help.json.data.commandHelp.usage).toContain('sync');
     const version = await runCli(root, ['version']);
     expect(version.code).toBe(0);
-    expect(version.json.data).toMatchObject({ name: '@xforge/cli', version: '0.4.1', protocolVersion: '2' });
+    expect(version.json.data).toMatchObject({ name: '@xforge/cli', version: '0.5.0', protocolVersion: '2' });
 
     const result = await runCli(root, ['frobnicate']);
     expect(result.code).toBe(1);
@@ -54,19 +53,13 @@ describe('CLI protocol', () => {
     expect(install.json.nextActions[0].action).toBe('resolve-declared-xforge');
   });
 
-  it('supports Git full-commit identity through build provenance', async () => {
+  it('rejects the removed Git-source CLI identity', async () => {
     const root = await fixture();
-    const commit = '0123456789abcdef0123456789abcdef01234567';
     await updateYaml(root, 'xforge/manifest.yaml', (manifest) => {
-      manifest.xforge = { source: 'git', repository: 'https://example.test/xforge.git', commit, path: 'xforge', protocol: '2' };
+      manifest.xforge = { source: 'git', repository: 'https://example.test/xforge.git', commit: '0123456789abcdef0123456789abcdef01234567', path: 'xforge', protocol: '2' };
     });
-    await updateYaml(root, 'xforge/lock.yaml', (lock) => {
-      lock.xforge = { source: 'git', repository: 'https://example.test/xforge.git', commit, path: 'xforge', protocol: '2', integrity: runtimeCliIntegrity() };
-    });
-    const mismatched = await runCli(root, ['state']);
-    expect(mismatched.json.data.project.compatibility.mode).toBe('portable');
-    const matched = await runCli(root, ['state'], { XFORGE_BUILD_COMMIT: commit, XFORGE_BUILD_REPOSITORY: 'https://example.test/xforge.git' });
-    expect(matched.code).toBe(0);
-    expect(matched.json.data.project.compatibility.mode).toBe('managed');
+    const result = await runCli(root, ['state']);
+    expect(result.code).toBe(1);
+    expect(result.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_SCHEMA_INVALID');
   });
 });

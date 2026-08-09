@@ -10,7 +10,7 @@ metadata:
 
 # 不变量
 
-- 先运行 `xforge state`；涉及已有 Change 时再运行 `xforge state --change <id>`，不猜测 Flow、路径、约束或状态。
+- 先运行 `npx --no-install xforge state`；涉及已有 Change 时再运行 `npx --no-install xforge state --change <id>`，不猜测 Flow、路径、约束或状态。
 - 以实际代码、Constitution、Rules、Specs 和 CLI 诊断为事实；明确区分观察、假设与建议。
 - 全程只读，不把探索结果伪装成 Artifact、Gate Evidence 或完成声明。
 

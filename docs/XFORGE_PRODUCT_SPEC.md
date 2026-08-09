@@ -15,7 +15,7 @@
 > 本文保留最初的产品/Protocol 1 基线和历史约束。Rules、PermissionPolicy、双平面
 > Hooks、Transition、Approval、Audit 与当前 Protocol 2 实现以
 > [governance-control-plane-design.md](governance-control-plane-design.md) 和 ADR 0002
-> 为准；`@xforge/cli 0.4.1` 已完成 P0–P4，Protocol 1 仅保留 Portable-read 迁移。
+> 为准；`@xforge/cli 0.5.0` 已完成 P0–P4，Protocol 1 仅保留 Portable-read 迁移。
 
 文中的“必须”“不得”表示强制要求；“应当”表示默认要求，偏离时必须记录原因；“可以”表示可选能力。
 
@@ -114,61 +114,53 @@ XForge/                              # XForge 源仓
 
 XForge 只有一套官方脚手架，不设置 `standard/` 子目录，也不为第三方、企业或用户自定义脚手架预留目录。企业和用户取得 `scaffold/` 后，在自己的代码仓中直接定制并自行维护。三个研发量级只是同一脚手架中的三个 Flow 文件，不是三套脚手架。
 
-### 2.2 脚手架目录级获取
+### 2.2 npm 内置脚手架
 
-Git 本身不把仓库子目录作为独立仓库克隆。XForge 的“只 clone 脚手架”定义为：AI Agent 在项目外的临时目录或缓存中执行 sparse/partial checkout，只取 `scaffold/`，随后把该目录的 `payload/` 安全复制到用户项目；不得把临时 `.git` 目录带入用户项目。
+XForge 只通过 `@xforge/cli` npm 包分发。每个发布包必须同时包含 CLI、Schemas 和与
+该版本精确配套的 `scaffold/`。用户和 Agent 不再从 Git 子目录、源码 checkout、
+本地 tarball 或独立 HTTP 制品获取 Scaffold。
 
-XForge 必须同时提供两种分发通道：
-
-1. **Git**：固定 tag 或完整 commit，使用 sparse checkout 获取 `scaffold/`；
-2. **HTTP**：发布只包含单个脚手架的版本化压缩包及 SHA-256 摘要。
-
-HTTP 制品是目录级下载的首选路径；Git sparse checkout 是企业私有仓和未发布脚手架的通用路径。二者最终必须产生相同的 `payload/` 内容摘要。
+`xforge init` 从已安装包内读取 descriptor 与 payload，在任何项目写入前验证完整
+inventory、SHA-256、版本、Protocol、路径和符号链接边界。CLI 与 Scaffold 版本不匹配
+时必须 fail closed。
 
 每个 `scaffold.yaml` 至少包含：
 
 ```yaml
-apiVersion: xforge.dev/v1alpha1
+apiVersion: xforge.dev/v1alpha2
 kind: Scaffold
 metadata:
-  version: 0.1.0
-protocol: "1"
+  version: 0.5.0
+protocol: "2"
 payload: payload
 integrity:
   algorithm: sha256
   manifest: files.sha256
 xforgeCompatibility:
-  protocol: "1"
+  protocol: "2"
 ```
 
-`files.sha256` 使用稳定的相对路径排序生成，不包含自身。HTTP 压缩包只能包含 `scaffold.yaml`、摘要清单和 `payload/`，不得包含工具实现源码或完整 XForge 仓库内容。
+`files.sha256` 使用稳定的相对路径排序生成，不包含自身。npm 包中的 Scaffold 只能包含
+`scaffold.yaml`、摘要清单和 `payload/`，不得包含工具实现源码或完整 XForge 仓库历史。
 
 本地化后的文件归用户项目 Git 直接管理。项目可以修改 Flow、Skill、Rule、Hook、Script 和 Gate，不要求与源脚手架逐文件一致。升级不得直接覆盖项目文件，必须形成普通项目变更，展示三方 diff，通过检查后再合并。
 
 ### 2.3 XForge CLI 声明、调用与缓存
 
-同一源仓的 `xforge/` 实现目录负责确定性能力，包括项目解析、五种 Adapter 安装、所有权保护、检查、门禁和归档。CLI 源码不复制到用户项目；用户项目只在 Manifest 的 `xforge` 字段中固定 npm 精确版本或 XForge 仓库的完整 Git commit。
+同一源仓的 `xforge/` 实现目录负责确定性能力，包括项目解析、五种 Adapter 安装、所有权保护、检查、门禁和归档。CLI 源码不复制到用户项目；用户项目只在 Manifest 的 `xforge` 字段中固定 npm 精确版本。
 
 ```yaml
-# 发布包方式
 xforge:
   source: npm
   package: "@xforge/cli"
-  version: "0.1.0"
-  protocol: "1"
-
-# Git 固定提交方式
-# xforge:
-#   source: git
-#   repository: "ssh://git.example.com/ai/xforge.git"
-#   commit: "0123456789abcdef0123456789abcdef01234567"
-#   path: xforge
-#   protocol: "1"
+  version: "0.5.0"
+  protocol: "2"
 ```
 
-`version` 与 `commit` 不得同时出现。Git 来源必须使用完整 commit ID，不允许执行浮动 branch。npm 来源可以通过项目依赖或企业预装方式提供；Git 来源可以构建到用户缓存目录或企业预置目录。所有缓存都位于用户项目之外。
+Manifest 和 Lockfile 不接受 Git CLI identity。npm 包必须作为项目精确依赖安装；缺包或
+版本不匹配时不得从网络临时下载替代版本。
 
-XForge CLI 启动后必须自检实际版本、commit 和协议，不匹配时只返回诊断，不修改项目。XForge 区分两种保证级别：
+XForge CLI 启动后必须自检实际 package version、integrity 和协议，不匹配时只返回诊断，不修改项目。XForge 区分两种保证级别：
 
 | 级别 | XForge CLI 状态 | 能力 |
 |---|---|---|
@@ -181,8 +173,8 @@ Portable 模式不得伪装成已执行强制门禁。只有 Managed 模式可�
 
 同一仓库不等于使用浮动版本。项目通过四层机制固定安装输入：
 
-1. `xforge/manifest.yaml` 声明 Scaffold 版本和来源 commit/制品版本；
-2. Manifest 的 `xforge` 字段声明 package version 或 Git commit；
+1. `xforge/manifest.yaml` 声明 npm Scaffold package 与精确版本；
+2. Manifest 的 `xforge` 字段声明同一 npm package version；
 3. `xforge/lock.yaml` 保存 Scaffold 与 XForge CLI 的实际来源、内容摘要和 integrity；
 4. XForge CLI 在任何写操作前检查自身版本、Scaffold 版本和文件协议兼容性。
 
@@ -404,36 +396,41 @@ project:
 
 验证证据优先跟随具体变更保存，不额外建立全局一级 `evidence/` 目录。
 
-### 3.6 远程 Agent Bootstrap
+### 3.6 npm Agent Bootstrap
 
-首次接入时，用户只需要让本地 AI Agent 读取 XForge 仓库中的版本化指导文件 `docs/bootstrap.md`。该文件必须可以通过 Git 或 HTTPS raw URL 获取，并且不依赖 XForge CLI 已经安装。
+首次接入时，用户让本地 AI Agent 执行根目录 `AGENT_INSTALL.md` 的 npm-only 安装协议。
+Agent 必须先安装精确 `@xforge/cli` 项目依赖，再调用包内置的 `xforge init`，不得自行
+读取或复制 XForge 源仓文件。
 
 建议用户给 Agent 的唯一指示为：
 
 ```text
-Read the XForge bootstrap guide at <git-or-https-url>@<tag-or-commit>,
-install the XForge scaffold into this project, preserve existing files,
-and ask before installing a missing XForge CLI.
+Follow AGENT_INSTALL.md to install exact @xforge/cli from npm,
+initialize its bundled Scaffold, project the selected Agent tools,
+preserve existing files, and stop on conflicts.
 ```
 
 `docs/bootstrap.md` 必须指导 Agent 完成以下确定性步骤：
 
 1. 确认用户项目根目录和工作区状态；
-2. 从固定 tag 或完整 commit 读取 `scaffold/scaffold.yaml`；
-3. 通过 Git sparse checkout 或对应 HTTP 制品，把该脚手架取到项目外临时目录；
-4. 校验版本、协议和内容摘要；
-5. 根据现有项目布局决定是否在 Manifest 中改写 `project.paths.specs` 与 `project.paths.changes`；
-6. 先生成 `payload/` 写入计划，遇到现有文件默认停止，不覆盖；
-7. 将 payload 本地化到用户项目，并删除项目外临时目录；
-8. 读取新项目中的 Manifest，检查声明的 XForge CLI 是否已经可用且版本匹配；
-9. XForge CLI 可用时，由 Agent 执行 `state`、`install --dry-run`、`install` 和 `check`；
-10. XForge CLI 不存在或版本不匹配时，停止 Managed 步骤，在聊天中向用户说明精确 package/version 或 Git commit，并请求安装授权。
+2. 通过 npm 安装 Manifest 要求的精确 `@xforge/cli` 项目依赖；
+3. 执行 `xforge init --dry-run`，由 CLI 校验 npm 包内 Scaffold 版本、协议、inventory、
+   内容摘要和路径安全；
+4. 遇到现有文件默认停止，不覆盖；
+5. 执行 `xforge init` 本地化 payload；
+6. 根据项目事实调整 modules、Specs/Changes 路径、Gates、资源选择和 Targets；
+7. 对每个目标先执行 `install --target <target> --dry-run`，确认后执行 `install`；
+8. 执行 `state` 与 `check`，确认 Managed mode；
+9. 如果默认 Scaffold 无需定制，可用 `init --target <target>` 合并初始化和单 Target 投影；
+10. npm 包不存在或版本不匹配时停止，不得回退到源码、Git、HTTP 或临时在线下载。
 
-Agent 不得静默执行全局 npm 安装、修改系统 PATH 或从未声明地址运行代码。用户授权后，可以由 Agent 代为执行安装，用户仍不需要手动输入命令。若用户暂不安装工具，项目保持 Portable 状态。
+Agent 不得静默执行全局 npm 安装、修改系统 PATH 或从未声明地址运行代码。项目本地
+命令与生成 Hook 使用 `npx --no-install xforge`，缺少精确依赖时直接失败。
 
 脚手架 payload 应包含项目内的长期发现入口。推荐在根 `AGENTS.md` 中只放一个短指示，要求后续 Agent 读取 `xforge/manifest.yaml`、Constitution 和当前 Change；XForge CLI 不应反复重写用户已有的完整 `AGENTS.md`。对于不读取 `AGENTS.md` 的目标工具，首次 `install` 生成各自的最小 bootstrap 文件。
 
-文档中的“安装”分为两层：远程 Bootstrap 负责把脚手架 payload 本地化到项目；CLI 的 `xforge install` 只负责把已本地化的 Agent 资产同步到五种目标工具目录，不负责下载源脚手架。
+文档中的“安装”分为两层：`xforge init` 负责校验并本地化 npm 包内 payload；
+`xforge install` 负责把已本地化的 Agent 资产同步到五种目标工具目录。
 
 ---
 
@@ -464,11 +461,11 @@ project:
       kind: application
 
 scaffold:
-  version: 0.1.0
+  version: 0.5.0
   source:
-    type: git
-    repository: "ssh://git.example.com/ai/xforge.git"
-    commit: "0123456789abcdef0123456789abcdef01234567"
+    type: npm
+    package: "@xforge/cli"
+    version: 0.5.0
   skills:
     - xforge-explore
     - xforge-propose
@@ -492,8 +489,8 @@ scripts:
 xforge:
   source: npm
   package: "@xforge/cli"
-  version: "0.1.0"
-  protocol: "1"
+  version: "0.5.0"
+  protocol: "2"
 
 flow: solid
 
@@ -510,23 +507,14 @@ install:
   commitGeneratedFiles: true
 ```
 
-HTTP 获取的脚手架将 `scaffold.source` 改为制品 URL 与摘要；Git 和 HTTP 字段不得混用：
-
-```yaml
-scaffold:
-  version: 0.1.0
-  source:
-    type: http
-    url: "https://downloads.example.com/xforge/scaffold-0.1.0.tar.gz"
-    sha256: "<archive-sha256>"
-```
+`scaffold.source` 只接受 `type: npm`、固定包名和精确版本。
 
 ### 4.2 Lockfile
 
 `lock.yaml` 只保存解析后的确定状态，不重复 Manifest 的意图。至少记录：
 
-- Scaffold 版本、来源仓库/制品及 commit；
-- XForge CLI package version 或 Git commit；
+- Scaffold npm package 与精确版本；
+- XForge CLI npm package version；
 - 解析后的 Specs 与 Changes 相对路径；
 - 资源 ID 和版本；
 - 内容摘要；
@@ -534,7 +522,7 @@ scaffold:
 - 目标工具；
 - 生成协议版本。
 
-Scaffold 和 XForge CLI 的版本或 Git commit 由 Manifest 固定，Lockfile 记录实际解析结果和 integrity。Manifest 表达期望，Lockfile 保证同一输入可以复现。
+Scaffold 和 XForge CLI 的 npm 精确版本由 Manifest 固定，Lockfile 记录实际解析结果和 integrity。Manifest 表达期望，Lockfile 保证同一输入可以复现。
 
 ### 4.3 Flows
 
@@ -845,14 +833,23 @@ CLI 主要面向 AI Agent，同时提供完整的项目级 Scaffold 生命周期
 ```text
 xforge help
 xforge version
+xforge init
 xforge state
 xforge install
 xforge sync
 xforge update
 xforge uninstall
 xforge check
+xforge transition
+xforge approve
+xforge work-package
+xforge hook
+xforge audit
 xforge archive
 ```
+
+`init` 是唯一可在尚无 Manifest 的项目中执行的写命令；它只使用当前 npm 包内置并
+通过摘要验证的 Scaffold。其余项目命令必须先解析本地 Manifest 和 Lockfile。
 
 ### 5.1 `state`
 
@@ -1113,11 +1110,12 @@ Agent 自我修改配置属于受治理变更，遵循相同 Change 流程：
 
 升级由 AI Agent 创建普通项目 PR：
 
-- 从 XForge 同一仓库的固定 tag/commit 或 HTTP 制品获取新版 `scaffold/`；
+- 安装新的精确 `@xforge/cli` npm 版本；
+- 由该 CLI 读取并校验包内新版 `scaffold/`；
 - 对本地化内容执行三方比较；
 - 保留项目修改；
 - 更新需要采用的目录、Flow 和 Scaffold 资产；
-- 如需升级 XForge CLI，在 Manifest 的 `xforge` 字段中修改 npm 版本或 Git commit，并刷新 Lockfile；
+- 在 Manifest 中同步修改 Scaffold 与 CLI npm 版本并刷新 Lockfile；
 - 运行 `state`、`install --dry-run` 和 `check`；
 - 展示迁移说明和生成文件 diff。
 
@@ -1239,16 +1237,14 @@ XForge CLI 必须记录每个生成文件的：
 
 ### 9.2 XForge CLI 来源和供应链
 
-- Bootstrap 指导必须绑定 tag 或完整 commit；正式项目不得从浮动默认分支直接安装；
-- 企业可以限制允许读取 Bootstrap 和 Scaffold 的 Git remote 与 HTTPS domain；
-- Git sparse checkout 必须在项目外临时目录执行，HTTP 脚手架制品必须校验发布摘要；
-- Git 与 HTTP 分发的同版本 payload 必须具有相同内容摘要；
-- npm 来源必须固定精确版本，Git 来源必须固定完整 commit ID；
-- 企业可以限制允许的 npm Registry、包名和 Git remote；
-- Lockfile 必须保存 XForge CLI 解析来源、版本或 commit、完整性摘要和协议版本；
+- 正式项目只从批准的 npm Registry 安装精确 `@xforge/cli` 版本；
+- npm 发布包必须同时包含精确配套的 CLI、Schemas 和 Scaffold；
+- `xforge init` 必须复验包内 Scaffold inventory、摘要、版本和 Protocol；
+- 企业可以限制允许的 npm Registry、scope、包名和版本；
+- Lockfile 必须保存 XForge CLI 与 Scaffold 的 npm 来源、版本、完整性摘要和协议版本；
 - CLI 实际身份与 Manifest/Lockfile 不一致时，任何写操作必须失败；
-- 缓存目录不进入用户代码仓，也不得被当作项目事实来源；
-- XForge CLI 缺失时必须先向用户请求安装授权，不得静默修改全局运行环境；
+- 不支持 source checkout、本地 tarball、Git/HTTP Scaffold 或浮动 `npx` 安装；
+- XForge CLI 缺失时必须停止，不得静默修改全局运行环境或联网下载替代版本；
 - v1 不自动从任意 URL 下载和执行 Skill、Hook 或 Gate；
 - 后续可以增加签名和 provenance，但不得阻塞 v1 文件协议稳定。
 
@@ -1280,11 +1276,11 @@ XForge CLI 必须记录每个生成文件的：
 
 1. 单一 XForge 仓库及 `scaffold/`、`xforge/`、`docs/` 一级边界；
 2. 唯一的 `scaffold/`、`scaffold.yaml` 和可直接本地化的 `payload/`；
-3. Git sparse checkout 与 HTTP 单脚手架制品两种目录级分发；
-4. 可通过 Git/HTTPS 单独读取的 `docs/bootstrap.md` 和 Agent 安装协议；
-5. `xforge/` CLI 实现，以及 Manifest/Lockfile 驱动的 npm 精确版本或 Git commit 解析；
+3. 同时包含 CLI、Schemas 和 Scaffold 的单一 npm 精确版本分发；
+4. 根目录 `AGENT_INSTALL.md` 和 `docs/bootstrap.md` 的 npm-only Agent 安装协议；
+5. `xforge/` CLI 实现，以及 Manifest/Lockfile 驱动的 npm 精确版本解析；
 6. 可重定位的 `project.paths.specs` 与 `project.paths.changes`；
-7. 四个命令：`state`、`install`、`check`、`archive`；
+7. 项目初始化、状态、投影、检查与归档命令，包括 `init`；
 8. 默认 JSON 与 `--text`；
 9. Manifest、Constitution、Flow、Agent、Gate 等基础文件 Schema；
 10. Claude、Codex、Cursor、OpenCode、GitHub Copilot 五种 Adapter；
@@ -1336,8 +1332,9 @@ XForge CLI 必须记录每个生成文件的：
 
 ### M2：安装闭环
 
+- 实现 npm 包内 Scaffold 与 `init --dry-run`、`init`、`init --target`；
 - 实现 `install --dry-run` 和 `install`；
-- 构建 Git sparse checkout 与 HTTP 制品的相同 payload 验证；
+- 构建 npm 包内 Scaffold 与 canonical payload 的相同摘要验证；
 - 完成 managed-only 所有权；
 - 实现 Claude、Codex、Cursor、OpenCode、GitHub Copilot Adapter；
 - 生成并安装五个 XForge 初始 Skills 和各工具薄命令入口；
@@ -1362,12 +1359,12 @@ XForge CLI 必须记录每个生成文件的：
 
 XForge v1 只有满足以下条件才可以发布：
 
-- Agent 能只通过 Git 或 HTTPS 读取固定版本 Bootstrap 指导；
-- Git sparse checkout 与 HTTP 制品能够取得同版本、同摘要的单个脚手架 payload；
+- Agent 能从精确 npm 包完成 CLI 安装、Scaffold 初始化和 Target 投影；
+- npm 包内 Scaffold 与 canonical payload 具有同版本、同 inventory、同摘要；
 - 脚手架本地化后，项目无需访问 XForge 源仓即可读取和修改规范；
-- XForge CLI 缺失时 Agent 会给出精确依赖并请求用户授权，不会静默全局安装；
+- XForge CLI 缺失时 Agent 会给出精确 npm 依赖，不会回退源码或静默全局安装；
 - 声明的工具暂不可用时，项目仍保留完整可读的 Portable 资产，且不得伪造 Managed 结果；
-- npm 精确版本和 Git 完整 commit 两种来源都能解析、锁定并校验工具身份；
+- npm 精确版本能同时锁定并校验 CLI 与 Scaffold 身份；
 - 用户代码仓不包含 XForge CLI 源码、缓存或仓库历史；
 - `project.paths` 未声明时使用 `xforge/specs` 与 `xforge/changes`；声明为 `docs/specs` 与 `docs/changes` 时，所有状态、检查和归档行为保持一致；
 - 非法、逃逸、重叠的 Specs/Changes 路径在任何写入前失败；
@@ -1406,8 +1403,8 @@ XForge v1 只有满足以下条件才可以发布：
 2. 在实现前把工作拆成小型、可验证的 Change；
 3. 优先定义文件协议、golden fixtures 和失败行为，再写 CLI；
 4. 核心功能写成可测试库，CLI 保持薄层；
-5. 新需求优先通过现有四个命令的参数或输出扩展解决；
-6. 如确实需要第五个顶层命令，必须先提交架构决策并由产品负责人确认；
+5. 新需求优先通过现有命令的参数或输出扩展解决；
+6. 新增顶层命令前必须先提交架构决策并由产品负责人确认；
 7. 不实现延后范围中的平台能力；
 8. 每次写操作都必须先有只读计划和冲突策略；
 9. 不用自然语言输出代替稳定诊断 code；
@@ -1422,9 +1419,9 @@ XForge v1 只有满足以下条件才可以发布：
 - 产品名为 XForge；
 - XForge 使用单一仓库，并以 `scaffold/`、`xforge/`、`docs/` 隔离分发资产、实现代码和文档；
 - XForge 上游只维护唯一的官方 `scaffold/`，不设置 `standard/` 子目录，也不为第三方脚手架预留目录；
-- 首次安装由 AI Agent 读取固定版本 `docs/bootstrap.md` 完成，不要求用户手动运行 CLI；
+- 首次安装由用户或 AI Agent 精确安装 npm 包，再运行 `xforge init`；可用 `--target` 在同一步完成一个目标工具的投影；
 - 脚手架本地化进入用户项目；
-- XForge CLI 源码不进入用户项目，Manifest 的 `xforge` 字段使用 npm 精确版本或 Git 完整 commit 固定实现；
+- XForge CLI 源码不进入用户项目，Manifest 的 `xforge` 字段只使用 `@xforge/cli` npm 精确版本固定实现；
 - `flows/` 与 `scripts/` 固定在项目 `xforge/` 下；Specs 与 Changes 默认位于 `xforge/`，但可通过 Manifest 重定位；
 - `xforge/constitution.md` 保存项目宪法，其稳定原则高于普通 Rules；
 - 其他 Agent 资产进入 `scaffold/`；
@@ -1439,7 +1436,7 @@ XForge v1 只有满足以下条件才可以发布：
 - CLI 主要服务 AI Agent；
 - CLI 可执行文件和命令前缀统一为 `xforge`；
 - JSON 是默认输出，文本使用 `--text`；
-- v1 只有四个顶层命令；
+- 顶层命令包含用于 npm 内置 Scaffold 初始化的 `init`，其余命令由 CLI help 作为事实源；
 - XForge CLI 不为文件资产实现 CRUD 命令；
 - 不引入数据库、Daemon、Web UI 和 Registry；
 - 不覆盖或删除非 XForge 管理文件。

@@ -51,30 +51,16 @@ export interface ProjectModule {
   kind: 'application' | 'service' | 'library' | 'module';
 }
 
-export interface GitScaffoldSource {
-  type: 'git';
-  repository: string;
-  commit: string;
-}
-
-export interface HttpScaffoldSource {
-  type: 'http';
-  url: string;
-  sha256: string;
+export interface NpmScaffoldSource {
+  type: 'npm';
+  package: '@xforge/cli';
+  version: string;
 }
 
 export interface NpmCliSource {
   source: 'npm';
-  package: string;
+  package: '@xforge/cli';
   version: string;
-  protocol: '1' | '2';
-}
-
-export interface GitCliSource {
-  source: 'git';
-  repository: string;
-  commit: string;
-  path: 'xforge';
   protocol: '1' | '2';
 }
 
@@ -89,7 +75,7 @@ export interface Manifest {
   };
   scaffold: {
     version: string;
-    source: GitScaffoldSource | HttpScaffoldSource;
+    source: NpmScaffoldSource;
     skills: string[];
     agents: string[];
     rules: string[];
@@ -98,7 +84,7 @@ export interface Manifest {
     gates: string[];
   };
   scripts?: string[];
-  xforge: NpmCliSource | GitCliSource;
+  xforge: NpmCliSource;
   flow: string;
   targets: TargetId[];
   install: {

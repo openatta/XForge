@@ -36,7 +36,7 @@ jobs:
           BEFORE_SHA: ${{ github.event.before }}
           HEAD_SHA: ${{ github.sha }}
         run: |
-          if [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+          if [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$BEFORE_SHA^{commit}" 2>/dev/null; then
             node scripts/privacy-check.mjs --identity-range "$HEAD_SHA"
           else
             node scripts/privacy-check.mjs --identity-range "$BEFORE_SHA..$HEAD_SHA"

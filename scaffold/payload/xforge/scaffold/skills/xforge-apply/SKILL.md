@@ -10,7 +10,7 @@ metadata:
 
 # 不变量
 
-- 开始及每次材料性变更后运行 `xforge state --change <id>`；只消费当前 revision 的 ready Apply Action，不猜测 Flow 序列、路径、Gate 或并行策略。
+- 开始及每次材料性变更后运行 `npx --no-install xforge state --change <id>`；只消费当前 revision 的 ready Apply Action，不猜测 Flow 序列、路径、Gate 或并行策略。
 - 从磁盘读取 Action 的全部 inputs、Constitution、相关 Rules/Specs、可选 Design/Check report 和现有工作包；聊天记忆不是事实源。
 - Main Agent 永远承担 Coordinator；Worker 不继续委派。XForge 不创建模型进程，子 Agent 由目标 runtime 的原生能力激活。
 - 计划是 Apply 的即时执行资产，不是新 Stage 或第二份规格事实源。
@@ -28,13 +28,13 @@ metadata:
 1. 固定 State revision 与 Git base，从 governing artifacts 提取约束、依赖顺序、最小交付单元、每单元验证命令和可观察完成条件。
 2. 先判断直接串行还是持久工作包：单一小任务使用 Main Agent 的内部短计划；复杂、长时、需恢复或多 Agent 任务按 Action 的 execution policy 生成 `work-packages.yaml`。
 3. 每个工作包只能包含 `id`、`goal`、`depends_on`、`inputs`、`write_paths`、`skills`、`verify`、`done_when` 八个字段。让每条路径只有一个明确写者，收窄会吞掉其他包路径的父级 glob；调度时另附 `change_id`、`execution_id`、`base_commit`、dependency commits、branch、worktree 与 delivery mode，不把它们写回静态计划。
-4. 写计划后重新运行 State；在创建任何 worktree 前，让 CLI 校验 ID/DAG、inputs、skills、Change scope、保护路径、依赖 commits、verify 命令和 ready 集合。对每个 ready 包运行 `xforge work-package dispatch --change <id> --package <package>`，把 receipt 的 `stateRevision`、`policySnapshotDigest`、`auditCorrelationId` 和 `executionId` 随派工 envelope 传给 Worker。
+4. 写计划后重新运行 State；在创建任何 worktree 前，让 CLI 校验 ID/DAG、inputs、skills、Change scope、保护路径、依赖 commits、verify 命令和 ready 集合。对每个 ready 包运行 `npx --no-install xforge work-package dispatch --change <id> --package <package>`，把 receipt 的 `stateRevision`、`policySnapshotDigest`、`auditCorrelationId` 和 `executionId` 随派工 envelope 传给 Worker。
 5. 仅当至少两个节点依赖已满足、`write_paths` 不相交、数据库/端口/缓存/账号/生成物等共享资源可隔离，且 Adapter/runtime 报告 Agents 为 `native` 时并行激活 Worker。不得用模块数量代替冲突判断。
 6. 为每个 ready 包固定同一可信 base，创建独立 branch/worktree，并向一个 Worker 只派一个包。Worker 先读全部 inputs/skills，只做最小实现与范围内测试，真实运行所有 `verify`，原生模式下提交 commit，再返回固定 delivery contract。
 7. Main Agent 逐份核对 dispatch binding、commit ancestry、`base...head` 实际 diff、`write_paths`、验证退出码和 `done_when` 语义证据；delivery 必须回带 `state_revision`、`policy_snapshot_digest`、`audit_correlation_id`，通过后才写入 `<change>/evidence/agents/<package>/<execution>.yaml` 并刷新 State，释放下一波依赖节点。
 8. 有多个 commits、共享契约、迁移、generated/lock 文件或集中集成验证时最多激活一个 Integrator，并由它独占这些共享写入；高风险或跨系统最终结果交给未参与实现的 Reviewer。发现未声明的路径重叠时重新规划，不让 Integrator 掩盖规划错误。
 9. Adapter 为 `degraded` 或 `unsupported` 时由 Main Agent 顺序执行工作包，或按声明的 degraded patch 流程交付；明确报告未获得并行/worktree 隔离，不得声称已激活子 Agent。
-10. 每个连贯单元完成后运行相称的测试、lint/build；所有实现完成后运行 `xforge check --change <id>`，请求 `xforge transition --change <id> --to verify`，再交给 `xforge-verify`。
+10. 每个连贯单元完成后运行相称的测试、lint/build；所有实现完成后运行 `npx --no-install xforge check --change <id>`，请求 `npx --no-install xforge transition --change <id> --to verify`，再交给 `xforge-verify`。
 
 # 证据
 

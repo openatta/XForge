@@ -10,7 +10,7 @@ metadata:
 
 # 不变量
 
-- 运行 `xforge state --change <id>`，解析唯一 active Change，不猜测 readiness 或 Evidence freshness。
+- 运行 `npx --no-install xforge state --change <id>`，解析唯一 active Change，不猜测 readiness 或 Evidence freshness。
 - 本 Skill 仅是迁移 shim；归档语义、验证与权限全部由 `xforge-verify` 的 `archive-current` 模式承担。
 
 # 权限
@@ -22,7 +22,7 @@ metadata:
 # 执行
 
 1. 查询 State 并说明旧入口已并入 `xforge-verify`。
-2. 使用 `xforge-verify` 的 `archive-current` 流程：确认 Stage 为 `ready-to-archive`，运行 `xforge audit verify --change <id>`，检查当前 Gate/Approval/Audit receipts，执行 archive dry-run，确认后再归档。
+2. 使用 `xforge-verify` 的 `archive-current` 流程：确认 Stage 为 `ready-to-archive`，运行 `npx --no-install xforge audit verify --change <id>`，检查当前 Gate/Approval/Audit receipts，执行 archive dry-run，确认后再归档。
 3. 刷新 State 并报告最终结果。
 
 # 证据

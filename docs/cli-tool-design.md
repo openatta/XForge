@@ -1,4 +1,4 @@
-# XForge CLI 设计（0.4.1 / Protocol 2）
+# XForge CLI 设计（0.5.0 / Protocol 2）
 
 状态：P0–P4 已实现。ADR 0002 是 Rules、PermissionPolicy、Hooks、Transitions、Approvals 和 Audit 的当前决策。
 
@@ -19,6 +19,7 @@ Skill/Agent 解释意图、生成规划或 assurance 内容，但不能把自然
 | 命令 | 读写 | 核心结果 |
 | --- | --- | --- |
 | `help`, `version` | read | CLI/protocol/build identity |
+| `init` | conditional write | 校验 npm 内置 Scaffold，初始化项目，可选单 Target 投影 |
 | `state` | read | resolved project/Change/governance + typed nextActions |
 | `install` | write | 首次/幂等 Target 投影、Lock、ownership |
 | `sync` | write | localized canonical source reconciliation |
@@ -36,7 +37,7 @@ Skill/Agent 解释意图、生成规划或 assurance 内容，但不能把自然
 所有普通命令返回一个 Protocol 2 envelope。所有写命令遵循：
 
 ```text
-load exact root and identity
+load exact root and npm identity
 → resolve canonical resources/current state
 → compute content/state/policy revisions
 → produce plan and diagnostics

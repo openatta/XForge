@@ -94,6 +94,7 @@ out
 .nuxt
 dist
 .output
+/xforge/scaffold/
 
 # XForge local/generated state
 **/xforge/.state.json

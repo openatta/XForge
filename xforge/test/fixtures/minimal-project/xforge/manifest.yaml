@@ -11,9 +11,9 @@ project:
 scaffold:
   version: 0.3.0
   source:
-    type: git
-    repository: https://github.com/openatta/XForge.git
-    commit: 99b8726f67ad337e257a52fc606d296927097730
+    type: npm
+    package: "@xforge/cli"
+    version: 0.3.0
   skills: [xforge-explore]
   agents: []
   rules: []

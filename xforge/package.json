@@ -1,6 +1,6 @@
 {
   "name": "@xforge/cli",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Git-native control plane for governed AI-assisted software development",
   "license": "Apache-2.0",
   "keywords": [
@@ -31,6 +31,7 @@
   "types": "dist/index.d.ts",
   "files": [
     "dist",
+    "scaffold",
     "schemas",
     "README.md"
   ],
@@ -39,7 +40,7 @@
   },
   "scripts": {
     "clean": "node scripts/clean.mjs",
-    "build": "npm run clean && tsc -p tsconfig.json && node scripts/copy-license.mjs",
+    "build": "npm run clean && tsc -p tsconfig.json && node scripts/copy-license.mjs && node scripts/copy-scaffold.mjs",
     "test": "npm run build && vitest run test",
     "test:product": "npm run build && vitest run --root .. tests",
     "check:scaffold": "node scripts/scaffold-integrity.mjs ../scaffold",
