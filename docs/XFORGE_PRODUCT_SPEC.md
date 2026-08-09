@@ -15,7 +15,7 @@
 > 本文保留最初的产品/Protocol 1 基线和历史约束。Rules、PermissionPolicy、双平面
 > Hooks、Transition、Approval、Audit 与当前 Protocol 2 实现以
 > [governance-control-plane-design.md](governance-control-plane-design.md) 和 ADR 0002
-> 为准；`@xforge/cli 0.4.0` 已完成 P0–P4，Protocol 1 仅保留 Portable-read 迁移。
+> 为准；`@xforge/cli 0.4.1` 已完成 P0–P4，Protocol 1 仅保留 Portable-read 迁移。
 
 文中的“必须”“不得”表示强制要求；“应当”表示默认要求，偏离时必须记录原因；“可以”表示可选能力。
 

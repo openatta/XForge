@@ -91,7 +91,7 @@ describe('XForge product contract', () => {
     const releaseRoot = await mkdtemp(path.join(os.tmpdir(), 'xforge-http-'));
     const build = await command(process.execPath, [path.join(xforgeRoot, 'scripts', 'build-scaffold.mjs'), releaseRoot], repositoryRoot);
     expect(build.code, build.stderr).toBe(0);
-    const archive = path.join(releaseRoot, 'xforge-scaffold-0.4.0.tar.gz');
+    const archive = path.join(releaseRoot, 'xforge-scaffold-0.4.1.tar.gz');
     const listing = await command('tar', ['-tzf', archive], releaseRoot);
     expect(listing.code).toBe(0);
     expect(listing.stdout.split('\n').filter(Boolean).every((entry) => entry === 'scaffold.yaml' || entry === 'files.sha256' || entry.startsWith('payload/'))).toBe(true);
@@ -113,9 +113,38 @@ describe('XForge product contract', () => {
     expect(installed.json.data.capabilities.claude.commands).toBe('native');
   });
 
-  it('keeps the root README as a bootstrap-only entry point', async () => {
-    const readme = await readFile(path.join(repositoryRoot, 'README.md'), 'utf8');
-    expect(readme).toContain('docs/bootstrap.md');
-    expect(readme.split('\n').filter((line) => line.trim())).toHaveLength(2);
+  it('ships mutually linked English and Chinese READMEs plus an Agent installation runbook', async () => {
+    const english = await readFile(path.join(repositoryRoot, 'README.md'), 'utf8');
+    const chinese = await readFile(path.join(repositoryRoot, 'docs', 'README.md'), 'utf8');
+    const runbook = await readFile(path.join(repositoryRoot, 'AGENT_INSTALL.md'), 'utf8');
+    expect(english.startsWith('English | [简体中文](docs/README.md)\n')).toBe(true);
+    expect(chinese.startsWith('[English](../README.md) | 简体中文\n')).toBe(true);
+    for (const heading of ['## Design goals', '## Main features', '## Getting started', '## Using XForge for a change']) {
+      expect(english).toContain(heading);
+    }
+    for (const heading of ['## 设计目标', '## 主要特性', '## 开始使用', '## 用 XForge 开发一个 Change']) {
+      expect(chinese).toContain(heading);
+    }
+    expect(runbook).toContain('## Path A — install from source (available now)');
+    expect(runbook).toContain('## Path B — install from npm');
+    expect(runbook).toContain('## Acceptance criteria');
+  });
+
+  it('publishes only the public scoped CLI package with release safeguards', async () => {
+    const rootPackage = JSON.parse(await readFile(path.join(repositoryRoot, 'package.json'), 'utf8'));
+    const cliPackage = JSON.parse(await readFile(path.join(xforgeRoot, 'package.json'), 'utf8'));
+    const packageReadme = await readFile(path.join(xforgeRoot, 'README.md'), 'utf8');
+    const workflow = await readFile(path.join(repositoryRoot, '.github', 'workflows', 'publish-npm.yml'), 'utf8');
+    expect(rootPackage.private).toBe(true);
+    expect(cliPackage.name).toBe('@xforge/cli');
+    expect(cliPackage.version).toBe('0.4.1');
+    expect(cliPackage.publishConfig).toEqual({ access: 'public', registry: 'https://registry.npmjs.org/' });
+    expect(cliPackage.scripts.prepublishOnly).toBe('npm run verify');
+    expect(packageReadme).toContain('npm install --save-dev --save-exact @xforge/cli@0.4.1');
+    expect(packageReadme).toContain('/blob/v0.4.1/AGENT_INSTALL.md');
+    expect(workflow).toContain('workflow_dispatch:');
+    expect(workflow).toContain('id-token: write');
+    expect(workflow).toContain('working-directory: xforge');
+    expect(workflow).not.toContain('NODE_AUTH_TOKEN');
   });
 });

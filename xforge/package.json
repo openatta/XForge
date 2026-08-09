@@ -1,8 +1,28 @@
 {
   "name": "@xforge/cli",
-  "version": "0.4.0",
-  "description": "Git-native enterprise framework for governed AI-assisted software development",
+  "version": "0.4.1",
+  "description": "Git-native control plane for governed AI-assisted software development",
   "license": "Apache-2.0",
+  "keywords": [
+    "ai",
+    "agent",
+    "cli",
+    "governance",
+    "spec-driven-development"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/openatta/XForge.git",
+    "directory": "xforge"
+  },
+  "homepage": "https://github.com/openatta/XForge#readme",
+  "bugs": {
+    "url": "https://github.com/openatta/XForge/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "type": "module",
   "bin": {
     "xforge": "dist/cli.js"
@@ -24,6 +44,7 @@
     "test:product": "npm run build && vitest run --root .. tests",
     "check:scaffold": "node scripts/scaffold-integrity.mjs ../scaffold",
     "verify": "npm run check:scaffold && npm run build && vitest run test && vitest run --root .. tests",
+    "prepublishOnly": "npm run verify",
     "prepack": "npm run build"
   },
   "dependencies": {

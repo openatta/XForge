@@ -116,7 +116,7 @@ scaffold:
     commit: 99b8726f67ad337e257a52fc606d296927097730
     repository: https://github.com/openatta/XForge.git
     type: git
-  version: 0.4.0
+  version: 0.4.1
 targets:
   - codex
   - claude
@@ -124,8 +124,8 @@ targets:
   - opencode
   - github-copilot
 xforge:
-  integrity: sha256:c25fd63cc1a7830db9f46b169e94ca926c6682bcb6baa6b8fd59895ff226a9de
+  integrity: sha256:2c2d3f0e4e01126984b13f2607dbf7ff6279226a9006a434c656f0703e555fff
   package: "@xforge/cli"
   protocol: "2"
   source: npm
-  version: 0.4.0
+  version: 0.4.1

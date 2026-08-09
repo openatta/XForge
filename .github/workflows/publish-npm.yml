@@ -1,0 +1,40 @@
+name: Publish npm package
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: publish-npm
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'openatta/XForge'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out release commit
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install trusted-publishing npm CLI
+        run: npm install --global npm@11.5.1
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: xforge
+
+      - name: Verify release
+        run: npm run verify
+        working-directory: xforge
+
+      - name: Publish exact package version
+        run: npm publish --access public
+        working-directory: xforge

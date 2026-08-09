@@ -7,7 +7,7 @@ import { create } from 'tar';
 
 const repoRoot = path.resolve(new URL('../..', import.meta.url).pathname);
 const outputRoot = path.resolve(process.argv[2] ?? path.join(repoRoot, 'release'));
-const archive = path.join(outputRoot, 'xforge-scaffold-0.4.0.tar.gz');
+const archive = path.join(outputRoot, 'xforge-scaffold-0.4.1.tar.gz');
 await mkdir(outputRoot, { recursive: true });
 
 const scaffoldRoot = path.join(repoRoot, 'scaffold');
