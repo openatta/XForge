@@ -2,7 +2,7 @@ apiVersion: xforge.dev/v1alpha2
 kind: Flow
 metadata:
   name: major
-  version: 2
+  version: 3
   description: 强调重大变更治理，适用于高风险、跨系统或具有关键影响的高保障交付
 policy:
   assuranceLevel: major
@@ -41,6 +41,7 @@ artifacts:
     instruction: 记录问题、影响、决定、来源和状态；所有 material question 必须 resolved，并原子回写 Proposal 与 delta Specs。
     outline: |
       ## Material questions
+      Status: unresolved
       ## Decisions
       ## Sources
       ## Resolved updates
@@ -83,6 +84,22 @@ artifacts:
     description: 绑定当前修订与 Gate Evidence 的验证回执
     instruction: 只记录当前 Change revision、Git HEAD、Flow 版本、输入摘要和已通过的 Evidence 引用。
     outline: ''
+governance:
+  approvalPolicies:
+    - id: implementation-major
+      minApprovers: 2
+      roles: [owner, maintainer, security]
+      separationOfDuties: true
+      providers: [enterprise-hmac]
+    - id: closing-major
+      minApprovers: 2
+      roles: [owner, maintainer, security]
+      separationOfDuties: true
+      providers: [enterprise-hmac]
+  audit:
+    requiredEventTypes: [gate.after, stage.entered, approval.decided]
+    runtimeCoverage: optional
+    remoteDelivery: required
 stages:
   - id: propose
     skill: xforge-propose
@@ -99,7 +116,8 @@ stages:
     revises: [proposal, delta-specs]
     reworkTo: [propose, clarify]
     exit:
-      materialQuestions: resolved
+      conditions:
+        materialQuestions: resolved
   - id: design
     skill: xforge-design
     authority: planning-write
@@ -113,6 +131,8 @@ stages:
     produces: [check-report]
     gates: [structure]
     reworkTo: [propose, clarify, design]
+    exit:
+      approvals: [implementation-major]
   - id: apply
     skill: xforge-apply
     authority: implementation-write
@@ -136,3 +156,8 @@ terminal:
     requires: [verify]
     syncSpecs: true
     evidencePolicy: current-revision
+    approvals: [closing-major]
+    auditPolicy:
+      requiredEventTypes: [gate.after, stage.entered, approval.decided]
+      runtimeCoverage: optional
+      remoteDelivery: required

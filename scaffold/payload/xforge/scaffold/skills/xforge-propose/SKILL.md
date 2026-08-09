@@ -4,7 +4,7 @@ description: 创建受治理的 Change，并仅生成 Propose Stage 允许的 ch
 license: MIT
 metadata:
   author: xforge（基于 OpenSpec 工作流适配）
-  version: "2.0"
+  version: "3.0"
   source: OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab
 ---
 
@@ -25,10 +25,25 @@ metadata:
 
 1. 解析唯一目标；若要新建 Change，检查是否已有覆盖同一问题的 active Change。
 2. 基于项目事实填写 `flow`、完整 classification、modules 和有边界的项目相对 path scope，并在 Proposal 解释 Flow 选择。
-3. 创建最小 `change.yaml` 后运行 `xforge state --change <id>`；只处理返回给 Propose 的 ready Artifact/Action。
-4. 从磁盘重读依赖，写 Why、Scope、Non-goals、Actors、Success criteria，并生成带稳定 Requirement ID 的成功、失败、边界和兼容性场景。
+3. 创建最小 `change.yaml` 后运行 `xforge state --change <id>`；该文件使用下列无包装对象结构，字段名和层级必须保持一致，再按项目事实替换值：
+
+   ```yaml
+   flow: solid
+   classification:
+     risk: medium
+     security: false
+     privacy: false
+     publicApi: false
+     dataMigration: false
+   scope:
+     modules: [root]
+     paths: [src/**]
+   ```
+
+   只处理 State 返回给 Propose 的 ready Artifact/Action；Schema 诊断未清零前不得继续写 Artifact。
+4. 从磁盘重读依赖，写 Why、Scope、Non-goals、Actors、Success criteria，并生成带稳定 Requirement ID 的成功、失败、边界和兼容性场景。不可把来源未声明的精确契约猜测写成规范事实；已有不可修改的验收测试定义了字段、输出形状或退出行为时必须逐项保持一致，测试与需求冲突则作为材料性歧义停止。
 5. 每完成一个 Artifact 都刷新 State；当下一 Action 属于 Clarify、Design、Apply 或其他 Skill 时停止。
-6. 运行 `xforge check --change <id>`，修复本 Stage 的结构问题，不把提示性文本称为已通过 Gate。
+6. 运行 `xforge check --change <id>`，修复本 Stage 的结构问题，不把提示性文本称为已通过 Gate；只在 CLI 返回 ready Transition 时调用 `xforge transition --change <id> --to <stage>`。
 
 # 证据
 

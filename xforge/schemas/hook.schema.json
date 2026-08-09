@@ -1,26 +1,49 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://xforge.dev/schemas/v1alpha1/hook.schema.json",
-  "type": "object", "additionalProperties": false,
-  "required": ["apiVersion", "kind", "metadata", "spec"],
-  "properties": {
-    "apiVersion": { "const": "xforge.dev/v1alpha1" }, "kind": { "const": "Hook" },
-    "metadata": { "$ref": "#/$defs/metadata" },
-    "spec": {
+  "$id": "https://xforge.dev/schemas/hook.schema.json",
+  "oneOf": [{ "$ref": "#/$defs/legacy" }, { "$ref": "#/$defs/current" }],
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$" },
+    "metadata": { "type": "object", "required": ["name"], "properties": { "name": { "$ref": "#/$defs/id" }, "version": { "type": ["string", "integer"] } }, "additionalProperties": false },
+    "base": {
       "type": "object", "additionalProperties": false,
-      "required": ["enabled", "event", "command", "timeoutSeconds", "workingDirectory", "permissions", "failurePolicy", "network"],
+      "required": ["enabled", "event", "timeoutSeconds", "failurePolicy"],
       "properties": {
-        "enabled": { "const": false },
-        "event": { "enum": ["session.start", "before.write", "after.write", "before.check", "after.check", "before.archive", "agent.stop"] },
+        "enabled": { "type": "boolean" }, "plane": { "enum": ["runtime", "workflow"] }, "event": { "type": "string", "minLength": 1 },
+        "action": {
+          "type": "object", "additionalProperties": false,
+          "properties": { "scriptRef": { "$ref": "#/$defs/id" }, "builtin": { "enum": ["audit", "policy"] } },
+          "oneOf": [{ "required": ["scriptRef"] }, { "required": ["builtin"] }]
+        },
         "command": { "type": "array", "minItems": 1, "items": { "type": "string" } }, "shell": { "type": "boolean" },
         "timeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 3600 }, "workingDirectory": { "type": "string" },
         "permissions": { "type": "array", "items": { "enum": ["read", "write", "network"] }, "uniqueItems": true },
-        "failurePolicy": { "enum": ["stop", "warn"] }, "network": { "type": "boolean" }
+        "failurePolicy": { "enum": ["deny", "ask", "stop", "spool", "warn"] }, "network": { "type": "boolean" }, "matcher": { "type": "string" }
+      }
+    },
+    "legacy": {
+      "type": "object", "additionalProperties": false, "required": ["apiVersion", "kind", "metadata", "spec"],
+      "properties": {
+        "apiVersion": { "const": "xforge.dev/v1alpha1" }, "kind": { "const": "Hook" }, "metadata": { "$ref": "#/$defs/metadata" },
+        "spec": {
+          "allOf": [
+            { "$ref": "#/$defs/base" },
+            { "properties": { "enabled": { "const": false }, "event": { "enum": ["session.start", "before.write", "after.write", "before.check", "after.check", "before.archive", "agent.stop"] }, "failurePolicy": { "enum": ["stop", "warn"] } }, "required": ["command", "workingDirectory", "permissions", "network"] }
+          ]
+        }
+      }
+    },
+    "current": {
+      "type": "object", "additionalProperties": false, "required": ["apiVersion", "kind", "metadata", "spec"],
+      "properties": {
+        "apiVersion": { "const": "xforge.dev/v1alpha2" }, "kind": { "const": "Hook" }, "metadata": { "$ref": "#/$defs/metadata" },
+        "spec": {
+          "allOf": [
+            { "$ref": "#/$defs/base" },
+            { "properties": { "event": { "enum": ["agent.session.start", "agent.session.end", "agent.prompt.submit", "agent.tool.before", "agent.tool.after", "agent.permission.request", "agent.permission.result", "agent.subagent.start", "agent.subagent.stop", "agent.turn.stop", "change.created", "stage.entering", "stage.entered", "stage.rework", "gate.before", "gate.after", "approval.requested", "approval.decided", "archive.before", "archive.after"] } }, "required": ["plane", "action"] }
+          ]
+        }
       }
     }
-  },
-  "$defs": {
-    "id": { "type": "string", "pattern": "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$" },
-    "metadata": { "type": "object", "required": ["name"], "properties": { "name": { "$ref": "#/$defs/id" }, "version": { "type": ["string", "integer"] } }, "additionalProperties": false }
   }
 }

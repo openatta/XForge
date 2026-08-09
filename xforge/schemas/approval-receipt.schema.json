@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xforge.dev/schemas/v1alpha2/approval-receipt.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["apiVersion", "kind", "receiptId", "change", "flow", "stage", "transition", "policyId", "stateRevision", "contentRevision", "policySnapshotDigest", "gitBase", "gitHead", "governingDigest", "decision", "approver", "decidedAt", "reason", "digest"],
+  "properties": {
+    "apiVersion": { "const": "xforge.dev/v1alpha2" }, "kind": { "const": "ApprovalReceipt" },
+    "receiptId": { "type": "string", "format": "uuid" }, "change": { "type": "string" }, "flow": { "type": "string" }, "stage": { "type": "string" }, "transition": { "type": "string" }, "policyId": { "type": "string" },
+    "stateRevision": { "$ref": "#/$defs/hash" }, "contentRevision": { "$ref": "#/$defs/hash" }, "policySnapshotDigest": { "$ref": "#/$defs/hash" },
+    "gitBase": { "type": "string" }, "gitHead": { "type": "string" }, "governingDigest": { "$ref": "#/$defs/hash" },
+    "decision": { "enum": ["approve", "reject"] },
+    "approver": { "type": "object", "additionalProperties": false, "required": ["id", "provider", "role", "type"], "properties": { "id": { "type": "string", "minLength": 1 }, "provider": { "type": "string", "minLength": 1 }, "role": { "type": "string", "minLength": 1 }, "type": { "enum": ["human", "external-system"] } } },
+    "decidedAt": { "type": "string", "format": "date-time" }, "reason": { "type": "string", "minLength": 1 }, "expiresAt": { "type": "string", "format": "date-time" }, "externalRef": { "type": "string" },
+    "signature": { "type": "object", "additionalProperties": false, "required": ["algorithm", "value"], "properties": { "algorithm": { "const": "hmac-sha256" }, "value": { "$ref": "#/$defs/hash" } } },
+    "digest": { "$ref": "#/$defs/hash" }
+  },
+  "$defs": { "hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" } }
+}

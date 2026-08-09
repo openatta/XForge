@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xforge.dev/schemas/v1alpha2/transition-receipt.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["apiVersion", "kind", "receiptId", "sequence", "change", "flow", "from", "to", "contentRevision", "stateRevisionBefore", "policySnapshotDigest", "gitHead", "previousReceiptDigest", "transitionedAt", "actor", "approvals", "gates", "auditHead", "digest"],
+  "properties": {
+    "apiVersion": { "const": "xforge.dev/v1alpha2" }, "kind": { "const": "TransitionReceipt" }, "receiptId": { "type": "string", "format": "uuid" }, "sequence": { "type": "integer", "minimum": 1 },
+    "change": { "type": "string" }, "flow": { "type": "string" }, "from": { "type": "string" }, "to": { "type": "string" },
+    "contentRevision": { "$ref": "#/$defs/hash" }, "stateRevisionBefore": { "$ref": "#/$defs/hash" }, "policySnapshotDigest": { "$ref": "#/$defs/hash" }, "gitHead": { "type": "string" },
+    "previousReceiptDigest": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" }, "transitionedAt": { "type": "string", "format": "date-time" },
+    "actor": { "type": "object", "additionalProperties": false, "required": ["id", "provider", "type"], "properties": { "id": { "type": "string" }, "provider": { "type": "string" }, "type": { "enum": ["human", "agent", "system"] } } },
+    "approvals": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/hash" } }, "gates": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/hash" } },
+    "auditHead": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" }, "digest": { "$ref": "#/$defs/hash" }
+  },
+  "$defs": { "hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" } }
+}

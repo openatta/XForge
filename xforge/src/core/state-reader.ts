@@ -13,6 +13,8 @@ import { resolvedResourceEntries } from './lockfile.js';
 import { stableStringify } from './hash.js';
 import { resolveWorkPackages } from './work-packages.js';
 import { installationSummary, readOwnership } from '../install/ownership.js';
+import { resolveControlPlane } from './control-plane.js';
+import { normalizeRule, ruleApplies } from './governance.js';
 
 async function exists(filePath: string): Promise<boolean> {
   try { await access(filePath); return true; } catch { return false; }
@@ -31,7 +33,7 @@ async function directoriesAt(root: string): Promise<string[]> {
 
 export interface StateOptions {
   change?: string;
-  kind?: 'skills' | 'agents' | 'rules' | 'hooks' | 'gates' | 'scripts';
+  kind?: 'skills' | 'agents' | 'rules' | 'policies' | 'hooks' | 'gates' | 'scripts';
   target?: TargetId;
 }
 
@@ -90,9 +92,15 @@ export async function readState(project: ProjectContext, options: StateOptions):
     const workPackages = await resolveWorkPackages(project, options.change, resolved.config, resources);
     diagnostics.push(...workPackages.diagnostics);
     selectedChange.workPackages = workPackages.state;
+    if (isStageFlow(resolved.flow) && resolved.flow.governance) {
+      const control = await resolveControlPlane(project, options.change, resolved.flow, selectedChange, resources, resolved.config);
+      diagnostics.push(...control.diagnostics);
+      selectedChange.governance = control.governance;
+    }
     const relevantRules = [...resources.rules.values()]
-      .filter((rule) => !rule.value.spec.modules?.length || rule.value.spec.modules.some((id) => resolved.config.scope.modules.includes(id)))
-      .map((rule) => ({ id: rule.value.metadata.name, level: rule.value.spec.level, instruction: rule.value.spec.instruction, gate: rule.value.spec.gate ?? null }));
+      .map((rule) => normalizeRule(rule.value))
+      .filter((rule) => ruleApplies(rule, resolved.config, selectedChange?.governance?.currentStage))
+      .map((rule) => ({ id: rule.id, severity: rule.severity, instruction: rule.instruction, gateRefs: rule.gateRefs, policyRefs: rule.policyRefs, approvalRefs: rule.approvalRefs }));
     context = {
       constitution: project.constitution,
       rules: relevantRules,
@@ -106,6 +114,7 @@ export async function readState(project: ProjectContext, options: StateOptions):
     skills: [...resources.skills.keys()],
     agents: [...resources.agents.keys()],
     rules: [...resources.rules.keys()],
+    policies: [...resources.policies.keys()],
     hooks: [...resources.hooks.keys()],
     gates: [...resources.gates.keys()],
     scripts: [...resources.scripts.keys()],

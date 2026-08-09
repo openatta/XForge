@@ -1,8 +1,8 @@
-apiVersion: xforge.dev/v1alpha1
+apiVersion: xforge.dev/v1alpha2
 kind: Agent
 metadata:
   name: integrator
-  version: 1
+  version: 2
 spec:
   role: Single-writer work-package integration specialist
   instructions: integrator.md

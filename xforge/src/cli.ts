@@ -3,19 +3,24 @@ import path from 'node:path';
 import process from 'node:process';
 import { CLI_NAME, CLI_VERSION, PROTOCOL_VERSION, TARGETS, type TargetId } from './constants.js';
 import { executeArchive } from './commands/archive.js';
+import { executeApprove } from './commands/approve.js';
+import { executeAudit } from './commands/audit.js';
 import { executeCheck } from './commands/check.js';
 import { executeInstall } from './commands/install.js';
 import { executeState } from './commands/state.js';
 import { executeSync } from './commands/sync.js';
 import { executeUninstall } from './commands/uninstall.js';
 import { executeUpdate } from './commands/update.js';
+import { executeTransition } from './commands/transition.js';
+import { executeHookDispatch, hookFailureOutput } from './commands/hook.js';
+import { executeWorkPackageDispatch } from './commands/work-package.js';
 import { XForgeError, diagnostic } from './core/errors.js';
 import { actualGitIdentity, runtimeCliIntegrity } from './core/identity.js';
 import { loadProject } from './core/project-loader.js';
 import { envelope, present } from './protocol/envelope.js';
 import type { Diagnostic, Envelope, NextAction } from './types.js';
 
-type CommandName = 'help' | 'version' | 'state' | 'install' | 'sync' | 'update' | 'uninstall' | 'check' | 'archive';
+type CommandName = 'help' | 'version' | 'state' | 'install' | 'sync' | 'update' | 'uninstall' | 'check' | 'transition' | 'approve' | 'audit' | 'work-package' | 'hook' | 'archive';
 
 interface ParsedArguments {
   command: string;
@@ -24,15 +29,28 @@ interface ParsedArguments {
   verifyDigests: boolean;
   root?: string;
   helpCommand?: string;
+  subcommand?: string;
   change?: string;
-  kind?: 'skills' | 'agents' | 'rules' | 'hooks' | 'gates' | 'scripts';
+  kind?: 'skills' | 'agents' | 'rules' | 'policies' | 'hooks' | 'gates' | 'scripts';
   target?: TargetId;
   gate?: string;
+  to?: string;
+  transition?: string;
+  policy?: string;
+  actor?: string;
+  role?: string;
+  reason?: string;
+  decision?: 'approve' | 'reject';
+  attestation?: 'human';
+  receipt?: string;
+  output?: string;
+  event?: string;
+  packageId?: string;
 }
 
-const COMMANDS: CommandName[] = ['help', 'version', 'state', 'install', 'sync', 'update', 'uninstall', 'check', 'archive'];
-const VALID_KINDS = ['skills', 'agents', 'rules', 'hooks', 'gates', 'scripts'] as const;
-const VALUE_OPTIONS = ['--root', '--change', '--kind', '--target', '--gate'] as const;
+const COMMANDS: CommandName[] = ['help', 'version', 'state', 'install', 'sync', 'update', 'uninstall', 'check', 'transition', 'approve', 'audit', 'work-package', 'hook', 'archive'];
+const VALID_KINDS = ['skills', 'agents', 'rules', 'policies', 'hooks', 'gates', 'scripts'] as const;
+const VALUE_OPTIONS = ['--root', '--change', '--kind', '--target', '--gate', '--to', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--receipt', '--output', '--event', '--package'] as const;
 
 const HELP: Record<CommandName, { usage: string; description: string; options: string[] }> = {
   help: { usage: 'xforge help [command] [--text]', description: 'Show general or command-specific help.', options: ['--text'] },
@@ -43,6 +61,11 @@ const HELP: Record<CommandName, { usage: string; description: string; options: s
   update: { usage: 'xforge [--root <path>] update [--target <target>] [--dry-run] [--text]', description: 'Fully reconcile installed targets, identities, and Adapter output.', options: ['--root', '--target', '--dry-run', '--text'] },
   uninstall: { usage: 'xforge [--root <path>] uninstall [--target <target>] [--dry-run] [--text]', description: 'Safely remove digest-matching managed target files.', options: ['--root', '--target', '--dry-run', '--text'] },
   check: { usage: 'xforge [--root <path>] check [--change <id>] [--gate <id>] [--text]', description: 'Validate project structure, deliveries, and Gates.', options: ['--root', '--change', '--gate', '--text'] },
+  transition: { usage: 'xforge [--root <path>] transition --change <id> --to <stage> [--dry-run] [--text]', description: 'Evaluate and record a governed Stage transition.', options: ['--root', '--change', '--to', '--dry-run', '--text'] },
+  approve: { usage: 'xforge [--root <path>] approve --change <id> --for <stage|archive> [--policy <id>] [--receipt <path> | local fields] [--dry-run] [--text]', description: 'Record an interactive human approval or verify a signed external receipt.', options: ['--root', '--change', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--receipt', '--dry-run', '--text'] },
+  audit: { usage: 'xforge [--root <path>] audit <status|verify|export|retry> [--change <id>] [--output <path>] [--text]', description: 'Inspect, verify, export, or redeliver the append-only audit chain.', options: ['--root', '--change', '--output', '--text'] },
+  'work-package': { usage: 'xforge [--root <path>] work-package dispatch --change <id> --package <id> [--dry-run] [--text]', description: 'Issue a revision-bound work-package dispatch receipt.', options: ['--root', '--change', '--package', '--dry-run', '--text'] },
+  hook: { usage: 'xforge hook dispatch --target <target> --event <event>', description: 'Internal platform Hook dispatcher.', options: ['--root', '--target', '--event'] },
   archive: { usage: 'xforge [--root <path>] archive --change <id> [--dry-run] [--text]', description: 'Verify, merge Specs, and atomically archive a Change.', options: ['--root', '--change', '--dry-run', '--text'] },
 };
 
@@ -75,6 +98,24 @@ function parseArguments(argv: string[]): ParsedArguments {
     if (token === '--root') parsed.root = value;
     if (token === '--change') parsed.change = value;
     if (token === '--gate') parsed.gate = value;
+    if (token === '--to') parsed.to = value;
+    if (token === '--for') parsed.transition = value;
+    if (token === '--policy') parsed.policy = value;
+    if (token === '--actor') parsed.actor = value;
+    if (token === '--role') parsed.role = value;
+    if (token === '--reason') parsed.reason = value;
+    if (token === '--receipt') parsed.receipt = value;
+    if (token === '--output') parsed.output = value;
+    if (token === '--event') parsed.event = value;
+    if (token === '--package') parsed.packageId = value;
+    if (token === '--decision') {
+      if (!['approve', 'reject'].includes(value)) throw new XForgeError(diagnostic('XFORGE_DECISION_UNKNOWN', `Unknown approval decision: ${value}`));
+      parsed.decision = value as ParsedArguments['decision'];
+    }
+    if (token === '--attestation') {
+      if (value !== 'human') throw new XForgeError(diagnostic('XFORGE_ATTESTATION_UNKNOWN', `Unknown attestation: ${value}`));
+      parsed.attestation = 'human';
+    }
     if (token === '--kind') {
       if (!VALID_KINDS.includes(value as (typeof VALID_KINDS)[number])) throw new XForgeError(diagnostic('XFORGE_KIND_UNKNOWN', `Unknown resource kind: ${value}`));
       parsed.kind = value as ParsedArguments['kind'];
@@ -100,6 +141,9 @@ function parseArguments(argv: string[]): ParsedArguments {
     if (parsed.command === 'help') {
       parsed.helpCommand = positionals[1];
       if (positionals.length > 2) throw new XForgeError(diagnostic('XFORGE_ARGUMENT_UNEXPECTED', `Unexpected positional argument: ${positionals[2]}`));
+    } else if (parsed.command === 'audit' || parsed.command === 'hook' || parsed.command === 'work-package') {
+      parsed.subcommand = positionals[1];
+      if (positionals.length > 2) throw new XForgeError(diagnostic('XFORGE_ARGUMENT_UNEXPECTED', `Unexpected positional argument: ${positionals[2]}`));
     } else if (positionals.length > 1) {
       throw new XForgeError(diagnostic('XFORGE_ARGUMENT_UNEXPECTED', `Unexpected positional argument: ${positionals[1]}`));
     }
@@ -118,6 +162,12 @@ function parseArguments(argv: string[]): ParsedArguments {
     if (!allowed.has(flag)) throw new XForgeError(diagnostic('XFORGE_OPTION_NOT_ALLOWED', `${flag} is not valid for ${parsed.command}.`));
   }
   if (parsed.command === 'archive' && !parsed.change) throw new XForgeError(diagnostic('XFORGE_CHANGE_REQUIRED', 'archive requires --change <id>.'));
+  if (parsed.command === 'transition' && (!parsed.change || !parsed.to)) throw new XForgeError(diagnostic('XFORGE_TRANSITION_ARGUMENTS_REQUIRED', 'transition requires --change <id> and --to <stage>.'));
+  if (parsed.command === 'approve' && (!parsed.change || !parsed.transition)) throw new XForgeError(diagnostic('XFORGE_APPROVAL_ARGUMENTS_REQUIRED', 'approve requires --change <id> and --for <stage|archive>.'));
+  if (parsed.command === 'audit' && !['status', 'verify', 'export', 'retry'].includes(parsed.subcommand ?? '')) throw new XForgeError(diagnostic('XFORGE_AUDIT_ACTION_REQUIRED', 'audit requires status, verify, export, or retry.'));
+  if (parsed.command === 'audit' && parsed.output && parsed.subcommand !== 'export') throw new XForgeError(diagnostic('XFORGE_OPTION_NOT_ALLOWED', '--output is only valid for audit export.'));
+  if (parsed.command === 'hook' && (parsed.subcommand !== 'dispatch' || !parsed.target || !parsed.event)) throw new XForgeError(diagnostic('XFORGE_HOOK_ARGUMENTS_REQUIRED', 'hook dispatch requires --target and --event.'));
+  if (parsed.command === 'work-package' && (parsed.subcommand !== 'dispatch' || !parsed.change || !parsed.packageId)) throw new XForgeError(diagnostic('XFORGE_WORK_PACKAGE_ARGUMENTS_REQUIRED', 'work-package dispatch requires --change and --package.'));
   return parsed;
 }
 
@@ -166,6 +216,15 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
     if (project.compatibility.mode === 'portable') nextActions.push({ action: 'resolve-declared-xforge', reason: 'Managed operations require the exact declared CLI identity.' });
     const stateChange = (result.data.change ?? null) as { nextArtifact?: { id?: string } | null } | null;
     if (stateChange?.nextArtifact?.id && parsed.change) nextActions.push({ action: 'create-artifact', reason: `Next Flow Artifact is ${stateChange.nextArtifact.id}.` });
+    const governance = (stateChange as any)?.governance;
+    if (governance?.currentStage === 'apply') {
+      for (const packageId of (stateChange as any)?.workPackages?.ready ?? []) {
+        nextActions.push({ action: 'dispatch-work-package', type: 'governance', id: packageId, status: 'ready', reason: `Work package ${packageId} is ready for a revision-bound dispatch.`, command: ['xforge', 'work-package', 'dispatch', '--change', parsed.change!, '--package', packageId] });
+      }
+    }
+    for (const pending of governance?.pendingApprovals ?? []) nextActions.push({ action: 'approve', type: 'approval', id: pending.policyId, status: 'pending', reason: `Approval ${pending.policyId} is required for ${pending.transition}.`, blockedBy: [`missing:${pending.missing}`], command: ['xforge', 'approve', '--change', parsed.change!, '--for', pending.transition, '--policy', pending.policyId] });
+    for (const transition of governance?.readyTransitions ?? []) nextActions.push({ action: 'transition', type: 'transition', id: transition.to, status: transition.ready ? 'ready' : 'blocked', reason: transition.ready ? `Transition to ${transition.to} is ready.` : `Transition to ${transition.to} is blocked.`, blockedBy: transition.blockedBy, command: ['xforge', 'transition', '--change', parsed.change!, '--to', transition.to] });
+    if (governance?.currentStage === 'ready-to-archive') nextActions.push({ action: 'archive', type: 'archive', status: (governance.pendingApprovals ?? []).some((item: any) => item.transition === 'archive') ? 'blocked' : 'ready', reason: 'The Change reached ReadyToArchive; terminal governance still applies.', command: ['xforge', 'archive', '--change', parsed.change!] });
     return envelope({ command, root: project.root, data: result.data, diagnostics: result.diagnostics, nextActions });
   }
   if (command === 'install') {
@@ -187,6 +246,30 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
   if (command === 'check') {
     const result = await executeCheck(project, { change: parsed.change, gate: parsed.gate });
     return envelope({ command, root: project.root, ...result });
+  }
+  if (command === 'transition') {
+    const result = await executeTransition(project, { change: parsed.change!, to: parsed.to!, dryRun: parsed.dryRun });
+    return envelope({ command, root: project.root, ...result });
+  }
+  if (command === 'approve') {
+    const result = await executeApprove(project, { change: parsed.change!, transition: parsed.transition!, policy: parsed.policy, actor: parsed.actor, role: parsed.role, reason: parsed.reason, decision: parsed.decision, attestation: parsed.attestation, receipt: parsed.receipt, interactive: process.stdin.isTTY === true && process.stdout.isTTY === true, dryRun: parsed.dryRun });
+    return envelope({ command, root: project.root, ...result });
+  }
+  if (command === 'audit') {
+    const result = await executeAudit(project, { action: parsed.subcommand as 'status' | 'verify' | 'export' | 'retry', change: parsed.change, output: parsed.output });
+    return envelope({ command, root: project.root, ...result });
+  }
+  if (command === 'work-package') {
+    const result = await executeWorkPackageDispatch(project, { change: parsed.change!, packageId: parsed.packageId!, dryRun: parsed.dryRun });
+    return envelope({ command, root: project.root, ...result });
+  }
+  if (command === 'hook') {
+    const chunks: Buffer[] = [];
+    for await (const chunk of process.stdin) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    const source = Buffer.concat(chunks).toString('utf8').trim();
+    const payload = source ? JSON.parse(source) as Record<string, unknown> : {};
+    const result = await executeHookDispatch(project, { target: parsed.target!, event: parsed.event!, payload });
+    return envelope({ command, root: project.root, data: result });
   }
   const result = await executeArchive(project, parsed.change!, parsed.dryRun);
   return envelope({ command, root: project.root, ...result });
@@ -211,6 +294,11 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
       diagnostics = [diagnostic('XFORGE_INTERNAL_ERROR', (error as Error).message || 'Unexpected internal error.')];
     }
     result = envelope({ command, root, data: null, diagnostics, nextActions, ok: false });
+  }
+  if (parsed?.command === 'hook') {
+    if (result.ok) process.stdout.write(`${JSON.stringify((result.data as any)?.platformOutput ?? {})}\n`);
+    else process.stdout.write(`${JSON.stringify(hookFailureOutput(parsed.target!, parsed.event!))}\n`);
+    return result.ok ? 0 : (parsed.event?.includes('after') ? 0 : 2);
   }
   const textMode = parsed?.text ?? argv.some((item) => ['--text', '--help', '--version'].includes(item));
   process.stdout.write(present(result, textMode));

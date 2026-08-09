@@ -91,7 +91,7 @@ describe('XForge product contract', () => {
     const releaseRoot = await mkdtemp(path.join(os.tmpdir(), 'xforge-http-'));
     const build = await command(process.execPath, [path.join(xforgeRoot, 'scripts', 'build-scaffold.mjs'), releaseRoot], repositoryRoot);
     expect(build.code, build.stderr).toBe(0);
-    const archive = path.join(releaseRoot, 'xforge-scaffold-0.3.0.tar.gz');
+    const archive = path.join(releaseRoot, 'xforge-scaffold-0.4.0.tar.gz');
     const listing = await command('tar', ['-tzf', archive], releaseRoot);
     expect(listing.code).toBe(0);
     expect(listing.stdout.split('\n').filter(Boolean).every((entry) => entry === 'scaffold.yaml' || entry === 'files.sha256' || entry.startsWith('payload/'))).toBe(true);

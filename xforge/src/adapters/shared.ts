@@ -1,5 +1,6 @@
 import type { AgentResource, DesiredFile, RuleResource } from '../types.js';
 import type { TargetId } from '../constants.js';
+import { normalizeRule } from '../core/governance.js';
 
 export function artifactTrace(target: TargetId, version: string) {
   return (kind: string, id: string, sourcePaths: string[]): Pick<DesiredFile, 'resource' | 'sourcePaths' | 'renderVersion'> => ({
@@ -30,11 +31,16 @@ export function renderAgentMarkdown(agent: AgentResource, instructions: string, 
 }
 
 export function renderRuleMarkdown(rule: RuleResource, extra: Record<string, string> = {}): string {
+  const normalized = normalizeRule(rule);
   const frontmatter = {
-    description: `${rule.metadata.name} (${rule.spec.level})`,
+    description: `${rule.metadata.name} (${normalized.severity})`,
     ...extra,
   };
-  return `---\n${Object.entries(frontmatter).map(([key, value]) => `${key}: ${JSON.stringify(value)}`).join('\n')}\n---\n\n# ${rule.metadata.name}\n\nLevel: ${rule.spec.level}\n\n${rule.spec.instruction.trim()}\n`;
+  return `---\n${Object.entries(frontmatter).map(([key, value]) => `${key}: ${JSON.stringify(value)}`).join('\n')}\n---\n\n# ${rule.metadata.name}\n\nSeverity: ${normalized.severity}\n\n${normalized.instruction.trim()}\n\nEnforcement: gates=${normalized.gateRefs.join(', ') || 'none'}; policies=${normalized.policyRefs.join(', ') || 'none'}; approvals=${normalized.approvalRefs.join(', ') || 'none'}.\n`;
+}
+
+export function rulePaths(rule: RuleResource): string[] {
+  return normalizeRule(rule).paths;
 }
 
 export const BOOTSTRAP_BODY = `# XForge bootstrap\n\nBefore project work, read \`xforge/manifest.yaml\`, \`xforge/constitution.md\`, and the active Change under the resolved logical Changes path. Use installed \`xforge-*\` Skills and treat only matching CLI/Gate evidence as enforced facts.\n`;

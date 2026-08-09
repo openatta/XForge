@@ -263,6 +263,9 @@ export async function resolveChangeState(
   const configPath = path.join(changeDirectory, 'change.yaml');
   const config = await loadYaml<ChangeConfig>(configPath, `${changeRelative}/change.yaml`);
   const diagnostics = await validateSchema('change', config, `${changeRelative}/change.yaml`);
+  if (diagnostics.some((item) => item.severity === 'error')) {
+    throw new XForgeError(diagnostics, { root: project.root });
+  }
   const flowName = config.flow || project.manifest.flow;
   if (!flowName) diagnostics.push(diagnostic('XFORGE_FLOW_REQUIRED', 'Change or Manifest must select a Flow.', `${changeRelative}/change.yaml`));
 

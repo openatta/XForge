@@ -3,6 +3,8 @@ import type {
   AgentResource,
   DesiredFile,
   RuleResource,
+  HookResource,
+  PermissionPolicyResource,
 } from '../types.js';
 import type { TargetId } from '../constants.js';
 
@@ -18,5 +20,11 @@ export interface Adapter {
   renderAgent(agent: AgentResource, instructions: string): string | null;
   rulePath(ruleId: string): string | null;
   renderRule(rule: RuleResource): string | null;
+  renderGovernance(input: GovernanceProjectionInput): DesiredFile[];
   bootstrap(): DesiredFile[];
+}
+
+export interface GovernanceProjectionInput {
+  policies: Array<{ id: string; value: PermissionPolicyResource; yamlPath: string }>;
+  hooks: Array<{ id: string; value: HookResource; yamlPath: string }>;
 }

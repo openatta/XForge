@@ -4,7 +4,7 @@ description: 消除 Major Change 中会改变范围、设计、兼容性、风�
 license: MIT
 metadata:
   author: xforge（基于 OpenSpec 工作流适配）
-  version: "2.0"
+  version: "3.0"
   source: OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab
 ---
 
@@ -24,7 +24,7 @@ metadata:
 1. 重读 Action inputs，列出会影响范围、兼容性、风险、实现边界或验收的未知项及其影响。
 2. 调查能由项目事实回答的问题；对剩余问题一次提出最小、可决策的问题集。
 3. 记录问题、影响、决定、来源和状态；将已确认结果同步回 Proposal 与 delta Specs，保持 Requirement/Scenario 可测试。
-4. 刷新 State，确认 `materialQuestions: resolved`；运行 `xforge check --change <id>` 检查结构和 policy。
+4. 刷新 State，确认 `materialQuestions: resolved`；运行 `xforge check --change <id>` 检查结构和 policy，再请求 typed nextAction 给出的 `xforge transition --change <id> --to <stage>`。
 
 # 证据
 

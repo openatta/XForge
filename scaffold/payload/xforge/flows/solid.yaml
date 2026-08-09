@@ -2,7 +2,7 @@ apiVersion: xforge.dev/v1alpha2
 kind: Flow
 metadata:
   name: solid
-  version: 2
+  version: 3
   description: 强调稳定、可维护交付，适用于常规产品功能和工程变更
 policy:
   assuranceLevel: solid
@@ -58,6 +58,22 @@ artifacts:
     description: 绑定当前修订与 Gate Evidence 的验证回执
     instruction: 只记录当前 Change revision、Git HEAD、Flow 版本、输入摘要和已通过的 Evidence 引用。
     outline: ''
+governance:
+  approvalPolicies:
+    - id: planning-solid
+      minApprovers: 1
+      roles: [owner, maintainer]
+      separationOfDuties: false
+      providers: [local, enterprise-hmac]
+    - id: closing-solid
+      minApprovers: 1
+      roles: [owner, maintainer]
+      separationOfDuties: false
+      providers: [local, enterprise-hmac]
+  audit:
+    requiredEventTypes: [gate.after, stage.entered, approval.decided]
+    runtimeCoverage: optional
+    remoteDelivery: optional
 stages:
   - id: propose
     skill: xforge-propose
@@ -72,6 +88,8 @@ stages:
     requires: [propose]
     produces: [design]
     reworkTo: [propose, design]
+    exit:
+      approvals: [planning-solid]
   - id: apply
     skill: xforge-apply
     authority: implementation-write
@@ -95,3 +113,8 @@ terminal:
     requires: [verify]
     syncSpecs: true
     evidencePolicy: current-revision
+    approvals: [closing-solid]
+    auditPolicy:
+      requiredEventTypes: [gate.after, stage.entered, approval.decided]
+      runtimeCoverage: optional
+      remoteDelivery: optional

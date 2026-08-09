@@ -1,4 +1,4 @@
-import { access, realpath, stat } from 'node:fs/promises';
+import { access, readFile, realpath, stat } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import fg from 'fast-glob';
@@ -10,6 +10,7 @@ import type {
   ProjectContext,
   WorkPackage,
   WorkPackageDelivery,
+  WorkPackageDispatchReceipt,
   WorkPackagePlan,
   WorkPackagePlanState,
   WorkPackageState,
@@ -19,6 +20,8 @@ import { XForgeError, diagnostic } from './errors.js';
 import { normalizeRelative, pathsOverlap, safeResolve } from './path-safety.js';
 import { validateSchema } from './validator.js';
 import { loadYaml } from './yaml.js';
+import { normalizeRule } from './governance.js';
+import { sha256, stableStringify } from './hash.js';
 
 const GLOB_MAGIC = /[*?{}[\]]/;
 const UNSUPPORTED_GLOB_MAGIC = /[?{}[\]]/;
@@ -155,9 +158,14 @@ function protectedWritePaths(project: ProjectContext, changeId: string, config: 
     `${changeRoot}/**`,
   ]);
   for (const rule of resources.rules.values()) {
-    if (rule.value.spec.writePolicy !== 'integrator-only') continue;
-    if (rule.value.spec.modules?.length && !rule.value.spec.modules.some((module) => config.scope.modules.includes(module))) continue;
-    for (const declared of rule.value.spec.paths ?? []) paths.add(declared);
+    const normalized = normalizeRule(rule.value);
+    if (normalized.legacyWritePolicy !== 'integrator-only') continue;
+    if (normalized.modules.length && !normalized.modules.some((module) => config.scope.modules.includes(module))) continue;
+    for (const declared of normalized.paths) paths.add(declared);
+  }
+  for (const policy of resources.policies.values()) {
+    if (policy.value.spec.capability !== 'fs.write' || policy.value.spec.effect === 'allow') continue;
+    for (const declared of policy.value.spec.match.paths ?? []) paths.add(declared);
   }
   return [...paths].sort();
 }
@@ -228,11 +236,32 @@ function latestDelivery(deliveries: WorkPackageDelivery[] | undefined): WorkPack
 
 async function validateSuccessfulDelivery(
   project: ProjectContext,
+  changeId: string,
   workPackage: WorkPackage,
   delivery: WorkPackageDelivery,
   sourcePath: string,
 ): Promise<Diagnostic[]> {
   const diagnostics: Diagnostic[] = [];
+  if (project.manifest.apiVersion === 'xforge.dev/v1alpha2') {
+    if (!delivery.state_revision || !delivery.policy_snapshot_digest || !delivery.audit_correlation_id) {
+      diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_DISPATCH_BINDING_REQUIRED', 'Protocol 2 delivery requires state_revision, policy_snapshot_digest, and audit_correlation_id.', sourcePath));
+    } else {
+      const dispatchPath = `${project.changesPath}/${changeId}/evidence/agents/${workPackage.id}/dispatch/${delivery.execution_id}.json`;
+      try {
+        const dispatch = JSON.parse(await readFile(await safeResolve(project.root, dispatchPath), 'utf8')) as WorkPackageDispatchReceipt;
+        const schemaDiagnostics = await validateSchema('work-package-dispatch', dispatch, dispatchPath);
+        diagnostics.push(...schemaDiagnostics);
+        const { digest, ...unsigned } = dispatch;
+        if (digest !== sha256(stableStringify(unsigned))) diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_DISPATCH_DIGEST_INVALID', 'Work package dispatch receipt digest is invalid.', dispatchPath));
+        if (dispatch.change !== changeId || dispatch.packageId !== workPackage.id || dispatch.executionId !== delivery.execution_id ||
+          dispatch.stateRevision !== delivery.state_revision || dispatch.policySnapshotDigest !== delivery.policy_snapshot_digest || dispatch.auditCorrelationId !== delivery.audit_correlation_id) {
+          diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_DISPATCH_MISMATCH', 'Delivery does not match its dispatch receipt.', sourcePath));
+        }
+      } catch (error) {
+        diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_DISPATCH_MISSING', `Dispatch receipt is missing or invalid: ${(error as Error).message}`, dispatchPath));
+      }
+    }
+  }
   if (!delivery.head_commit) {
     diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_HEAD_REQUIRED', 'A succeeded delivery requires head_commit.', sourcePath));
     return diagnostics;
@@ -419,7 +448,7 @@ export async function resolveWorkPackages(
     latestByPackage.set(workPackage.id, latest);
     if (!latest || latest.status !== 'succeeded') continue;
     const deliveryPath = `${project.changesPath}/${changeId}/evidence/agents/${workPackage.id}/${latest.execution_id}.yaml`;
-    const deliveryDiagnostics = await validateSuccessfulDelivery(project, workPackage, latest, deliveryPath);
+    const deliveryDiagnostics = await validateSuccessfulDelivery(project, changeId, workPackage, latest, deliveryPath);
     diagnostics.push(...deliveryDiagnostics);
     if (deliveryDiagnostics.some((item) => item.severity === 'error')) invalidDeliveries.add(workPackage.id);
   }

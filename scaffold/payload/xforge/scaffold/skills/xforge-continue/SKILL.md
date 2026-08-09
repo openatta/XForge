@@ -4,20 +4,21 @@ description: 从当前机器状态恢复 Change，并执行与用户授权一致
 license: MIT
 metadata:
   author: xforge（基于 OpenSpec 工作流适配）
-  version: "2.0"
+  version: "3.0"
   source: OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab
 ---
 
 # 不变量
 
 - 先运行 `xforge state` 并解析唯一 Change，再运行 `xforge state --change <id>`；不硬编码 Quick/Solid/Major 顺序。
-- 只选择 actor、authority 和用户授权匹配的 ready Action，并遵守 Action 推荐的 Stage Skill。
+- 只选择 CLI typed `nextActions` 中 actor、authority 和用户授权匹配的 `status=ready` Action，并执行其 command；不得从 Markdown 或熟悉的 Flow 猜下一步。
 - 每个 Action 完成后刷新 State，不依赖旧会话或模型记忆推进。
 
 # 权限
 
 - 权限来自被选择的 ready Action 与对应 Skill；Continue 本身不扩大写权限。
 - external/CLI/用户决定 Action 不得由 Agent 冒领；Archive 永远需要明确授权。
+- Approval Action 只能请求或导入人类/外部 provider receipt，Agent 永远不能自行批准。
 
 # 执行
 

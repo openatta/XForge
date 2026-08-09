@@ -1,0 +1,16 @@
+apiVersion: xforge.dev/v1alpha2
+kind: PermissionPolicy
+metadata:
+  name: protected-files
+  version: 1
+spec:
+  capability: fs.write
+  effect: deny
+  match:
+    paths:
+      - xforge/constitution.md
+      - xforge/specs/**
+      - xforge/manifest.yaml
+      - xforge/lock.yaml
+  exceptActors: [integrator]
+  reason: 共享治理文件只允许 Integrator 或显式的 XForge 事务写入。

@@ -21,11 +21,15 @@ export interface FileChange {
 export interface NextAction {
   action: string;
   reason: string;
+  type?: 'artifact' | 'transition' | 'approval' | 'gate' | 'archive' | 'governance' | 'maintenance';
+  id?: string;
+  status?: 'ready' | 'blocked' | 'pending';
+  blockedBy?: string[];
   command?: string[];
 }
 
 export interface Envelope<T = unknown> {
-  protocolVersion: '1';
+  protocolVersion: '2';
   ok: boolean;
   command: string;
   root: string | null;
@@ -63,7 +67,7 @@ export interface NpmCliSource {
   source: 'npm';
   package: string;
   version: string;
-  protocol: '1';
+  protocol: '1' | '2';
 }
 
 export interface GitCliSource {
@@ -71,11 +75,11 @@ export interface GitCliSource {
   repository: string;
   commit: string;
   path: 'xforge';
-  protocol: '1';
+  protocol: '1' | '2';
 }
 
 export interface Manifest {
-  apiVersion: 'xforge.dev/v1alpha1';
+  apiVersion: 'xforge.dev/v1alpha1' | 'xforge.dev/v1alpha2';
   kind: 'Project';
   metadata: Metadata;
   project: {
@@ -89,6 +93,7 @@ export interface Manifest {
     skills: string[];
     agents: string[];
     rules: string[];
+    policies?: string[];
     hooks: string[];
     gates: string[];
   };
@@ -100,6 +105,25 @@ export interface Manifest {
     conflictPolicy: 'fail';
     prune: 'managed-only';
     commitGeneratedFiles: boolean;
+  };
+  approvals?: {
+    providers: Array<{
+      id: string;
+      type: 'hmac-sha256';
+      secretEnv: string;
+      roles: string[];
+    }>;
+  };
+  audit?: {
+    redaction: 'strict' | 'balanced';
+    localRetentionDays: number;
+    remote?: {
+      endpointEnv: string;
+      tokenEnv?: string;
+      hmacSecretEnv?: string;
+      timeoutSeconds: number;
+      requiredFor: Array<'quick' | 'solid' | 'major'>;
+    };
   };
 }
 
@@ -148,11 +172,30 @@ export interface FlowStage {
   revises?: string[];
   gates?: string[];
   reworkTo?: string[];
-  exit?: Record<string, string>;
+  exit?: {
+    conditions?: Record<string, string>;
+    gates?: string[];
+    approvals?: string[];
+    auditEvents?: string[];
+  };
   execution?: {
     planning: 'just-in-time';
     workPackages: 'internal' | 'adaptive' | 'required';
   };
+}
+
+export interface ApprovalPolicy {
+  id: string;
+  minApprovers: number;
+  roles: string[];
+  separationOfDuties: boolean;
+  providers: string[];
+}
+
+export interface FlowAuditPolicy {
+  requiredEventTypes: string[];
+  runtimeCoverage: 'optional' | 'required';
+  remoteDelivery: 'optional' | 'required';
 }
 
 export interface StageFlow {
@@ -173,6 +216,10 @@ export interface StageFlow {
     onUncertain: 'escalate' | 'request-decision';
   };
   artifacts: StageFlowArtifact[];
+  governance?: {
+    approvalPolicies: ApprovalPolicy[];
+    audit: FlowAuditPolicy;
+  };
   stages: FlowStage[];
   terminal: {
     archive: {
@@ -181,6 +228,8 @@ export interface StageFlow {
       requires: string[];
       syncSpecs: boolean;
       evidencePolicy: 'current-revision';
+      approvals?: string[];
+      auditPolicy?: FlowAuditPolicy;
     };
   };
 }
@@ -226,6 +275,24 @@ export interface WorkPackageDelivery {
   changed_paths: string[];
   validation: Array<{ command: string; exit_code: number | null }>;
   issues: string[];
+  state_revision?: string;
+  policy_snapshot_digest?: string;
+  audit_correlation_id?: string;
+}
+
+export interface WorkPackageDispatchReceipt {
+  apiVersion: 'xforge.dev/v1alpha2';
+  kind: 'WorkPackageDispatchReceipt';
+  change: string;
+  packageId: string;
+  executionId: string;
+  stateRevision: string;
+  policySnapshotDigest: string;
+  gitBase: string;
+  gitHead: string;
+  auditCorrelationId: string;
+  issuedAt: string;
+  digest: string;
 }
 
 export interface WorkPackageState extends WorkPackage {
@@ -259,6 +326,7 @@ export interface ChangeState {
   apply: { ready: boolean; requires: string[]; tracks: string | null };
   archive: { ready: boolean; requires: string[]; mandatoryGates: string[]; syncSpecs: boolean };
   workPackages: WorkPackagePlanState | null;
+  governance?: GovernanceState;
 }
 
 export interface AgentResource {
@@ -280,13 +348,44 @@ export interface RuleResource {
   kind: 'Rule';
   metadata: Metadata;
   spec: {
-    level: 'mandatory' | 'advisory' | 'scoped';
+    level?: 'mandatory' | 'advisory' | 'scoped';
+    severity?: 'must' | 'should';
     instruction: string;
     modules?: string[];
     paths?: string[];
     gate?: string;
     writePolicy?: 'integrator-only';
     constitutionCompatibility?: 'compatible' | 'conflict';
+    scope?: {
+      modules?: string[];
+      paths?: string[];
+      stages?: string[];
+    };
+    enforcement?: {
+      gateRefs: string[];
+      policyRefs: string[];
+      approvalRefs?: string[];
+    };
+  };
+}
+
+export interface PermissionPolicyResource {
+  apiVersion: 'xforge.dev/v1alpha2';
+  kind: 'PermissionPolicy';
+  metadata: Metadata;
+  spec: {
+    capability: 'fs.read' | 'fs.write' | 'shell' | 'network' | 'mcp' | 'subagent' | 'external.write';
+    effect: 'deny' | 'ask' | 'allow';
+    match: {
+      paths?: string[];
+      commands?: string[];
+      tools?: string[];
+      hosts?: string[];
+      mcpServers?: string[];
+      stages?: string[];
+    };
+    exceptActors?: string[];
+    reason: string;
   };
 }
 
@@ -294,7 +393,20 @@ export interface HookResource {
   apiVersion: string;
   kind: 'Hook';
   metadata: Metadata;
-  spec: Record<string, unknown> & { enabled: false };
+  spec: {
+    enabled: boolean;
+    plane?: 'runtime' | 'workflow';
+    event: string;
+    action?: { scriptRef?: string; builtin?: 'audit' | 'policy' };
+    command?: string[];
+    shell?: boolean;
+    timeoutSeconds: number;
+    workingDirectory?: string;
+    permissions?: Array<'read' | 'write' | 'network'>;
+    failurePolicy: 'deny' | 'ask' | 'stop' | 'spool' | 'warn';
+    network?: boolean;
+    matcher?: string;
+  };
 }
 
 export interface GateResource {
@@ -404,7 +516,7 @@ export interface TargetInstallationState {
 
 export interface OwnershipStateV2 {
   version: 2;
-  protocolVersion: '1';
+  protocolVersion: '1' | '2';
   generatedAt: string;
   manifestSelectionDigest: string;
   manifestTargets: TargetId[];
@@ -423,6 +535,19 @@ export interface AdapterCapability {
   agents: CapabilityLevel;
   rules: CapabilityLevel;
   hooks: CapabilityLevel;
+  guidance: CapabilityLevel;
+  permissionPolicy: CapabilityLevel;
+  runtimeHook: {
+    events: string[];
+    blocking: CapabilityLevel;
+    managed: CapabilityLevel;
+    local: CapabilityLevel;
+    cloud: CapabilityLevel;
+    trust: 'platform-review' | 'managed' | 'none';
+    bypasses: string[];
+  };
+  auditDelivery: CapabilityLevel;
+  subagent: CapabilityLevel;
 }
 
 export interface DesiredFile {
@@ -436,9 +561,19 @@ export interface DesiredFile {
 }
 
 export interface GateEvidence {
-  protocolVersion: '1';
+  protocolVersion: '2';
+  schemaVersion: '1';
   gate: string;
   change: string;
+  flow: string;
+  stage: string;
+  stateRevision: string;
+  contentRevision: string;
+  policySnapshotDigest: string;
+  gitBase: string;
+  gitHead: string;
+  inputDigest: string;
+  runner: { name: string; version: string; integrity: string };
   command: string[] | ['builtin:structure'];
   shell: boolean;
   workingDirectory: string;
@@ -452,4 +587,124 @@ export interface GateEvidence {
   stderr: string;
   status: 'passed' | 'failed';
   digest: string;
+}
+
+export interface GovernanceRevision {
+  contentRevision: string;
+  stateRevision: string;
+  policySnapshotDigest: string;
+  gitBase: string;
+  gitHead: string;
+}
+
+export interface ApprovalReceipt {
+  apiVersion: 'xforge.dev/v1alpha2';
+  kind: 'ApprovalReceipt';
+  receiptId: string;
+  change: string;
+  flow: string;
+  stage: string;
+  transition: string;
+  policyId: string;
+  stateRevision: string;
+  contentRevision: string;
+  policySnapshotDigest: string;
+  gitBase: string;
+  gitHead: string;
+  governingDigest: string;
+  decision: 'approve' | 'reject';
+  approver: { id: string; provider: string; role: string; type: 'human' | 'external-system' };
+  decidedAt: string;
+  reason: string;
+  expiresAt?: string;
+  externalRef?: string;
+  signature?: { algorithm: 'hmac-sha256'; value: string };
+  digest: string;
+}
+
+export interface TransitionReceipt {
+  apiVersion: 'xforge.dev/v1alpha2';
+  kind: 'TransitionReceipt';
+  receiptId: string;
+  sequence: number;
+  change: string;
+  flow: string;
+  from: string;
+  to: string;
+  contentRevision: string;
+  stateRevisionBefore: string;
+  policySnapshotDigest: string;
+  gitHead: string;
+  previousReceiptDigest: string | null;
+  transitionedAt: string;
+  actor: { id: string; provider: string; type: 'human' | 'agent' | 'system' };
+  approvals: string[];
+  gates: string[];
+  auditHead: string | null;
+  digest: string;
+}
+
+export interface RuleCoverage {
+  id: string;
+  severity: 'must' | 'should';
+  instruction: string;
+  coverage: Array<'instructed' | 'guarded' | 'verified' | 'approved' | 'uncovered'>;
+  gateRefs: string[];
+  policyRefs: string[];
+  approvalRefs: string[];
+}
+
+export interface GovernanceState {
+  currentStage: string;
+  transitionHead: string | null;
+  transitions: TransitionReceipt[];
+  revision: GovernanceRevision;
+  pendingApprovals: Array<{ policyId: string; transition: string; missing: number; roles: string[] }>;
+  approvals: ApprovalReceipt[];
+  rules: RuleCoverage[];
+  policies: Array<{ id: string; capability: string; effect: string; applicable: boolean }>;
+  hooks: Array<{ id: string; plane: string; event: string; selected: boolean; enabled: boolean }>;
+  audit: {
+    chainValid: boolean;
+    chainHead: string | null;
+    eventCount: number;
+    remotePending: number;
+    coverageGaps: string[];
+  };
+  readyTransitions: Array<{ to: string; ready: boolean; blockedBy: string[] }>;
+}
+
+export interface AuditEvent {
+  apiVersion: 'xforge.dev/v1alpha2';
+  kind: 'AuditEvent';
+  eventId: string;
+  eventType: string;
+  timestamp: string;
+  plane: 'workflow' | 'runtime';
+  platform: string;
+  surface: 'local' | 'cloud' | 'ci' | 'unknown';
+  sessionId: string;
+  turnId: string;
+  toolCallId: string;
+  correlationId: string;
+  actor: { id: string; provider: string; role: string; type: 'human' | 'agent' | 'system' | 'external-system' };
+  change: string | null;
+  flow: string | null;
+  stage: string | null;
+  workPackage: string | null;
+  stateRevision: string;
+  gitBase: string;
+  gitHead: string;
+  refs: { rules: string[]; policies: string[]; gates: string[] };
+  decision: string | null;
+  reason: string | null;
+  outcome: 'succeeded' | 'failed' | 'denied' | 'spooled' | 'unknown';
+  durationMs: number | null;
+  inputDigest: string;
+  outputDigest: string;
+  redaction: 'metadata-only' | 'strict' | 'balanced';
+  coverage: { observed: boolean; gaps: string[] };
+  previousHash: string | null;
+  deliveryState: 'not-configured' | 'pending' | 'spooled' | 'delivered';
+  hash: string;
 }

@@ -4,7 +4,7 @@ description: 一致地修订已有 Change 的规划 Artifacts，并让受影响�
 license: MIT
 metadata:
   author: xforge（基于 OpenSpec 工作流适配）
-  version: "2.0"
+  version: "3.0"
   source: OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab
 ---
 
@@ -24,7 +24,7 @@ metadata:
 1. 解析变更原因和最早受影响 Artifact，计算需要同步的下游规划材料。
 2. 对现有具体路径做最小一致性修订；保留机器要求的 Requirement/Scenario 标题和稳定 ID。
 3. 材料性扩大 Scope、兼容性或权限时先请求用户决定。
-4. 刷新 State，运行 `xforge check --change <id>`，确认旧下游 revision 已失效并列出必须重跑的 Stages。
+4. 刷新 State，运行 `xforge check --change <id>`，确认旧 Gate/Approval 下游 revision 已失效并列出必须重跑的 Stages；Stage 变化只通过 CLI Transition。
 
 # 证据
 

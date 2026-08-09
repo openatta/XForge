@@ -122,6 +122,19 @@
           }
         },
         "artifacts": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/stageArtifact" } },
+        "governance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["approvalPolicies", "audit"],
+          "properties": {
+            "approvalPolicies": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/approvalPolicy" }
+            },
+            "audit": { "$ref": "#/$defs/auditPolicy" }
+          }
+        },
         "stages": {
           "type": "array",
           "minItems": 3,
@@ -139,9 +152,24 @@
               "gates": { "$ref": "#/$defs/idList" },
               "reworkTo": { "$ref": "#/$defs/idList" },
               "exit": {
-                "type": "object",
-                "minProperties": 1,
-                "additionalProperties": { "type": "string", "minLength": 1 }
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "minProperties": 1,
+                    "additionalProperties": { "type": "string", "minLength": 1 }
+                  },
+                  {
+                    "type": "object",
+                    "minProperties": 1,
+                    "additionalProperties": false,
+                    "properties": {
+                      "conditions": { "type": "object", "minProperties": 1, "additionalProperties": { "type": "string", "minLength": 1 } },
+                      "gates": { "$ref": "#/$defs/idList" },
+                      "approvals": { "$ref": "#/$defs/idList" },
+                      "auditEvents": { "$ref": "#/$defs/stringList" }
+                    }
+                  }
+                ]
               },
               "execution": {
                 "type": "object",
@@ -169,7 +197,9 @@
                 "authority": { "const": "archive-write" },
                 "requires": { "$ref": "#/$defs/idList" },
                 "syncSpecs": { "type": "boolean" },
-                "evidencePolicy": { "const": "current-revision" }
+                "evidencePolicy": { "const": "current-revision" },
+                "approvals": { "$ref": "#/$defs/idList" },
+                "auditPolicy": { "$ref": "#/$defs/auditPolicy" }
               }
             }
           }
@@ -181,6 +211,33 @@
       "minItems": 1,
       "uniqueItems": true,
       "items": { "enum": ["low", "medium", "high"] }
+    },
+    "stringList": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "approvalPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "minApprovers", "roles", "separationOfDuties", "providers"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "minApprovers": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "roles": { "$ref": "#/$defs/idList" },
+        "separationOfDuties": { "type": "boolean" },
+        "providers": { "$ref": "#/$defs/idList" }
+      }
+    },
+    "auditPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requiredEventTypes", "runtimeCoverage", "remoteDelivery"],
+      "properties": {
+        "requiredEventTypes": { "$ref": "#/$defs/stringList" },
+        "runtimeCoverage": { "enum": ["optional", "required"] },
+        "remoteDelivery": { "enum": ["optional", "required"] }
+      }
     }
   }
 }

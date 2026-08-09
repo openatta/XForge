@@ -114,6 +114,10 @@ async function buildDesired(
         ...adapter.trace('rule', id, [rule.yamlPath]),
       });
     }
+    for (const file of adapter.renderGovernance({
+      policies: [...resources.policies].map(([id, item]) => ({ id, ...item })),
+      hooks: [...resources.hooks].map(([id, item]) => ({ id, ...item })),
+    })) addDesired(desired, file);
   }
   return desired;
 }

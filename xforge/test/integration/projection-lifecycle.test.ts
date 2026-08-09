@@ -17,14 +17,14 @@ describe('projection lifecycle v2', () => {
     expect((await runCli(root, ['install', '--target', 'codex'])).code).toBe(0);
     const state = await ownership(root);
     expect(state.version).toBe(2);
-    expect(state.protocolVersion).toBe('1');
-    expect(state.targets.codex.adapterVersion).toBe('1');
+    expect(state.protocolVersion).toBe('2');
+    expect(state.targets.codex.adapterVersion).toBe('2');
     const record = state.targets.codex.files['.agents/skills/xforge-explore/SKILL.md'];
     expect(record).toMatchObject({
       target: 'codex',
       resource: { kind: 'skill', id: 'xforge-explore' },
-      renderVersion: 'codex:skill:1',
-      cliVersion: '0.3.0',
+      renderVersion: 'codex:skill:2',
+      cliVersion: '0.4.0',
     });
     expect(record.sources[0]).toMatchObject({ path: 'xforge/scaffold/skills/xforge-explore/SKILL.md' });
     expect(record.sources[0].mtimeMs).toEqual(expect.any(Number));
@@ -133,7 +133,7 @@ describe('projection lifecycle v2', () => {
     const result = await runCli(root, ['update', '--target', 'codex']);
     expect(result.code).toBe(0);
     expect((await ownership(root)).version).toBe(2);
-    expect((await yamlFile<any>(root, 'xforge/lock.yaml')).xforge.version).toBe('0.3.0');
+    expect((await yamlFile<any>(root, 'xforge/lock.yaml')).xforge.version).toBe('0.4.0');
   });
 
   it('uses update to prune a Target removed from the Manifest', async () => {

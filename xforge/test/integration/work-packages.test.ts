@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { stringify } from 'yaml';
 import { describe, expect, it } from 'vitest';
-import { createCompleteSolidChange, fixture, runCli, updateYaml, write } from '../helpers.js';
+import { advanceSolidToApply, approvalTestEnv, createCompleteSolidChange, fixture, runCli, updateYaml, write } from '../helpers.js';
 
 async function command(root: string, args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
@@ -163,13 +163,17 @@ describe('work-package protocol', () => {
     const installed = await runCli(root, ['install', '--target', 'codex']);
     expect(installed.code, JSON.stringify(installed.json.diagnostics, null, 2)).toBe(0);
     const base = await initializeGit(root);
+    await advanceSolidToApply(root);
+    const dispatch = await runCli(root, ['work-package', 'dispatch', '--change', 'add-feature', '--package', 'T001'], approvalTestEnv);
+    expect(dispatch.code).toBe(0);
+    const binding = dispatch.json.data.receipt;
 
     await write(root, 'src/order/refund.ts', 'export const refund = true;\n');
     await git(root, ['add', 'src/order/refund.ts']);
     await git(root, ['commit', '-qm', 'worker T001']);
     const head = await git(root, ['rev-parse', 'HEAD']);
-    await write(root, 'xforge/changes/add-feature/evidence/agents/T001/attempt-1.yaml', stringify({
-      execution_id: 'attempt-1',
+    await write(root, `xforge/changes/add-feature/evidence/agents/T001/${binding.executionId}.yaml`, stringify({
+      execution_id: binding.executionId,
       recorded_at: '2026-08-08T00:00:00.000Z',
       status: 'succeeded',
       package_id: 'T001',
@@ -178,9 +182,12 @@ describe('work-package protocol', () => {
       changed_paths: ['src/order/refund.ts'],
       validation: [{ command: verify, exit_code: 0 }],
       issues: [],
+      state_revision: binding.stateRevision,
+      policy_snapshot_digest: binding.policySnapshotDigest,
+      audit_correlation_id: binding.auditCorrelationId,
     }));
 
-    const result = await runCli(root, ['check', '--change', 'add-feature']);
+    const result = await runCli(root, ['check', '--change', 'add-feature'], approvalTestEnv);
     expect(result.code).toBe(0);
     expect(result.json.data.workPackages).toEqual([
       expect.objectContaining({ packageId: 'T001', command: verify, status: 'passed' }),
@@ -199,13 +206,17 @@ describe('work-package protocol', () => {
       workPackage('T001', { write_paths: ['src/order/**'], verify: [verify] }),
     ]));
     const base = await initializeGit(root);
+    await advanceSolidToApply(root);
+    const dispatch = await runCli(root, ['work-package', 'dispatch', '--change', 'add-feature', '--package', 'T001'], approvalTestEnv);
+    expect(dispatch.code).toBe(0);
+    const binding = dispatch.json.data.receipt;
 
     await write(root, 'src/payment/escaped.ts', 'export const escaped = true;\n');
     await git(root, ['add', 'src/payment/escaped.ts']);
     await git(root, ['commit', '-qm', 'escaped worker']);
     const head = await git(root, ['rev-parse', 'HEAD']);
-    await write(root, 'xforge/changes/add-feature/evidence/agents/T001/attempt-1.yaml', stringify({
-      execution_id: 'attempt-1',
+    await write(root, `xforge/changes/add-feature/evidence/agents/T001/${binding.executionId}.yaml`, stringify({
+      execution_id: binding.executionId,
       recorded_at: '2026-08-08T00:00:00.000Z',
       status: 'succeeded',
       package_id: 'T001',
@@ -214,9 +225,12 @@ describe('work-package protocol', () => {
       changed_paths: ['src/payment/escaped.ts'],
       validation: [{ command: verify, exit_code: 0 }],
       issues: [],
+      state_revision: binding.stateRevision,
+      policy_snapshot_digest: binding.policySnapshotDigest,
+      audit_correlation_id: binding.auditCorrelationId,
     }));
 
-    const result = await runCli(root, ['state', '--change', 'add-feature']);
+    const result = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
     expect(result.code).toBe(1);
     expect(result.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_WORK_PACKAGE_WRITE_ESCAPE');
     expect(result.json.data.change.workPackages.packages[0].status).toBe('failed');
@@ -235,13 +249,17 @@ describe('work-package protocol', () => {
     const installed = await runCli(root, ['install', '--target', 'codex']);
     expect(installed.code, JSON.stringify(installed.json.diagnostics, null, 2)).toBe(0);
     const base = await initializeGit(root);
+    await advanceSolidToApply(root);
+    const dispatch = await runCli(root, ['work-package', 'dispatch', '--change', 'add-feature', '--package', 'T001'], approvalTestEnv);
+    expect(dispatch.code).toBe(0);
+    const binding = dispatch.json.data.receipt;
 
     await write(root, 'src/order/refund.ts', 'export const refund = false;\n');
     await git(root, ['add', 'src/order/refund.ts']);
     await git(root, ['commit', '-qm', 'worker claimed pass']);
     const head = await git(root, ['rev-parse', 'HEAD']);
-    await write(root, 'xforge/changes/add-feature/evidence/agents/T001/attempt-1.yaml', stringify({
-      execution_id: 'attempt-1',
+    await write(root, `xforge/changes/add-feature/evidence/agents/T001/${binding.executionId}.yaml`, stringify({
+      execution_id: binding.executionId,
       recorded_at: '2026-08-08T00:00:00.000Z',
       status: 'succeeded',
       package_id: 'T001',
@@ -250,9 +268,12 @@ describe('work-package protocol', () => {
       changed_paths: ['src/order/refund.ts'],
       validation: [{ command: verify, exit_code: 0 }],
       issues: [],
+      state_revision: binding.stateRevision,
+      policy_snapshot_digest: binding.policySnapshotDigest,
+      audit_correlation_id: binding.auditCorrelationId,
     }));
 
-    const result = await runCli(root, ['check', '--change', 'add-feature']);
+    const result = await runCli(root, ['check', '--change', 'add-feature'], approvalTestEnv);
     expect(result.code).toBe(1);
     expect(result.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_WORK_PACKAGE_VERIFY_FAILED');
     expect(result.json.data.workPackages[0].status).toBe('failed');

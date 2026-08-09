@@ -4,7 +4,7 @@ description: 把 xforge state 的机器状态解释为 Change 或 Requirement �
 license: MIT
 metadata:
   author: xforge（基于 OpenSpec 工作流适配）
-  version: "2.0"
+  version: "3.0"
   source: OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab
 ---
 
@@ -21,7 +21,7 @@ metadata:
 # 执行
 
 1. 解析 Change ID；多 Change 或 Requirement 归属不唯一时请求用户选择。
-2. 固定输出 Flow、当前 Stage、satisfied/pending/stale 状态、blockers/diagnostics、工作包/deliveries、Evidence freshness、Verify/Archive readiness。
+2. 固定输出 Flow、当前 Stage/state revision、ready/blocked Transitions、pending Approvals、Rule 的 instructed/guarded/verified/approved/uncovered coverage、Policy/Hook active coverage、Audit chain/remote pending/gaps、工作包/deliveries、Evidence freshness、Verify/Archive readiness。
 3. 给出下一合法 Action、对应 Skill 和为何尚未 ready。
 4. Requirement ID 确定性索引不可用时明确标记为启发式，不从 Markdown 搜索结果过度推断状态。
 

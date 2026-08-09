@@ -4,7 +4,7 @@
   "type": "object", "additionalProperties": false,
   "required": ["apiVersion", "kind", "metadata", "spec"],
   "properties": {
-    "apiVersion": { "const": "xforge.dev/v1alpha1" }, "kind": { "const": "Gate" },
+    "apiVersion": { "enum": ["xforge.dev/v1alpha1", "xforge.dev/v1alpha2"] }, "kind": { "const": "Gate" },
     "metadata": { "$ref": "#/$defs/metadata" },
     "spec": {
       "type": "object", "additionalProperties": false,

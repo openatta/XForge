@@ -51,7 +51,10 @@
     "issues": {
       "type": "array",
       "items": { "type": "string", "minLength": 1 }
-    }
+    },
+    "state_revision": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "policy_snapshot_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "audit_correlation_id": { "type": "string", "minLength": 1 }
   },
   "$defs": {
     "taskId": {

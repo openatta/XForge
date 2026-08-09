@@ -20,6 +20,8 @@ describe('Flow artifact graph', () => {
         artifacts: flow.artifacts.map((artifact) => artifact.id),
         gates: flowArchiveOperation(flow).mandatoryGates,
         archiveHandler: flow.terminal.archive.handler,
+        approvals: flow.governance?.approvalPolicies.map((policy) => [policy.id, policy.minApprovers, policy.separationOfDuties, policy.providers]) ?? [],
+        audit: flow.governance?.audit,
       }];
     }));
     const golden = JSON.parse(await readFile(path.join(xforgeRoot, 'test', 'fixtures', 'golden', 'flows.json'), 'utf8'));
@@ -43,6 +45,30 @@ describe('Flow artifact graph', () => {
     await write(root, `${base}/assurance.md`, '## Completeness\nPassed\n');
     await write(root, `${base}/evidence/verification-receipt.yaml`, 'status: passed\n');
     expect((await resolveChangeState(project, 'tiny-fix')).state.archive.ready).toBe(true);
+  });
+
+  it('returns Change schema diagnostics before resolving malformed scope data', async () => {
+    const root = await fixture();
+    const base = 'xforge/changes/malformed';
+    await write(root, `${base}/change.yaml`, [
+      'apiVersion: xforge.dev/v1alpha2',
+      'kind: Change',
+      'change:',
+      '  flow: solid',
+      '  modules: [root]',
+      '  writePaths: [src/**]',
+      '',
+    ].join('\n'));
+    const project = await loadProject(root);
+
+    await expect(resolveChangeState(project, 'malformed')).rejects.toMatchObject({
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({
+          code: 'XFORGE_SCHEMA_INVALID',
+          path: `${base}/change.yaml`,
+        }),
+      ]),
+    });
   });
 
   it('requires Major clarification, design, and check before Apply', async () => {

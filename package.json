@@ -1,7 +1,7 @@
 {
   "name": "xforge-source",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "scripts": {
     "build": "npm --prefix xforge run build",
     "check:scaffold": "npm --prefix xforge run check:scaffold",

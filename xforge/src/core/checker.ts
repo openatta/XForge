@@ -7,6 +7,8 @@ import { normalizeRelative } from './path-safety.js';
 import { loadSelectedResources, type SelectedResources } from './resource-loader.js';
 import { resolveChangeState } from './flow-resolver.js';
 import { resolveWorkPackages } from './work-packages.js';
+import { normalizeRule } from './governance.js';
+import { loadTransitionReceipts } from './control-plane.js';
 
 export interface StructureResult {
   diagnostics: Diagnostic[];
@@ -81,11 +83,18 @@ export async function checkStructure(project: ProjectContext, changeId?: string)
     }
   }
   for (const [id, rule] of resources.rules) {
-    for (const module of rule.value.spec.modules ?? []) {
+    const normalized = normalizeRule(rule.value);
+    for (const module of normalized.modules) {
       if (!moduleIds.has(module)) diagnostics.push(diagnostic('XFORGE_RULE_MODULE_UNKNOWN', `Rule ${id} references unknown module ${module}.`, rule.yamlPath));
     }
-    for (const scopedPath of rule.value.spec.paths ?? []) {
+    for (const scopedPath of normalized.paths) {
       try { normalizeRelative(scopedPath, `Rule ${id} path`); }
+      catch (error) { diagnostics.push(...((error as { diagnostics?: Diagnostic[] }).diagnostics ?? [])); }
+    }
+  }
+  for (const [id, policy] of resources.policies) {
+    for (const scopedPath of policy.value.spec.match.paths ?? []) {
+      try { normalizeRelative(scopedPath, `PermissionPolicy ${id} path`); }
       catch (error) { diagnostics.push(...((error as { diagnostics?: Diagnostic[] }).diagnostics ?? [])); }
     }
   }
@@ -131,7 +140,14 @@ export async function checkStructure(project: ProjectContext, changeId?: string)
       try { normalizeRelative(scopedPath, `Change ${changeId} scope path`); }
       catch (error) { diagnostics.push(...((error as { diagnostics?: Diagnostic[] }).diagnostics ?? [])); }
     }
-    const workPackages = await resolveWorkPackages(project, changeId, resolved.config, resources, { requireDeliveries: true });
+    let requireDeliveries = false;
+    if (isStageFlow(resolved.flow) && resolved.flow.governance) {
+      const transitions = await loadTransitionReceipts(project, changeId, resolved.flow);
+      diagnostics.push(...transitions.diagnostics);
+      const currentStage = transitions.receipts.at(-1)?.to ?? resolved.flow.stages[0]?.id;
+      requireDeliveries = currentStage === 'verify' || currentStage === 'ready-to-archive';
+    }
+    const workPackages = await resolveWorkPackages(project, changeId, resolved.config, resources, { requireDeliveries });
     diagnostics.push(...workPackages.diagnostics);
     change.workPackages = workPackages.state;
   }

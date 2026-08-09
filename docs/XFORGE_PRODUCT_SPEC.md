@@ -12,6 +12,11 @@
 
 本文档是 XForge 第一阶段开发的事实来源。除非产品负责人明确修改，开发 AI Agent 不得自行改变本文中的仓库边界、目录边界、命令模型和安全约束。
 
+> 本文保留最初的产品/Protocol 1 基线和历史约束。Rules、PermissionPolicy、双平面
+> Hooks、Transition、Approval、Audit 与当前 Protocol 2 实现以
+> [governance-control-plane-design.md](governance-control-plane-design.md) 和 ADR 0002
+> 为准；`@xforge/cli 0.4.0` 已完成 P0–P4，Protocol 1 仅保留 Portable-read 迁移。
+
 文中的“必须”“不得”表示强制要求；“应当”表示默认要求，偏离时必须记录原因；“可以”表示可选能力。
 
 ---
@@ -762,6 +767,10 @@ Worker 把结构化交付返回 Main Agent，由 Main Agent 保存到 `<change>/
 
 ### 4.7 Rules
 
+本节是 Protocol-1 当前模型。vNext 将 Rule 限定为 Agent guidance，把 allow/ask/deny
+运行权限迁移到独立 PermissionPolicy，并由 `state/check` 报告
+`instructed/guarded/verified/uncovered` coverage。
+
 Rules 分为：
 
 - `mandatory`：必须满足，适合由 Gate 验证；
@@ -781,6 +790,10 @@ XForge 不提供带业务偏好的默认规则。项目和企业必须自行编�
 
 ### 4.8 Hooks
 
+本节是 Protocol-1 当前模型。vNext 将事件拆为 Agent Runtime Plane 与 XForge
+Workflow Plane：前者由 Adapter 按事件级能力投影，后者由 CLI 跨平台执行；核心
+流程审计不依赖目标平台 Hook。
+
 Hooks 是高风险资源。v1 只定义少量统一事件：
 
 - `session.start`；
@@ -794,6 +807,10 @@ Hooks 是高风险资源。v1 只定义少量统一事件：
 适配器只渲染目标工具原生支持的事件。Hook 必须声明命令、超时、工作目录、权限和失败策略。任何网络访问或敏感写操作都必须显式声明。
 
 ### 4.9 Gates
+
+vNext 继续坚持本节的确定性 Gate 定义，并额外把 LLM/Reviewer 输出标为 Review
+Evidence，把人类决定标为 Approval receipt，把全过程记录标为 Audit。三者不能
+冒充 Machine Gate Evidence。
 
 Gate 是确定性检查，不是提示词。v1 支持两类：
 
@@ -1181,6 +1198,11 @@ v1 只支持以下五种 Adapter，目标路径对齐这些工具当前采用的
 
 表中路径是 Adapter 的 v1 默认值，应通过集成测试锁定。工具版本变化导致路径改变时，通过 XForge CLI 发布和协议兼容策略升级，而不是让项目自由配置任意安装路径。Agents、Rules 和 Hooks 仅在目标工具存在可靠项目级映射时生成；其余情况返回 `degraded` 或 `unsupported`。
 
+Protocol-1 的实现矩阵与 vNext 候选映射分别记录在
+[adapter-matrix.md](adapter-matrix.md)。vNext capability report 将 Guidance、
+PermissionPolicy、Runtime Hook event/blocking/managed/local-cloud、Audit delivery 和
+Sub-agent 分开报告，不再用单一 `Rules/Hooks` 状态概括。
+
 ### 8.2 生成文件所有权
 
 XForge CLI 必须记录每个生成文件的：
@@ -1446,6 +1468,7 @@ XForge 参考以下公开设计，但保持独立产品和文件协议：
 - [OpenSpec: How Commands Work](https://openspec.dev/docs/how-commands-work)：借鉴“项目源资产由 CLI 安装为工具可发现的 Skills/Commands”；XForge 让工作流 Skills 消费统一 `state` 协议，并用 install/sync/update/uninstall 管理项目级投影生命周期。
 - [OpenSpec Supported Tools](https://openspec.dev/docs/reference/supported-tools)：借鉴五种目标工具的项目级安装路径；XForge v1 明确只支持 Claude、Codex、Cursor、OpenCode 和 GitHub Copilot。
 - [Spec Kit Constitution](https://github.com/github/spec-kit/blob/main/templates/commands/constitution.md?plain=1)：借鉴项目原则、治理、版本和一致性影响检查；XForge 将 Constitution 作为项目事实文件并纳入 Flow、Skill 和 Gate 上下文。
+- [XForge Governance Control Plane](governance-control-plane-design.md)：在 OpenSpec、Spec Kit、Kiro、BMAD 与五种目标工具的 Rule/Hook 能力基础上，定义 vNext 的 Rules、PermissionPolicy、双平面 Hooks、Transition、Approval、Gate、Evidence 与 Audit 语义。
 
 以上参考不形成运行时依赖。XForge 不读取 OpenSpec/Spec Kit 项目文件，也不承诺与其命令或 Schema 兼容。
 

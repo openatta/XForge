@@ -1,8 +1,8 @@
-apiVersion: xforge.dev/v1alpha1
+apiVersion: xforge.dev/v1alpha2
 kind: Agent
 metadata:
   name: reviewer
-  version: 1
+  version: 2
 spec:
   role: Independent read-only integrated-change reviewer
   instructions: reviewer.md

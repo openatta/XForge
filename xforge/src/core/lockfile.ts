@@ -47,7 +47,7 @@ export async function resolvedResourceEntries(project: ProjectContext, resources
     entries.push({ id, kind: 'skill', version, digest: contentDigest(await filesUnder(directory)), license });
   }
   for (const [kind, values] of [
-    ['agent', resources.agents], ['rule', resources.rules], ['hook', resources.hooks], ['gate', resources.gates], ['script', resources.scripts],
+    ['agent', resources.agents], ['rule', resources.rules], ['permission-policy', resources.policies], ['hook', resources.hooks], ['gate', resources.gates], ['script', resources.scripts],
   ] as const) {
     for (const [id, item] of values as Map<string, { value: { metadata: { version?: string | number } }; yamlPath: string }>) {
       let resourceFiles: Array<{ relative: string; content: Buffer }>;
@@ -72,7 +72,7 @@ export async function resolvedResourceEntries(project: ProjectContext, resources
 export async function resolvedLock(project: ProjectContext, resources: SelectedResources): Promise<string> {
   const entries = await resolvedResourceEntries(project, resources);
   return dumpYaml({
-    apiVersion: 'xforge.dev/v1alpha1',
+    apiVersion: 'xforge.dev/v1alpha2',
     kind: 'Lock',
     protocol: PROTOCOL_VERSION,
     scaffold: { version: project.manifest.scaffold.version, source: project.manifest.scaffold.source },

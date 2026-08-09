@@ -1,0 +1,14 @@
+apiVersion: xforge.dev/v1alpha2
+kind: Hook
+metadata:
+  name: runtime-audit
+  version: 1
+spec:
+  enabled: false
+  plane: runtime
+  event: agent.tool.after
+  action:
+    builtin: audit
+  failurePolicy: spool
+  timeoutSeconds: 10
+  matcher: "*"

@@ -1,0 +1,10 @@
+{
+  "name": "xforge-live-e2e-task-ledger",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/task-ledger.acceptance.mjs",
+    "test:acceptance": "node --test test/task-ledger.acceptance.mjs"
+  }
+}

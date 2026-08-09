@@ -1,42 +1,171 @@
-# XForge file protocol 1
+# XForge File Protocol 2
 
-Protocol 1 uses UTF-8 YAML/Markdown project assets and a stable JSON command
-envelope. Static JSON Schemas are shipped in `xforge/schemas/`.
+> **Implementation status:** implemented by `@xforge/cli 0.4.0` (`xforge.dev/v1alpha2`). Protocol 1 projects remain readable in Portable mode, but Protocol 2 managed writes require an exact CLI/Lock identity.
 
-## Project discovery and paths
+Protocol 2 separates guidance, enforcement and evidence. Markdown remains the human/Agent planning surface; YAML/JSON resources and CLI receipts are the machine authority.
 
-The CLI walks upward from the working directory until it finds
-`xforge/manifest.yaml`. All declared paths are project-relative. Absolute
-paths, `..`, NUL bytes, generated-target roots, overlapping Specs/Changes
-paths, and symlink escapes are rejected before a write plan is applied.
+## 1. Project roots
 
-Defaults are `xforge/specs` and `xforge/changes`. Flow and Change artifact
-paths are always resolved relative to the selected Change. Resource IDs are
-lowercase kebab-case and therefore cannot encode paths.
+```text
+xforge/
+├── manifest.yaml
+├── lock.yaml
+├── constitution.md
+├── flows/*.yaml
+├── scaffold/
+│   ├── skills/*/SKILL.md
+│   ├── agents/*.{yaml,md}
+│   ├── rules/*.yaml
+│   ├── policies/*.yaml
+│   ├── hooks/*.yaml
+│   └── gates/*.yaml
+├── .audit/events.jsonl          # local, gitignored hash chain
+├── changes/<change>/
+│   ├── change.yaml
+│   ├── approvals/<policy>/*.json
+│   ├── work-packages.yaml
+│   └── evidence/
+│       ├── gates and verification evidence
+│       ├── agents/<package>/
+│       │   ├── dispatch/*.json
+│       │   └── <execution>.yaml
+│       ├── audit/index.json
+│       └── receipts/transitions/*.json
+└── specs/
+```
 
-## CLI identity
+`manifest.yaml` explicitly selects every Skill, Agent, Rule, PermissionPolicy, Hook, Gate and target. Presence under `scaffold/` does not enable a resource.
 
-An npm declaration requires an exact semantic version and package name. A Git
-declaration requires a full 40-character commit and `path: xforge`. The running
-CLI is identified by package version, protocol, and—when Git sourced—the
-build-time `XFORGE_BUILD_COMMIT`. Mismatch is read-only Portable state; every
-write command fails before planning project mutations.
+## 2. Version and compatibility
 
-Git cache builders should preserve the source `.git` metadata or set both
-`XFORGE_BUILD_COMMIT` and `XFORGE_BUILD_REPOSITORY`. The Lockfile records a
-`sha256:` digest of the executable distribution (`dist`, Schemas, package
-metadata, and packaged license); Managed mode verifies it before writes.
+- CLI envelope: `protocolVersion: "2"`.
+- current resources: `apiVersion: xforge.dev/v1alpha2`.
+- CLI declaration and Lock: version `0.4.0`, protocol `"2"`, exact runtime integrity.
+- Protocol 1 Flow/Rule/Agent resources can be read during migration. A Protocol 1 project whose declared CLI identity does not match runs in Portable mode; managed install/check/transition/approval/archive writes are rejected.
+- Existing Protocol 1 Gate Evidence is not promoted to current evidence. Re-running the Gate creates Protocol 2 revision-bound evidence.
 
-## Command envelope
+## 3. Rule and PermissionPolicy
 
-Each command emits exactly one JSON value by default:
+`Rule` is guidance plus coverage links:
+
+```yaml
+apiVersion: xforge.dev/v1alpha2
+kind: Rule
+metadata: { name: public-api-safety, version: 1 }
+spec:
+  severity: must
+  instruction: Public API changes require compatibility evidence.
+  scope:
+    paths: [src/api/**]
+    stages: [design, check, verify]
+  enforcement:
+    gateRefs: [unit-tests]
+    policyRefs: []
+    approvalRefs: [implementation-major]
+```
+
+Coverage is reported independently as `instructed`, `guarded`, `verified`, `approved`, or `uncovered`. A `must` Rule without Gate or Approval coverage is explicitly `uncovered`.
+
+`PermissionPolicy` controls runtime capabilities and is not a Guidance Rule:
+
+```yaml
+apiVersion: xforge.dev/v1alpha2
+kind: PermissionPolicy
+metadata: { name: protected-files, version: 1 }
+spec:
+  capability: fs.write
+  effect: deny
+  match:
+    paths: [xforge/manifest.yaml, xforge/specs/**]
+  exceptActors: [integrator]
+  reason: Shared governance files have one authorized writer.
+```
+
+Effects are `deny`, `ask`, and `allow`; deny wins in the XForge dispatcher. Enterprise/managed platform policy remains an upstream layer and cannot be weakened by a project projection.
+
+## 4. Hook
+
+Hook resources declare the plane, normalized event, action, timeout and failure policy:
+
+```yaml
+apiVersion: xforge.dev/v1alpha2
+kind: Hook
+metadata: { name: runtime-audit, version: 1 }
+spec:
+  enabled: false
+  plane: runtime
+  event: agent.tool.after
+  action: { builtin: audit }
+  timeoutSeconds: 10
+  failurePolicy: spool
+  matcher: "*"
+```
+
+Runtime Hooks observe or guard platform events. Workflow Hooks are CLI-owned lifecycle actions. A Hook cannot create Gate success, Approval or a Stage transition. Project Hook selection, generated installation, platform trust and runtime activation are separate states.
+
+## 5. Flow and transition state
+
+A governed Stage Flow defines:
+
+- `governance.approvalPolicies`;
+- workflow audit policy;
+- structured Stage exits: conditions, Gates, Approvals and required audit events;
+- terminal archive Approval/Audit policy.
+
+The current Stage is reconstructed from the validated transition-receipt chain, never inferred only from artifact presence. A Transition receipt binds:
+
+```text
+change / flow / from / to / sequence
+contentRevision / stateRevisionBefore / policySnapshotDigest / gitHead
+previousReceiptDigest / approvals[] / gates[] / auditHead / digest
+```
+
+Changes to governing artifacts, Flow, Rules, Policies, Hooks, Gates or Git HEAD make linked evidence stale.
+
+## 6. Approval receipt
+
+Approval is a first-class receipt bound to Change, Flow, Stage, transition, policy and revision. Local approval requires an interactive terminal plus `--attestation human`; it is repository-level self-attestation and is not enterprise-grade identity proof. External receipts use configured HMAC providers and are revalidated on every state load. Major policies accept external receipts only and require two approvers with role separation.
+
+Agents, Reviewers and Skills cannot issue a valid human Approval. A Review `PASS` is assurance, not Approval or Gate Evidence.
+
+## 7. Gate Evidence
+
+Only the XForge Gate runner writes Machine Gate Evidence. Evidence contains current content/state/policy revisions, Git base/head, runner identity and integrity, exact argv/cwd, bounded redacted outputs, outcome and digest. Hand-written or digest-invalid evidence is rejected.
+
+Transition to `ready-to-archive` records the exact Gate digests. Archive validates those bindings and then reruns mandatory Gates against the ready-state revision before the atomic transaction.
+
+## 8. Work packages
+
+`work-packages.yaml` keeps the eight static fields: `id`, `goal`, `depends_on`, `inputs`, `write_paths`, `skills`, `verify`, `done_when`.
+
+Runtime dispatch is separate:
+
+```bash
+xforge work-package dispatch --change <id> --package <package-id>
+```
+
+The dispatch receipt fixes `executionId`, `stateRevision`, `policySnapshotDigest`, Git base/head and `auditCorrelationId`. A Protocol 2 successful delivery must return the matching `state_revision`, `policy_snapshot_digest` and `audit_correlation_id`; CLI validation also checks commit ancestry, actual diff, write boundary and verification commands.
+
+## 9. Audit
+
+Audit uses three layers:
+
+1. `xforge/.audit/events.jsonl`: local gitignored JSONL with `previousHash`/`hash` chain;
+2. `<change>/evidence/audit/index.json`: commit-safe event index and digests;
+3. optional remote append-only HTTP sink with Bearer/HMAC credentials supplied only by environment variables.
+
+The default redaction is metadata/digest oriented: prompts, hidden reasoning, secrets, full environment and unbounded tool payloads are not stored. Delivery failure writes a spool receipt; retry is explicit. `audit verify --change` enforces the selected Flow's event, runtime-coverage and remote-delivery policy, so it can be used as a CI protected check. Local retention is reported; destructive expiry and immutability are enforced by the remote sink to avoid silently rewriting the local chain.
+
+## 10. JSON envelope
+
+Normal commands emit exactly one object:
 
 ```json
 {
-  "protocolVersion": "1",
+  "protocolVersion": "2",
   "ok": true,
   "command": "state",
-  "root": "/absolute/project",
+  "root": "/project",
   "data": {},
   "diagnostics": [],
   "changes": [],
@@ -44,45 +173,4 @@ Each command emits exactly one JSON value by default:
 }
 ```
 
-Diagnostics have stable codes. Exit status is `0` for `ok: true` and `1` for
-`ok: false`. `--text` presents the same envelope fields for people without
-changing execution or status semantics.
-
-## Ownership and evidence
-
-`xforge/.state.json` v2 records every generated file's canonical source paths,
-source mtimes/sizes/digests, resource identity, Adapter render version, target,
-CLI/protocol versions, and last installed SHA-256. An unmanaged destination or
-a changed managed destination is a conflict. Pruning and uninstall only remove
-a file whose current digest still matches its recorded generated digest. The
-installer and updater can transactionally migrate the earlier v1 ownership map.
-
-Gate evidence records the Change, command array, UTC timestamps, duration,
-exit status, bounded/redacted output, and content digest. Guidance alone is not
-gate proof; only successful evidence created by a completed runner is a pass.
-
-## Work packages and delivery evidence
-
-An active Change may contain `work-packages.yaml` with
-`apiVersion: xforge.dev/v1alpha1`, `kind: WorkPackagePlan`, and a non-empty
-`packages` array. Each package has exactly `id`, `goal`, `depends_on`, `inputs`,
-`write_paths`, `skills`, `verify`, and `done_when`. Inputs are existing exact
-project-relative files. Write paths use project-relative literal paths, `*`, or
-`**`; root-wide patterns, scope escapes, protected shared paths, and potentially
-overlapping dependency-independent packages are rejected.
-
-Main Agent records returned Worker delivery at
-`<change>/evidence/agents/<package-id>/<execution-id>.yaml`. State validates the
-record against Git commits and computes package readiness. Check requires every
-package to have a valid succeeded delivery, compares the declared paths with
-the actual base-to-head diff, and reruns every `verify` command into XForge Gate
-Evidence. Worktree creation and Agent process scheduling remain target-runtime
-responsibilities rather than file-protocol commands.
-
-## Archive merge contract
-
-New capability specs copy into the resolved Specs path. Existing specs accept
-OpenSpec-style delta sections (`ADDED`, `MODIFIED`, `REMOVED`, `RENAMED
-Requirements`) and are merged by requirement name. A non-delta document never
-silently replaces an existing main spec. Archive stages all spec writes and the
-Change move as a recoverable filesystem transaction.
+`nextActions` are typed and may include a stable command argv, status and blockers. The internal Hook dispatcher is the exception: it writes the target platform's required Hook response JSON to stdout.

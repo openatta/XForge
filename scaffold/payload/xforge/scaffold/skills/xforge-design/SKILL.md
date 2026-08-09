@@ -4,7 +4,7 @@ description: 为 Solid 或 Major Change 形成受治理的技术设计、替代�
 license: MIT
 metadata:
   author: xforge（基于 OpenSpec 工作流适配）
-  version: "2.0"
+  version: "3.0"
   source: OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab
 ---
 
@@ -25,7 +25,7 @@ metadata:
 2. 记录主要决策、可行替代方案及拒绝理由，覆盖失败模式、兼容性、迁移和回滚。
 3. Solid 至少写清 implementation approach 与 verification notes，服务稳定交付。
 4. Major 额外覆盖 trust boundaries、风险与缓解、测试策略、rollout、monitoring、stop signals、owner 和安全并行边界。
-5. 刷新 State 并运行 `xforge check --change <id>`；只修复 Design 权限内的结构问题。
+5. 刷新 State 并运行 `xforge check --change <id>`；只修复 Design 权限内的结构问题。若下一步需要 Approval，停止并请求人类决定；receipt 满足后才调用 typed nextAction 中的 Transition。
 
 # 证据
 

@@ -2,7 +2,7 @@ apiVersion: xforge.dev/v1alpha2
 kind: Flow
 metadata:
   name: quick
-  version: 2
+  version: 3
   description: 强调快速交付，适用于低风险、单模块、范围明确且易回滚的变更
 policy:
   assuranceLevel: quick
@@ -48,6 +48,17 @@ artifacts:
     description: 绑定当前修订与 Gate Evidence 的验证回执
     instruction: 只记录当前 Change revision、Git HEAD、Flow 版本、输入摘要和已通过的 Evidence 引用。
     outline: ''
+governance:
+  approvalPolicies:
+    - id: quick-close
+      minApprovers: 1
+      roles: [owner, maintainer]
+      separationOfDuties: false
+      providers: [local, enterprise-hmac]
+  audit:
+    requiredEventTypes: [gate.after, stage.entered]
+    runtimeCoverage: optional
+    remoteDelivery: optional
 stages:
   - id: propose
     skill: xforge-propose
@@ -79,3 +90,8 @@ terminal:
     requires: [verify]
     syncSpecs: true
     evidencePolicy: current-revision
+    approvals: [quick-close]
+    auditPolicy:
+      requiredEventTypes: [gate.after, stage.entered, approval.decided]
+      runtimeCoverage: optional
+      remoteDelivery: optional

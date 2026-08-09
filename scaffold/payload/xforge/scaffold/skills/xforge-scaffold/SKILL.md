@@ -1,32 +1,32 @@
 ---
 name: xforge-scaffold
-description: 定制当前项目的 agents、skills、rules、hooks、gates 等 XForge canonical 资产并安全投影到目标工具；用于用户要求新增、修改、启停或安装项目 Agent 能力时。
+description: 定制当前项目的 agents、skills、rules、permission policies、hooks、gates 等 XForge canonical 资产并安全投影到目标工具；用于用户要求新增、修改、启停或安装项目 Agent 能力时。
 license: MIT
 metadata:
   author: xforge（借鉴 OpenSpec 动态工作流并按 XForge 资源协议实现）
-  version: "2.0"
+  version: "3.0"
   source: OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab
 ---
 
 # 不变量
 
 - 先运行 `xforge state --kind <resource>`，读取 Manifest selection、本地 canonical assets、目标 Adapter 能力与降级状态。
-- `xforge/scaffold/**` 是源；`.agents/`、`.claude/`、`.cursor/`、`.opencode/`、`.github/` 是生成目标，绝不直接编辑。
+- `xforge/scaffold/**` 是源；`.agents/`、`.codex/`、`.claude/`、`.cursor/`、`.opencode/`、`.github/` 与 `opencode.json` 是生成目标，绝不直接编辑。
 - 未完成或未选择的资源不得因目录自动发现而被启用。
 
 # 权限
 
 - 可以修改 `xforge/scaffold/**`；仅在新增、删除、启用或停用资源时最小修改 `xforge/manifest.yaml` 的 scaffold selection 列表。
 - 不得修改产品代码、Specs、Changes、Flow 业务状态或生成目录。
-- Hooks、网络、Secrets、工具权限扩大和破坏性命令必须在 install 前明确展示并取得确认。
+- Hooks、PermissionPolicy、网络、Secrets、工具权限扩大和破坏性命令必须在 install 前明确展示并取得确认。安装、平台信任和运行时 active 是三个独立状态，不得互相推断。
 
 # 执行
 
 1. 查询目标 kind 和 Adapter 能力，重读现有资源及其引用。
-2. 创建或修改最小 canonical asset，检查 Agent→Skill、Rule→Gate、Hook/工具权限等引用闭合。
+2. 创建或修改最小 canonical asset，检查 Agent→Skill、Rule→Gate/Policy/Approval、Hook→dispatcher/事件/失败策略等引用闭合；`Rule` 只表达指导与覆盖，门禁权限必须使用 `PermissionPolicy`。
 3. 运行 `xforge check`，再运行 `xforge sync --dry-run`；展示跨目标 diff、冲突、native/degraded/unsupported 和敏感变化。
 4. 需要确认的权限变化获批后运行 `xforge sync`；如果 CLI 返回 `XFORGE_FULL_UPDATE_REQUIRED` 或 `XFORGE_STATE_UPGRADE_REQUIRED`，改为 `xforge update --dry-run`，确认后运行 `xforge update`。不得把安装成功误报为不受支持能力已启用。
-5. 再次运行 State，验证 Manifest selection、lock digest、ownership 和安装结果。
+5. 再次运行 State，验证 Manifest selection、lock digest、ownership、Adapter coverage 和安装结果；平台要求 review/trust 时单独报告待信任状态。
 
 # 证据
 

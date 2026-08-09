@@ -1,4 +1,4 @@
-apiVersion: xforge.dev/v1alpha1
+apiVersion: xforge.dev/v1alpha2
 kind: Project
 metadata:
   name: xforge-project
@@ -12,7 +12,7 @@ project:
       path: .
       kind: application
 scaffold:
-  version: 0.3.0
+  version: 0.4.0
   source:
     type: git
     repository: https://github.com/openatta/XForge.git
@@ -35,7 +35,10 @@ scaffold:
     - integrator
     - reviewer
   rules: []
-  hooks: []
+  policies:
+    - protected-files
+  hooks:
+    - runtime-audit
   gates:
     - structure
     - unit-tests
@@ -45,8 +48,8 @@ scripts:
 xforge:
   source: npm
   package: "@xforge/cli"
-  version: 0.3.0
-  protocol: "1"
+  version: 0.4.0
+  protocol: "2"
 flow: solid
 targets:
   - codex
@@ -58,3 +61,18 @@ install:
   conflictPolicy: fail
   prune: managed-only
   commitGeneratedFiles: true
+approvals:
+  providers:
+    - id: enterprise-hmac
+      type: hmac-sha256
+      secretEnv: XFORGE_APPROVAL_HMAC_SECRET
+      roles: [owner, maintainer, security]
+audit:
+  redaction: strict
+  localRetentionDays: 30
+  remote:
+    endpointEnv: XFORGE_AUDIT_ENDPOINT
+    tokenEnv: XFORGE_AUDIT_TOKEN
+    hmacSecretEnv: XFORGE_AUDIT_HMAC_SECRET
+    timeoutSeconds: 5
+    requiredFor: [major]

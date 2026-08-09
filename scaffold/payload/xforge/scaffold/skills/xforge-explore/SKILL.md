@@ -4,7 +4,7 @@ description: 只读调查代码、规格、约束、缺陷或方案，并把模�
 license: MIT
 metadata:
   author: xforge（基于 OpenSpec 工作流适配）
-  version: "2.0"
+  version: "3.0"
   source: OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab
 ---
 
@@ -22,7 +22,7 @@ metadata:
 
 # 执行
 
-1. 查询 State，解析相关模块、active Changes、Constitution、Rules、Specs 和 Adapter 降级。
+1. 查询 State，解析相关模块、active Changes、Constitution、Rules、PermissionPolicy、Hook/Audit coverage、Specs 和 Adapter 的 local/cloud/managed/blocking 降级。
 2. 先调查代码与运行事实，再建立集成点、约束、未知项和影响范围。
 3. 比较可行方案，说明兼容性、风险、回滚成本与验证方式；只询问无法从项目查明且会改变结果的问题。
 4. 问题足够清楚时，给出有边界的 Change 描述、classification、path scope 与 Quick/Solid/Major 建议。

@@ -1,8 +1,11 @@
 # XForge 子 Agent 协作系统设计
 
-- **状态：** implemented
-- **日期：** 2026-08-08
+- **状态：** Protocol 2 工作包、dispatch binding、交付校验和 Workflow Audit 已实现
+- **日期：** 2026-08-09
 - **范围：** XForge 项目内的并行开发协作协议
+
+Rules、PermissionPolicy、Hooks、Transition、Approval 和 Audit 的权威语义见
+[治理控制面设计](governance-control-plane-design.md)；当前实现版本为 `0.4.0`。
 
 ## 1. 设计结论
 
@@ -30,6 +33,8 @@ Skill 完成，集成测试由 Integrator 运行，探索由 Main Agent 或 Revi
 - 只在依赖独立且写路径不冲突时并行；
 - 使用固定 base commit、独立 branch 和 worktree 隔离写入型任务；
 - 通过 Git diff、命令退出状态和 Gate Evidence 验证 Agent 交付；
+- 让 Main Agent 只能请求 Stage Transition，由 CLI 验证 Gate、Approval 和 Audit；
+- 记录 dispatch、delivery、integration、review 和 retry 的 Workflow Audit；
 - 以少量通用 Agent 配合按需 Skills，避免按业务模块创建 Agent 类型；
 - 在不同 Adapter 上明确报告 `native`、`degraded` 或 `unsupported`，不夸大能力。
 
@@ -53,12 +58,21 @@ Main Agent / Coordinator
 │
 ├── Integrator ── integration worktree ── integrated commit
 │
-└── Reviewer ── review worktree / Gate Evidence
+└── Reviewer ── review worktree / Review Evidence / Gate Evidence input
+
+XForge Control Plane
+├── State revision / PermissionPolicy snapshot
+├── Work-package validation / Gate Runner
+├── Transition Guard / Approval receipts
+└── Workflow Audit / Evidence freshness
 ```
 
 Main Agent 负责读取 XForge 状态、生成工作包 DAG、检查依赖和路径冲突、准备
 worktree、调度 ready 节点、验证 Worker 交付，并决定是否启动 Integrator 和
 Reviewer。Main Agent 不把这些协调职责再次委派给其他 Agent。
+
+Main Agent 可以选择 ready Action、创建运行环境和请求 Transition，但不能代表 CLI
+把 Stage 标记完成，也不能代表人类或外部系统签发 Approval。
 
 ## 4. 工作包协议
 
@@ -151,10 +165,17 @@ dependency_commits: []
 branch:
 worktree:
 delivery_mode: commit
+state_revision:
+policy_snapshot_digest:
+audit_correlation_id:
 ```
 
 把运行信息移出工作包可以保持 governing artifacts 到工作包的转换简单，并避免规划文件记录
 一次性机器路径。派发时，静态工作包和调度元数据共同构成一次执行请求。
+
+后三个治理字段由 `xforge work-package dispatch --change <id> --package <id>` 生成，
+不改变工作包静态八字段，也不写回 `work-packages.yaml`。CLI 将 dispatch receipt
+保存到 `<change>/evidence/agents/<package>/dispatch/<execution>.json`。
 
 ### 4.4 固定的交付契约
 
@@ -172,6 +193,9 @@ validation:
   - command:
     exit_code:
 issues: []
+state_revision:
+policy_snapshot_digest:
+audit_correlation_id:
 ```
 
 Main Agent 将交付记录保存到
@@ -194,9 +218,10 @@ Main Agent 在启动任何 Worker 前必须确认：
 3. `write_paths` 安全、范围合理且不包含受保护的共享路径；
 4. 所有 `skills` 可以解析；
 5. `verify` 命令来自项目工作包且满足项目执行策略；
-6. 并行节点的写路径不相交；
-7. 依赖节点的实际交付 commit 与调度记录一致；
-8. 数据库、服务端口、缓存和外部账号等共享资源有安全隔离方案。
+6. Proposed vNext 中，当前 State revision 和 PermissionPolicy snapshot 仍有效；
+7. 并行节点的写路径不相交；
+8. 依赖节点的实际交付 commit 与调度记录一致；
+9. 数据库、服务端口、缓存和外部账号等共享资源有安全隔离方案。
 
 并行的判断依据是“至少两个依赖已满足、写路径不重叠且不争用共享资源的节点”，
 而不是涉及了多少业务模块。同一模块可以存在独立并行任务，两个模块也可能因为
@@ -229,6 +254,9 @@ Worker 是通用写入型执行体：
 - 真实执行全部 `verify` 命令；
 - 原生模式下提交代码并返回结构化结果。
 
+Worker 不能请求批准、签发 Approval、推进 Stage、写 Machine Gate Evidence 或修改
+核心 Audit。它只能报告交付事实和问题。
+
 Worker 在需要修改共享文件、路径范围不足、依赖漂移、输入冲突、规格歧义、测试
 失败或发现未授权迁移时必须停止。它不得自行扩大 `write_paths`、修改 Constitution、
 主 Specs、审批文件或归档内容。
@@ -243,6 +271,9 @@ Worker 在需要修改共享文件、路径范围不足、依赖漂移、输入�
 - 只修复明确的集成问题，不随意重写 Worker 模块；
 - 运行契约测试、集成测试和端到端测试；
 - 返回最终 commit、全量验证结果和未解决问题。
+
+Integrator 的验证输出仍需由 XForge Gate Runner 复核；Integrator 是共享路径
+唯一写者，不是 Gate 或 Approval authority。
 
 若出现未声明的写路径重叠，说明工作包规划失效。Integrator 应停止并要求 Main
 Agent 重新规划，而不是把结构性冲突作为普通 merge conflict 静默解决。
@@ -267,6 +298,9 @@ Reviewer 必须核对：
 需要执行会产生缓存、coverage 或构建产物的命令时，Reviewer 使用独立 review
 worktree，避免破坏只读审查的语义。
 
+Reviewer 的通过结论是 Review Evidence。它可以供人类批准者参考，但不能成为
+Machine Gate 或 Approval receipt，也不能自行推动 Transition。
+
 ## 7. 确定性验证
 
 Prompt 只提供指导，以下事实必须由 Main Agent、Git 或 XForge Gate 检查：
@@ -281,7 +315,7 @@ Prompt 只提供指导，以下事实必须由 Main Agent、Git 或 XForge Gate 
 - `done_when` 均有实现、测试、契约或 Gate Evidence 支撑；
 - 删除、不可逆迁移、生产写入或权限扩大等敏感 Action 的确认来自用户或授权外部系统，而不是 Agent 自我声明。
 
-项目可以通过 scoped Rule 的 `writePolicy: integrator-only` 声明额外共享路径。
+Protocol 1 项目可以通过 scoped Rule 的 `writePolicy: integrator-only` 声明额外共享路径。
 XForge 还内建保护 Manifest、Lockfile、Constitution、主 Specs 和当前 Change
 目录。`xforge check --change <id>` 会重新运行每个工作包的 `verify` 命令并生成
 受限、脱敏的 Evidence，因此 Worker 填写的退出码不是最终证明。
@@ -289,15 +323,19 @@ XForge 还内建保护 Manifest、Lockfile、Constitution、主 Specs 和当前 
 符号链接解析、路径规范化、日志截断和敏感信息脱敏沿用 XForge 的安全不变量。
 任何一项检查失败，都不能把工作包标记为 `succeeded`。
 
+Protocol 2 使用 PermissionPolicy 表达 `integrator-only`。Rule 只向 Agent 说明工程
+要求，实际写路径权限由 Policy、work-package validator 和最终 Git diff 共同执行。
+
 ## 8. LLM 上下文设计
 
 一次子 Agent 调用由三层信息组成：
 
 1. **静态 Agent 契约**：角色、权限、禁止事项、停止条件和返回格式；
 2. **静态工作包**：八个规范字段；
-3. **动态调度上下文**：Change、base commit、依赖 commits、worktree 和执行 ID。
+3. **动态调度上下文**：Change、base commit、依赖 commits、worktree、执行 ID、State revision、Policy snapshot 和 audit correlation ID。
 
-XForge 状态提供 Constitution、相关 Specs、Design、Rules 和 Gate 要求。Main Agent
+XForge 状态提供 Constitution、相关 Specs、Design、Rules、PermissionPolicy 摘要、
+Gate、Approval 和 Audit 要求。Main Agent
 只注入与当前工作包有关的上下文，避免复制整个项目或把聊天历史当成事实源。
 
 强模型提示应集中表达硬边界：只完成当前工作包、先读哪些输入、只能修改哪些
@@ -312,7 +350,10 @@ XForge 状态提供 Constitution、相关 Specs、Design、Rules 和 Gate 要求
 - `xforge-propose`：由 Main Agent 用于规划，不交给 Worker；
 - `xforge-apply`：Main Agent、Worker 和 Integrator 的主要执行流程；
 - `xforge-verify`：供 Integrator 和 Reviewer 获取确定性检查与 Evidence；
-- `xforge-verify` 在明确授权时执行协议层 Archive action；`xforge-archive` 只保留迁移 shim。
+- `xforge-verify` 在明确授权时请求协议层 Archive Transition；`xforge-archive` 只保留迁移 shim。
+
+每个 Stage Skill 完成后只能请求 CLI Transition。Sub-agent delivery success 只满足
+Apply 的一个前置条件；它不自动使 Apply completed，也不使 Verify ready。
 
 工作包是 Apply 的执行资产，不替代 Proposal、Specs、Clarifications、Design 或 Check report。默认流程
 不调用 Spec Kit；如未来提供 Spec Kit 兼容能力，应作为显式可选 Adapter，并单独
@@ -327,6 +368,25 @@ XForge 状态提供 Constitution、相关 Specs、Design、Rules 和 Gate 要求
 
 即使为 `native`，worktree 创建、base commit 固定、diff 路径检查和交付验收仍由
 Main Agent 与 XForge 负责，不能假设目标工具已经提供等价的强制权限。
+
+当前 capability report 分别显示：Sub-agent、PermissionPolicy、Runtime Hook
+subagent/tool events、blocking、managed 和 local/cloud。目标工具能启动子 Agent 不
+代表 XForge 获得完整 runtime audit；缺失事件必须形成 coverage gap。
+
+### 10.1 流程转换与审计
+
+XForge Workflow Audit 至少记录：
+
+- 工作包生成、验证和废弃；
+- dispatch actor、State revision、Policy snapshot 和 correlation ID；
+- Worker start/stop、delivery、retry 和失败原因；
+- Integrator 选择、集成 commit 和验证结果；
+- Reviewer findings 和 Review Evidence digest；
+- Main Agent 请求的 Stage Transition 及 CLI 决定。
+
+平台支持 Runtime Hook 时，可补充 session/tool/permission/subagent start/stop 事件；
+平台不支持时不伪造这些事件。Archive 可以要求 Workflow Audit 完整，并按 Flow
+policy 决定是否还要求 Runtime coverage 或远端交付。
 
 ## 11. Constitution 与根 AGENTS.md
 
@@ -361,17 +421,27 @@ Constitution、当前 Change 和本协议。它不复制完整工作包流程，
 9. Reviewer 能基于最终 diff 和 Evidence 报告问题且不修改原实现；
 10. 不支持子 Agent 的 Adapter 明确降级，不声称已经并行隔离执行；
 11. 单模块小任务由 Main Agent 直接完成，不产生不必要的编排开销；
-12. 测试产生缓存或构建产物时，不污染其他 Worker 的 worktree。
+12. 测试产生缓存或构建产物时，不污染其他 Worker 的 worktree；
+13. Worker/Integrator/Reviewer 都不能生成有效 Approval 或推进 Stage；
+14. stale State revision 或 Policy snapshot 会阻止 dispatch/验收；
+15. Runtime Hook 缺失时 Workflow Audit 仍记录完整工作包 lifecycle，并报告 coverage gap；
+16. Reviewer `PASS` 不被当作 Machine Gate。
 
 ## 13. 实现范围
 
+### 13.1 当前实现
+
 1. `state --change` 解析工作包计划、DAG、输入、Skills、Change scope、共享路径、
    Git HEAD 和已有 delivery，返回 ready/blocked/succeeded/failed 状态；
-2. `check --change` 要求所有工作包存在有效 succeeded delivery，验证 commit
-   ancestry、实际 diff 和 `write_paths`，并重新执行 `verify`；
-3. Scaffold 安装 `worker`、`integrator`、`reviewer` 三种子 Agent，并由 Main
+2. `work-package dispatch` 在 Apply Stage 为 ready package 生成 revision/policy/audit
+   绑定；Protocol 2 delivery 必须回带并通过 receipt 校验；
+3. `check --change` 在 Verify/ReadyToArchive 要求所有工作包存在有效 succeeded delivery，
+   验证 commit ancestry、实际 diff 和 `write_paths`，重新执行 `verify`，并记录
+   delivered/integrated Workflow Audit；
+4. Scaffold 安装 `worker`、`integrator`、`reviewer` 三种子 Agent，并由 Main
    Agent 负责协调；
-4. Constitution、根 `AGENTS.md`、`xforge-apply` 和 `xforge-verify` 共同提供长期
+5. Constitution、根 `AGENTS.md`、`xforge-apply` 和 `xforge-verify` 共同提供长期
    发现入口和操作协议；
-5. Adapter 继续按既有能力报告 `native`、`degraded` 或 `unsupported`；
-6. XForge 不创建模型进程、不自动调度 Agent，也不替目标工具创建通用 Runtime。
+6. Adapter 逐项报告 subagent、event coverage、blocking、managed 和 local/cloud；
+7. Archive 验证当前 package deliveries、Gate Evidence、Approval 和 Audit completeness；
+8. XForge 不创建模型进程、不自动调度 Agent，也不替目标工具创建通用 Runtime。

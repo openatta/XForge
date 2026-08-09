@@ -2,11 +2,16 @@ import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { Diagnostic, FileChange, GateEvidence, GateResource, ProjectContext } from '../types.js';
-import { MAX_GATE_OUTPUT_BYTES, PROTOCOL_VERSION } from '../constants.js';
+import { CLI_NAME, CLI_VERSION, MAX_GATE_OUTPUT_BYTES, PROTOCOL_VERSION } from '../constants.js';
 import { atomicWrite } from '../core/files.js';
 import { sha256, stableStringify } from '../core/hash.js';
 import { normalizeRelative, safeResolve } from '../core/path-safety.js';
 import { XForgeError, diagnostic } from '../core/errors.js';
+import { isStageFlow, resolveChangeState } from '../core/flow-resolver.js';
+import { loadSelectedResources } from '../core/resource-loader.js';
+import { resolveControlPlane } from '../core/control-plane.js';
+import { runtimeCliIntegrity } from '../core/identity.js';
+import { recordAudit } from '../core/audit.js';
 
 function redact(input: string): string {
   let output = input.replace(/((?:password|passwd|secret|api[_-]?key|(?:access[_-]?)?token|authorization)\s*[:=]\s*)([^\s]+)/gi, '$1[REDACTED]');
@@ -25,7 +30,9 @@ function appendBounded(chunks: Buffer[], currentBytes: number, chunk: Buffer, li
   return { bytes: currentBytes + selected.byteLength, truncated: chunk.byteLength > remaining };
 }
 
-async function runCommand(project: ProjectContext, gate: GateResource): Promise<Omit<GateEvidence, 'protocolVersion' | 'gate' | 'change' | 'startedAt' | 'finishedAt' | 'durationMs' | 'digest' | 'status'>> {
+type GateProcessResult = Pick<GateEvidence, 'command' | 'shell' | 'workingDirectory' | 'exitCode' | 'timedOut' | 'outputTruncated' | 'stdout' | 'stderr'>;
+
+async function runCommand(project: ProjectContext, gate: GateResource): Promise<GateProcessResult> {
   const command = gate.spec.command;
   if (!command?.length) throw new Error(`Gate ${gate.metadata.name} has no command`);
   const workingRelative = normalizeRelative(gate.spec.workingDirectory ?? '.', `Gate ${gate.metadata.name} workingDirectory`);
@@ -96,8 +103,20 @@ export async function runGate(
   gate: GateResource,
   structurePassed: boolean,
 ): Promise<GateRunResult> {
+  const resolved = await resolveChangeState(project, changeId);
+  const resources = await loadSelectedResources(project);
+  const control = isStageFlow(resolved.flow) && resolved.flow.governance
+    ? await resolveControlPlane(project, changeId, resolved.flow, resolved.state, resources, resolved.config)
+    : null;
+  const revision = control?.governance.revision ?? {
+    contentRevision: sha256(stableStringify({ changeId, flow: resolved.flow.metadata.name })),
+    stateRevision: sha256(stableStringify({ changeId, flow: resolved.flow.metadata.name, stage: 'legacy' })),
+    policySnapshotDigest: sha256(stableStringify({ legacy: true })), gitBase: 'unknown', gitHead: 'unknown',
+  };
+  const stage = control?.governance.currentStage ?? 'legacy';
+  await recordAudit(project, { eventType: 'gate.before', change: changeId, flow: resolved.flow.metadata.name, stage, revision, refs: { gates: [gate.metadata.name] }, input: { gate: gate.metadata.name }, outcome: 'succeeded' });
   const startedAt = new Date();
-  let result: Omit<GateEvidence, 'protocolVersion' | 'gate' | 'change' | 'startedAt' | 'finishedAt' | 'durationMs' | 'digest' | 'status'>;
+  let result: GateProcessResult;
   if (gate.spec.builtin === 'structure') {
     result = {
       command: ['builtin:structure'],
@@ -124,8 +143,18 @@ export async function runGate(
   const status = result.exitCode === 0 && !result.timedOut ? 'passed' : 'failed';
   const withoutDigest = {
     protocolVersion: PROTOCOL_VERSION,
+    schemaVersion: '1' as const,
     gate: gate.metadata.name,
     change: changeId,
+    flow: resolved.flow.metadata.name,
+    stage,
+    stateRevision: revision.stateRevision,
+    contentRevision: revision.contentRevision,
+    policySnapshotDigest: revision.policySnapshotDigest,
+    gitBase: revision.gitBase,
+    gitHead: revision.gitHead,
+    inputDigest: sha256(stableStringify({ gate, revision, structurePassed })),
+    runner: { name: CLI_NAME, version: CLI_VERSION, integrity: runtimeCliIntegrity() },
     ...result,
     startedAt: startedAt.toISOString(),
     finishedAt: finishedAt.toISOString(),
@@ -152,6 +181,7 @@ export async function runGate(
     }
   }
   await atomicWrite(project.root, evidencePath, `${JSON.stringify(evidence, null, 2)}\n`);
+  await recordAudit(project, { eventType: 'gate.after', change: changeId, flow: resolved.flow.metadata.name, stage, revision, refs: { gates: [gate.metadata.name] }, outcome: status === 'passed' ? 'succeeded' : 'failed', durationMs: evidence.durationMs, input: { gate: gate.metadata.name }, output: { evidence: evidence.digest, status } });
   return {
     evidence,
     diagnostic: status === 'failed'

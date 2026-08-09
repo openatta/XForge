@@ -8,7 +8,7 @@ describe('CLI protocol', () => {
     for (const args of [['state'], ['install', '--dry-run'], ['check']] as string[][]) {
       const result = await runCli(root, args);
       expect(result.stderr).toBe('');
-      expect(result.json).toMatchObject({ protocolVersion: '1', command: args[0], root, diagnostics: expect.any(Array), changes: expect.any(Array), nextActions: expect.any(Array) });
+      expect(result.json).toMatchObject({ protocolVersion: '2', command: args[0], root, diagnostics: expect.any(Array), changes: expect.any(Array), nextActions: expect.any(Array) });
       expect(result.stdout.trim().startsWith('{')).toBe(true);
       expect(result.stdout.trim().endsWith('}')).toBe(true);
     }
@@ -33,7 +33,7 @@ describe('CLI protocol', () => {
     expect(help.json.data.commandHelp.usage).toContain('sync');
     const version = await runCli(root, ['version']);
     expect(version.code).toBe(0);
-    expect(version.json.data).toMatchObject({ name: '@xforge/cli', version: '0.3.0', protocolVersion: '1' });
+    expect(version.json.data).toMatchObject({ name: '@xforge/cli', version: '0.4.0', protocolVersion: '2' });
 
     const result = await runCli(root, ['frobnicate']);
     expect(result.code).toBe(1);
@@ -58,10 +58,10 @@ describe('CLI protocol', () => {
     const root = await fixture();
     const commit = '0123456789abcdef0123456789abcdef01234567';
     await updateYaml(root, 'xforge/manifest.yaml', (manifest) => {
-      manifest.xforge = { source: 'git', repository: 'https://example.test/xforge.git', commit, path: 'xforge', protocol: '1' };
+      manifest.xforge = { source: 'git', repository: 'https://example.test/xforge.git', commit, path: 'xforge', protocol: '2' };
     });
     await updateYaml(root, 'xforge/lock.yaml', (lock) => {
-      lock.xforge = { source: 'git', repository: 'https://example.test/xforge.git', commit, path: 'xforge', protocol: '1', integrity: runtimeCliIntegrity() };
+      lock.xforge = { source: 'git', repository: 'https://example.test/xforge.git', commit, path: 'xforge', protocol: '2', integrity: runtimeCliIntegrity() };
     });
     const mismatched = await runCli(root, ['state']);
     expect(mismatched.json.data.project.compatibility.mode).toBe('portable');

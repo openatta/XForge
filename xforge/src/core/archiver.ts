@@ -8,6 +8,10 @@ import { atomicWrite } from './files.js';
 import { assertManaged } from './project-loader.js';
 import { safeResolve } from './path-safety.js';
 import { planSpecMutations, type SpecMutation } from './spec-merger.js';
+import { isStageFlow, resolveChangeState } from './flow-resolver.js';
+import { loadSelectedResources } from './resource-loader.js';
+import { resolveControlPlane, terminalGovernanceBlocks } from './control-plane.js';
+import { recordAudit } from './audit.js';
 
 async function exists(filePath: string): Promise<boolean> {
   try { await access(filePath); return true; } catch { return false; }
@@ -51,6 +55,14 @@ export async function planArchive(project: ProjectContext, changeId: string): Pr
     if (!structure.change.archive.ready) {
       const incomplete = structure.change.artifacts.filter((item) => structure.change!.archive.requires.includes(item.id) && item.status !== 'done').map((item) => item.id);
       diagnostics.push(diagnostic('XFORGE_ARCHIVE_ARTIFACTS_INCOMPLETE', `Archive prerequisites are incomplete: ${incomplete.join(', ')}`, `${project.changesPath}/${changeId}`));
+    }
+    const resolved = await resolveChangeState(project, changeId);
+    if (isStageFlow(resolved.flow) && resolved.flow.governance) {
+      const resources = await loadSelectedResources(project);
+      const control = await resolveControlPlane(project, changeId, resolved.flow, resolved.state, resources, resolved.config);
+      diagnostics.push(...control.diagnostics);
+      const governanceBlocks = await terminalGovernanceBlocks(project, control);
+      for (const block of governanceBlocks) diagnostics.push(diagnostic('XFORGE_ARCHIVE_GOVERNANCE_BLOCKED', `Archive governance is blocked by ${block}.`, `${project.changesPath}/${changeId}`));
     }
     const tracker = structure.change.apply.tracks;
     if (tracker) {
@@ -121,6 +133,13 @@ export async function executeArchive(project: ProjectContext, changeId: string, 
     };
   }
 
+  const auditResolved = await resolveChangeState(project, changeId);
+  const auditResources = await loadSelectedResources(project);
+  const auditControl = isStageFlow(auditResolved.flow) && auditResolved.flow.governance
+    ? await resolveControlPlane(project, changeId, auditResolved.flow, auditResolved.state, auditResources, auditResolved.config)
+    : null;
+  await recordAudit(project, { eventType: 'archive.before', change: changeId, flow: auditResolved.flow.metadata.name, stage: auditControl?.governance.currentStage ?? 'legacy', revision: auditControl?.governance.revision, outcome: 'succeeded', input: { target: plan.target } });
+
   const checked = await executeCheck(project, { change: changeId });
   const diagnostics = [...checked.diagnostics];
   if (diagnostics.some((item) => item.severity === 'error')) {
@@ -144,6 +163,7 @@ export async function executeArchive(project: ProjectContext, changeId: string, 
   } catch (error) {
     throw new XForgeError(diagnostic('XFORGE_ARCHIVE_TRANSACTION_FAILED', `Archive transaction failed and was rolled back: ${(error as Error).message}`, `${project.changesPath}/${changeId}`), { root: project.root });
   }
+  await recordAudit(project, { eventType: 'archive.after', change: changeId, flow: auditResolved.flow.metadata.name, stage: 'archived', revision: auditControl?.governance.revision, outcome: 'succeeded', output: { target: plan.target } });
   return {
     data: { change: changeId, target: plan.target, dryRun: false, mandatoryGates: plan.mandatoryGates, specs: plan.mutations.map((item) => item.path) },
     diagnostics,

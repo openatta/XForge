@@ -2,7 +2,9 @@ import { cp, mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { createHmac, randomUUID } from 'node:crypto';
 import { parse, stringify } from 'yaml';
+import { sha256, stableStringify } from '../src/core/hash.js';
 
 export const xforgeRoot = path.resolve(new URL('..', import.meta.url).pathname);
 export const repositoryRoot = path.resolve(xforgeRoot, '..');
@@ -80,4 +82,54 @@ export async function createCompleteSolidChange(root: string, id = 'add-feature'
   await write(root, `${base}/design.md`, '## Decisions\nUse a deterministic fixture.\n');
   await write(root, `${base}/assurance.md`, '## Completeness\nAll requirements are covered.\n');
   await write(root, `${base}/evidence/verification-receipt.yaml`, 'status: passed\nrevision: fixture\n');
+}
+
+export const approvalTestEnv = { XFORGE_APPROVAL_HMAC_SECRET: 'xforge-test-approval-secret' };
+
+async function successful(root: string, args: string[], env: NodeJS.ProcessEnv = {}): Promise<any> {
+  const result = await runCli(root, args, { ...approvalTestEnv, ...env });
+  if (result.code !== 0) throw new Error(`${args.join(' ')} failed: ${JSON.stringify(result.json?.diagnostics ?? result.stderr)}`);
+  return result.json;
+}
+
+export async function approveCurrentRevision(
+  root: string,
+  change: string,
+  transition: string,
+  policyId: string,
+  actor = 'owner@example.test',
+  role = 'owner',
+): Promise<any> {
+  const state = await successful(root, ['state', '--change', change]);
+  const governance = state.data.change.governance;
+  const payload = {
+    apiVersion: 'xforge.dev/v1alpha2', kind: 'ApprovalReceipt', receiptId: randomUUID(), change,
+    flow: state.data.change.flow, stage: governance.currentStage, transition, policyId,
+    stateRevision: governance.revision.stateRevision, contentRevision: governance.revision.contentRevision,
+    policySnapshotDigest: governance.revision.policySnapshotDigest, gitBase: governance.revision.gitBase, gitHead: governance.revision.gitHead,
+    governingDigest: sha256(stableStringify({ change, flow: state.data.change.flow, policyId, revision: governance.revision })),
+    decision: 'approve', approver: { id: actor, provider: 'enterprise-hmac', role, type: 'external-system' },
+    decidedAt: new Date().toISOString(), reason: 'Approved by the test governance provider.', externalRef: `test:${actor}:${transition}`,
+  };
+  const signature = { algorithm: 'hmac-sha256', value: createHmac('sha256', approvalTestEnv.XFORGE_APPROVAL_HMAC_SECRET).update(stableStringify(payload)).digest('hex') };
+  const signed = { ...payload, signature };
+  const receipt = { ...signed, digest: sha256(stableStringify(signed)) };
+  const receiptPath = `external-approvals/${receipt.receiptId}.json`;
+  await write(root, receiptPath, `${JSON.stringify(receipt, null, 2)}\n`);
+  return successful(root, ['approve', '--change', change, '--for', transition, '--policy', policyId, '--receipt', receiptPath]);
+}
+
+export async function advanceSolidToApply(root: string, id = 'add-feature'): Promise<void> {
+  await successful(root, ['check', '--change', id, '--gate', 'structure']);
+  await successful(root, ['transition', '--change', id, '--to', 'design']);
+  await approveCurrentRevision(root, id, 'apply', 'planning-solid');
+  await successful(root, ['transition', '--change', id, '--to', 'apply']);
+}
+
+export async function advanceSolidToReadyToArchive(root: string, id = 'add-feature'): Promise<void> {
+  await advanceSolidToApply(root, id);
+  await successful(root, ['transition', '--change', id, '--to', 'verify']);
+  await successful(root, ['check', '--change', id]);
+  await successful(root, ['transition', '--change', id, '--to', 'ready-to-archive']);
+  await approveCurrentRevision(root, id, 'archive', 'closing-solid');
 }

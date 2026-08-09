@@ -4,6 +4,10 @@ import { XForgeError, diagnostic } from '../core/errors.js';
 import { assertManaged } from '../core/project-loader.js';
 import { workPackageVerificationGates } from '../core/work-packages.js';
 import { runGate } from '../runners/gate.js';
+import { readAuditEvents, recordAudit } from '../core/audit.js';
+import { isStageFlow, resolveChangeState } from '../core/flow-resolver.js';
+import { resolveControlPlane } from '../core/control-plane.js';
+import { sha256, stableStringify } from '../core/hash.js';
 
 export interface CheckOptions {
   change?: string;
@@ -43,7 +47,7 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
     if (external) diagnostics.push(diagnostic('XFORGE_CHANGE_REQUIRED', 'A Change is required to run a Gate and save Evidence.'));
   }
 
-  if (!hasStructureErrors && options.change && structure.change?.workPackages) {
+  if (!hasStructureErrors && !options.gate && options.change && structure.change?.workPackages) {
     for (const verification of workPackageVerificationGates(structure.change.workPackages)) {
       const result = await runGate(project, options.change, verification.gate, true);
       changes.push(result.change);
@@ -79,6 +83,27 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
       changes.push(result.change);
       if (result.diagnostic) diagnostics.push(result.diagnostic);
       gateResults.push({ id, status: result.evidence.status, evidence: result.evidence });
+    }
+  }
+
+  if (options.change && structure.change?.workPackages && !diagnostics.some((item) => item.severity === 'error')) {
+    const resolved = await resolveChangeState(project, options.change);
+    if (isStageFlow(resolved.flow) && resolved.flow.governance) {
+      resolved.state.workPackages = structure.change.workPackages;
+      const control = await resolveControlPlane(project, options.change, resolved.flow, resolved.state, structure.resources, resolved.config);
+      const existing = await readAuditEvents(project);
+      for (const item of structure.change.workPackages.packages.filter((candidate) => candidate.status === 'succeeded' && candidate.delivery)) {
+        const delivery = item.delivery!;
+        for (const eventType of ['work-package.delivered', 'work-package.integrated']) {
+          const inputDigest = sha256(stableStringify({ eventType, delivery }));
+          if (existing.some((event) => event.eventType === eventType && event.inputDigest === inputDigest)) continue;
+          await recordAudit(project, {
+            eventType, change: options.change, flow: resolved.flow.metadata.name, stage: control.governance.currentStage,
+            workPackage: item.id, correlationId: delivery.audit_correlation_id, revision: control.governance.revision,
+            outcome: 'succeeded', inputDigest, input: null,
+          });
+        }
+      }
     }
   }
 

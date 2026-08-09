@@ -4,10 +4,10 @@
   "type": "object", "additionalProperties": false,
   "required": ["apiVersion", "kind", "metadata", "protocol", "payload", "integrity", "xforgeCompatibility"],
   "properties": {
-    "apiVersion": { "const": "xforge.dev/v1alpha1" }, "kind": { "const": "Scaffold" },
+    "apiVersion": { "enum": ["xforge.dev/v1alpha1", "xforge.dev/v1alpha2"] }, "kind": { "const": "Scaffold" },
     "metadata": { "type": "object", "additionalProperties": false, "required": ["version"], "properties": { "version": { "type": "string" } } },
-    "protocol": { "const": "1" }, "payload": { "const": "payload" },
+    "protocol": { "enum": ["1", "2"] }, "payload": { "const": "payload" },
     "integrity": { "type": "object", "additionalProperties": false, "required": ["algorithm", "manifest"], "properties": { "algorithm": { "const": "sha256" }, "manifest": { "const": "files.sha256" } } },
-    "xforgeCompatibility": { "type": "object", "additionalProperties": false, "required": ["protocol"], "properties": { "protocol": { "const": "1" } } }
+    "xforgeCompatibility": { "type": "object", "additionalProperties": false, "required": ["protocol"], "properties": { "protocol": { "enum": ["1", "2"] } } }
   }
 }

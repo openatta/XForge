@@ -1,28 +1,30 @@
 # XForge Flows 与 Skills 设计
 
-> 状态：vNext 实现基线
+> 状态：Protocol 2 已实现（CLI 0.4.0 / Scaffold Skills 3.0）
 >
 > 模型能力基线：Claude Opus 4.6～4.8 档、GPT‑5.5 及以上
 >
-> 更新日期：2026-08-08
+> 更新日期：2026-08-09
 >
-> 本文定义官方 Scaffold 的目标设计；实现按文末迁移顺序逐步落地
+> 本文定义官方 Scaffold 的目标设计；Rules、PermissionPolicy、Hooks、
+> Transition、Approval 与 Audit 的权威语义见
+> [治理控制面设计](governance-control-plane-design.md)
 
 ## 1. 设计结论
 
-XForge 面向强模型时，不需要把通用分析、规划和编码过程展开成大量持久阶段。Flow 只保留真正有治理价值的产物和质量边界；执行计划由 Apply 根据当前状态即时形成。
+XForge 面向强模型时，不需要把通用分析、规划和编码过程展开成大量持久阶段。Flow 只保留真正有治理价值的产物和质量边界；执行计划由 Apply 根据当前状态即时形成。Stage 的完成不再由 Skill 或 Agent 自我声明，而是由 CLI Transition Guard 根据 Artifact、Gate、Approval 和 Audit completeness 决定。
 
 三个官方 Flow：
 
 ```text
 quick:
-propose -> apply -> verify
+propose -> [transition] -> apply -> verify -> [archive transition]
 
 solid:
-propose -> design -> apply -> verify
+propose -> design -> [approval/transition] -> apply -> verify -> [archive transition]
 
 major:
-propose -> clarify -> design -> check -> apply -> verify
+propose -> clarify -> design -> check -> [approval/transition] -> apply -> verify -> [approval/archive transition]
 ```
 
 `prime` 正式更名为 `major`。
@@ -36,10 +38,10 @@ propose -> clarify -> design -> check -> apply -> verify
 三个 Flow 都必须完成 Archive 才算关闭 Change，但 Archive 不再作为用户必须单独理解的 canonical Skill：
 
 ```text
-verify satisfied -> archive action -> change closed
+verify current + approvals current + audit complete -> archive transition -> change closed
 ```
 
-`xforge-verify` 可以在明确授权时执行 Verify + Archive；如果用户只要求验证，则停在 `verified-active`，不会隐式归档。
+`xforge-verify` 可以在明确授权时请求 Verify + Archive；它必须分别调用 CLI Gate/Transition/Archive 边界，不能自行把 Change 标记为 `verified` 或 `archived`。如果用户只要求验证，则停在 `verified-active`，不会隐式归档。
 
 Skills 分为两组：
 
@@ -58,7 +60,7 @@ Skills 分为两组：
 - `xforge-status`：查询 Change/Requirement 的开发状态；
 - `xforge-continue`：从当前 State 恢复并执行下一合法 Action；
 - `xforge-revise`：修改已有规划 artifacts 并保持一致；
-- `xforge-scaffold`：定制当前项目的 agents、skills、rules、hooks 等本地脚手架资产，首次通过 `xforge install` 投影，后续通过 `xforge sync` 增量同步到 Agent 工具目录。
+- `xforge-scaffold`：定制当前项目的 agents、skills、rules、policies、hooks 等本地脚手架资产，首次通过 `xforge install` 投影，后续通过 `xforge sync` 增量同步到 Agent 工具目录。
 
 `xforge state` 始终是机器协议和唯一状态事实源，不需要用户直接输入，也不需要把实时状态预先注入固定提示词。`xforge-status` 是它的自然语言查询与解释层。
 
@@ -72,7 +74,7 @@ Skill 只提供：
 
 - 当前意图和权限边界；
 - Flow 编译出的可执行 Action；
-- 项目 Constitution、Rules、Specs 和路径；
+- 项目 Constitution、Rules、PermissionPolicy 摘要、Specs 和路径；
 - 进入、完成、回退和停止条件；
 - Approval、Gate、Evidence 与 Archive 规则。
 
@@ -85,6 +87,10 @@ Skill 只提供：
 > **State = Flow 编译后的可执行 Actions**
 >
 > **Gate/Evidence = 完成声明的机器证明**
+>
+> **Approval = 人或授权系统的决策证明**
+>
+> **Audit = 发生过什么以及覆盖是否完整**
 
 ### 2.2 省略阶段不等于省略能力
 
@@ -118,13 +124,25 @@ quick -> solid -> major
 - `xforge-status` 将 JSON 解释为用户可读进度；
 - 完成 Action 后重新查询 State，不依赖模型记忆推进阶段。
 
+### 2.4 指导、权限和证明分离
+
+- Rule 只进入 Agent/Skill 上下文；`must` 不代表已经强制执行；
+- PermissionPolicy 表达 allow/ask/deny，并由平台权限或 Runtime Guard 尽可能执行；
+- Runtime Hook 只做实时 guard、自动化和补充审计；
+- Workflow Hook 由 XForge lifecycle 触发；
+- Check/Reviewer 产生 Review Evidence；
+- `xforge check` 运行 Machine Gate；
+- Approval、Gate Evidence 和 Audit completeness 共同决定 Transition。
+
+Skill 必须向用户区分 `instructed`、`guarded`、`verified` 和 `uncovered`，不能把平台生成文件存在当成约束已执行。
+
 ## 3. Flow 选择
 
 | Flow | 适用范围 | 持久质量边界 |
 | --- | --- | --- |
-| `quick` | 强调快速；低风险、单模块、小范围、行为和修复路径清楚 | Propose + Verify |
-| `solid` | 强调稳定；普通产品功能和常规工程变更 | Propose + Design + Verify |
-| `major` | 强调重大；高风险、跨系统、关键影响或复杂交付 | Propose + Clarify + Design + Check + Verify |
+| `quick` | 强调快速；低风险、单模块、小范围、行为和修复路径清楚 | Propose + Verify + current-revision Archive |
+| `solid` | 强调稳定；普通产品功能和常规工程变更 | Propose + Design + planning approval + Verify |
+| `major` | 强调重大；高风险、跨系统、关键影响或复杂交付 | Propose + Clarify + Design + Check + explicit approvals + Verify + Audit completeness |
 
 规则：
 
@@ -210,7 +228,7 @@ Solid Design 至少包含 implementation approach 和 verification notes，使 A
 
 ### 4.4 Check
 
-Check 只存在于 Major，是实现前的跨 artifact 质量门。
+Check 只存在于 Major，是实现前的跨 artifact 语义质量审查。
 
 它检查：
 
@@ -225,9 +243,14 @@ Check 默认只读 governing artifacts，只允许写 `check-report.md` 和由 C
 
 Check 不检查长期任务计划，因为计划属于 Apply 的即时执行行为。
 
+Check report 和模型给出的 `PASS/CONCERNS/FAIL` 属于 Review Evidence。它可以成为
+Planning Approval 的输入，但不能单独形成 Machine Gate pass。CLI 只确定性验证
+Artifact 结构、未解决 blocker 状态和 receipt；技术方案是否合理仍由人类 Approval
+承担最终判断。
+
 #### `xforge-check` 与 `xforge check`
 
-- `xforge-check`：Agent Skill，做实现前语义性跨 artifact 审查；
+- `xforge-check`：Agent Skill，做实现前语义性跨 artifact 审查并生成 Review Evidence；
 - `xforge check`：确定性 CLI，执行 schema、路径、Gate 和 Evidence 校验。
 
 CLI 结果是 Check 的证据输入，不能替代语义判断。
@@ -253,6 +276,11 @@ Apply 负责即时执行规划与实现，不依赖独立 Plan stage。
 
 Apply 只写 Change scope 内代码、测试、执行跟踪和经验证的 delivery records。不得写主 Specs、Gate Evidence、Archive 路径或范围外文件。
 
+Apply 开始前必须已经取得当前 State revision 对应的 Transition permission。Solid
+默认要求单人 planning Approval，Major 默认要求显式 implementation Approval；具体
+是否双人和角色分离由 Flow/企业 policy 决定。Approval 不是 Agent 可以生成的
+planning artifact。
+
 现实推翻上游假设时返回 Propose/Clarify/Design rework，而不是静默改写治理事实。
 
 ### 4.6 Verify 与 Archive
@@ -266,6 +294,9 @@ Verify 是实现后的正式质量门：
 - 区分 blocker、warning 和 suggestion；
 - 生成 assurance report、Gate Evidence 和 verification receipt。
 
+其中 assurance report 是 Review Evidence；Gate Evidence 只能由 CLI Runner 写入。
+`xforge-verify` 可以编排调用，但不得把自身自然语言结论当成 Gate 结果。
+
 Verify 默认不修产品代码。失败时产生 `apply:rework` Action；实现变化会使旧 receipt 失效。
 
 Archive 在协议层保持独立，因为它会同步主 Specs 和移动 Change，权限高于验证。但在 Skill/UI 层由 `xforge-verify` 统一处理：
@@ -278,12 +309,16 @@ Archive 在协议层保持独立，因为它会同步主 Specs 和移动 Change�
 
 Archive 必须绑定当前 Change digest、Git HEAD 和 Flow/Gate versions，先 dry-run，拒绝 stale Evidence/冲突，原子同步 Specs 和移动 Change。它不推导 deploy/release 权限。
 
+vNext Archive 还必须绑定当前 Rule/PermissionPolicy/Gate digests、所需 Approval
+receipts 和 Audit index。`xforge-verify` 只能请求 Archive Transition；真正的
+prerequisite 判断和写入仍由 CLI 完成。
+
 ## 5. 三个官方 Flow
 
 ### 5.1 Quick
 
 ```text
-propose -> apply -> verify -> [archive action]
+propose -> [transition] -> apply -> verify -> [archive transition]
 ```
 
 | 项目 | 设计 |
@@ -292,12 +327,12 @@ propose -> apply -> verify -> [archive action]
 | 持久规划 | Proposal + delta Specs |
 | Apply | 直接执行，内部短计划 |
 | Verify | requirements mapping、structure、unit-tests |
-| Archive | Verify 明确授权后执行 |
+| Archive | 明确用户意图 + 当前 Evidence；不要求独立 planning approval |
 
 ### 5.2 Solid
 
 ```text
-propose -> design -> apply -> verify -> [archive action]
+propose -> design -> [approval/transition] -> apply -> verify -> [archive transition]
 ```
 
 | 项目 | 设计 |
@@ -306,14 +341,14 @@ propose -> design -> apply -> verify -> [archive action]
 | 持久规划 | Proposal + delta Specs + Design |
 | Apply | 自适应即时规划；必要时持久 tasks/work packages |
 | Verify | requirements/design mapping、项目 Gates |
-| Archive | Verify 明确授权后执行 |
+| Archive | 当前验证 + closing approval + Workflow Audit completeness |
 
 复杂到需要正式 Clarification、跨 artifact Check、跨团队风险控制或复杂 rollout 时升级 Major。
 
 ### 5.3 Major
 
 ```text
-propose -> clarify -> design -> check -> apply -> verify -> [archive action]
+propose -> clarify -> design -> check -> [approval/transition] -> apply -> verify -> [approval/archive transition]
 ```
 
 | 项目 | 设计 |
@@ -322,14 +357,15 @@ propose -> clarify -> design -> check -> apply -> verify -> [archive action]
 | 持久规划 | Proposal + delta Specs + Clarifications + enhanced Design + Check report |
 | Apply | 即时规划；多 Agent/长任务时持久 work packages |
 | Verify | requirements/design/risk mapping、独立 review、security/项目 Gates |
-| Archive | Verify 明确授权后执行 |
+| Archive | 显式 closing approval；可要求双人/角色分离、远端 Audit delivery |
 
-Major 不包含长期 Plan 或统一 implementation approval：
+Major 不包含长期 Plan，但包含显式 implementation transition approval：
 
 - 执行计划由 Apply 即时形成；
-- 用户明确要求实现即构成普通实施授权；
+- Check report、Machine Gates 和 implementation Approval 共同控制进入 Apply；
+- Agent 不能把“用户要求实现”的自然语言上下文伪造成可复用 Approval receipt；
 - 数据删除、不可逆迁移、生产/外部写入、权限扩大等动作仍需 Action 级即时确认；
-- Check 和 Verify 是质量门，不是重复授权门。
+- Check 是 Review Evidence，Verify 包含 Machine Gates，Approval 是独立治理事实。
 
 ## 6. Skills 系统
 
@@ -343,7 +379,7 @@ Major 不包含长期 Plan 或统一 implementation approval：
 | `xforge-design` | planning-write | Solid/Major |
 | `xforge-check` | assurance-write | Major |
 | `xforge-apply` | implementation-write | Quick/Solid/Major |
-| `xforge-verify` | assurance-write；显式时 archive-write | Quick/Solid/Major |
+| `xforge-verify` | assurance-write；可请求独立 archive transition | Quick/Solid/Major |
 
 当前 `xforge-archive` 可以保留一个迁移周期作为 shim：只查询 State，并转向 `xforge-verify` 的 `archive-current` 模式。
 
@@ -382,7 +418,10 @@ Status 是只读的自然语言状态入口，调用 `xforge state`，不维护�
 - 已完成、未完成和 invalidated Stages；
 - blockers/diagnostics；
 - tasks/work packages/deliveries；
-- Evidence 是否当前；
+- Rule coverage 与适用 PermissionPolicy；
+- Evidence 是否当前、是否只有 Review Evidence；
+- pending/invalid Approval；
+- Runtime Hook coverage 和 Workflow Audit gaps；
 - Verify/Archive readiness；
 - 下一合法 Action 和推荐 Skill。
 
@@ -400,6 +439,7 @@ xforge state
     -> 选择与用户授权一致的下一 Action
     -> 调用/遵守推荐 Stage Skill
     -> 执行
+    -> 请求 CLI Transition（如 Action 完成）
     -> 刷新 State
 ```
 
@@ -410,7 +450,8 @@ xforge state
 - 不跳过 Major Clarify/Check；
 - 遇材料歧义、失败 Gate、范围扩大或外部副作用停止；
 - 可按用户意图执行一个 Action 或连续推进；
-- 默认最多推进到 Verify satisfied；
+- 默认最多推进到 Verify completed/current；
+- Transition requirements 缺少 Gate、Approval 或 Audit completeness 时停止；
 - Archive 始终需要明确授权。
 
 `xforge-continue` 解决新会话、压缩上下文、Agent 更换和工作包合并后的恢复问题。
@@ -447,7 +488,10 @@ Scaffold 用于定制当前项目本地的 Agent 能力资产，不涉及 XForge
 ├── agents/
 ├── skills/
 ├── rules/
+├── policies/
 ├── hooks/
+│   ├── runtime/
+│   └── workflow/
 └── gates/
 ```
 
@@ -455,8 +499,8 @@ Scaffold 用于定制当前项目本地的 Agent 能力资产，不涉及 XForge
 
 - 新增或调整项目 Agent；
 - 创建、拆分或修改项目 Skill；
-- 编写 Rules 和 Hooks；
-- 调整 Agent 与 Skill、Rule 与 Gate 的引用；
+- 编写 Rules、PermissionPolicy 和 Hooks；
+- 调整 Agent 与 Skill、Rule、Policy 与 Gate 的引用；
 - 检查目标 Adapter 的能力降级；
 - 将本地 canonical assets 安装到项目启用的 Agent 工具目录。
 
@@ -482,9 +526,13 @@ scaffold:
   skills: []
   agents: []
   rules: []
+  policies: []
   hooks: []
   gates: []
 ```
+
+`policies` 是 Proposed 字段；当前 Protocol-1 Manifest 不识别它。实现前必须完成
+Schema/version 决策，旧 CLI 遇到必需的新资源必须失败而不是忽略。
 
 不建议自动发现并启用 `xforge/scaffold/` 下全部文件，否则未完成 Skill、新 Hook 或权限扩大的 Agent 可能被意外安装。
 
@@ -500,7 +548,7 @@ Scaffold 不得直接修改生成目录：
 
 这些目录只能由 `xforge install`、`xforge sync` 或 `xforge update` 根据 Adapter、ownership 和 conflict policy 投影，并可由 `xforge uninstall` 按记录清理。
 
-Hooks、网络访问、Secrets、工具权限扩大和破坏性命令必须在 install 前明确展示并请求确认。Scaffold 不修改产品代码、Specs、Changes 或 Flow 业务状态。
+Hooks、网络访问、Secrets、工具权限扩大和破坏性命令必须在 install 前明确展示并请求确认。Hook source、生成 projection、平台 trust、activation 和 event coverage 是不同状态；`sync` 成功不能被描述成 Hook 已运行。Scaffold 不修改产品代码、Specs、Changes 或 Flow 业务状态。
 
 Scaffold 生命周期采用以下确定性 CLI：
 
@@ -519,7 +567,7 @@ Scaffold 生命周期采用以下确定性 CLI：
 
 ```markdown
 # Invariants
-- 使用 XForge State，不猜测 Flow、路径、Evidence 或权限。
+- 使用 XForge State，不猜测 Flow、路径、Evidence、Approval、Audit 或权限。
 
 # Authority
 - 只接受本 Skill 对应的 ready Actions。
@@ -529,10 +577,12 @@ Scaffold 生命周期采用以下确定性 CLI：
 1. 查询 State。
 2. 读取 Action inputs。
 3. 完成语义工作或调用确定性执行器。
-4. 刷新 State，直到 satisfied、rework 或 blocked。
+4. 需要推进阶段时请求 CLI Transition。
+5. 刷新 State，直到 completed、rework 或 blocked。
 
 # Evidence
-- 按 doneWhen 和 requiredEvidence 声明完成。
+- 按 doneWhen 报告工作；Machine Evidence 只接受 CLI Runner 输出。
+- 不生成 Approval receipt 或核心 Audit 事件。
 
 # Stop/Rework
 - 处理歧义、范围变化、失败 Gate 和权限扩大。
@@ -587,7 +637,9 @@ stages:
     authority: planning-write
     requires: []
     produces: [proposal, delta-specs]
-    gates: [structure]
+    exit:
+      gates: [structure]
+      audit: [stage.entered]
     reworkTo: [propose]
 
   - id: clarify
@@ -596,7 +648,9 @@ stages:
     requires: [propose]
     produces: [clarifications]
     revises: [proposal, delta-specs]
-    exit: { materialQuestions: resolved }
+    exit:
+      conditions: { materialQuestions: resolved }
+      audit: [stage.entered]
 
   - id: design
     skill: xforge-design
@@ -609,7 +663,10 @@ stages:
     authority: assurance-write
     requires: [design]
     produces: [check-report]
-    gates: [structure, planning-consistency]
+    exit:
+      gates: [structure]
+      approvals: [implementation-major]
+      audit: [stage.entered, approval.decided]
 
   - id: apply
     skill: xforge-apply
@@ -624,7 +681,9 @@ stages:
     authority: assurance-write
     requires: [apply]
     produces: [assurance, verification-receipt]
-    gates: [structure, unit-tests, security-scan]
+    exit:
+      gates: [structure, unit-tests, security-scan, conformance]
+      audit: [gate.after, stage.entered]
 
 terminal:
   archive:
@@ -633,9 +692,16 @@ terminal:
     requires: [verify]
     syncSpecs: true
     evidencePolicy: current-revision
+    approvals: [close-major]
+    auditPolicy:
+      completeness: required
+      remoteDelivery: required
 ```
 
-Quick/Solid 使用同一 Schema 裁剪 `stages`。正式 schema 必须可静态校验，不引入任意表达式或嵌入式脚本。
+Quick/Solid 使用同一 Schema 裁剪 `stages`。Solid 在 Design exit 声明单人
+planning Approval，Quick 默认不声明该 Approval。正式 schema 必须可静态校验，
+不引入任意表达式或嵌入式脚本。示例中的 Approval/Audit 字段是 Proposed，当前
+`v1alpha2` 实现尚不接受。
 
 辅助 Skills 不写进某个 Flow 的 Stage 图：
 
@@ -655,11 +721,20 @@ Quick/Solid 使用同一 Schema 裁剪 `stages`。正式 schema 必须可静态�
   "revision": "sha256:state-revision",
   "flow": { "id": "solid", "version": 2 },
   "stages": [
-    { "id": "propose", "status": "satisfied" },
-    { "id": "design", "status": "satisfied" },
-    { "id": "apply", "status": "ready" },
+    { "id": "propose", "status": "completed" },
+    { "id": "design", "status": "completed" },
+    { "id": "apply", "status": "active" },
     { "id": "verify", "status": "unavailable" }
   ],
+  "governance": {
+    "ruleCoverage": { "verified": ["api-compatibility"], "uncovered": [] },
+    "permissionPolicies": ["protected-files"],
+    "approvals": [
+      { "id": "planning-solid", "status": "current" }
+    ],
+    "runtimeHooks": { "coverage": "partial", "gaps": ["hosted-web-tools"] },
+    "audit": { "workflow": "complete", "remoteDelivery": "not-required" }
+  },
   "nextActions": [
     {
       "id": "apply:change",
@@ -674,6 +749,12 @@ Quick/Solid 使用同一 Schema 裁剪 `stages`。正式 schema 必须可静态�
       "writes": ["resolved/change/scope/**"],
       "doneWhen": ["requirements implemented", "targeted checks pass"],
       "requiredEvidence": ["tests", "delivery-record"],
+      "transitionAfter": {
+        "to": "verify",
+        "gates": ["structure", "unit-tests"],
+        "approvals": [],
+        "auditCompleteness": "required"
+      },
       "reworkTo": ["propose", "design", "apply"],
       "stateRevision": "sha256:state-revision",
       "blockingDiagnostics": []
@@ -713,6 +794,8 @@ xforge state --requirement <requirement-id>
 - Action 带 actor、authority、inputs、writes、doneWhen、Evidence 和 revision；
 - inputs 是最小相关集合并说明原因，不返回全部 Specs；
 - external/CLI Action 不能由 Agent 冒领；
+- Approval Action 只能由人或授权 provider 完成，Agent 只能请求；
+- Stage Skill 完成语义工作后只能请求 CLI Transition；
 - 多 Action 只有依赖、写入和外部资源均不冲突时并行；
 - 提交结果前检查 revision；
 - rework 明确目标 Stage 和失效范围；
@@ -720,15 +803,18 @@ xforge state --requirement <requirement-id>
 
 ## 10. Gates、Evidence 与失效
 
-质量分三层：
+质量与治理分六层：
 
 | 层 | 作用 |
 | --- | --- |
+| Rule / PermissionPolicy | 分别表达指导要求和运行权限，不证明完成 |
 | Artifact validator | 单个 Proposal/Specs/Design/Report 的结构和最小契约 |
-| Check Skill | Major 实现前跨 artifact 的语义一致性与可实施性 |
-| Verify Skill + Gates | 实现后符合性、测试和机器 Evidence |
+| Check/Reviewer | 跨 artifact 或实现的语义 Review Evidence，不是 Machine Gate |
+| Machine Gate | 由 CLI Runner 执行的确定性检查和 Evidence |
+| Approval | 人或授权系统对 planning/closing 等决策负责 |
+| Audit completeness | 验证 lifecycle 事件、覆盖、hash chain 和要求的远端交付 |
 
-Evidence 至少绑定 Change ID、Flow ID/version、Stage、State revision、Git base/head、输入 artifact digests、Gate ID/version/command、timestamp、exit status 和输出 digest。
+Machine Evidence 至少绑定 Change ID、Flow ID/version、Stage、State revision、Git base/head、Constitution/Rule/Policy/输入 artifact digests、Gate ID/version/command、timestamp、exit status 和输出 digest。Review Evidence、Approval receipt、Audit event/index 和 Transition receipt 必须使用不同 record type，不能互相冒充。
 
 上游材料性变更使下游按 digest 依赖失效：
 
@@ -736,12 +822,24 @@ Evidence 至少绑定 Change ID、Flow ID/version、Stage、State revision、Git
 Proposal/Specs changed -> Clarify/Design/Check/Apply/Verify stale
 Design changed         -> Check/Apply/Verify stale
 Implementation changed -> Verify receipt stale
+Rule/Policy/Gate changed -> coverage/linked Evidence stale
+Flow changed           -> Stage/Transition/Approval receipt stale
 Scaffold asset changed -> installed target digest stale
 ```
 
-Archive 只接受当前 revision 的成功 receipt；Install 只接受当前 scaffold assets 和 Manifest 选择形成的计划。
+Archive 只接受当前 revision 的成功 Gate/Approval receipts 和完整 Audit index；Install 只接受当前 scaffold assets 和 Manifest 选择形成的计划。
 
-## 11. 完备性审计
+### 10.1 Workflow Audit 与 Runtime Audit
+
+- XForge CLI 内建记录 change/stage/gate/approval/archive/work-package lifecycle；
+- Runtime Hook 补充 session/tool/permission/subagent 事件；
+- Runtime Hook 不可用时，State 明确报告 coverage gap，但不能影响 Workflow Audit 的真实性；
+- 实时远端失败先写本地 spool；要求远端留存的 Flow 在交付完成前不得 Archive；
+- 默认只提交脱敏 index、coverage 和 receipts，不提交完整 Prompt 或无限工具输出。
+
+Skill 只消费 Audit 状态，不写核心 lifecycle event。项目 Workflow Hook 可以执行附加自动化，但不能关闭或改写 CLI 内建 Audit。
+
+## 11. 设计完备性检查
 
 ### 11.1 能力覆盖
 
@@ -753,6 +851,10 @@ Archive 只接受当前 revision 的成功 receipt；Install 只接受当前 sca
 | 实现前质量 | Major Check | 完整 |
 | 即时规划与实施 | Apply | 完整 |
 | 实现后验证 | Verify + Gates | 完整 |
+| Planning/closing 决策 | Approval receipts + Transition Guard | Proposed，待 Schema/CLI 落地 |
+| 运行权限 | PermissionPolicy + Target permission/runtime guard | Proposed，按 Adapter 降级 |
+| Workflow 审计 | CLI built-in Audit | Proposed，必须先于 Runtime Hook 落地 |
+| Runtime 审计 | Target Hooks + normalizer | Proposed，存在平台覆盖差异 |
 | Specs 同步与关闭 | Verify 的 Archive action | 完整 |
 | 只读调查 | Explore | 完整 |
 | 状态查询 | Status + State | 需 Requirement ID 索引补强 |
@@ -767,12 +869,14 @@ Archive 只接受当前 revision 的成功 receipt；Install 只接受当前 sca
 
 在“单项目、以 Change 为单位、从需求到验证归档、支持项目 Agent 能力定制”的范围内，设计闭环已经完备。当前剩余缺口不是继续增加 Skill，而是把以下协议能力实现出来：
 
-1. Stage-aware Flow v1alpha2；
+1. Stage-aware Flow 与 Transition Guard；
 2. 多个 revision-bound `nextActions`；
-3. Stable Requirement ID 与状态索引；
-4. Artifact validator 和 digest 失效传播；
-5. Verification receipt 与 Archive freshness；
-6. Scaffold 资源盘点、引用、敏感权限和安装后状态验证。
+3. Approval、Gate、Audit 和 Transition receipts；
+4. Rule coverage 与 PermissionPolicy；
+5. Stable Requirement ID 与状态索引；
+6. Artifact validator 和 digest 失效传播；
+7. Verification receipt 与 Archive freshness；
+8. Scaffold 资源盘点、引用、敏感权限、Hook trust/activation 和安装后状态验证。
 
 不建议现在新增 Onboard、FF、Sync、Bulk Archive 或 Deliver。它们要么已有协议承载，要么不是高频独立权限意图。
 
@@ -789,6 +893,11 @@ Archive 只接受当前 revision 的成功 receipt；Install 只接受当前 sca
 - Revise vs Apply rework；
 - Scaffold vs 普通产品代码修改；
 - Verify-only vs Verify-and-Archive。
+- Rule instructed vs Policy guarded vs Gate verified；
+- Review Evidence vs Machine Evidence；
+- projected Hook vs trusted/active Hook；
+- pending Approval vs stale Approval；
+- complete Workflow Audit vs partial Runtime Audit。
 
 ### 12.2 行为矩阵
 
@@ -797,7 +906,7 @@ Skills: 7 core + 4 auxiliary
 x Flows: quick/solid/major/custom
 x State: ready/blocked/rework/stale/resumed/multiple-changes
 x Mode: portable/managed
-x Result: success/ambiguity/failed-check/failed-gate/conflict
+x Result: success/ambiguity/failed-check/failed-gate/pending-approval/audit-gap/conflict
 ```
 
 核心断言：
@@ -805,47 +914,62 @@ x Result: success/ambiguity/failed-check/failed-gate/conflict
 - Quick 不生成 Design/Clarify/Check artifacts；
 - Solid 不生成 Clarify/Check artifacts；
 - Major Check 失败不能进入 Apply；
+- Check `PASS` 但 implementation Approval 缺失时仍不能进入 Major Apply；
 - Apply 按复杂度选择内部计划或持久 work packages；
 - Verify 失败返回 Apply rework；
-- Archive 只在明确授权且 receipt 当前时发生；
+- Archive 只在明确授权且 Gate/Approval/Audit receipts 当前时发生；
 - Explore/Status 始终只读；
 - Continue 不跳过 Flow 边界；
 - Revise 不修改代码或 Evidence；
 - Scaffold 只改项目本地 assets/选择，并由 Install 投影；
+- Runtime Hook 不支持时 Workflow Audit 仍可用并报告 coverage gap；
+- `must` Rule 没有 Gate/Approval coverage 时报告 uncovered；
 - Stage Skill 不硬编码 Flow 名称和序列。
 
-## 13. 落地顺序
+## 13. P0–P4 实施状态
 
-实现按以下顺序推进；兼容策略在每一阶段保持有效：
+以下阶段已在 `@xforge/cli 0.4.0` 和 Scaffold Skills 3.0 中完成；兼容策略继续有效：
 
-### P0：冻结设计
+### P0：冻结设计（完成）
 
 1. 冻结 Quick/Solid/Major 阶段图。
 2. 冻结 7 个核心 + 4 个辅助 Skill 的职责和触发边界。
 3. 冻结 Verify/Archive 的 Skill 与协议分层。
 4. 冻结 State/Status、Continue 和 Requirement ID 语义。
 5. 冻结 Scaffold 只修改项目本地 assets/Manifest selection 的边界。
+6. 冻结 Rule/PermissionPolicy 分离和两类 Hook。
+7. 冻结 Approval、Audit 和 Transition receipt。
 
-### P1：Flow/State
+### P1：Flow/State（完成）
 
-1. 定义 Flow `v1alpha2` 的 policy、stages、terminal 和 Evidence。
+1. 定义 Flow 的 policy、stages、entry/exit Transition、terminal 和 Evidence。
 2. `prime.yaml` 迁移为 `major.yaml`。
 3. 返回 Stage 状态、多个 Actions、revision 和 reworkTo。
 4. 引入 Artifact validators 和 digest 失效传播。
 5. 建立 Requirement ID index。
+6. 实现 CLI 内建 Workflow Audit 和 Audit completeness。
+7. 实现 Approval/Transition receipts；此阶段不依赖 Target Runtime Hook。
 
-### P2：核心 Skills
+### P2：核心 Skills（完成）
 
 1. 新增 Clarify/Design/Check；收窄 Propose；重构 Apply/Verify。
 2. Archive Skill 保留一版 shim 后退出 canonical 集合。
-3. 更新 Manifest、Adapters、触发评测和行为评测。
+3. Skill 统一采用 state → execute → request transition → refresh state。
+4. 更新 Manifest、Adapters、触发评测和行为评测。
 
-### P3：辅助 Skills
+### P3：辅助 Skills（完成）
 
 1. 实现 Status/Continue/Revise/Scaffold。
-2. 增加项目本地 Scaffold 引用闭合和敏感权限校验。
+2. 增加 Rule coverage、PermissionPolicy、Hook plane/trust/activation 状态。
 3. 验证 install/sync/update/uninstall/ownership 全闭环。
 4. 增加 Requirement/Change 状态查询 golden tests。
+
+### P4：Runtime Hooks 与企业审计（完成）
+
+1. 按事件级 capability 实现 Claude/Codex/Cursor/Copilot Adapter；
+2. OpenCode 使用受管轻量 plugin bridge；
+3. 实现 Runtime event normalizer、spool、redaction 和 coverage report；
+4. 已增加 append-only remote sink、managed policy capability 和 `audit verify --change` CI protected check。
 
 ### 兼容策略
 
@@ -860,9 +984,9 @@ x Result: success/ambiguity/failed-check/failed-gate/conflict
 
 1. **Flow 收敛为 Quick、Solid、Major。** Prime 更名为 Major。
 2. **移除独立 Plan。** Apply 即时规划，复杂时才持久化 work packages。
-3. **移除统一 Implementation Approval。** 高风险副作用使用 Action 级即时确认。
+3. **Approval 与 Gate 分离。** Solid 默认单人 planning approval；Major 默认显式 implementation/closing approval，双人和角色分离由 policy 决策。
 4. **保留 Major Clarify 和 Check。** 分别控制需求歧义和实现前质量。
-5. **Verify 在 Skill 层承接 Archive，在协议层保持权限分离。**
+5. **Verify 在 Skill 层可以请求 Archive，在协议层由独立 Transition/Archive authority 执行。**
 6. **核心生命周期 Skills 固定为七个。**
 7. **辅助 Skills 增加 Status、Continue、Revise、Scaffold。**
 8. **State 是机器协议；Status 是用户解释层。**
@@ -870,6 +994,9 @@ x Result: success/ambiguity/failed-check/failed-gate/conflict
 10. **Scaffold 只定制当前项目 `xforge/scaffold`，由 Install 首次投影、Sync 增量同步。**
 11. **Specs Sync 绑定 Archive，不提供独立 Specs Sync Skill；CLI `sync` 只处理 Scaffold 投影。**
 12. **设计范围内已经完备，下一步重点是协议实现与评测，不是增加更多 Skills。**
+13. **Rule 只提供指导；PermissionPolicy、Gate 和 Approval 分别承担权限、机器证明和人类决策。**
+14. **Runtime Hook 与 Workflow Hook 分平面；核心 Workflow Audit 不依赖平台 Hook。**
+15. **Stage 只能由 CLI Transition Guard 推进，Skill 和 Agent 不自我声明完成。**
 
 ## 15. 外部参照
 

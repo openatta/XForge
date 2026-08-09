@@ -4,7 +4,7 @@ description: 兼容旧入口，把明确的归档请求转交 xforge-verify 的 
 license: MIT
 metadata:
   author: xforge（基于 OpenSpec 工作流适配）
-  version: "2.0"
+  version: "3.0"
   source: OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab
 ---
 
@@ -17,11 +17,12 @@ metadata:
 
 - 本 Skill 不直接写 Specs、Evidence 或 Archive，不直接移动 Change。
 - 只有用户明确要求归档才可转交 archive-current；仅要求验证时改用 verify-only。
+- Agent 不能创建 Closing Approval；必须由交互式人类或已配置外部 provider 提供当前 revision 的 receipt。
 
 # 执行
 
 1. 查询 State 并说明旧入口已并入 `xforge-verify`。
-2. 使用 `xforge-verify` 的 `archive-current` 流程：检查当前 receipt，必要时重新 Verify，执行 archive dry-run，确认后再归档。
+2. 使用 `xforge-verify` 的 `archive-current` 流程：确认 Stage 为 `ready-to-archive`，运行 `xforge audit verify --change <id>`，检查当前 Gate/Approval/Audit receipts，执行 archive dry-run，确认后再归档。
 3. 刷新 State 并报告最终结果。
 
 # 证据

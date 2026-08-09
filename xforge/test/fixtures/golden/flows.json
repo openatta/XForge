@@ -8,7 +8,9 @@
     ],
     "artifacts": ["proposal", "delta-specs", "assurance", "verification-receipt"],
     "gates": ["structure", "unit-tests"],
-    "archiveHandler": "xforge-verify"
+    "archiveHandler": "xforge-verify",
+    "approvals": [["quick-close", 1, false, ["local", "enterprise-hmac"]]],
+    "audit": { "requiredEventTypes": ["gate.after", "stage.entered"], "runtimeCoverage": "optional", "remoteDelivery": "optional" }
   },
   "solid": {
     "assuranceLevel": "solid",
@@ -20,7 +22,12 @@
     ],
     "artifacts": ["proposal", "delta-specs", "design", "assurance", "verification-receipt"],
     "gates": ["structure", "unit-tests"],
-    "archiveHandler": "xforge-verify"
+    "archiveHandler": "xforge-verify",
+    "approvals": [
+      ["planning-solid", 1, false, ["local", "enterprise-hmac"]],
+      ["closing-solid", 1, false, ["local", "enterprise-hmac"]]
+    ],
+    "audit": { "requiredEventTypes": ["gate.after", "stage.entered", "approval.decided"], "runtimeCoverage": "optional", "remoteDelivery": "optional" }
   },
   "major": {
     "assuranceLevel": "major",
@@ -34,6 +41,11 @@
     ],
     "artifacts": ["proposal", "delta-specs", "clarifications", "design", "check-report", "assurance", "verification-receipt"],
     "gates": ["structure", "unit-tests", "security-scan"],
-    "archiveHandler": "xforge-verify"
+    "archiveHandler": "xforge-verify",
+    "approvals": [
+      ["implementation-major", 2, true, ["enterprise-hmac"]],
+      ["closing-major", 2, true, ["enterprise-hmac"]]
+    ],
+    "audit": { "requiredEventTypes": ["gate.after", "stage.entered", "approval.decided"], "runtimeCoverage": "optional", "remoteDelivery": "required" }
   }
 }

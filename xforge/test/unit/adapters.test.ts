@@ -6,7 +6,7 @@ import { TARGETS } from '../../src/constants.js';
 import { xforgeRoot } from '../helpers.js';
 
 describe('Adapter golden mapping', () => {
-  it('locks all five protocol-1 installation paths and capabilities', async () => {
+  it('locks all five Protocol 2 installation paths and capabilities', async () => {
     const golden = JSON.parse(await readFile(path.join(xforgeRoot, 'test', 'fixtures', 'golden', 'adapters.json'), 'utf8'));
     const actual = Object.fromEntries(TARGETS.map((target) => {
       const adapter = getAdapter(target);
@@ -36,11 +36,11 @@ describe('Adapter golden mapping', () => {
   it('attaches deterministic source trace metadata to rendered artifacts', () => {
     for (const target of TARGETS) {
       const adapter = getAdapter(target);
-      expect(adapter.version).toBe('1');
+      expect(adapter.version).toBe('2');
       expect(adapter.trace('skill', 'xforge-explore', ['xforge/scaffold/skills/xforge-explore/SKILL.md'])).toEqual({
         resource: { kind: 'skill', id: 'xforge-explore' },
         sourcePaths: ['xforge/scaffold/skills/xforge-explore/SKILL.md'],
-        renderVersion: `${target}:skill:1`,
+        renderVersion: `${target}:skill:2`,
       });
     }
   });

@@ -5,6 +5,7 @@ import type {
   Diagnostic,
   GateResource,
   HookResource,
+  PermissionPolicyResource,
   ProjectContext,
   RuleResource,
   ScriptResource,
@@ -13,6 +14,7 @@ import { diagnostic } from './errors.js';
 import { assertResourceId, normalizeRelative, safeResolve } from './path-safety.js';
 import { validateSchema, type SchemaName } from './validator.js';
 import { loadYaml } from './yaml.js';
+import { normalizeRule } from './governance.js';
 
 async function exists(filePath: string): Promise<boolean> {
   try { await access(filePath); return true; } catch { return false; }
@@ -22,6 +24,7 @@ export interface SelectedResources {
   skills: Map<string, string>;
   agents: Map<string, { value: AgentResource; yamlPath: string; instructionsPath: string; instructions: string }>;
   rules: Map<string, { value: RuleResource; yamlPath: string }>;
+  policies: Map<string, { value: PermissionPolicyResource; yamlPath: string }>;
   hooks: Map<string, { value: HookResource; yamlPath: string }>;
   gates: Map<string, { value: GateResource; yamlPath: string }>;
   scripts: Map<string, { value: ScriptResource; yamlPath: string; entryPath: string }>;
@@ -30,7 +33,7 @@ export interface SelectedResources {
 
 async function loadFlatResource<T extends { metadata?: { name?: string } }>(
   project: ProjectContext,
-  kind: 'agents' | 'rules' | 'hooks' | 'gates',
+  kind: 'agents' | 'rules' | 'policies' | 'hooks' | 'gates',
   id: string,
   schema: SchemaName,
 ): Promise<{ value: T | null; yamlPath: string; diagnostics: Diagnostic[] }> {
@@ -49,6 +52,7 @@ export async function loadSelectedResources(project: ProjectContext): Promise<Se
   const skills = new Map<string, string>();
   const agents = new Map<string, { value: AgentResource; yamlPath: string; instructionsPath: string; instructions: string }>();
   const rules = new Map<string, { value: RuleResource; yamlPath: string }>();
+  const policies = new Map<string, { value: PermissionPolicyResource; yamlPath: string }>();
   const hooks = new Map<string, { value: HookResource; yamlPath: string }>();
   const gates = new Map<string, { value: GateResource; yamlPath: string }>();
   const scripts = new Map<string, { value: ScriptResource; yamlPath: string; entryPath: string }>();
@@ -83,11 +87,18 @@ export async function loadSelectedResources(project: ProjectContext): Promise<Se
     const loaded = await loadFlatResource<RuleResource>(project, 'rules', id, 'rule');
     diagnostics.push(...loaded.diagnostics);
     if (loaded.value) {
-      if (loaded.value.spec.constitutionCompatibility === 'conflict') diagnostics.push(diagnostic('XFORGE_CONSTITUTION_RULE_CONFLICT', `Rule ${id} declares a Constitution conflict.`, loaded.yamlPath));
-      if (loaded.value.spec.level === 'mandatory' && !loaded.value.spec.gate) diagnostics.push(diagnostic('XFORGE_RULE_NOT_ENFORCED', `Mandatory Rule ${id} has no executable Gate and remains guidance.`, loaded.yamlPath, 'warning'));
-      if (loaded.value.spec.gate && !project.manifest.scaffold.gates.includes(loaded.value.spec.gate)) diagnostics.push(diagnostic('XFORGE_RULE_GATE_DISABLED', `Rule ${id} references non-enabled Gate ${loaded.value.spec.gate}.`, loaded.yamlPath));
+      const normalized = normalizeRule(loaded.value);
+      if (normalized.constitutionCompatibility === 'conflict') diagnostics.push(diagnostic('XFORGE_CONSTITUTION_RULE_CONFLICT', `Rule ${id} declares a Constitution conflict.`, loaded.yamlPath));
+      if (normalized.severity === 'must' && normalized.gateRefs.length === 0 && normalized.approvalRefs.length === 0) diagnostics.push(diagnostic('XFORGE_RULE_NOT_ENFORCED', `Must Rule ${id} has no executable Gate or Approval coverage and remains guidance.`, loaded.yamlPath, 'warning'));
+      for (const gate of normalized.gateRefs) if (!project.manifest.scaffold.gates.includes(gate)) diagnostics.push(diagnostic('XFORGE_RULE_GATE_DISABLED', `Rule ${id} references non-enabled Gate ${gate}.`, loaded.yamlPath));
       rules.set(id, { value: loaded.value, yamlPath: loaded.yamlPath });
     }
+  }
+
+  for (const id of project.manifest.scaffold.policies ?? []) {
+    const loaded = await loadFlatResource<PermissionPolicyResource>(project, 'policies', id, 'permission-policy');
+    diagnostics.push(...loaded.diagnostics);
+    if (loaded.value) policies.set(id, { value: loaded.value, yamlPath: loaded.yamlPath });
   }
 
   for (const id of project.manifest.scaffold.hooks) {
@@ -125,5 +136,13 @@ export async function loadSelectedResources(project: ProjectContext): Promise<Se
     scripts.set(id, { value, yamlPath, entryPath });
   }
 
-  return { skills, agents, rules, hooks, gates, scripts, diagnostics };
+  for (const [id, hook] of hooks) {
+    const scriptRef = hook.value.spec.action?.scriptRef;
+    if (scriptRef && !scripts.has(scriptRef)) diagnostics.push(diagnostic('XFORGE_HOOK_SCRIPT_MISSING', `Hook ${id} references a non-enabled Script: ${scriptRef}.`, hook.yamlPath));
+    if (hook.value.apiVersion === 'xforge.dev/v1alpha2' && hook.value.spec.plane && !hook.value.spec.event.startsWith(hook.value.spec.plane === 'runtime' ? 'agent.' : '') && hook.value.spec.plane === 'runtime') {
+      diagnostics.push(diagnostic('XFORGE_HOOK_PLANE_EVENT_MISMATCH', `Runtime Hook ${id} must use an agent.* event.`, hook.yamlPath));
+    }
+  }
+
+  return { skills, agents, rules, policies, hooks, gates, scripts, diagnostics };
 }

@@ -7,8 +7,12 @@
 | Default/relocated Specs and Changes paths | `archive.test.ts`, `security-boundaries.test.ts` |
 | Traversal, overlap, generated roots, symlink escape, malicious resource IDs | `path-safety.test.ts`, `security-boundaries.test.ts` |
 | Constitution validity/conflict and Flow risk escalation | `governance.test.ts` |
-| Eight-field work packages, DAG readiness, shared/path boundaries, Git delivery and verify Evidence | `work-packages.test.ts` |
+| Eight-field work packages, DAG readiness, revision-bound dispatch, shared/path boundaries, Git delivery and verify Evidence | `work-packages.test.ts`, `control-plane.test.ts` |
 | quick/solid/major Stage graphs, Flow policy, and Verify receipt boundary | `flows.test.ts`, `flows.json` golden |
+| Typed Transition receipts, stale revision rejection, rework, planning/closing Approval and separation of duties | `control-plane.test.ts`, `archive.test.ts` |
+| External Approval signature/provider/role validation and non-interactive fail-closed behavior | `control-plane.test.ts` |
+| Audit status/verify/export/retry, local hash-chain tamper detection, 503 spool→retry, Major remote-debt block | `audit.test.ts` |
+| Runtime Hook dispatch, protected-file deny, secret redaction, local/cloud coverage and adapter mapping | `runtime-governance.test.ts`, `adapters.test.ts` |
 | Full command lifecycle and JSON/Text envelope | `cli-protocol.test.ts`, `projection-lifecycle.test.ts` |
 | Five Adapter paths and capability truthfulness | `adapters.test.ts`, `adapters.json` golden, `product-validation.test.ts` |
 | Default worker/integrator/reviewer assets and Parallel Development bootstrap | `product-validation.test.ts`, `install.test.ts` |
