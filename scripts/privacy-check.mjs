@@ -11,11 +11,13 @@ const rangeIndex = args.indexOf('--identity-range');
 const identityRange = rangeIndex === -1 ? null : args[rangeIndex + 1];
 const includeIndexes = args.flatMap((argument, index) => argument === '--include' ? [index] : []);
 const includePaths = includeIndexes.map((index) => args[index + 1]);
-const knownArguments = new Set(['--staged', '--check-next-commit', '--identity-range', '--include']);
+const messageIndex = args.indexOf('--message-file');
+const messageFile = messageIndex === -1 ? null : args[messageIndex + 1];
+const knownArguments = new Set(['--staged', '--check-next-commit', '--identity-range', '--include', '--message-file']);
 
 for (let index = 0; index < args.length; index += 1) {
   const argument = args[index];
-  if (argument === '--identity-range' || argument === '--include') {
+  if (argument === '--identity-range' || argument === '--include' || argument === '--message-file') {
     index += 1;
     if (!args[index]) fail(`Missing value for ${argument}.`);
     continue;
@@ -61,6 +63,7 @@ for (const file of candidateFiles()) {
   }
   scanText(normalized, fileContent(file));
 }
+if (messageFile) scanText('commit-message', readFileSync(messageFile));
 
 if (checkNextCommit) {
   checkIdentity('next-author', gitIdentity('GIT_AUTHOR_IDENT'));
@@ -70,15 +73,20 @@ if (checkNextCommit) {
     const [author = '', committer = ''] = git(['show', '-s', '--format=%ae%n%ce', commit]).trim().split(/\r?\n/);
     checkIdentity(`commit-author:${commit.slice(0, 12)}`, author);
     checkIdentity(`commit-committer:${commit.slice(0, 12)}`, committer);
+    scanText(`commit-message:${commit.slice(0, 12)}`, Buffer.from(git(['show', '-s', '--format=%B', commit])));
   }
 } else if (hasHead()) {
   const [author = '', committer = ''] = git(['show', '-s', '--format=%ae%n%ce', 'HEAD']).trim().split(/\r?\n/);
   checkIdentity('head-author', author);
   checkIdentity('head-committer', committer);
+  scanText('head-commit-message', Buffer.from(git(['show', '-s', '--format=%B', 'HEAD'])));
   const tagRows = git(['for-each-ref', '--points-at=HEAD', '--format=%(refname:short)%09%(objecttype)%09%(taggeremail)', 'refs/tags']).trim();
   for (const row of tagRows.split(/\r?\n/).filter(Boolean)) {
     const [tag, objectType, taggerEmail = ''] = row.split('\t');
-    if (objectType === 'tag') checkIdentity(`tagger:${tag}`, taggerEmail);
+    if (objectType === 'tag') {
+      checkIdentity(`tagger:${tag}`, taggerEmail);
+      scanText(`tag-message:${tag}`, Buffer.from(git(['for-each-ref', '--format=%(contents)', `refs/tags/${tag}`])));
+    }
   }
 }
 

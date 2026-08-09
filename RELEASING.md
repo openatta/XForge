@@ -93,7 +93,7 @@ new version.
 
 - `npm run check:privacy` scans tracked and unignored files without printing the
   matched values.
-- `npm run privacy:install-hook` installs the repository's pre-commit check.
+- `npm run privacy:install-hook` installs pre-commit and commit-message checks.
 - `.github/workflows/privacy-check.yml` checks new commit identities and content.
 - `.github/workflows/publish-npm.yml` repeats the check before publication.
 

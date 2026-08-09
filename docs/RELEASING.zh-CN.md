@@ -87,7 +87,7 @@ dist-tag，修复源码后发布一个新版本。
 ## 隐私保护边界
 
 - `npm run check:privacy`：扫描受跟踪和未被忽略的文件，但不回显命中的敏感值。
-- `npm run privacy:install-hook`：安装仓库内的 pre-commit 隐私检查。
+- `npm run privacy:install-hook`：安装仓库内的 pre-commit 与 commit-msg 隐私检查。
 - `.github/workflows/privacy-check.yml`：检查新增提交的身份和内容。
 - `.github/workflows/publish-npm.yml`：发布前再次强制检查。
 

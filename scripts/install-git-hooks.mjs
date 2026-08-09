@@ -9,5 +9,5 @@ try {
   process.exit(1);
 }
 
-process.stdout.write('Installed the privacy pre-commit hook from .githooks/.\n');
-process.stdout.write('The hook rejects sensitive content and non-noreply commit identities without printing matched values.\n');
+process.stdout.write('Installed the privacy Git hooks from .githooks/.\n');
+process.stdout.write('The hooks reject sensitive content, commit messages, and non-noreply identities without printing matched values.\n');
