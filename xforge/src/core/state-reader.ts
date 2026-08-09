@@ -12,6 +12,7 @@ import { loadSelectedResources } from './resource-loader.js';
 import { resolvedResourceEntries } from './lockfile.js';
 import { stableStringify } from './hash.js';
 import { resolveWorkPackages } from './work-packages.js';
+import { installationSummary, readOwnership } from '../install/ownership.js';
 
 async function exists(filePath: string): Promise<boolean> {
   try { await access(filePath); return true; } catch { return false; }
@@ -111,6 +112,7 @@ export async function readState(project: ProjectContext, options: StateOptions):
   };
   const filteredResources = options.kind ? { [options.kind]: resourceSummary[options.kind] } : resourceSummary;
   const targetList = options.target ? [options.target] : project.manifest.targets;
+  const installation = installationSummary(await readOwnership(project));
 
   return {
     data: {
@@ -138,6 +140,7 @@ export async function readState(project: ProjectContext, options: StateOptions):
       flows: flowSummaries,
       resources: filteredResources,
       targets: capabilityMatrix(targetList),
+      installation,
       change: selectedChange,
       context,
     },

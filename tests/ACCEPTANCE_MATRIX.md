@@ -9,7 +9,7 @@
 | Constitution validity/conflict and Flow risk escalation | `governance.test.ts` |
 | Eight-field work packages, DAG readiness, shared/path boundaries, Git delivery and verify Evidence | `work-packages.test.ts` |
 | quick/solid/major Stage graphs, Flow policy, and Verify receipt boundary | `flows.test.ts`, `flows.json` golden |
-| Four-command JSON/Text envelope | `cli-protocol.test.ts` |
+| Full command lifecycle and JSON/Text envelope | `cli-protocol.test.ts`, `projection-lifecycle.test.ts` |
 | Five Adapter paths and capability truthfulness | `adapters.test.ts`, `adapters.json` golden, `product-validation.test.ts` |
 | Default worker/integrator/reviewer assets and Parallel Development bootstrap | `product-validation.test.ts`, `install.test.ts` |
 | Dry-run, idempotency, unmanaged conflict, modified-file protection, managed-only prune | `install.test.ts` |

@@ -8,7 +8,9 @@ import type { TargetId } from '../constants.js';
 
 export interface Adapter {
   id: TargetId;
+  version: string;
   capability: AdapterCapability;
+  trace(kind: string, id: string, sourcePaths: string[]): Pick<DesiredFile, 'resource' | 'sourcePaths' | 'renderVersion'>;
   skillDirectory(skillId: string): string;
   commandPath(skillId: string): string | null;
   renderCommand(skillId: string): string | null;

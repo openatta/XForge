@@ -9,7 +9,7 @@ project:
       path: .
       kind: application
 scaffold:
-  version: 0.2.0
+  version: 0.3.0
   source:
     type: git
     repository: https://github.com/openatta/XForge.git
@@ -23,7 +23,7 @@ scripts: []
 xforge:
   source: npm
   package: "@xforge/cli"
-  version: 0.2.0
+  version: 0.3.0
   protocol: "1"
 flow: quick
 targets: [codex, claude]

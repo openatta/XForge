@@ -24,13 +24,13 @@ metadata:
 
 1. 查询目标 kind 和 Adapter 能力，重读现有资源及其引用。
 2. 创建或修改最小 canonical asset，检查 Agent→Skill、Rule→Gate、Hook/工具权限等引用闭合。
-3. 运行 `xforge check`，再运行 `xforge install --dry-run`；展示跨目标 diff、冲突、native/degraded/unsupported 和敏感变化。
-4. 需要确认的权限变化获批后运行 `xforge install`，不得把安装成功误报为不受支持能力已启用。
+3. 运行 `xforge check`，再运行 `xforge sync --dry-run`；展示跨目标 diff、冲突、native/degraded/unsupported 和敏感变化。
+4. 需要确认的权限变化获批后运行 `xforge sync`；如果 CLI 返回 `XFORGE_FULL_UPDATE_REQUIRED` 或 `XFORGE_STATE_UPGRADE_REQUIRED`，改为 `xforge update --dry-run`，确认后运行 `xforge update`。不得把安装成功误报为不受支持能力已启用。
 5. 再次运行 State，验证 Manifest selection、lock digest、ownership 和安装结果。
 
 # 证据
 
-- 报告 canonical source 路径、Manifest 选择变化、dry-run/安装变更、Adapter 降级和最终 lock/State 结果。
+- 报告 canonical source 路径、Manifest 选择变化、dry-run/同步变更、Adapter 降级和最终 lock/安装记录结果。
 
 # 停止与返工
 

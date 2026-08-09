@@ -1,8 +1,10 @@
 import type { Adapter } from './types.js';
-import { BOOTSTRAP_BODY, actionId, commandBody, renderAgentMarkdown, renderRuleMarkdown } from './shared.js';
+import { BOOTSTRAP_BODY, actionId, artifactTrace, commandBody, renderAgentMarkdown, renderRuleMarkdown } from './shared.js';
 
 export const claudeAdapter: Adapter = {
   id: 'claude',
+  version: '1',
+  trace: artifactTrace('claude', '1'),
   capability: { skills: 'native', commands: 'native', agents: 'native', rules: 'native', hooks: 'unsupported' },
   skillDirectory: (id) => `.claude/skills/${id}`,
   commandPath: (id) => `.claude/commands/xforge/${actionId(id)}.md`,
@@ -14,5 +16,6 @@ export const claudeAdapter: Adapter = {
   bootstrap: () => [{
     path: '.claude/rules/xforge-bootstrap.md', content: Buffer.from(BOOTSTRAP_BODY),
     source: 'builtin:bootstrap', target: 'claude',
+    resource: { kind: 'builtin', id: 'bootstrap' }, sourcePaths: [], renderVersion: 'claude:builtin:1',
   }],
 };

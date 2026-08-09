@@ -1,7 +1,7 @@
 apiVersion: xforge.dev/v1alpha1
 kind: Scaffold
 metadata:
-  version: 0.2.0
+  version: 0.3.0
 protocol: "1"
 payload: payload
 integrity:

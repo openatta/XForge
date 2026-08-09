@@ -2,16 +2,16 @@ apiVersion: xforge.dev/v1alpha1
 kind: Lock
 protocol: "1"
 scaffold:
-  version: 0.2.0
+  version: 0.3.0
   source:
     type: git
     repository: https://github.com/openatta/XForge.git
     commit: 99b8726f67ad337e257a52fc606d296927097730
 xforge:
-  integrity: sha256:f9bed9ae705b253d23ceea1e8fbe52ff848fc9e7777105a159fa44894ffbc9a3
+  integrity: sha256:9d2bb8bee3e6996e7e99c3d04c69dcb70459575cb0d85e9a373b0a6c9e79dd62
   source: npm
   package: "@xforge/cli"
-  version: 0.2.0
+  version: 0.3.0
   protocol: "1"
 paths:
   specs: xforge/specs
@@ -100,7 +100,7 @@ resources:
   - id: xforge-scaffold
     kind: skill
     version: "2.0"
-    digest: 1b8125dad4a83ab013c7644b59a3ff0340b5536dd88a199b7839af6e37d3e980
+    digest: 6f779421a3488149b11c2f492f59e9371730cd6698833ad48a50ade8816a2d86
     license: MIT
   - id: xforge-status
     kind: skill

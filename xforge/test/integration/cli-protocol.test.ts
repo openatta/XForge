@@ -24,11 +24,20 @@ describe('CLI protocol', () => {
     expect(text.stderr).toBe('');
   });
 
-  it('rejects a fifth command with a stable JSON diagnostic', async () => {
+  it('exposes help/version without a project and rejects unknown commands', async () => {
     const root = await fixture();
-    const result = await runCli(root, ['update']);
+    const help = await runCli(root, ['help', 'sync']);
+    expect(help.code).toBe(0);
+    expect(help.json.root).toBeNull();
+    expect(help.json.data.commandHelp.usage).toContain('xforge');
+    expect(help.json.data.commandHelp.usage).toContain('sync');
+    const version = await runCli(root, ['version']);
+    expect(version.code).toBe(0);
+    expect(version.json.data).toMatchObject({ name: '@xforge/cli', version: '0.3.0', protocolVersion: '1' });
+
+    const result = await runCli(root, ['frobnicate']);
     expect(result.code).toBe(1);
-    expect(result.json.command).toBe('update');
+    expect(result.json.command).toBe('frobnicate');
     expect(result.json.diagnostics[0].code).toBe('XFORGE_COMMAND_UNKNOWN');
   });
 

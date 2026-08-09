@@ -1,11 +1,14 @@
 export { readState } from './core/state-reader.js';
 export { executeInstall } from './commands/install.js';
+export { executeSync } from './commands/sync.js';
+export { executeUpdate } from './commands/update.js';
+export { executeUninstall } from './commands/uninstall.js';
 export { executeCheck } from './commands/check.js';
 export { executeArchive } from './core/archiver.js';
 export { loadProject, findProjectRoot } from './core/project-loader.js';
 export { loadFlows, resolveChangeState } from './core/flow-resolver.js';
 export { checkStructure } from './core/checker.js';
-export { planInstall } from './install/planner.js';
+export { planInstall, planProjection } from './install/planner.js';
 export { planSpecMutations } from './core/spec-merger.js';
 export { capabilityMatrix, getAdapter } from './adapters/index.js';
 export { runProjectScript } from './runners/script.js';

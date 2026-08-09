@@ -360,7 +360,7 @@ export interface ProjectContext {
   diagnostics: Diagnostic[];
 }
 
-export interface ManagedFileRecord {
+export interface LegacyManagedFileRecord {
   source: string;
   target: TargetId;
   cliVersion: string;
@@ -369,11 +369,51 @@ export interface ManagedFileRecord {
   lastInstalledDigest: string;
 }
 
-export interface OwnershipState {
+export interface OwnershipStateV1 {
   version: 1;
   generatedAt: string;
+  files: Record<string, LegacyManagedFileRecord>;
+}
+
+export interface SourceFingerprint {
+  path: string;
+  mtimeMs: number;
+  size: number;
+  digest: string;
+}
+
+export interface ManagedFileRecord {
+  source: string;
+  target: TargetId;
+  resource: { kind: string; id: string };
+  sources: SourceFingerprint[];
+  renderVersion: string;
+  cliVersion: string;
+  protocolVersion: string;
+  desiredDigest: string;
+  lastInstalledDigest: string;
+}
+
+export interface TargetInstallationState {
+  adapterVersion: string;
+  installedAt: string;
+  lastUpdatedAt: string;
+  lastSyncedAt: string | null;
   files: Record<string, ManagedFileRecord>;
 }
+
+export interface OwnershipStateV2 {
+  version: 2;
+  protocolVersion: '1';
+  generatedAt: string;
+  manifestSelectionDigest: string;
+  manifestTargets: TargetId[];
+  scaffoldIdentity: string;
+  cliIdentity: string;
+  targets: Partial<Record<TargetId, TargetInstallationState>>;
+}
+
+export type OwnershipState = OwnershipStateV1 | OwnershipStateV2;
 
 export type CapabilityLevel = 'native' | 'degraded' | 'unsupported';
 
@@ -390,6 +430,9 @@ export interface DesiredFile {
   content: Buffer;
   source: string;
   target: TargetId;
+  resource: { kind: string; id: string };
+  sourcePaths: string[];
+  renderVersion: string;
 }
 
 export interface GateEvidence {

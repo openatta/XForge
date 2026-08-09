@@ -1,8 +1,10 @@
 import type { Adapter } from './types.js';
-import { commandBody, renderAgentMarkdown } from './shared.js';
+import { artifactTrace, commandBody, renderAgentMarkdown } from './shared.js';
 
 export const opencodeAdapter: Adapter = {
   id: 'opencode',
+  version: '1',
+  trace: artifactTrace('opencode', '1'),
   capability: { skills: 'native', commands: 'native', agents: 'native', rules: 'degraded', hooks: 'unsupported' },
   skillDirectory: (id) => `.opencode/skills/${id}`,
   commandPath: (id) => `.opencode/commands/${id}.md`,

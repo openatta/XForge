@@ -58,7 +58,7 @@ Skills 分为两组：
 - `xforge-status`：查询 Change/Requirement 的开发状态；
 - `xforge-continue`：从当前 State 恢复并执行下一合法 Action；
 - `xforge-revise`：修改已有规划 artifacts 并保持一致；
-- `xforge-scaffold`：定制当前项目的 agents、skills、rules、hooks 等本地脚手架资产，再通过 `xforge install` 投影到 Agent 工具目录。
+- `xforge-scaffold`：定制当前项目的 agents、skills、rules、hooks 等本地脚手架资产，首次通过 `xforge install` 投影，后续通过 `xforge sync` 增量同步到 Agent 工具目录。
 
 `xforge state` 始终是机器协议和唯一状态事实源，不需要用户直接输入，也不需要把实时状态预先注入固定提示词。`xforge-status` 是它的自然语言查询与解释层。
 
@@ -468,10 +468,10 @@ Scaffold 用于定制当前项目本地的 Agent 能力资产，不涉及 XForge
     -> 修改 xforge/scaffold/**
     -> 必要时最小更新 xforge/manifest.yaml 的 scaffold 选择列表
     -> xforge check
-    -> xforge install --dry-run
+    -> xforge sync --dry-run
     -> 展示跨目标 diff、冲突和能力降级
     -> 用户确认敏感变化
-    -> xforge install
+    -> xforge sync（身份或 Adapter 变化时改用 update）
     -> 再次查询 State 验证安装结果
 ```
 
@@ -498,16 +498,18 @@ Scaffold 不得直接修改生成目录：
 .github/
 ```
 
-这些目录只能由 `xforge install` 根据 Adapter、ownership 和 conflict policy 投影。
+这些目录只能由 `xforge install`、`xforge sync` 或 `xforge update` 根据 Adapter、ownership 和 conflict policy 投影，并可由 `xforge uninstall` 按记录清理。
 
 Hooks、网络访问、Secrets、工具权限扩大和破坏性命令必须在 install 前明确展示并请求确认。Scaffold 不修改产品代码、Specs、Changes 或 Flow 业务状态。
 
-不新增专用 CLI 是更小的设计：
+Scaffold 生命周期采用以下确定性 CLI：
 
 - `xforge state` 负责盘点；
 - `xforge check` 负责验证；
-- `xforge install --dry-run` 负责预览；
-- `xforge install` 负责投影。
+- `xforge install` 负责首次投影；
+- `xforge sync --dry-run` / `sync` 负责本地资产增量预览与同步；
+- `xforge update` 负责 Target、CLI、Scaffold 和 Adapter 变化后的全量收敛；
+- `xforge uninstall` 负责按 ownership 安全清理。
 
 未来只有在需要确定性模板生成时，再考虑 `xforge scaffold init <kind> <id>`。
 
@@ -842,7 +844,7 @@ x Result: success/ambiguity/failed-check/failed-gate/conflict
 
 1. 实现 Status/Continue/Revise/Scaffold。
 2. 增加项目本地 Scaffold 引用闭合和敏感权限校验。
-3. 验证 install dry-run/install/ownership 全闭环。
+3. 验证 install/sync/update/uninstall/ownership 全闭环。
 4. 增加 Requirement/Change 状态查询 golden tests。
 
 ### 兼容策略
@@ -852,7 +854,7 @@ x Result: success/ambiguity/failed-check/failed-gate/conflict
 - `prime`、旧 Archive Skill 只保留一个迁移周期；
 - 不永久维护无提示 alias；
 - 项目可在 Manifest 中选择是否启用辅助 Skills；
-- Scaffold Skill 本身也通过项目 `xforge/scaffold` 和 `xforge install` 管理。
+- Scaffold Skill 本身也通过项目 `xforge/scaffold` 和 install/sync/update 管理。
 
 ## 14. 最终决策
 
@@ -865,8 +867,8 @@ x Result: success/ambiguity/failed-check/failed-gate/conflict
 7. **辅助 Skills 增加 Status、Continue、Revise、Scaffold。**
 8. **State 是机器协议；Status 是用户解释层。**
 9. **Continue 替代 FF/Deliver，Revise 对应规划维护。**
-10. **Scaffold 只定制当前项目 `xforge/scaffold`，由 Install 投影到 Agent 目录。**
-11. **Specs Sync 绑定 Archive，不提供独立 Sync Skill。**
+10. **Scaffold 只定制当前项目 `xforge/scaffold`，由 Install 首次投影、Sync 增量同步。**
+11. **Specs Sync 绑定 Archive，不提供独立 Specs Sync Skill；CLI `sync` 只处理 Scaffold 投影。**
 12. **设计范围内已经完备，下一步重点是协议实现与评测，不是增加更多 Skills。**
 
 ## 15. 外部参照

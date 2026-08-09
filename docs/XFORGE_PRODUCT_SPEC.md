@@ -656,7 +656,7 @@ xforge/scaffold/skills/xforge-propose/
 | `xforge-verify` | 运行 `xforge check`、Mandatory Gates，核对实现与 Specs 并保存 Evidence | 参考 OpenSpec expanded `verify`，强化为企业门禁 |
 | `xforge-archive` | 先预览归档计划，再同步 Specs 并归档 Change | 参考 OpenSpec `archive`；OpenSpec `sync` 能力并入此 Skill |
 
-XForge 不单独提供 `xforge-sync` Skill 或 `sync` CLI 命令，避免破坏四命令模型；需要提前查看 Spec 同步效果时使用 `xforge archive --dry-run`。后续是否增加 OpenSpec 的 `continue`、`ff`、`bulk-archive` 或 `onboard`，必须基于企业试点需求，不进入 v1 初始集合。
+XForge 不单独提供用于 Specs 的 `xforge-sync` Skill；需要提前查看 Spec 合并效果时使用 `xforge archive --dry-run`。CLI 的 `xforge sync` 专门负责把本地 `xforge/scaffold/**` 增量投影到已安装 Target，不承担 Specs 同步。后续是否增加 OpenSpec 的 `ff`、`bulk-archive` 或 `onboard`，必须基于企业试点需求决定。
 
 五个官方 `SKILL.md` 应采用一致骨架：Purpose、Preconditions、State Query、Allowed Writes、Procedure、Verification、Stop Conditions。每个 Skill 开始时都必须查询 `xforge state`；`explore` 不要求存在活动 Change。任何 Artifact 列表、依赖和下一步都来自 Flow 解析结果，不硬编码在 Skill 中。每个 Skill 都必须清楚区分“给 Agent 的指令”和“CLI/Gate 已确定执行的事实”。
 
@@ -821,13 +821,18 @@ Gate 输出必须写入当前变更的 `evidence/`。大体积原始日志可以
 
 ---
 
-## 5. 精简命令模型
+## 5. 命令模型
 
-CLI 主要面向 AI Agent，而不是人类终端操作。v1 只提供四个顶层命令：
+CLI 主要面向 AI Agent，同时提供完整的项目级 Scaffold 生命周期：
 
 ```text
+xforge help
+xforge version
 xforge state
 xforge install
+xforge sync
+xforge update
+xforge uninstall
 xforge check
 xforge archive
 ```
@@ -873,9 +878,40 @@ xforge install --dry-run
 - 返回创建、修改、删除、跳过和冲突文件列表；
 - `--dry-run` 不产生任何写入。
 
-不提供独立的 `update` 或 `uninstall` 命令。用户或 AI 修改 Manifest 后再次执行 `install`，即可把各工具默认目录收敛到期望状态。禁用资源后执行同一命令，即完成 managed-only 清理。
+首次安装或普通幂等修复继续使用 `install`；高频本地 Scaffold 修改使用 `sync`，Target/CLI/Scaffold/Adapter 身份变化使用 `update`，清理生成资产使用 `uninstall`。
 
-### 5.3 `check`
+### 5.3 `sync`
+
+根据 `xforge/.state.json` v2 中的 source 路径、mtime、size、摘要和 Adapter render version，把 `xforge/scaffold/**` 的修改、增加、删除、启用和停用增量投影到已安装 Target。目标文件若偏离上次安装摘要则冲突失败。
+
+```text
+xforge sync
+xforge sync --target codex
+xforge sync --dry-run
+xforge sync --verify-digests
+```
+
+### 5.4 `update`
+
+完整重新解析 Manifest、Target、Scaffold/CLI identity 和 Adapter 输出，处理 Target 增删与 v1 ownership record 升级。`update` 不负责联网下载 Scaffold 或 CLI。
+
+```text
+xforge update
+xforge update --target codex
+xforge update --dry-run
+```
+
+### 5.5 `uninstall`
+
+按安装记录删除摘要仍匹配的 managed 文件。可按 Target 卸载；省略 Target 时卸载全部。最后一个 Target 清理后删除本地 `.state.json`，保留 Manifest、Lock、Specs、Changes 和 canonical Scaffold。
+
+```text
+xforge uninstall --target codex --dry-run
+xforge uninstall --target codex
+xforge uninstall
+```
+
+### 5.6 `check`
 
 统一承担结构校验、Schema 校验、引用检查、质量门禁和交付验证。
 
@@ -887,7 +923,7 @@ xforge check --gate unit-tests
 
 不提供独立的 `validate`、`verify`、`test`、`gate run`、`doctor` 命令。
 
-### 5.4 `archive`
+### 5.7 `archive`
 
 完成变更闭环：检查必要门禁、把变更规格合并到 `project.paths.specs`，保存归档记录并在 `project.paths.changes` 下移动变更目录。
 
@@ -904,9 +940,13 @@ xforge archive --change add-login --dry-run
 4. 原子地同步 Specs 和移动变更；
 5. 返回所有写入路径和摘要。
 
-不提供独立 `sync` 命令。归档前的规格同步属于 `archive` 的职责。
+`xforge sync` 只同步 Scaffold 投影；归档前的 Specs 同步仍属于 `archive` 的职责。
 
-### 5.5 AI 直接编辑，CLI 不做 CRUD
+### 5.8 `help`、`version` 与 Project Root
+
+`help`、`version` 可在项目外运行。项目命令接受全局 `--root <path>`；未指定时从当前目录向上发现 Manifest，指定后必须把该目录精确作为 Project Root，不向父目录回退。
+
+### 5.9 AI 直接编辑，CLI 不做 CRUD
 
 以下工作由 AI Agent 使用普通文件工具完成：
 
@@ -1292,7 +1332,7 @@ XForge CLI 必须记录每个生成文件的：
 - 在不少于三个不同技术栈项目试用；
 - 验证 Portable/Managed 模式；
 - 收集目录、命令和 Adapter 缺口；
-- 在保持四命令模型的前提下稳定 v1 文件协议。
+- 在保持 Protocol-1 Envelope 稳定的前提下提供完整 CLI 生命周期。
 
 ---
 
@@ -1403,7 +1443,7 @@ XForge 参考以下公开设计，但保持独立产品和文件协议：
 
 - [Git clone documentation](https://git-scm.com/docs/git-clone.html)：使用 `--sparse` 与 partial clone 在项目外仅展开目标脚手架目录；XForge 随后只复制 payload，不把临时仓库元数据带入用户项目。
 - [OpenSpec Customization](https://openspec.dev/docs/customization)：借鉴 project-local custom schema 的有序 Artifacts、`requires`、instruction 和生成骨架；XForge 将其发展为一级 `flows/`，并加入 Constitution、Gates 和企业交付语义。
-- [OpenSpec: How Commands Work](https://openspec.dev/docs/how-commands-work)：借鉴“项目源资产由 CLI 安装为工具可发现的 Skills/Commands”；XForge 保持四命令 CLI，并让工作流 Skills 消费统一 `state` 协议。
+- [OpenSpec: How Commands Work](https://openspec.dev/docs/how-commands-work)：借鉴“项目源资产由 CLI 安装为工具可发现的 Skills/Commands”；XForge 让工作流 Skills 消费统一 `state` 协议，并用 install/sync/update/uninstall 管理项目级投影生命周期。
 - [OpenSpec Supported Tools](https://openspec.dev/docs/reference/supported-tools)：借鉴五种目标工具的项目级安装路径；XForge v1 明确只支持 Claude、Codex、Cursor、OpenCode 和 GitHub Copilot。
 - [Spec Kit Constitution](https://github.com/github/spec-kit/blob/main/templates/commands/constitution.md?plain=1)：借鉴项目原则、治理、版本和一致性影响检查；XForge 将 Constitution 作为项目事实文件并纳入 Flow、Skill 和 Gate 上下文。
 

@@ -50,10 +50,12 @@ changing execution or status semantics.
 
 ## Ownership and evidence
 
-`xforge/.state.json` records every generated file's source resource, target,
+`xforge/.state.json` v2 records every generated file's canonical source paths,
+source mtimes/sizes/digests, resource identity, Adapter render version, target,
 CLI/protocol versions, and last installed SHA-256. An unmanaged destination or
-a changed managed destination is a conflict. Pruning only removes a file whose
-current digest still matches its recorded generated digest.
+a changed managed destination is a conflict. Pruning and uninstall only remove
+a file whose current digest still matches its recorded generated digest. The
+installer and updater can transactionally migrate the earlier v1 ownership map.
 
 Gate evidence records the Change, command array, UTC timestamps, duration,
 exit status, bounded/redacted output, and content digest. Guidance alone is not

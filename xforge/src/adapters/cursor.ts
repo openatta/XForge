@@ -1,8 +1,10 @@
 import type { Adapter } from './types.js';
-import { BOOTSTRAP_BODY, commandBody, renderAgentMarkdown, renderRuleMarkdown } from './shared.js';
+import { BOOTSTRAP_BODY, artifactTrace, commandBody, renderAgentMarkdown, renderRuleMarkdown } from './shared.js';
 
 export const cursorAdapter: Adapter = {
   id: 'cursor',
+  version: '1',
+  trace: artifactTrace('cursor', '1'),
   capability: { skills: 'native', commands: 'native', agents: 'native', rules: 'native', hooks: 'unsupported' },
   skillDirectory: (id) => `.cursor/skills/${id}`,
   commandPath: (id) => `.cursor/commands/${id}.md`,
@@ -14,5 +16,6 @@ export const cursorAdapter: Adapter = {
   bootstrap: () => [{
     path: '.cursor/rules/xforge-bootstrap.mdc', content: Buffer.from(`---\ndescription: "XForge project bootstrap"\nalwaysApply: true\n---\n\n${BOOTSTRAP_BODY}`),
     source: 'builtin:bootstrap', target: 'cursor',
+    resource: { kind: 'builtin', id: 'bootstrap' }, sourcePaths: [], renderVersion: 'cursor:builtin:1',
   }],
 };

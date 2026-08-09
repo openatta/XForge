@@ -1,4 +1,13 @@
-import type { AgentResource, RuleResource } from '../types.js';
+import type { AgentResource, DesiredFile, RuleResource } from '../types.js';
+import type { TargetId } from '../constants.js';
+
+export function artifactTrace(target: TargetId, version: string) {
+  return (kind: string, id: string, sourcePaths: string[]): Pick<DesiredFile, 'resource' | 'sourcePaths' | 'renderVersion'> => ({
+    resource: { kind, id },
+    sourcePaths,
+    renderVersion: `${target}:${kind}:${version}`,
+  });
+}
 
 export function actionId(skillId: string): string {
   return skillId.startsWith('xforge-') ? skillId.slice('xforge-'.length) : skillId;

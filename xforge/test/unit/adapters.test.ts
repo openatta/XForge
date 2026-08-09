@@ -33,6 +33,18 @@ describe('Adapter golden mapping', () => {
     }
   });
 
+  it('attaches deterministic source trace metadata to rendered artifacts', () => {
+    for (const target of TARGETS) {
+      const adapter = getAdapter(target);
+      expect(adapter.version).toBe('1');
+      expect(adapter.trace('skill', 'xforge-explore', ['xforge/scaffold/skills/xforge-explore/SKILL.md'])).toEqual({
+        resource: { kind: 'skill', id: 'xforge-explore' },
+        sourcePaths: ['xforge/scaffold/skills/xforge-explore/SKILL.md'],
+        renderVersion: `${target}:skill:1`,
+      });
+    }
+  });
+
   it('renders the three sub-Agent contracts only for native Agent targets', async () => {
     const worker = {
       apiVersion: 'xforge.dev/v1alpha1',

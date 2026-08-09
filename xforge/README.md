@@ -1,6 +1,8 @@
 # @xforge/cli
 
-Protocol-1 implementation of `xforge state`, `install`, `check`, and `archive`.
+Protocol-1 implementation of the XForge project CLI, including state, managed
+installation, incremental Scaffold sync, full update, safe uninstall, checks,
+and archive.
 JSON is the default output. The CLI is offline once declared dependencies and
 project assets are present. Active Changes may add an eight-field
 `work-packages.yaml`; `state` resolves its DAG and delivery records, while

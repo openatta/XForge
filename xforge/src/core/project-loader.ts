@@ -1,4 +1,4 @@
-import { access } from 'node:fs/promises';
+import { access, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import {
   CLI_NAME,
@@ -24,10 +24,21 @@ async function exists(filePath: string): Promise<boolean> {
   }
 }
 
-export async function findProjectRoot(start = process.cwd()): Promise<string> {
+export async function findProjectRoot(start = process.cwd(), options: { exact?: boolean } = {}): Promise<string> {
   let cursor = path.resolve(start);
-  while (true) {
+  if (options.exact) {
+    let info;
+    try { info = await stat(cursor); }
+    catch {
+      throw new XForgeError(diagnostic('XFORGE_ROOT_NOT_FOUND', `Explicit project root does not exist: ${cursor}`));
+    }
+    if (!info.isDirectory()) throw new XForgeError(diagnostic('XFORGE_ROOT_NOT_DIRECTORY', `Explicit project root is not a directory: ${cursor}`));
+    cursor = await realpath(cursor);
     if (await exists(path.join(cursor, 'xforge', 'manifest.yaml'))) return cursor;
+    throw new XForgeError(diagnostic('XFORGE_ROOT_NOT_FOUND', `Explicit project root does not contain xforge/manifest.yaml: ${cursor}`));
+  }
+  while (true) {
+    if (await exists(path.join(cursor, 'xforge', 'manifest.yaml'))) return realpath(cursor);
     const parent = path.dirname(cursor);
     if (parent === cursor) {
       throw new XForgeError(
@@ -131,8 +142,8 @@ function resolveCompatibility(manifest: Manifest, lock: Lockfile | null): { valu
   };
 }
 
-export async function loadProject(start = process.cwd()): Promise<ProjectContext> {
-  const root = await findProjectRoot(start);
+export async function loadProject(start = process.cwd(), options: { exactRoot?: boolean } = {}): Promise<ProjectContext> {
+  const root = await findProjectRoot(start, { exact: options.exactRoot });
   const manifestPath = path.join(root, 'xforge', 'manifest.yaml');
   const manifest = await loadYaml<Manifest>(manifestPath, 'xforge/manifest.yaml');
   const schemaDiagnostics = await validateSchema('manifest', manifest, 'xforge/manifest.yaml');
@@ -213,4 +224,9 @@ export function assertManaged(project: ProjectContext, command: string): void {
       nextActions: [{ action: 'resolve-declared-xforge', reason: 'Use the exact CLI package/version or Git commit declared by the project.' }],
     },
   );
+}
+
+export function assertUpdateCompatible(project: ProjectContext): void {
+  if (project.compatibility.cli.matches && project.compatibility.protocol.matches) return;
+  assertManaged(project, 'update');
 }
