@@ -25,15 +25,15 @@ Live lane 没有把第一次“测试通过但 Spec 与实现契约不一致”�
 | 测试层 | 结果 | 说明 |
 |---|---:|---|
 | Scaffold integrity/build | PASS | 47 个 payload 文件摘要通过，TypeScript 构建通过 |
-| 实现单元/集成 | PASS 65/65 | 16 个 test files；包含 Audit loopback retry 与新增非法 Change fail-fast 回归 |
-| 独立产品黑盒 | PASS 10/10 | 2 个 test files；live 临时目录由根 Vitest 配置隔离 |
+| 实现单元/集成 | PASS 70/70 | 17 个 test files；CLI 子进程覆盖率门已启用 |
+| 独立产品黑盒 | PASS 14/14 | 3 个 test files；包含 live runner policy 的确定性测试 |
 | Task Ledger 预置验收 | PASS 4/4 | 实现前失败，Apply、Verify、Archive 后均通过 |
 | 完整 Solid 场景 | PASS | install→plan→Approval→Apply→delivery→Verify→closing Approval→Audit→Archive |
 | 真实引擎最终重试 | PASS | 三阶段 98 turns，`$3.674351`，约 504.7 秒 |
 | Audit loopback 503→retry | PASS | 完整 `npm run verify` 中通过，不再需要跳过 |
 | 环境阻塞 | 0 | 外部 API 与 `127.0.0.1` listen 均可用 |
 
-最终 `npm run verify` 共通过 75 项仓库测试（65 实现 + 10 产品黑盒），另有
+最终 `npm run verify` 共通过 84 项仓库测试（70 实现 + 14 产品黑盒），另有
 4 项隔离样例验收通过。完整 live 成功摘要位于 ignored 文件
 `tests/.tmp/live-engine-results/summary.json`。
 
@@ -116,6 +116,13 @@ chain valid。全局 Audit 在摘要时为 302 条事件、151 条 remote pendin
    receipt/delivery/archive 检查。
 7. 多 CLI 进程的 control-plane 集成场景在全套并行运行时偶发超过 Vitest 默认
    5 秒；单独运行约 2.17 秒，已为该场景设置显式 15 秒测试上限，未改变断言。
+8. 确定性发布门增加 compiled CLI 子进程覆盖率，当前基线约为 statements/lines
+   83.7%、branches 72.1%、functions 90.0%，最低门槛为 78/65/80/78。
+9. PR CI 增加 Ubuntu Node 20/24、macOS Node 24、Windows Node 24；临时 fixture
+   在 suite 结束后统一回收，Python Script runner 支持 Windows 解释器名。
+10. Release check 会实际 pack、安装到空消费者并运行安装后 CLI，而非只检查清单。
+11. Live runner 增加整场预算、阶段重试、超时、未知费用 fail-closed、最小化环境
+    和显式 isolation acknowledgement；机器摘要同时验证 runner policy。
 
 ## 剩余风险
 

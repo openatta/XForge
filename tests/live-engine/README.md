@@ -26,7 +26,8 @@ Run planning, inspect it, and commit the model-authored artifacts:
 node tests/live-engine/run-engine.mjs \
   --root tests/.tmp/live-engine-project \
   --prompt tests/live-engine/prompts/01-plan.md \
-  --output tests/.tmp/live-engine-results/01-plan.json
+  --output tests/.tmp/live-engine-results/01-plan.json \
+  --allow-behavioral-isolation true
 git -C tests/.tmp/live-engine-project add xforge/changes/task-ledger
 git -C tests/.tmp/live-engine-project commit -m "Plan task ledger change"
 node tests/live-engine/sign-approval.mjs \
@@ -47,7 +48,8 @@ record and independently verify the delivery:
 node tests/live-engine/run-engine.mjs \
   --root tests/.tmp/live-engine-project \
   --prompt tests/live-engine/prompts/02-apply.md \
-  --output tests/.tmp/live-engine-results/02-apply.json
+  --output tests/.tmp/live-engine-results/02-apply.json \
+  --allow-behavioral-isolation true
 git -C tests/.tmp/live-engine-project add src
 git -C tests/.tmp/live-engine-project commit -m "Implement task ledger"
 node tests/live-engine/record-delivery.mjs \
@@ -64,7 +66,8 @@ Evidence, and close the workflow:
 node tests/live-engine/run-engine.mjs \
   --root tests/.tmp/live-engine-project \
   --prompt tests/live-engine/prompts/03-verify.md \
-  --output tests/.tmp/live-engine-results/03-verify.json
+  --output tests/.tmp/live-engine-results/03-verify.json \
+  --allow-behavioral-isolation true
 git -C tests/.tmp/live-engine-project add \
   xforge/changes/task-ledger/assurance.md \
   xforge/changes/task-ledger/evidence/verification-receipt.yaml
@@ -92,7 +95,21 @@ re-runs the acceptance suite and Audit verification, then records engine cost,
 tokens, receipts, delivery paths, archive state, and the final Git HEAD without
 including prompts, model responses, or credentials.
 
+The three engine calls share `tests/.tmp/live-engine-results/live-engine-policy.json`.
+Defaults are a 9 USD suite budget, at most two attempts per stage, a 900 second
+timeout, and a 3 USD requested per-call budget capped to the suite remainder.
+Override them consistently with `--suite-budget`, `--max-attempts`,
+`--timeout-seconds`, and `--budget`. Missing provider cost accounting blocks all
+later calls instead of treating the cost as zero.
+
+For an OS-enforced boundary, pass `--sandbox-launcher /absolute/path/to/launcher`;
+the launcher receives `claude` followed by its arguments and must execute it in
+the desired sandbox. Without a launcher, every call must explicitly pass
+`--allow-behavioral-isolation true`. The runner then minimizes inherited
+environment variables and relocates HOME/config/cache under `tests/.tmp`, but
+does not claim an operating-system sandbox.
+
 Never put `sign-approval.mjs`, `run-xforge.mjs`, the approval secret, or the
 repository `.env` inside the isolated project. Engine prompts prohibit parent
-directory access; this is behavioral isolation, not an operating-system security
-boundary.
+directory access; behavioral isolation is an explicit fallback, not an
+operating-system security boundary.

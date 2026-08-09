@@ -74,16 +74,25 @@ export async function loadBundledScaffold(): Promise<BundledScaffold> {
     expected.set(relative, match[1]!);
   }
 
-  const inventory = await payloadFiles(path.join(scaffoldRoot, descriptor.payload));
-  if (inventory.length !== expected.size || inventory.some((relative) => !expected.has(relative))) {
+  const physicalInventory = await payloadFiles(path.join(scaffoldRoot, descriptor.payload));
+  const inventory = physicalInventory.map((physical) => {
+    const translated = physical.endsWith('/.npmignore')
+      ? `${physical.slice(0, -'.npmignore'.length)}.gitignore`
+      : physical;
+    const logical = !expected.has(physical) && expected.has(translated) ? translated : physical;
+    return { physical, logical };
+  });
+  const logicalPaths = new Set(inventory.map((entry) => entry.logical));
+  if (inventory.length !== expected.size || logicalPaths.size !== inventory.length
+    || inventory.some((entry) => !expected.has(entry.logical))) {
     invalid('The bundled Scaffold inventory does not match files.sha256.', 'scaffold/files.sha256');
   }
   const files = new Map<string, Buffer>();
-  for (const relative of inventory) {
-    const content = await readFile(path.join(scaffoldRoot, descriptor.payload, ...relative.split('/')));
+  for (const { physical, logical } of inventory) {
+    const content = await readFile(path.join(scaffoldRoot, descriptor.payload, ...physical.split('/')));
     const digest = createHash('sha256').update(content).digest('hex');
-    if (digest !== expected.get(relative)) invalid(`Bundled Scaffold digest mismatch: ${relative}.`, 'scaffold/files.sha256');
-    files.set(relative, content);
+    if (digest !== expected.get(logical)) invalid(`Bundled Scaffold digest mismatch: ${logical}.`, 'scaffold/files.sha256');
+    files.set(logical, content);
   }
   return { version: descriptor.metadata.version, package: CLI_NAME, root: scaffoldRoot, files };
 }

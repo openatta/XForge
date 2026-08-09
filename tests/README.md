@@ -16,3 +16,8 @@ real project transitions rather than mocked planner results.
 
 Run through `npm run test:product` or the complete `npm run verify` at the
 repository root.
+
+`npm run verify` also collects V8 coverage from the compiled CLI subprocesses
+used by the implementation suite and enforces global thresholds. The separate
+live-engine directory remains excluded; its runner has its own suite-level
+budget, retry, timeout, and isolation policy.

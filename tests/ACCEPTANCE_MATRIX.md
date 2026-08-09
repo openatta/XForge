@@ -22,6 +22,7 @@
 | TypeScript default and Python optional project Script execution | `script-runner.test.ts` |
 | Minimum readable/runnable example project | `minimal-example.test.ts`, `xforge/test/fixtures/minimal-project` |
 | Scaffold attribution/integrity and generated-file secret prevention | `product-validation.test.ts`, `security-boundaries.test.ts` |
+| Live-engine suite budget, retry ceiling, timeout accounting, and fail-closed unknown cost | `live-engine-policy.test.ts`, `live-engine/policy.mjs`, `live-engine/run-engine.mjs` |
 
 The full local release gate is `npm run verify` from the repository root. It
 builds the CLI, verifies `scaffold/files.sha256`, runs implementation tests, and

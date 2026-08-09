@@ -42,9 +42,10 @@
     "clean": "node scripts/clean.mjs",
     "build": "npm run clean && tsc -p tsconfig.json && node scripts/copy-license.mjs && node scripts/copy-scaffold.mjs",
     "test": "npm run build && vitest run test",
+    "test:coverage": "npm run build && node scripts/run-coverage.mjs",
     "test:product": "npm run build && vitest run --root .. tests",
     "check:scaffold": "node scripts/scaffold-integrity.mjs ../scaffold",
-    "verify": "npm run check:scaffold && npm run build && vitest run test && vitest run --root .. tests",
+    "verify": "npm run check:scaffold && npm run build && node scripts/run-coverage.mjs && vitest run --root .. tests",
     "prepublishOnly": "npm run verify",
     "prepack": "npm run build"
   },
@@ -57,6 +58,7 @@
   },
   "devDependencies": {
     "@types/node": "20.19.9",
+    "c8": "12.0.0",
     "tar": "7.5.22",
     "vitest": "4.1.10"
   }

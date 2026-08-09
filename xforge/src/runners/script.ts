@@ -71,7 +71,8 @@ export async function runProjectScript(project: ProjectContext, id: string, extr
   } else if (script.value.spec.runtime === 'node') {
     command = [process.execPath, entry, ...script.value.spec.arguments, ...extraArguments];
   } else {
-    command = ['python3', entry, ...script.value.spec.arguments, ...extraArguments];
+    const python = process.env.XFORGE_PYTHON ?? (process.platform === 'win32' ? 'python' : 'python3');
+    command = [python, entry, ...script.value.spec.arguments, ...extraArguments];
   }
 
   const started = Date.now();

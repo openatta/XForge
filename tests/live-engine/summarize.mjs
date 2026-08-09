@@ -46,6 +46,8 @@ const projectRoot = await realpath(bounded(selected.root, 'Project root'));
 const resultsRoot = await realpath(bounded(selected.results, 'Results directory'));
 const outputPath = bounded(selected.output, 'Summary output');
 await mkdir(path.dirname(outputPath), { recursive: true });
+const policyPath = path.join(resultsRoot, 'live-engine-policy.json');
+const runnerPolicy = await exists(policyPath) ? JSON.parse(await readFile(policyPath, 'utf8')) : null;
 
 const suffix = selected.suffix ? `-${selected.suffix}` : '';
 const stages = {
@@ -120,6 +122,15 @@ const summary = {
     cacheReadInputTokens: engineValues.reduce((sum, item) => sum + (item.usage.cacheReadInputTokens ?? 0), 0),
     outputTokens: engineValues.reduce((sum, item) => sum + (item.usage.outputTokens ?? 0), 0),
   },
+  runnerPolicy: runnerPolicy ? {
+    path: path.relative(repositoryRoot, policyPath).split(path.sep).join('/'),
+    suiteBudgetUsd: runnerPolicy.suiteBudgetUsd,
+    spentUsd: runnerPolicy.spentUsd,
+    maxAttemptsPerStage: runnerPolicy.maxAttemptsPerStage,
+    timeoutSeconds: runnerPolicy.timeoutSeconds,
+    budgetAccountingComplete: runnerPolicy.budgetAccountingComplete,
+    attempts: Object.fromEntries(Object.entries(runnerPolicy.stages ?? {}).map(([stage, value]) => [stage, value.attempts])),
+  } : null,
   checks: {
     engineStagesSucceeded: engineValues.every((item) => item.subtype === 'success' && item.isError === false),
     acceptanceExitCode: acceptance.exitCode,
@@ -139,6 +150,10 @@ const summary = {
 };
 
 const passed = summary.checks.engineStagesSucceeded
+  && summary.runnerPolicy !== null
+  && summary.runnerPolicy.budgetAccountingComplete
+  && summary.runnerPolicy.spentUsd <= summary.runnerPolicy.suiteBudgetUsd
+  && Object.values(summary.runnerPolicy.attempts).every((attempts) => attempts <= summary.runnerPolicy.maxAttemptsPerStage)
   && summary.checks.acceptanceExitCode === 0
   && summary.checks.stateOk
   && summary.checks.activeChanges.length === 0

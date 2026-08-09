@@ -1,9 +1,10 @@
-import { cp, mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { createHmac, randomUUID } from 'node:crypto';
 import { parse, stringify } from 'yaml';
+import { afterAll } from 'vitest';
 import { sha256, stableStringify } from '../src/core/hash.js';
 
 export const xforgeRoot = path.resolve(new URL('..', import.meta.url).pathname);
@@ -11,10 +12,23 @@ export const repositoryRoot = path.resolve(xforgeRoot, '..');
 export const scaffoldPayload = path.join(repositoryRoot, 'scaffold', 'payload');
 export const cliPath = path.join(xforgeRoot, 'dist', 'cli.js');
 
+const temporaryRoots = new Set<string>();
+
+afterAll(async () => {
+  await Promise.all([...temporaryRoots].map((root) => rm(root, { recursive: true, force: true })));
+  temporaryRoots.clear();
+});
+
+export async function temporaryDirectory(prefix = 'xforge-test-'): Promise<string> {
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), prefix)));
+  temporaryRoots.add(root);
+  return root;
+}
+
 export async function fixture(prefix = 'xforge-test-'): Promise<string> {
-  const root = await mkdtemp(path.join(os.tmpdir(), prefix));
+  const root = await temporaryDirectory(prefix);
   await cp(scaffoldPayload, root, { recursive: true, force: false, errorOnExist: false });
-  return realpath(root);
+  return root;
 }
 
 export async function yamlFile<T = Record<string, unknown>>(root: string, relative: string): Promise<T> {
@@ -45,10 +59,13 @@ export async function runCli(root: string, args: string[], env: NodeJS.ProcessEn
   stderr: string;
   json: any;
 }> {
+  const coverageEnvironment = process.env.XFORGE_TEST_NODE_V8_COVERAGE
+    ? { NODE_V8_COVERAGE: process.env.XFORGE_TEST_NODE_V8_COVERAGE }
+    : {};
   const result = await new Promise<{ code: number; stdout: string; stderr: string }>((resolve, reject) => {
     const child = spawn(process.execPath, [cliPath, ...args], {
       cwd: root,
-      env: { ...process.env, ...env },
+      env: { ...process.env, ...coverageEnvironment, ...env },
       shell: false,
       stdio: ['ignore', 'pipe', 'pipe'],
     });

@@ -1,11 +1,10 @@
-import { access, mkdtemp, readFile, writeFile } from 'node:fs/promises';
-import os from 'node:os';
+import { access, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { runCli } from '../helpers.js';
+import { runCli, temporaryDirectory } from '../helpers.js';
 
 async function emptyProject(): Promise<string> {
-  return mkdtemp(path.join(os.tmpdir(), 'xforge-init-test-'));
+  return temporaryDirectory('xforge-init-test-');
 }
 
 async function exists(filePath: string): Promise<boolean> {

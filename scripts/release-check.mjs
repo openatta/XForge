@@ -59,6 +59,8 @@ for (const file of packedFiles) {
   assert(!file.startsWith('test/'), `Packed npm artifact unexpectedly includes ${file}.`);
 }
 
+run(process.execPath, ['scripts/package-smoke.mjs']);
+
 process.stdout.write(`Release check passed for @xforge/cli@${version}${requireTag ? ` at ${expectedTag}` : ''}.\n`);
 
 function readJson(file) {
@@ -73,11 +75,12 @@ function git(arguments_) {
   }
 }
 
-function run(command, arguments_, capture = false) {
+function run(command, arguments_, capture = false, cwd = undefined) {
   const result = spawnSync(command, arguments_, {
+    cwd,
     encoding: 'utf8',
     stdio: capture ? ['ignore', 'pipe', 'inherit'] : 'inherit',
-    env: { ...process.env, npm_config_cache: npmCache },
+    env: { ...process.env, npm_config_cache: npmCache, XFORGE_PACKAGE_NPM_CACHE: npmCache },
   });
   if (result.status !== 0) fail(`Command failed: ${command} ${arguments_.join(' ')}`);
   return capture ? result.stdout : '';

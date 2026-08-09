@@ -158,10 +158,11 @@ node xforge/dist/cli.js --root tests/.tmp/live-engine-project install
 node tests/live-engine/run-engine.mjs \
   --root tests/.tmp/live-engine-project \
   --prompt tests/live-engine/prompts/01-plan.md \
-  --output tests/.tmp/live-engine-results/01-plan.json
+  --output tests/.tmp/live-engine-results/01-plan.json \
+  --allow-behavioral-isolation true
 ```
 
-后续阶段按 `tests/live-engine/README.md` 执行。真实引擎 lane 必须配置单次费用上限、超时和结果目录；provider 不可用时保存分类后的失败原因，不得回退成伪造响应。
+后续阶段按 `tests/live-engine/README.md` 执行。Runner 默认执行 9 美元整场预算、每阶段最多两次尝试、单次 3 美元请求上限和 900 秒超时；单次上限会按整场剩余额度收紧。Provider 未返回费用时后续调用 fail-closed。无外部 sandbox launcher 时必须显式确认 behavioral isolation；provider 不可用时保存分类后的失败原因，不得回退成伪造响应。
 
 完整归档后生成机器摘要：
 
@@ -217,12 +218,11 @@ Archive 状态；不保存 prompt、模型自然语言结果或凭据。
 ## 12. 当前覆盖缺口与优先级
 
 2026-08-09 已关闭：Audit 503→retry loopback 复跑、真实引擎 Solid 全闭环、
-机器可读 live 摘要，以及新治理命令的 `tests/ACCEPTANCE_MATRIX.md` 映射。真实
-引擎首次语义不一致被作为 model behavior failure 拦截，重试后通过，详见
-`docs/TEST_REPORT_2026-08-09.md`。
+机器可读 live 摘要、CLI 子进程覆盖率门、测试临时目录回收、真实 tarball 安装
+smoke、Ubuntu/macOS/Windows 与 Node 20/24 PR matrix，以及 live 整场费用、重试和
+超时 policy。真实引擎首次语义不一致被作为 model behavior failure 拦截，重试后
+通过，详见 `docs/TEST_REPORT_2026-08-09.md`。
 
-P0：把 live 整场费用/重试上限纳入 runner policy（当前只有单次调用上限）。
+P1：增加 Major 双签 + remote audit 场景、Quick 升级行为评测、CLI 参数组合表和实际平台 Hook trust 测试。
 
-P1：增加 Major 双签 + remote audit 场景、Quick 升级行为评测、CLI 参数组合表、Windows 路径黑盒和实际平台 Hook trust 测试。
-
-P2：覆盖多模型/多版本统计、性能基线、长时 soak、远端 Audit 的 TLS/重试抖动和真实企业审批 provider。
+P2：提供项目内置的跨平台 OS sandbox launcher、覆盖多模型/多版本统计、性能基线、长时 soak、远端 Audit 的 TLS/重试抖动和真实企业审批 provider。

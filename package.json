@@ -10,6 +10,8 @@
     "release:check": "node scripts/release-check.mjs",
     "release:prepare": "node scripts/prepare-release.mjs",
     "test": "npm --prefix xforge test",
+    "test:coverage": "npm --prefix xforge run test:coverage",
+    "test:package": "npm run build && node scripts/package-smoke.mjs",
     "test:product": "npm --prefix xforge run test:product",
     "verify": "npm --prefix xforge run verify"
   }

@@ -1,9 +1,9 @@
-import { mkdtemp, mkdir, symlink } from 'node:fs/promises';
-import os from 'node:os';
+import { mkdir, symlink } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { XForgeError } from '../../src/core/errors.js';
 import { assertLogicalPaths, assertResourceId, normalizeRelative, safeResolve } from '../../src/core/path-safety.js';
+import { temporaryDirectory } from '../helpers.js';
 
 function codeOf(operation: () => unknown): string | null {
   try { operation(); return null; } catch (error) { return error instanceof XForgeError ? error.diagnostics[0]?.code ?? null : null; }
@@ -28,8 +28,8 @@ describe('path safety', () => {
   });
 
   it('detects a symlink escape before writes', async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), 'xforge-path-'));
-    const outside = await mkdtemp(path.join(os.tmpdir(), 'xforge-outside-'));
+    const root = await temporaryDirectory('xforge-path-');
+    const outside = await temporaryDirectory('xforge-outside-');
     await mkdir(path.join(root, 'safe'));
     await symlink(outside, path.join(root, 'safe', 'link'));
     await expect(safeResolve(root, 'safe/link/file.txt')).rejects.toMatchObject({
