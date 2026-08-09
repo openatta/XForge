@@ -241,6 +241,8 @@ npm run verify
 更小范围的检查包括 `npm run build`、`npm test`、`npm run check:scaffold` 和
 `npm run test:product`。
 
+发布维护者应遵循包含隐私保护要求的[发布说明](RELEASING.zh-CN.md)。
+
 ## License
 
 Apache License 2.0，详见 [LICENSE](../LICENSE) 与 [NOTICE](../NOTICE)。

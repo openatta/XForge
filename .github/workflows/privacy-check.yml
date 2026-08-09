@@ -1,0 +1,43 @@
+name: Privacy check
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  privacy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out complete history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Check pull request files and commit identities
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/privacy-check.mjs --identity-range "$BASE_SHA..$HEAD_SHA"
+
+      - name: Check pushed files and commit identities
+        if: github.event_name == 'push'
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          if [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            node scripts/privacy-check.mjs --identity-range "$HEAD_SHA"
+          else
+            node scripts/privacy-check.mjs --identity-range "$BEFORE_SHA..$HEAD_SHA"
+          fi

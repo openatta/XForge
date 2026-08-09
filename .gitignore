@@ -71,6 +71,17 @@ web_modules/
 .env.*
 !.env.example
 
+# Local authentication and private key material
+.npmrc
+.netrc
+.authinfo
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+secrets.json
+
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache

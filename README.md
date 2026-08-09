@@ -269,6 +269,8 @@ npm run verify
 Useful narrower checks are `npm run build`, `npm test`, `npm run
 check:scaffold`, and `npm run test:product`.
 
+Release maintainers should follow the privacy-safe [release runbook](RELEASING.md).
+
 ## License
 
 Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).

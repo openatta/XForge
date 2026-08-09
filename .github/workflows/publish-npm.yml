@@ -2,6 +2,15 @@ name: Publish npm package
 
 on:
   workflow_dispatch:
+    inputs:
+      channel:
+        description: npm distribution tag
+        required: true
+        default: next
+        type: choice
+        options:
+          - next
+          - latest
 
 permissions:
   contents: read
@@ -31,10 +40,11 @@ jobs:
         run: npm ci
         working-directory: xforge
 
-      - name: Verify release
-        run: npm run verify
-        working-directory: xforge
+      - name: Verify tagged release and privacy boundary
+        run: node scripts/release-check.mjs --require-tag
 
       - name: Publish exact package version
-        run: npm publish --access public
+        env:
+          NPM_DIST_TAG: ${{ inputs.channel }}
+        run: npm publish --access public --tag "$NPM_DIST_TAG" --provenance
         working-directory: xforge

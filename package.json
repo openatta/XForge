@@ -4,7 +4,11 @@
   "version": "0.4.1",
   "scripts": {
     "build": "npm --prefix xforge run build",
+    "check:privacy": "node scripts/privacy-check.mjs",
     "check:scaffold": "npm --prefix xforge run check:scaffold",
+    "privacy:install-hook": "node scripts/install-git-hooks.mjs",
+    "release:check": "node scripts/release-check.mjs",
+    "release:prepare": "node scripts/prepare-release.mjs",
     "test": "npm --prefix xforge test",
     "test:product": "npm --prefix xforge run test:product",
     "verify": "npm --prefix xforge run verify"
