@@ -9,8 +9,8 @@ metadata:
 
 # Invariants
 
-- This Skill is read-only project reporting, independent of Change/Flow/Gate state; do not query `xforge state` or touch `xforge/changes`, `xforge/specs`, Evidence, or Approvals for it.
-- Treat `git log` as the only source of truth. Never invent commits, authors, dates, or counts not produced by the bundled script.
+- This Skill is read-only project reporting, independent of Change/Flow/Gate lifecycle state; never query `xforge state --change <id>` or touch `xforge/changes`, `xforge/specs`, Evidence, or Approvals for it. The bundled script may call plain `xforge state` (no `--change`) only to read `project.modules` for grouping, and degrades to a single implicit module when that is unavailable — this is project-structure lookup, not Change/Flow/Gate governance.
+- Treat `git log` (and, for module grouping, `project.modules` from `xforge state`) as the only sources of truth. Never invent commits, authors, dates, counts, or module boundaries not produced by the bundled script.
 - Run `scripts/git-activity.mjs` to extract data; never hand-count from a partial `git log` read or from memory.
 - Group contributors by email, not display name — the same person may commit under multiple names (the script does this; do not re-group by name yourself).
 - Classify a commit as `feat`/`fix`/other only from a literal Conventional Commits type prefix in its subject line (e.g. `feat:`, `fix(scope):`). A commit without a recognized prefix is `unclassified`; never guess its intent from the diff or message body.
@@ -31,12 +31,15 @@ metadata:
 4. Render the JSON into a Markdown dashboard:
    - a contributor table: commits, lines added/deleted, active days, first/last commit date (one row per email; list alternate display names inline if more than one);
    - a compact weekday × hour activity heatmap from the `activity` histogram (text/emoji grid or a Markdown table — whichever renders best for the current output surface);
-   - a `feat`/`fix`/other breakdown from `typeBreakdown`, listing the commit subjects under each type so the user can see what each feature/fix actually was, not just a count.
+   - a `feat`/`fix`/other breakdown from `typeBreakdown`, listing the commit subjects under each type so the user can see what each feature/fix actually was, not just a count;
+   - if `modules` has more than one entry, a per-module section (same contributor/activity/type shape as above, scoped to that module) so activity in a monorepo is not flattened into one misleading global ranking; if `modules` has exactly one entry, skip this section — the global numbers above already cover it and repeating them would be noise;
+   - when there is more than one module, also report `unscoped` (activity outside every declared module path — e.g. root-level docs or CI config) and `crossModuleCommits` (commits whose changes span more than one module) as their own short sections; never fold their line counts silently into a single module's total.
 5. Default to presenting the dashboard in the reply. Only write it to a file if the user explicitly asks for a saved copy; then write under a project-local, untracked path (e.g. `.xforge-kanban/<name>.md`) and tell the user to confirm it is `.gitignore`d before it risks being committed.
 
 # Evidence
 
 - Report the exact commit range covered (`range.from`–`range.to` from the script output), total commit count, and the `shallow` flag.
+- Report `moduleResolution`: state plainly whether module grouping came from the project's own `project.modules` (`xforge-state`) or is a single implicit fallback module (`implicit-root`) because XForge was unavailable or this is not an XForge-managed project.
 - State every number exactly as the script reported it; do not round, estimate, or extrapolate.
 
 # Stop and rework
