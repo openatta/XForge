@@ -71,6 +71,8 @@ change command semantics or exit status.
 - Conflict-safe install, sync, update, and uninstall
 - Atomic delta-Spec Archive
 - Protocol 1 Portable-read migration support
+- Read-only reporting Skills (`xforge-explore`, `xforge-kanban`) outside the
+  Change lifecycle
 
 Run `xforge help --text` for the complete command list. Full documentation is
 available in the [XForge repository](https://github.com/openatta/XForge),

@@ -125,6 +125,15 @@ evidence, while the selected Agent runtime performs the actual delegation. If
 a platform lacks native sub-agent support, execution remains sequential and
 the degradation is reported.
 
+### Read-only Skills outside the Change lifecycle
+
+Not every Skill touches Change/Flow/Gate state. `xforge-explore` investigates
+code, Specs, Rules, and options without writing, narrowing an ambiguous idea
+into a proposal-ready scope. `xforge-kanban` turns plain `git log` into a
+Markdown activity dashboard: per-contributor commits, lines, and active days,
+a weekday x hour heatmap, a feat/fix/other breakdown, and a per-module split
+for multi-module projects. Both are read-only and safe to run at any time.
+
 ### Portable and Managed operation
 
 - **Portable mode** keeps the repository understandable when the declared CLI
@@ -211,7 +220,8 @@ the next legal action, and the lifecycle Skills handle the active stage:
 `xforge-clarify`, `xforge-design`, `xforge-check`, `xforge-apply`, and
 `xforge-verify`. `xforge-revise` updates planning artifacts while preserving
 their consistency, and `xforge-scaffold` customizes the project-owned Agent
-assets.
+assets. `xforge-kanban` sits outside this lifecycle entirely and reports
+Git-history activity on request, without reading or requiring any Change.
 
 The underlying CLI loop is:
 

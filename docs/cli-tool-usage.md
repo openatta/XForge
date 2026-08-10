@@ -35,6 +35,10 @@ Change 状态包括：
 
 `state` 不写项目；不要用 Markdown checkbox 或会话记忆替代它。
 
+不带 `--change` 的 `xforge state` 也是只读报表类 Skill（如 `xforge-kanban`）的
+合法用法之一，例如只读取 `project.modules` 做分组；这属于项目结构查询，不代表
+Change/Flow/Gate 生命周期查询。
+
 ## 3. npm 安装、初始化与投影
 
 ```bash
