@@ -5,7 +5,7 @@
 - **范围：** XForge 项目内的并行开发协作协议
 
 Rules、PermissionPolicy、Hooks、Transition、Approval 和 Audit 的权威语义见
-[治理控制面设计](governance-control-plane-design.md)；当前实现版本为 `0.6.0`。
+[治理控制面设计](governance-control-plane-design.md)；当前实现版本为 `0.6.1`。
 
 ## 1. 设计结论
 

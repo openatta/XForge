@@ -2,7 +2,7 @@
 
 ## 1. 目标与判定原则
 
-本文基于当前 `0.6.0 / Protocol 2` 文档、CLI 实现和既有测试设计，覆盖 XForge 从项目接入、Adapter 投影、Change 治理、工作包、Gate、Approval、Audit 到 Archive 的主流程，并加入真实 Anthropic 兼容引擎驱动的行为测试。
+本文基于当前 `0.6.1 / Protocol 2` 文档、CLI 实现和既有测试设计，覆盖 XForge 从项目接入、Adapter 投影、Change 治理、工作包、Gate、Approval、Audit 到 Archive 的主流程，并加入真实 Anthropic 兼容引擎驱动的行为测试。
 
 测试遵循四个判定原则：
 

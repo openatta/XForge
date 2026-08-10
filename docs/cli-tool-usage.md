@@ -1,6 +1,6 @@
-# XForge 命令行使用指南（0.6.0 / Protocol 2）
+# XForge 命令行使用指南（0.6.1 / Protocol 2）
 
-`@xforge/cli 0.6.0` 同时提供投影生命周期命令和治理控制面命令。默认输出单个 Protocol 2 JSON envelope；加 `--text` 只改变展示，不改变退出码与语义。
+`@xforge/cli 0.6.1` 同时提供投影生命周期命令和治理控制面命令。默认输出单个 Protocol 2 JSON envelope；加 `--text` 只改变展示，不改变退出码与语义。
 
 ## 1. 基本约定
 
@@ -38,7 +38,7 @@ Change 状态包括：
 ## 3. npm 安装、初始化与投影
 
 ```bash
-npm install --save-dev --save-exact @xforge/cli@0.6.0
+npm install --save-dev --save-exact @xforge/cli@0.6.1
 
 npx --no-install xforge init --dry-run
 npx --no-install xforge init

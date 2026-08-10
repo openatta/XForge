@@ -1,4 +1,4 @@
-# XForge Adapter Matrix（0.6.0 / Protocol 2）
+# XForge Adapter Matrix（0.6.1 / Protocol 2）
 
 Capability 表示“平台能提供什么”，不表示项目 Hook 已被用户信任或在当前 surface active。Flow、Transition、Gate、Approval、Archive 和 workflow audit 都由 XForge CLI 执行，不依赖 Adapter。
 

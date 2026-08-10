@@ -17,7 +17,7 @@ describe('npm-bundled project initialization', () => {
     const result = await runCli(root, ['init', '--language', 'en', '--dry-run']);
     expect(result.code).toBe(0);
     expect(result.json.command).toBe('init');
-    expect(result.json.data.scaffold).toMatchObject({ package: '@xforge/cli', version: '0.6.0' });
+    expect(result.json.data.scaffold).toMatchObject({ package: '@xforge/cli', version: '0.6.1' });
     expect(result.json.changes).toContainEqual(expect.objectContaining({ action: 'create', path: 'xforge/manifest.yaml' }));
     expect(await exists(path.join(root, 'xforge'))).toBe(false);
   });
