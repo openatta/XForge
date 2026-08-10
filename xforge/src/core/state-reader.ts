@@ -115,7 +115,7 @@ export async function readState(project: ProjectContext, options: StateOptions):
     agents: [...resources.agents.keys()],
     rules: [...resources.rules.keys()],
     policies: [...resources.policies.keys()],
-    hooks: [...resources.hooks.keys()],
+    hooks: [...resources.hooks.entries()].map(([id, hook]) => ({ id, enabled: hook.value.spec.enabled !== false })),
     gates: [...resources.gates.keys()],
     scripts: [...resources.scripts.keys()],
   };

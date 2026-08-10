@@ -24,6 +24,15 @@ export function envelope<T>(input: {
   };
 }
 
+function disabledHookNames(data: unknown): string[] {
+  const hooks = (data as { resources?: { hooks?: unknown } } | null)?.resources?.hooks;
+  if (!Array.isArray(hooks)) return [];
+  return hooks
+    .filter((hook): hook is { id: string; enabled: boolean } =>
+      Boolean(hook) && typeof hook === 'object' && 'enabled' in (hook as Record<string, unknown>) && (hook as { enabled: unknown }).enabled === false)
+    .map((hook) => hook.id);
+}
+
 export function present(result: Envelope, textMode: boolean): string {
   if (!textMode) return `${JSON.stringify(result)}\n`;
 
@@ -32,9 +41,15 @@ export function present(result: Envelope, textMode: boolean): string {
     `Protocol: ${result.protocolVersion}`,
     `Root: ${result.root ?? '(not found)'}`,
     `Data: ${JSON.stringify(result.data, null, 2)}`,
+  ];
+  const disabledHooks = disabledHookNames(result.data);
+  if (disabledHooks.length > 0) {
+    lines.push(`Note: Hook(s) selected but disabled — they will not run until a project explicitly enables and trusts them: ${disabledHooks.join(', ')}`);
+  }
+  lines.push(
     `Diagnostics: ${JSON.stringify(result.diagnostics, null, 2)}`,
     `Changes: ${JSON.stringify(result.changes, null, 2)}`,
     `Next actions: ${JSON.stringify(result.nextActions, null, 2)}`,
-  ];
+  );
   return `${lines.join('\n')}\n`;
 }

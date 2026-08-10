@@ -16,6 +16,13 @@
 > Hooks、Transition、Approval、Audit 与当前 Protocol 2 实现以
 > [governance-control-plane-design.md](governance-control-plane-design.md) 和 ADR 0002
 > 为准；`@xforge/cli 0.6.0` 已完成 P0–P4，Protocol 1 仅保留 Portable-read 迁移。
+>
+> 第 4.3 节的 Flow 同样是历史示例：文中的第三档 Flow ID 写作 `prime`，Schema 写作
+> `artifacts` + `operations`。当前实现的第三档 Flow ID 是 `major`，Schema 是
+> `stages` + `governance` + `terminal`（含 `approvalPolicies`、`reworkTo`、
+> `terminal.archive`），详见 [flows-and-skills-design.md](flows-and-skills-design.md)
+> 和 `scaffold/payload/xforge/flows/{quick,solid,major}.yaml`。不要照抄本节的
+> Flow YAML 示例作为当前 Schema 参考。
 
 文中的“必须”“不得”表示强制要求；“应当”表示默认要求，偏离时必须记录原因；“可以”表示可选能力。
 
@@ -755,9 +762,12 @@ Worker 把结构化交付返回 Main Agent，由 Main Agent 保存到 `<change>/
 
 ### 4.7 Rules
 
-本节是 Protocol-1 当前模型。vNext 将 Rule 限定为 Agent guidance，把 allow/ask/deny
-运行权限迁移到独立 PermissionPolicy，并由 `state/check` 报告
-`instructed/guarded/verified/uncovered` coverage。
+本节是 Protocol-1 历史模型。vNext（Protocol 2，`@xforge/cli 0.6.0` 已完成 P0–P4）
+已经把 Rule 限定为 Agent guidance，把 allow/ask/deny 运行权限迁移到独立
+PermissionPolicy，并由 `state/check` 报告
+`instructed/guarded/verified/uncovered` coverage；当前 Schema 见
+`xforge/schemas/rule.schema.json`、`xforge/schemas/permission-policy.schema.json`
+和 [governance-control-plane-design.md](governance-control-plane-design.md) 第 4 节。
 
 Rules 分为：
 
@@ -778,9 +788,11 @@ XForge 不提供带业务偏好的默认规则。项目和企业必须自行编�
 
 ### 4.8 Hooks
 
-本节是 Protocol-1 当前模型。vNext 将事件拆为 Agent Runtime Plane 与 XForge
-Workflow Plane：前者由 Adapter 按事件级能力投影，后者由 CLI 跨平台执行；核心
-流程审计不依赖目标平台 Hook。
+本节是 Protocol-1 历史模型。vNext（Protocol 2，`@xforge/cli 0.6.0` 已完成 P0–P4）
+已经把事件拆为 Agent Runtime Plane 与 XForge Workflow Plane：前者由 Adapter 按
+事件级能力投影，后者由 CLI 跨平台执行；核心流程审计不依赖目标平台 Hook。当前
+Schema 见 `xforge/schemas/hook.schema.json` 和
+[governance-control-plane-design.md](governance-control-plane-design.md) 第 5 节。
 
 Hooks 是高风险资源。v1 只定义少量统一事件：
 
