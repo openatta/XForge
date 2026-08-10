@@ -76,7 +76,7 @@ resources:
     kind: skill
     license: MIT
     version: "3.0"
-  - digest: 2f19f9045a0053b1158f709c8a6a3a61260789dcea3c38e2fe19d11169350a76
+  - digest: c788b2b416bfb85278117a6fea2b45a0e0e015831fcb56e923a7d47d733dcecb
     id: xforge-design
     kind: skill
     license: MIT
@@ -91,7 +91,7 @@ resources:
     kind: skill
     license: MIT
     version: "1.0"
-  - digest: d1077534633a65d957084d3bb18f96c67963e3bbbc41fe1681b9806c7fb688bd
+  - digest: 345200b295b1767023a82e4fce87914b837e8748ac787aec750bc1ba49edfe65
     id: xforge-propose
     kind: skill
     license: MIT
@@ -121,8 +121,8 @@ scaffold:
   source:
     package: "@xforge/cli"
     type: npm
-    version: 0.7.0
-  version: 0.7.0
+    version: 0.7.1
+  version: 0.7.1
 targets:
   - codex
   - claude
@@ -130,8 +130,8 @@ targets:
   - opencode
   - github-copilot
 xforge:
-  integrity: sha256:5625f324800d2ea5594d1ea370a053929526b124dd63b05bddbce267f0d32588
+  integrity: sha256:8505839c9d79be5af2b55a38254a819742539575396b89447ed9948d0d208b3f
   package: "@xforge/cli"
   protocol: "2"
   source: npm
-  version: 0.7.0
+  version: 0.7.1
