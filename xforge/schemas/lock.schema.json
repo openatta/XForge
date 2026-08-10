@@ -11,10 +11,11 @@
     "scaffold": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["version", "source"],
+      "required": ["version", "source", "language"],
       "properties": {
         "version": { "type": "string" },
-        "source": { "$ref": "#/$defs/npmScaffoldSource" }
+        "source": { "$ref": "#/$defs/npmScaffoldSource" },
+        "language": { "enum": ["en", "zh-CN"] }
       }
     },
     "xforge": {

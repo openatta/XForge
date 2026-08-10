@@ -92,9 +92,9 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
       resolved.state.workPackages = structure.change.workPackages;
       const control = await resolveControlPlane(project, options.change, resolved.flow, resolved.state, structure.resources, resolved.config);
       const existing = await readAuditEvents(project);
-      for (const item of structure.change.workPackages.packages.filter((candidate) => candidate.status === 'succeeded' && candidate.delivery)) {
+      for (const item of structure.change.workPackages.packages.filter((candidate) => ['succeeded', 'integrated', 'reviewed'].includes(candidate.status) && candidate.delivery)) {
         const delivery = item.delivery!;
-        for (const eventType of ['work-package.delivered', 'work-package.integrated']) {
+        for (const eventType of ['work-package.delivered']) {
           const inputDigest = sha256(stableStringify({ eventType, delivery }));
           if (existing.some((event) => event.eventType === eventType && event.inputDigest === inputDigest)) continue;
           await recordAudit(project, {

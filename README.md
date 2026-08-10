@@ -12,7 +12,7 @@ XForge is not another Agent runtime. Models and coding tools still explore,
 design, and implement the change; XForge defines what is true, which transition
 is legal, and what evidence is required before the change can advance or close.
 
-> **Current release:** `@xforge/cli 0.5.0`, Protocol 2, Node.js 20 or newer.
+> **Current release:** `@xforge/cli 0.6.0`, Protocol 2, Node.js 20 or newer.
 > Install the exact CLI version from npm. Source-based installation is not
 > supported. The implementation remains under active development.
 
@@ -141,10 +141,17 @@ Install the exact npm package in the target project, then let that CLI verify
 and initialize its bundled Scaffold:
 
 ```bash
-npm install --save-dev --save-exact @xforge/cli@0.5.0
+npm install --save-dev --save-exact @xforge/cli@0.6.0
 npx --no-install xforge init --dry-run
 npx --no-install xforge init
 ```
+
+On first initialization, `--language en|zh-CN` overrides locale detection. If
+no language can be detected, an interactive terminal asks the user to choose;
+non-interactive initialization fails with an actionable `--language` command.
+Only Skills and sub-Agent instructions are localized. English is the default,
+Chinese source variants use the `_cn` suffix, and all other Scaffold assets
+remain English.
 
 Project the canonical Skills, agents, Rules, permission/MCP policies, Hooks, and
 other supported assets into one Agent tool:

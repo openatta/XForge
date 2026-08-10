@@ -17,7 +17,7 @@ Cursor, OpenCode, and GitHub Copilot without becoming another Agent runtime.
 Install an exact version in the target project:
 
 ```bash
-npm install --save-dev --save-exact @xforge/cli@0.5.0
+npm install --save-dev --save-exact @xforge/cli@0.6.0
 npx --no-install xforge version --text
 ```
 
@@ -30,13 +30,19 @@ npx --no-install xforge init --target codex --dry-run
 npx --no-install xforge init --target codex
 ```
 
+Use `--language en` or `--language zh-CN` to select the installed Skill and
+sub-Agent instruction language. Without an explicit choice, `init` uses the
+system locale; if detection fails it prompts on an interactive terminal and
+otherwise exits with an actionable language-selection diagnostic. All other
+Scaffold assets are English.
+
 Alternatively, run `init` without a target, review and customize
 `xforge/manifest.yaml`, then run `xforge install --target <target>` for each
 tool. Source checkouts, local tarballs, Git/HTTP Scaffold distributions, and
 source-built installation are not supported.
 
 Follow the [Agent installation
-runbook](https://github.com/openatta/XForge/blob/v0.5.0/AGENT_INSTALL.md) for the
+runbook](https://github.com/openatta/XForge/blob/v0.6.0/AGENT_INSTALL.md) for the
 full npm-only procedure. Generated runtime Hooks invoke `npx --no-install
 xforge` from the project root, resolving the exact local package without a
 network fallback.
@@ -68,8 +74,8 @@ change command semantics or exit status.
 
 Run `xforge help --text` for the complete command list. Full documentation is
 available in the [XForge repository](https://github.com/openatta/XForge),
-including the [CLI guide](https://github.com/openatta/XForge/blob/v0.5.0/docs/cli-tool-usage.md)
-and [governance design](https://github.com/openatta/XForge/blob/v0.5.0/docs/governance-control-plane-design.md).
+including the [CLI guide](https://github.com/openatta/XForge/blob/v0.6.0/docs/cli-tool-usage.md)
+and [governance design](https://github.com/openatta/XForge/blob/v0.6.0/docs/governance-control-plane-design.md).
 
 ## Important boundary
 
@@ -79,5 +85,5 @@ deployment and production access.
 
 ## License
 
-Apache-2.0. See the repository [LICENSE](https://github.com/openatta/XForge/blob/v0.5.0/LICENSE)
-and [NOTICE](https://github.com/openatta/XForge/blob/v0.5.0/NOTICE).
+Apache-2.0. See the repository [LICENSE](https://github.com/openatta/XForge/blob/v0.6.0/LICENSE)
+and [NOTICE](https://github.com/openatta/XForge/blob/v0.6.0/NOTICE).

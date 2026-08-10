@@ -138,6 +138,7 @@ export async function readState(project: ProjectContext, options: StateOptions):
       scaffold: {
         version: project.manifest.scaffold.version,
         source: project.manifest.scaffold.source,
+        language: project.manifest.scaffold.language,
         lockedResources: project.lock?.resources ?? [],
       },
       xforge: {

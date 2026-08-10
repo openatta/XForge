@@ -1,11 +1,11 @@
-# XForge Adapter Matrix（0.5.0 / Protocol 2）
+# XForge Adapter Matrix（0.6.0 / Protocol 2）
 
 Capability 表示“平台能提供什么”，不表示项目 Hook 已被用户信任或在当前 surface active。Flow、Transition、Gate、Approval、Archive 和 workflow audit 都由 XForge CLI 执行，不依赖 Adapter。
 
 | Target | Guidance | PermissionPolicy | Runtime Hook | Local / Cloud | Managed | Sub-agent | 主要输出与边界 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Claude Code | native | native permissions + XForge bridge | blocking native | native / degraded | degraded | native | `.claude/settings.json`；PreToolUse 支持 allow/deny/ask；项目 settings 仍需平台信任 |
-| Codex | degraded（AGENTS/Skills） | shell rules native，其他 capability bridge | blocking native，部分 tool path 可 bypass | native / unsupported | native | native | `.codex/rules/*.rules`、`.codex/hooks.json`；项目 `.codex` layer 需 trust；PreToolUse 不支持 ask，保守映射 deny |
+| Codex | degraded（AGENTS/Skills）+ native Agents | shell rules native，其他 capability bridge | blocking native，部分 tool path 可 bypass | native / unsupported | native | native | `.codex/agents/*.toml`、`.codex/rules/*.rules`、`.codex/hooks.json`；项目 `.codex` layer 需 trust；PreToolUse 不支持 ask，保守映射 deny |
 | Cursor | native | bridge（degraded） | blocking native | native / native | native | degraded | `.cursor/hooks.json` v1；平台未暴露事件形成 gap |
 | GitHub Copilot | native | bridge（degraded） | local native，blocking/cloud degraded | native / degraded | degraded | degraded | `.github/hooks/xforge.json` v1；Cloud ask 按 deny；Cloud filesystem/logs 不是长期审计 |
 | OpenCode | degraded | ordered permissions native | plugin bridge degraded | native / degraded | degraded | native | `opencode.json` last-match-wins permissions、`.opencode/plugins/xforge-governance.ts`；plugin API 未发出的事件形成 gap |
@@ -24,6 +24,9 @@ Capability 表示“平台能提供什么”，不表示项目 Hook 已被用户
 ## 生成策略
 
 - Rule Guidance 与 PermissionPolicy 分开渲染，不把 Codex permission rules 误报为 XForge Guidance Rules。
+- Codex Adapter v3 把 canonical `worker`、`integrator`、`reviewer` 投影为项目级
+  `.codex/agents/*.toml`；Agent 进程与委派仍由 Codex 原生 runtime 创建，XForge
+  只提供契约、DAG、派工绑定与验收。
 - 有项目 PermissionPolicy 时生成最小 pre-tool dispatcher bridge，用于跨 capability 一致判定和审计；平台 native permissions 仍作为更早的 defense-in-depth。
 - `runtime-audit` 默认 selected 但 disabled，因此不会生成 PostToolUse audit handler；启用后才投影相应事件。
 - Adapter 输出进入 ownership 和 Lock source trace；canonical Policy/Hook 改动要求重新 sync/update。平台的 hash/trust review 由平台完成，XForge 不绕过。

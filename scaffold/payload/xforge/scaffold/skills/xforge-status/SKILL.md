@@ -1,34 +1,34 @@
 ---
 name: xforge-status
-description: 把 xforge state 的机器状态解释为 Change 或 Requirement 的可读进度；用于用户询问做到哪、为何阻塞、剩余工作包、Evidence 是否当前或能否 Verify/Archive 时。
+description: Explain xforge state as readable progress for a Change or Requirement; use when the user asks what is done, why work is blocked, which packages remain, whether Evidence is current, or whether Verify/Archive is ready.
 license: MIT
 metadata:
-  author: xforge（基于 OpenSpec 工作流适配）
+  author: xforge (adapted from the OpenSpec workflow)
   version: "3.0"
   source: OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab
 ---
 
-# 不变量
+# Invariants
 
-- 运行 `npx --no-install xforge state`，解析唯一 Change 后运行 `npx --no-install xforge state --change <id>`；State 是唯一状态事实源。
-- 严格只读，不维护第二份进度，不顺便继续、修复或勾选任务。
+- Run `npx --no-install xforge state`, resolve one Change, then run `npx --no-install xforge state --change <id>`. State is the only progress source of truth.
+- Remain strictly read-only; do not maintain a second progress ledger or continue/fix/check off work incidentally.
 
-# 权限
+# Authority
 
-- 可以查询、筛选和解释 State、work packages、deliveries、diagnostics 与 Evidence freshness。
-- 不得修改任何项目文件、生成 Evidence、执行 ready Action 或归档。
+- Query, filter, and explain State, work packages, deliveries, diagnostics, and Evidence freshness.
+- Do not modify project files, generate Evidence, execute a ready Action, or archive.
 
-# 执行
+# Execution
 
-1. 解析 Change ID；多 Change 或 Requirement 归属不唯一时请求用户选择。
-2. 固定输出 Flow、当前 Stage/state revision、ready/blocked Transitions、pending Approvals、Rule 的 instructed/guarded/verified/approved/uncovered coverage、Policy/Hook active coverage、Audit chain/remote pending/gaps、工作包/deliveries、Evidence freshness、Verify/Archive readiness。
-3. 给出下一合法 Action、对应 Skill 和为何尚未 ready。
-4. Requirement ID 确定性索引不可用时明确标记为启发式，不从 Markdown 搜索结果过度推断状态。
+1. Resolve Change ID and request a choice if multiple Changes or Requirement ownership is ambiguous.
+2. Report Flow, current Stage/revision, ready/blocked Transitions, pending Approvals, Rule coverage, active Policy/Hook coverage, Audit chain/remote pending/gaps, work-package lifecycle/deliveries, Evidence freshness, and Verify/Archive readiness.
+3. Give the next legal Action, owning Skill, and reason it is or is not ready.
+4. Mark Requirement progress as heuristic when deterministic ID indexing is unavailable; do not over-infer from Markdown search.
 
-# 证据
+# Evidence
 
-- 所有进度结论引用同一次 State revision 与具体诊断/Evidence 路径。
+- Bind every progress conclusion to one State revision and concrete diagnostics/Evidence paths.
 
-# 停止与返工
+# Stop and rework
 
-- ID 歧义、State 错误或 Evidence 无法验证时停止并说明缺失信息；不得用会话记忆补齐。
+- Stop and report missing information when IDs are ambiguous, State errors, or Evidence cannot be verified. Never fill gaps from chat memory.

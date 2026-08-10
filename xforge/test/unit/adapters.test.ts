@@ -36,11 +36,11 @@ describe('Adapter golden mapping', () => {
   it('attaches deterministic source trace metadata to rendered artifacts', () => {
     for (const target of TARGETS) {
       const adapter = getAdapter(target);
-      expect(adapter.version).toBe('2');
+      expect(adapter.version).toBe(target === 'codex' ? '3' : '2');
       expect(adapter.trace('skill', 'xforge-explore', ['xforge/scaffold/skills/xforge-explore/SKILL.md'])).toEqual({
         resource: { kind: 'skill', id: 'xforge-explore' },
         sourcePaths: ['xforge/scaffold/skills/xforge-explore/SKILL.md'],
-        renderVersion: `${target}:skill:2`,
+        renderVersion: `${target}:skill:${target === 'codex' ? '3' : '2'}`,
       });
     }
   });

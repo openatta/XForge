@@ -15,6 +15,7 @@ import { assertResourceId, normalizeRelative, safeResolve } from './path-safety.
 import { validateSchema, type SchemaName } from './validator.js';
 import { loadYaml } from './yaml.js';
 import { normalizeRule } from './governance.js';
+import { localizedVariant } from './language.js';
 
 async function exists(filePath: string): Promise<boolean> {
   try { await access(filePath); return true; } catch { return false; }
@@ -22,7 +23,7 @@ async function exists(filePath: string): Promise<boolean> {
 
 export interface SelectedResources {
   skills: Map<string, string>;
-  agents: Map<string, { value: AgentResource; yamlPath: string; instructionsPath: string; instructions: string }>;
+  agents: Map<string, { value: AgentResource; yamlPath: string; instructionsPath: string; instructionPaths: string[]; instructions: string }>;
   rules: Map<string, { value: RuleResource; yamlPath: string }>;
   policies: Map<string, { value: PermissionPolicyResource; yamlPath: string }>;
   hooks: Map<string, { value: HookResource; yamlPath: string }>;
@@ -50,7 +51,7 @@ async function loadFlatResource<T extends { metadata?: { name?: string } }>(
 export async function loadSelectedResources(project: ProjectContext): Promise<SelectedResources> {
   const diagnostics: Diagnostic[] = [];
   const skills = new Map<string, string>();
-  const agents = new Map<string, { value: AgentResource; yamlPath: string; instructionsPath: string; instructions: string }>();
+  const agents = new Map<string, { value: AgentResource; yamlPath: string; instructionsPath: string; instructionPaths: string[]; instructions: string }>();
   const rules = new Map<string, { value: RuleResource; yamlPath: string }>();
   const policies = new Map<string, { value: PermissionPolicyResource; yamlPath: string }>();
   const hooks = new Map<string, { value: HookResource; yamlPath: string }>();
@@ -63,7 +64,16 @@ export async function loadSelectedResources(project: ProjectContext): Promise<Se
     const skillPath = `${directory}/SKILL.md`;
     const absolute = await safeResolve(project.root, skillPath);
     if (!await exists(absolute)) diagnostics.push(diagnostic('XFORGE_RESOURCE_MISSING', `Selected Skill is missing: ${id}`, skillPath));
-    else skills.set(id, await safeResolve(project.root, directory));
+    else {
+      if (project.manifest.scaffold.language === 'zh-CN') {
+        const localized = `${directory}/${localizedVariant('SKILL.md')}`;
+        if (!await exists(await safeResolve(project.root, localized))) {
+          diagnostics.push(diagnostic('XFORGE_LOCALIZED_RESOURCE_MISSING', `Selected Skill does not contain its zh-CN entry: ${id}`, localized));
+          continue;
+        }
+      }
+      skills.set(id, await safeResolve(project.root, directory));
+    }
   }
 
   for (const id of project.manifest.scaffold.agents) {
@@ -71,7 +81,9 @@ export async function loadSelectedResources(project: ProjectContext): Promise<Se
     diagnostics.push(...loaded.diagnostics);
     if (!loaded.value) continue;
     const instruction = normalizeRelative(loaded.value.spec.instructions, `Agent ${id} instructions`);
-    const instructionsPath = `xforge/scaffold/agents/${instruction}`;
+    const defaultInstructionsPath = `xforge/scaffold/agents/${instruction}`;
+    const localizedInstructionsPath = `xforge/scaffold/agents/${localizedVariant(instruction)}`;
+    const instructionsPath = project.manifest.scaffold.language === 'zh-CN' ? localizedInstructionsPath : defaultInstructionsPath;
     const absolute = await safeResolve(project.root, instructionsPath);
     if (!await exists(absolute)) {
       diagnostics.push(diagnostic('XFORGE_AGENT_INSTRUCTIONS_MISSING', `Agent instructions are missing: ${instruction}`, loaded.yamlPath));
@@ -80,7 +92,13 @@ export async function loadSelectedResources(project: ProjectContext): Promise<Se
     for (const skill of loaded.value.spec.skills) {
       if (!project.manifest.scaffold.skills.includes(skill)) diagnostics.push(diagnostic('XFORGE_AGENT_SKILL_DISABLED', `Agent ${id} references non-enabled Skill ${skill}.`, loaded.yamlPath));
     }
-    agents.set(id, { value: loaded.value, yamlPath: loaded.yamlPath, instructionsPath, instructions: await readFile(absolute, 'utf8') });
+    const instructionPaths = [defaultInstructionsPath];
+    if (await exists(await safeResolve(project.root, localizedInstructionsPath))) instructionPaths.push(localizedInstructionsPath);
+    if (project.manifest.scaffold.language === 'zh-CN' && !instructionPaths.includes(localizedInstructionsPath)) {
+      diagnostics.push(diagnostic('XFORGE_LOCALIZED_RESOURCE_MISSING', `Agent ${id} does not contain its zh-CN instructions.`, localizedInstructionsPath));
+      continue;
+    }
+    agents.set(id, { value: loaded.value, yamlPath: loaded.yamlPath, instructionsPath, instructionPaths, instructions: await readFile(absolute, 'utf8') });
   }
 
   for (const id of project.manifest.scaffold.rules) {

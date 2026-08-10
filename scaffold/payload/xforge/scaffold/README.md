@@ -4,10 +4,13 @@ These resources are source assets selected by `xforge/manifest.yaml`. Edit them
 through normal reviewed project Changes, then run `xforge install --dry-run`,
 `xforge install`, and `xforge check`. Generated tool directories are not facts.
 
-The seven lifecycle Skills and four auxiliary Skills are adapted from
-OpenSpec's MIT-licensed workflow patterns, translated into Chinese, and changed
-to consume XForge's `state` protocol, Constitution, Stage Flows, Gates, and
-Evidence. `xforge-archive` remains a one-cycle compatibility shim. See `NOTICE`.
+The lifecycle and auxiliary Skills are adapted from OpenSpec's MIT-licensed
+workflow patterns and changed to consume XForge's `state` protocol,
+Constitution, Stage Flows, Gates, and Evidence. Skills and sub-Agent
+instructions have an English default plus `_cn` Chinese source variants; all
+other Scaffold assets are English. The selected language is projected to the
+target's canonical filename. `xforge-archive` remains a one-cycle compatibility
+shim. See `NOTICE`.
 
 The default sub-Agent set is `worker`, `integrator`, and `reviewer`. Main Agent
 remains the coordinator. Apply derives optional `work-packages.yaml` at

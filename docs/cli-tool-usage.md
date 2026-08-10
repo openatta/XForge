@@ -1,6 +1,6 @@
-# XForge 命令行使用指南（0.5.0 / Protocol 2）
+# XForge 命令行使用指南（0.6.0 / Protocol 2）
 
-`@xforge/cli 0.5.0` 同时提供投影生命周期命令和治理控制面命令。默认输出单个 Protocol 2 JSON envelope；加 `--text` 只改变展示，不改变退出码与语义。
+`@xforge/cli 0.6.0` 同时提供投影生命周期命令和治理控制面命令。默认输出单个 Protocol 2 JSON envelope；加 `--text` 只改变展示，不改变退出码与语义。
 
 ## 1. 基本约定
 
@@ -38,10 +38,12 @@ Change 状态包括：
 ## 3. npm 安装、初始化与投影
 
 ```bash
-npm install --save-dev --save-exact @xforge/cli@0.5.0
+npm install --save-dev --save-exact @xforge/cli@0.6.0
 
 npx --no-install xforge init --dry-run
 npx --no-install xforge init
+npx --no-install xforge init --language en
+npx --no-install xforge init --language zh-CN
 
 # 新项目可一步完成 Scaffold 初始化和单 Target 投影
 npx --no-install xforge init --target codex --dry-run
@@ -60,6 +62,10 @@ npx --no-install xforge uninstall --target cursor --dry-run
 
 - `init` 只从已安装 npm 包读取 Scaffold，校验 descriptor、完整 inventory、摘要、
   symlink/path 边界与 CLI/Protocol 版本；不接受源码、Git 或 HTTP Scaffold 输入。
+- 首次 `init` 的语言优先级为 `--language` / `XFORGE_LANGUAGE`、系统 locale、交互式
+  二选一。无法检测且没有 TTY 时 fail closed，并要求显式传入 `--language en` 或
+  `--language zh-CN`。英语是默认资源，中文资源使用 `_cn.md`（Skill 展示元数据为
+  `_cn.yaml`）；只有 Skills 和子 Agents 双语，其他 Scaffold 资产始终为英语。
 - `init --target` 会在首次写入前同时预检 Scaffold 和目标 Adapter 路径。
 - `install` 为已初始化项目首次创建或幂等协调选定 Target；不指定 `--target` 时处理
   Manifest 中全部 Target。
@@ -154,6 +160,24 @@ npx --no-install xforge work-package dispatch --change add-login --package T001
 ```
 
 只允许在 `apply` Stage 派发 ready package。返回 receipt 的 `executionId`、`stateRevision`、`policySnapshotDigest`、Git base/head 和 `auditCorrelationId` 必须随任务传给 Worker；delivery 必须回带对应的 snake_case 字段。静态 `work-packages.yaml` 仍只有八字段。
+
+成功 delivery 还必须用 `done_when_evidence` 将每一条静态 `done_when` 精确映射到
+至少一项实现、测试、契约或 Gate Evidence。集成和独立审查不是 `check` 的隐式副作用，
+必须分别提供范围内证据并显式确认：
+
+```bash
+npx --no-install xforge work-package acknowledge \
+  --change add-login --package T001 --as integrator \
+  --evidence xforge/changes/add-login/evidence/agents/T001/integration.md
+
+npx --no-install xforge work-package acknowledge \
+  --change add-login --package T001 --as reviewer \
+  --evidence xforge/changes/add-login/evidence/agents/T001/review.md
+```
+
+工作包状态链为 `ready → running → succeeded → integrated → reviewed`，失败与阻塞
+保持显式；`state` 同时返回静态 DAG `waves` 和当前 `parallelCandidates`，供宿主原生
+子 Agent runtime 调度。
 
 ## 8. Audit
 

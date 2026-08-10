@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { stat } from 'node:fs/promises';
 import type { Diagnostic, FileChange, ProjectContext, WorkPackageDispatchReceipt } from '../types.js';
 import { recordAudit } from '../core/audit.js';
 import { resolveControlPlane } from '../core/control-plane.js';
@@ -9,6 +10,7 @@ import { sha256, stableStringify } from '../core/hash.js';
 import { assertManaged } from '../core/project-loader.js';
 import { loadSelectedResources } from '../core/resource-loader.js';
 import { resolveWorkPackages } from '../core/work-packages.js';
+import { normalizeRelative, safeResolve } from '../core/path-safety.js';
 
 export async function executeWorkPackageDispatch(project: ProjectContext, options: { change: string; packageId: string; dryRun: boolean }): Promise<{
   data: { change: string; packageId: string; receipt: WorkPackageDispatchReceipt; dryRun: boolean };
@@ -26,6 +28,10 @@ export async function executeWorkPackageDispatch(project: ProjectContext, option
   if (control.governance.currentStage !== 'apply') throw new XForgeError(diagnostic('XFORGE_WORK_PACKAGE_STAGE_FORBIDDEN', `Work packages may only be dispatched in apply; current Stage is ${control.governance.currentStage}.`));
   const selected = workPackages.state.packages.find((item) => item.id === options.packageId);
   if (!selected) throw new XForgeError(diagnostic('XFORGE_WORK_PACKAGE_UNKNOWN', `Unknown work package: ${options.packageId}.`));
+  const diagnostics = [...resolved.diagnostics, ...resources.diagnostics, ...workPackages.diagnostics, ...control.diagnostics];
+  if (diagnostics.some((item) => item.severity === 'error')) {
+    throw new XForgeError(diagnostics, { root: project.root });
+  }
   if (selected.status !== 'ready') throw new XForgeError(diagnostic('XFORGE_WORK_PACKAGE_NOT_READY', `Work package ${options.packageId} is ${selected.status}.`));
 
   const executionId = randomUUID();
@@ -56,5 +62,66 @@ export async function executeWorkPackageDispatch(project: ProjectContext, option
       outcome: 'succeeded', input: { packageId: options.packageId, executionId, dispatchDigest: receipt.digest },
     });
   }
-  return { data: { change: options.change, packageId: options.packageId, receipt, dryRun: options.dryRun }, diagnostics: [...resources.diagnostics, ...workPackages.diagnostics, ...control.diagnostics], changes };
+  return { data: { change: options.change, packageId: options.packageId, receipt, dryRun: options.dryRun }, diagnostics, changes };
+}
+
+export async function executeWorkPackageAcknowledge(project: ProjectContext, options: {
+  change: string;
+  packageId: string;
+  role: 'integrator' | 'reviewer';
+  evidence: string;
+  dryRun: boolean;
+}): Promise<{
+  data: { change: string; packageId: string; role: 'integrator' | 'reviewer'; evidence: string; status: 'integrated' | 'reviewed'; dryRun: boolean };
+  diagnostics: Diagnostic[];
+  changes: FileChange[];
+}> {
+  assertManaged(project, 'work-package acknowledge');
+  const evidence = normalizeRelative(options.evidence, 'work-package acknowledgement evidence');
+  const evidenceRoot = `${project.changesPath}/${options.change}/evidence/agents/${options.packageId}/`;
+  if (!evidence.startsWith(evidenceRoot)) {
+    throw new XForgeError(diagnostic('XFORGE_WORK_PACKAGE_ACK_EVIDENCE_SCOPE', `Acknowledgement evidence must be stored below ${evidenceRoot}.`, evidence));
+  }
+  const evidenceAbsolute = await safeResolve(project.root, evidence);
+  let evidenceStat;
+  try { evidenceStat = await stat(evidenceAbsolute); }
+  catch { throw new XForgeError(diagnostic('XFORGE_WORK_PACKAGE_ACK_EVIDENCE_MISSING', 'Acknowledgement evidence does not exist.', evidence)); }
+  if (!evidenceStat.isFile()) throw new XForgeError(diagnostic('XFORGE_WORK_PACKAGE_ACK_EVIDENCE_MISSING', 'Acknowledgement evidence must be a regular file.', evidence));
+
+  const resolved = await resolveChangeState(project, options.change);
+  if (!isStageFlow(resolved.flow) || !resolved.flow.governance) throw new XForgeError(diagnostic('XFORGE_GOVERNANCE_FLOW_REQUIRED', 'work-package acknowledge requires a Protocol 2 governed Flow.'));
+  const resources = await loadSelectedResources(project);
+  const workPackages = await resolveWorkPackages(project, options.change, resolved.config, resources);
+  if (!workPackages.state) throw new XForgeError(diagnostic('XFORGE_WORK_PACKAGE_PLAN_REQUIRED', 'The Change does not contain work-packages.yaml.'));
+  resolved.state.workPackages = workPackages.state;
+  const control = await resolveControlPlane(project, options.change, resolved.flow, resolved.state, resources, resolved.config);
+  const diagnostics = [...resolved.diagnostics, ...resources.diagnostics, ...workPackages.diagnostics, ...control.diagnostics];
+  if (diagnostics.some((item) => item.severity === 'error')) throw new XForgeError(diagnostics, { root: project.root });
+  const selected = workPackages.state.packages.find((item) => item.id === options.packageId);
+  if (!selected) throw new XForgeError(diagnostic('XFORGE_WORK_PACKAGE_UNKNOWN', `Unknown work package: ${options.packageId}.`));
+  const acceptable = options.role === 'integrator'
+    ? ['succeeded', 'integrated', 'reviewed']
+    : ['integrated', 'reviewed'];
+  if (!acceptable.includes(selected.status)) {
+    throw new XForgeError(diagnostic(
+      'XFORGE_WORK_PACKAGE_ACK_NOT_READY',
+      `${options.role} acknowledgement requires ${options.role === 'integrator' ? 'a succeeded delivery' : 'an integrated delivery'}; current status is ${selected.status}.`,
+    ));
+  }
+  const status = options.role === 'integrator' ? 'integrated' : 'reviewed';
+  if (!options.dryRun && selected.status !== status && selected.status !== 'reviewed') {
+    await recordAudit(project, {
+      eventType: `work-package.${status}`,
+      change: options.change,
+      flow: resolved.flow.metadata.name,
+      stage: control.governance.currentStage,
+      workPackage: options.packageId,
+      correlationId: selected.delivery?.audit_correlation_id,
+      revision: control.governance.revision,
+      actor: { id: process.env.USER ?? 'unknown', provider: 'local-os', role: options.role, type: 'agent' },
+      outcome: 'succeeded',
+      input: { packageId: options.packageId, deliveryExecutionId: selected.delivery?.execution_id, evidence },
+    });
+  }
+  return { data: { change: options.change, packageId: options.packageId, role: options.role, evidence, status, dryRun: options.dryRun }, diagnostics, changes: [] };
 }

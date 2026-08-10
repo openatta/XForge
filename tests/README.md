@@ -6,8 +6,8 @@ boundaries, Scaffold attribution/integrity, full CLI lifecycle behavior, real Ad
 discovery paths, Portable/Managed truthfulness, work-package collaboration
 evidence, and hostile path handling.
 
-The implementation suite uses two project classes: the complete localized
-`scaffold/payload` fixture for multi-Target lifecycle and governance coverage,
+The implementation suite uses two project classes: the complete bilingual
+Skill/sub-Agent `scaffold/payload` fixture for multi-Target lifecycle and governance coverage,
 and `xforge/test/fixtures/minimal-project` for the smallest readable/runnable
 project. `projection-lifecycle.test.ts` creates isolated copies and mutates
 canonical sources, Manifest selections, Target sets, Lock identity, ownership

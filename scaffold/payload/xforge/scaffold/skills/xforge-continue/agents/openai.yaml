@@ -1,4 +1,4 @@
 interface:
-  display_name: "XForge 继续"
-  short_description: "从 XForge 机器状态恢复并推进当前 Change 的合法动作"
-  default_prompt: "使用 $xforge-continue 从机器状态恢复并推进当前 Change。"
+  display_name: "XForge Continue"
+  short_description: "Resume and advance the legal next action from XForge machine state"
+  default_prompt: "Use $xforge-continue to resume and advance the current Change from machine state."

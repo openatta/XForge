@@ -77,7 +77,7 @@ Verify the registry from a clean temporary project:
 npm view @xforge/cli@<version> name version dist-tags dist.integrity
 npm install --save-dev --save-exact @xforge/cli@<version>
 npx --no-install xforge version
-npx --no-install xforge init --dry-run
+npx --no-install xforge init --dry-run --language en
 ```
 
 Optionally create GitHub release notes after the npm verification:

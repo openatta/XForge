@@ -2,6 +2,7 @@ apiVersion: xforge.dev/v1alpha1
 kind: Lock
 protocol: "1"
 scaffold:
+  language: en
   version: 0.3.0
   source:
     type: npm

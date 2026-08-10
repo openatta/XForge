@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import path from 'node:path';
 import process from 'node:process';
+import { access } from 'node:fs/promises';
+import { createInterface } from 'node:readline/promises';
 import { CLI_NAME, CLI_VERSION, PROTOCOL_VERSION, TARGETS, type TargetId } from './constants.js';
 import { executeArchive } from './commands/archive.js';
 import { executeApprove } from './commands/approve.js';
@@ -14,12 +16,13 @@ import { executeUpdate } from './commands/update.js';
 import { executeTransition } from './commands/transition.js';
 import { executeHookDispatch, hookFailureOutput } from './commands/hook.js';
 import { executeInit } from './commands/init.js';
-import { executeWorkPackageDispatch } from './commands/work-package.js';
+import { executeWorkPackageAcknowledge, executeWorkPackageDispatch } from './commands/work-package.js';
 import { XForgeError, diagnostic } from './core/errors.js';
 import { actualGitIdentity, runtimeCliIntegrity } from './core/identity.js';
 import { loadProject } from './core/project-loader.js';
+import { detectScaffoldLanguage, parseScaffoldLanguage } from './core/language.js';
 import { envelope, present } from './protocol/envelope.js';
-import type { Diagnostic, Envelope, NextAction } from './types.js';
+import type { Diagnostic, Envelope, NextAction, ScaffoldLanguage } from './types.js';
 
 type CommandName = 'help' | 'version' | 'init' | 'state' | 'install' | 'sync' | 'update' | 'uninstall' | 'check' | 'transition' | 'approve' | 'audit' | 'work-package' | 'hook' | 'archive';
 
@@ -47,16 +50,19 @@ interface ParsedArguments {
   output?: string;
   event?: string;
   packageId?: string;
+  language?: ScaffoldLanguage;
+  acknowledgeAs?: 'integrator' | 'reviewer';
+  evidence?: string;
 }
 
 const COMMANDS: CommandName[] = ['help', 'version', 'init', 'state', 'install', 'sync', 'update', 'uninstall', 'check', 'transition', 'approve', 'audit', 'work-package', 'hook', 'archive'];
 const VALID_KINDS = ['skills', 'agents', 'rules', 'policies', 'hooks', 'gates', 'scripts'] as const;
-const VALUE_OPTIONS = ['--root', '--change', '--kind', '--target', '--gate', '--to', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--receipt', '--output', '--event', '--package'] as const;
+const VALUE_OPTIONS = ['--root', '--change', '--kind', '--target', '--gate', '--to', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--receipt', '--output', '--event', '--package', '--language', '--as', '--evidence'] as const;
 
 const HELP: Record<CommandName, { usage: string; description: string; options: string[] }> = {
   help: { usage: 'xforge help [command] [--text]', description: 'Show general or command-specific help.', options: ['--text'] },
   version: { usage: 'xforge version [--text]', description: 'Show CLI, protocol, runtime, and build identity.', options: ['--text'] },
-  init: { usage: 'xforge [--root <path>] init [--target <target>] [--dry-run] [--text]', description: 'Initialize the bundled npm Scaffold and optionally project it into one Agent tool.', options: ['--root', '--target', '--dry-run', '--text'] },
+  init: { usage: 'xforge [--root <path>] init [--language <en|zh-CN>] [--target <target>] [--dry-run] [--text]', description: 'Initialize the bundled npm Scaffold and optionally project it into one Agent tool.', options: ['--root', '--language', '--target', '--dry-run', '--text'] },
   state: { usage: 'xforge [--root <path>] state [--change <id>] [--kind <kind>] [--target <target>] [--text]', description: 'Read resolved project and Change state.', options: ['--root', '--change', '--kind', '--target', '--text'] },
   install: { usage: 'xforge [--root <path>] install [--target <target>] [--dry-run] [--text]', description: 'Install or idempotently reconcile selected project assets.', options: ['--root', '--target', '--dry-run', '--text'] },
   sync: { usage: 'xforge [--root <path>] sync [--target <target>] [--dry-run] [--verify-digests] [--text]', description: 'Incrementally sync localized Scaffold changes to installed targets.', options: ['--root', '--target', '--dry-run', '--verify-digests', '--text'] },
@@ -66,7 +72,7 @@ const HELP: Record<CommandName, { usage: string; description: string; options: s
   transition: { usage: 'xforge [--root <path>] transition --change <id> --to <stage> [--dry-run] [--text]', description: 'Evaluate and record a governed Stage transition.', options: ['--root', '--change', '--to', '--dry-run', '--text'] },
   approve: { usage: 'xforge [--root <path>] approve --change <id> --for <stage|archive> [--policy <id>] [--receipt <path> | local fields] [--dry-run] [--text]', description: 'Record an interactive human approval or verify a signed external receipt.', options: ['--root', '--change', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--receipt', '--dry-run', '--text'] },
   audit: { usage: 'xforge [--root <path>] audit <status|verify|export|retry> [--change <id>] [--output <path>] [--text]', description: 'Inspect, verify, export, or redeliver the append-only audit chain.', options: ['--root', '--change', '--output', '--text'] },
-  'work-package': { usage: 'xforge [--root <path>] work-package dispatch --change <id> --package <id> [--dry-run] [--text]', description: 'Issue a revision-bound work-package dispatch receipt.', options: ['--root', '--change', '--package', '--dry-run', '--text'] },
+  'work-package': { usage: 'xforge [--root <path>] work-package <dispatch|acknowledge> --change <id> --package <id> [--as <integrator|reviewer> --evidence <path>] [--dry-run] [--text]', description: 'Dispatch a work package or acknowledge integration/review evidence.', options: ['--root', '--change', '--package', '--as', '--evidence', '--dry-run', '--text'] },
   hook: { usage: 'xforge hook dispatch --target <target> --event <event>', description: 'Internal platform Hook dispatcher.', options: ['--root', '--target', '--event'] },
   archive: { usage: 'xforge [--root <path>] archive --change <id> [--dry-run] [--text]', description: 'Verify, merge Specs, and atomically archive a Change.', options: ['--root', '--change', '--dry-run', '--text'] },
 };
@@ -110,6 +116,12 @@ function parseArguments(argv: string[]): ParsedArguments {
     if (token === '--output') parsed.output = value;
     if (token === '--event') parsed.event = value;
     if (token === '--package') parsed.packageId = value;
+    if (token === '--language') parsed.language = parseScaffoldLanguage(value);
+    if (token === '--evidence') parsed.evidence = value;
+    if (token === '--as') {
+      if (!['integrator', 'reviewer'].includes(value)) throw new XForgeError(diagnostic('XFORGE_WORK_PACKAGE_ROLE_UNKNOWN', `Unknown acknowledgement role: ${value}`));
+      parsed.acknowledgeAs = value as ParsedArguments['acknowledgeAs'];
+    }
     if (token === '--decision') {
       if (!['approve', 'reject'].includes(value)) throw new XForgeError(diagnostic('XFORGE_DECISION_UNKNOWN', `Unknown approval decision: ${value}`));
       parsed.decision = value as ParsedArguments['decision'];
@@ -169,8 +181,56 @@ function parseArguments(argv: string[]): ParsedArguments {
   if (parsed.command === 'audit' && !['status', 'verify', 'export', 'retry'].includes(parsed.subcommand ?? '')) throw new XForgeError(diagnostic('XFORGE_AUDIT_ACTION_REQUIRED', 'audit requires status, verify, export, or retry.'));
   if (parsed.command === 'audit' && parsed.output && parsed.subcommand !== 'export') throw new XForgeError(diagnostic('XFORGE_OPTION_NOT_ALLOWED', '--output is only valid for audit export.'));
   if (parsed.command === 'hook' && (parsed.subcommand !== 'dispatch' || !parsed.target || !parsed.event)) throw new XForgeError(diagnostic('XFORGE_HOOK_ARGUMENTS_REQUIRED', 'hook dispatch requires --target and --event.'));
-  if (parsed.command === 'work-package' && (parsed.subcommand !== 'dispatch' || !parsed.change || !parsed.packageId)) throw new XForgeError(diagnostic('XFORGE_WORK_PACKAGE_ARGUMENTS_REQUIRED', 'work-package dispatch requires --change and --package.'));
+  if (parsed.command === 'work-package') {
+    if (!parsed.change || !parsed.packageId || !['dispatch', 'acknowledge'].includes(parsed.subcommand ?? '')) {
+      throw new XForgeError(diagnostic('XFORGE_WORK_PACKAGE_ARGUMENTS_REQUIRED', 'work-package requires dispatch or acknowledge, --change, and --package.'));
+    }
+    if (parsed.subcommand === 'acknowledge' && (!parsed.acknowledgeAs || !parsed.evidence)) {
+      throw new XForgeError(diagnostic('XFORGE_WORK_PACKAGE_ACK_ARGUMENTS_REQUIRED', 'work-package acknowledge requires --as <integrator|reviewer> and --evidence <path>.'));
+    }
+    if (parsed.subcommand === 'dispatch' && (parsed.acknowledgeAs || parsed.evidence)) {
+      throw new XForgeError(diagnostic('XFORGE_OPTION_NOT_ALLOWED', '--as and --evidence are only valid for work-package acknowledge.'));
+    }
+  }
   return parsed;
+}
+
+async function fileExists(filePath: string): Promise<boolean> {
+  try { await access(filePath); return true; } catch { return false; }
+}
+
+async function selectInitLanguage(root: string, explicit?: ScaffoldLanguage): Promise<ScaffoldLanguage | undefined> {
+  if (explicit) return explicit;
+  if (await fileExists(path.join(root, 'xforge', 'manifest.yaml'))) return undefined;
+  const detected = detectScaffoldLanguage();
+  if (detected) return detected;
+  if (process.stdin.isTTY !== true || process.stderr.isTTY !== true) {
+    throw new XForgeError(diagnostic(
+      'XFORGE_LANGUAGE_REQUIRED',
+      'Scaffold language could not be detected in a non-interactive session. Re-run init with --language en or --language zh-CN.',
+    ), {
+      root,
+      nextActions: [{
+        action: 'select-language',
+        type: 'maintenance',
+        actor: 'human',
+        status: 'blocked',
+        reason: 'Choose the language used for installed sub-Agent and Skill instructions.',
+        command: ['xforge', 'init', '--language', '<en|zh-CN>'],
+      }],
+    });
+  }
+  const terminal = createInterface({ input: process.stdin, output: process.stderr });
+  try {
+    while (true) {
+      const answer = (await terminal.question('Select XForge Agent/Skill language: [1] English  [2] 中文: ')).trim();
+      if (answer === '1' || /^en(?:glish)?$/i.test(answer)) return 'en';
+      if (answer === '2' || /^(?:zh(?:-cn)?|中文)$/i.test(answer)) return 'zh-CN';
+      process.stderr.write('Please enter 1 for English or 2 for 中文.\n');
+    }
+  } finally {
+    terminal.close();
+  }
 }
 
 function helpEnvelope(subject?: string): Envelope {
@@ -211,7 +271,8 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
 
   if (parsed.command === 'init') {
     const root = path.resolve(process.cwd(), parsed.root ?? '.');
-    const result = await executeInit(root, { target: parsed.target, dryRun: parsed.dryRun });
+    const language = await selectInitLanguage(root, parsed.language);
+    const result = await executeInit(root, { target: parsed.target, language, dryRun: parsed.dryRun });
     return envelope({ command: 'init', root, ...result });
   }
 
@@ -222,17 +283,57 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
     const result = await executeState(project, { change: parsed.change, kind: parsed.kind, target: parsed.target });
     const nextActions: NextAction[] = [];
     if (project.compatibility.mode === 'portable') nextActions.push({ action: 'resolve-declared-xforge', reason: 'Managed operations require the exact declared CLI identity.' });
-    const stateChange = (result.data.change ?? null) as { nextArtifact?: { id?: string } | null } | null;
-    if (stateChange?.nextArtifact?.id && parsed.change) nextActions.push({ action: 'create-artifact', reason: `Next Flow Artifact is ${stateChange.nextArtifact.id}.` });
+    const stateChange = (result.data.change ?? null) as {
+      nextArtifact?: { id?: string; outputPaths?: string[]; missingDependencies?: string[] } | null;
+      workPackages?: { packages?: Array<{ id: string; inputs: string[]; write_paths: string[]; done_when: string[] }> } | null;
+    } | null;
+    if (stateChange?.nextArtifact?.id && parsed.change) nextActions.push({
+      action: 'create-artifact',
+      type: 'artifact',
+      id: stateChange.nextArtifact.id,
+      actor: 'main',
+      authority: 'planning-write',
+      status: 'ready',
+      inputs: stateChange.nextArtifact.missingDependencies ?? [],
+      writes: stateChange.nextArtifact.outputPaths ?? [],
+      doneWhen: [`Artifact ${stateChange.nextArtifact.id} exists and satisfies the active Flow instructions.`],
+      requiredEvidence: ['xforge state reports the artifact as done for the current Change revision.'],
+      reason: `Next Flow Artifact is ${stateChange.nextArtifact.id}.`,
+    });
     const governance = (stateChange as any)?.governance;
     if (governance?.currentStage === 'apply') {
       for (const packageId of (stateChange as any)?.workPackages?.ready ?? []) {
-        nextActions.push({ action: 'dispatch-work-package', type: 'governance', id: packageId, status: 'ready', reason: `Work package ${packageId} is ready for a revision-bound dispatch.`, command: ['xforge', 'work-package', 'dispatch', '--change', parsed.change!, '--package', packageId] });
+        const workPackage = stateChange?.workPackages?.packages?.find((item) => item.id === packageId);
+        nextActions.push({
+          action: 'dispatch-work-package', type: 'governance', id: packageId, actor: 'main', authority: 'implementation-write', status: 'ready',
+          inputs: workPackage?.inputs ?? [], writes: workPackage?.write_paths ?? [], doneWhen: workPackage?.done_when ?? [],
+          requiredEvidence: ['revision-bound dispatch receipt', 'Git delivery diff', 'verify command evidence', 'done_when evidence mapping'],
+          reworkTo: ['apply'],
+          reason: `Work package ${packageId} is ready for a revision-bound dispatch.`,
+          command: ['xforge', 'work-package', 'dispatch', '--change', parsed.change!, '--package', packageId],
+        });
       }
     }
-    for (const pending of governance?.pendingApprovals ?? []) nextActions.push({ action: 'approve', type: 'approval', id: pending.policyId, status: 'pending', reason: `Approval ${pending.policyId} is required for ${pending.transition}.`, blockedBy: [`missing:${pending.missing}`], command: ['xforge', 'approve', '--change', parsed.change!, '--for', pending.transition, '--policy', pending.policyId] });
-    for (const transition of governance?.readyTransitions ?? []) nextActions.push({ action: 'transition', type: 'transition', id: transition.to, status: transition.ready ? 'ready' : 'blocked', reason: transition.ready ? `Transition to ${transition.to} is ready.` : `Transition to ${transition.to} is blocked.`, blockedBy: transition.blockedBy, command: ['xforge', 'transition', '--change', parsed.change!, '--to', transition.to] });
-    if (governance?.currentStage === 'ready-to-archive') nextActions.push({ action: 'archive', type: 'archive', status: (governance.pendingApprovals ?? []).some((item: any) => item.transition === 'archive') ? 'blocked' : 'ready', reason: 'The Change reached ReadyToArchive; terminal governance still applies.', command: ['xforge', 'archive', '--change', parsed.change!] });
+    for (const pending of governance?.pendingApprovals ?? []) nextActions.push({
+      action: 'approve', type: 'approval', id: pending.policyId, actor: 'human', status: 'pending',
+      inputs: ['current state revision', `approval policy ${pending.policyId}`], writes: ['approval receipt'],
+      doneWhen: [`Approval policy ${pending.policyId} is satisfied for ${pending.transition}.`], requiredEvidence: ['current-revision approval receipt'],
+      reason: `Approval ${pending.policyId} is required for ${pending.transition}.`, blockedBy: [`missing:${pending.missing}`],
+      command: ['xforge', 'approve', '--change', parsed.change!, '--for', pending.transition, '--policy', pending.policyId],
+    });
+    for (const transition of governance?.readyTransitions ?? []) nextActions.push({
+      action: 'transition', type: 'transition', id: transition.to, actor: 'main', status: transition.ready ? 'ready' : 'blocked',
+      inputs: ['current Change state', 'required gates and approvals'], writes: ['transition receipt'],
+      doneWhen: [`Current Stage is ${transition.to}.`], requiredEvidence: ['valid transition receipt'], reworkTo: governance?.currentStage ? [governance.currentStage] : [],
+      reason: transition.ready ? `Transition to ${transition.to} is ready.` : `Transition to ${transition.to} is blocked.`, blockedBy: transition.blockedBy,
+      command: ['xforge', 'transition', '--change', parsed.change!, '--to', transition.to],
+    });
+    if (governance?.currentStage === 'ready-to-archive') nextActions.push({
+      action: 'archive', type: 'archive', actor: 'main', authority: 'archive-write', status: (governance.pendingApprovals ?? []).some((item: any) => item.transition === 'archive') ? 'blocked' : 'ready',
+      inputs: ['current-revision verification, approval, gate, and audit evidence'], writes: ['canonical Specs', 'archived Change'],
+      doneWhen: ['The Change is archived atomically and canonical Specs are synchronized.'], requiredEvidence: ['archive transaction result'],
+      reason: 'The Change reached ReadyToArchive; terminal governance still applies.', command: ['xforge', 'archive', '--change', parsed.change!],
+    });
     return envelope({ command, root: project.root, data: result.data, diagnostics: result.diagnostics, nextActions });
   }
   if (command === 'install') {
@@ -268,7 +369,11 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
     return envelope({ command, root: project.root, ...result });
   }
   if (command === 'work-package') {
-    const result = await executeWorkPackageDispatch(project, { change: parsed.change!, packageId: parsed.packageId!, dryRun: parsed.dryRun });
+    if (parsed.subcommand === 'dispatch') {
+      const result = await executeWorkPackageDispatch(project, { change: parsed.change!, packageId: parsed.packageId!, dryRun: parsed.dryRun });
+      return envelope({ command, root: project.root, ...result });
+    }
+    const result = await executeWorkPackageAcknowledge(project, { change: parsed.change!, packageId: parsed.packageId!, role: parsed.acknowledgeAs!, evidence: parsed.evidence!, dryRun: parsed.dryRun });
     return envelope({ command, root: project.root, ...result });
   }
   if (command === 'hook') {

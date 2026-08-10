@@ -5,7 +5,7 @@
 - **范围：** XForge 项目内的并行开发协作协议
 
 Rules、PermissionPolicy、Hooks、Transition、Approval 和 Audit 的权威语义见
-[治理控制面设计](governance-control-plane-design.md)；当前实现版本为 `0.5.0`。
+[治理控制面设计](governance-control-plane-design.md)；当前实现版本为 `0.6.0`。
 
 ## 1. 设计结论
 
@@ -193,6 +193,9 @@ validation:
   - command:
     exit_code:
 issues: []
+done_when_evidence:
+  - criterion:
+    evidence: []
 state_revision:
 policy_snapshot_digest:
 audit_correlation_id:
@@ -202,6 +205,10 @@ Main Agent 将交付记录保存到
 `<change>/evidence/agents/<package-id>/<execution-id>.yaml`。目录名、文件名和
 记录内的 `package_id`、`execution_id` 必须一致；重试使用新的执行 ID，旧记录
 保留。Worker 只返回交付契约，不直接写 Evidence。
+
+成功交付必须为静态工作包中的每一条 `done_when` 提供且只提供一个
+`done_when_evidence` 映射；每个映射至少引用一项实现路径、测试、契约或 Gate
+Evidence。缺失、重复或未知 criterion 都会使交付失败。
 
 原生 Git/worktree 执行要求成功的 Worker 返回 commit。目标工具无法可靠提交时，
 可以使用 `patch` 交付模式，但 Adapter 必须将其标记为 `degraded`，由 Main Agent
@@ -226,6 +233,10 @@ Main Agent 在启动任何 Worker 前必须确认：
 并行的判断依据是“至少两个依赖已满足、写路径不重叠且不争用共享资源的节点”，
 而不是涉及了多少业务模块。同一模块可以存在独立并行任务，两个模块也可能因为
 共享契约或迁移而必须串行。
+
+`state` 返回确定性的静态 `waves` 和当前 `parallelCandidates`。它们是宿主原生
+子 Agent runtime 的调度输入，不是 XForge 已启动模型进程的声明；宿主仍必须检查
+数据库、端口、缓存、账号等 CLI 无法从 Git 路径推断的共享资源。
 
 ### 5.2 状态模型
 
@@ -436,8 +447,8 @@ Constitution、当前 Change 和本协议。它不复制完整工作包流程，
 2. `work-package dispatch` 在 Apply Stage 为 ready package 生成 revision/policy/audit
    绑定；Protocol 2 delivery 必须回带并通过 receipt 校验；
 3. `check --change` 在 Verify/ReadyToArchive 要求所有工作包存在有效 succeeded delivery，
-   验证 commit ancestry、实际 diff 和 `write_paths`，重新执行 `verify`，并记录
-   delivered/integrated Workflow Audit；
+   验证 `done_when_evidence`、commit ancestry、实际 diff 和 `write_paths`，重新执行
+   `verify`，并只记录 delivered Workflow Audit；
 4. Scaffold 安装 `worker`、`integrator`、`reviewer` 三种子 Agent，并由 Main
    Agent 负责协调；
 5. Constitution、根 `AGENTS.md`、`xforge-apply` 和 `xforge-verify` 共同提供长期
@@ -445,3 +456,5 @@ Constitution、当前 Change 和本协议。它不复制完整工作包流程，
 6. Adapter 逐项报告 subagent、event coverage、blocking、managed 和 local/cloud；
 7. Archive 验证当前 package deliveries、Gate Evidence、Approval 和 Audit completeness；
 8. XForge 不创建模型进程、不自动调度 Agent，也不替目标工具创建通用 Runtime。
+9. `work-package acknowledge` 要求 Integrator/Reviewer 提供包级 Evidence，显式推进
+   `succeeded → integrated → reviewed`，不会把一次成功 check 当作集成或审查。

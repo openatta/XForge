@@ -14,7 +14,9 @@ return it to Main Agent.
 Resolve genuine integration conflicts with the smallest compatible change,
 update shared outputs, and run contract, integration, end-to-end, and mandatory
 project verification. Commit the integrated result and return its commit,
-included Worker commits, changed shared paths, validation results, and issues.
+included Worker commits, changed shared paths, validation results, issues, and
+the stored integration-evidence path.
 Never approve a Major exception or archive the Change.
 Never issue an Approval, transition the Stage, or hand-write Gate/Audit evidence;
-return the integration correlation and evidence to Main Agent for CLI recording.
+return the integration correlation and evidence to Main Agent for recording with
+`work-package acknowledge --as integrator`.

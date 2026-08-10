@@ -52,11 +52,14 @@ export async function resolvedResourceEntries(project: ProjectContext, resources
     for (const [id, item] of values as Map<string, { value: { metadata: { version?: string | number } }; yamlPath: string }>) {
       let resourceFiles: Array<{ relative: string; content: Buffer }>;
       if (kind === 'agent') {
-        const agent = item as unknown as { yamlPath: string; instructionsPath: string };
+        const agent = item as unknown as { yamlPath: string; instructionsPath: string; instructionPaths: string[] };
         resourceFiles = [
           { relative: path.posix.basename(agent.yamlPath), content: await readFile(path.join(project.root, ...agent.yamlPath.split('/'))) },
-          { relative: path.posix.basename(agent.instructionsPath), content: await readFile(path.join(project.root, ...agent.instructionsPath.split('/'))) },
         ];
+        for (const instructionsPath of agent.instructionPaths) resourceFiles.push({
+          relative: path.posix.basename(instructionsPath),
+          content: await readFile(path.join(project.root, ...instructionsPath.split('/'))),
+        });
       } else if (kind === 'script') {
         resourceFiles = await filesUnder(path.join(project.root, 'xforge', 'scripts', id));
       } else {
@@ -75,7 +78,7 @@ export async function resolvedLock(project: ProjectContext, resources: SelectedR
     apiVersion: 'xforge.dev/v1alpha2',
     kind: 'Lock',
     protocol: PROTOCOL_VERSION,
-    scaffold: { version: project.manifest.scaffold.version, source: project.manifest.scaffold.source },
+    scaffold: { version: project.manifest.scaffold.version, source: project.manifest.scaffold.source, language: project.manifest.scaffold.language },
     xforge: { ...project.manifest.xforge, integrity: runtimeCliIntegrity() },
     paths: { specs: project.specsPath, changes: project.changesPath },
     resources: entries,

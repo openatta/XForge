@@ -1,6 +1,7 @@
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { parse } from '../../xforge/node_modules/yaml/dist/index.js';
 
 function options(argv) {
   const result = {};
@@ -24,6 +25,9 @@ const dispatch = JSON.parse(await readFile(path.join(dispatchDirectory, dispatch
 const head = command('git', ['rev-parse', 'HEAD'], selected.root);
 const changedPaths = command('git', ['diff', '--name-only', `${dispatch.gitHead}..${head}`], selected.root).split('\n').filter(Boolean);
 const testResult = spawnSync('npm', ['test'], { cwd: selected.root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+const workPackages = parse(await readFile(path.join(selected.root, 'xforge', 'changes', selected.change, 'work-packages.yaml'), 'utf8'));
+const workPackage = workPackages.packages.find((item) => item.id === selected.package);
+if (!workPackage) throw new Error(`Work package ${selected.package} was not found.`);
 const delivery = {
   execution_id: dispatch.executionId,
   recorded_at: new Date().toISOString(),
@@ -34,6 +38,9 @@ const delivery = {
   changed_paths: changedPaths,
   validation: [{ command: 'npm test', exit_code: testResult.status }],
   issues: testResult.status === 0 ? [] : ['The independent acceptance suite failed.'],
+  done_when_evidence: testResult.status === 0
+    ? workPackage.done_when.map((criterion) => ({ criterion, evidence: ['npm test', ...changedPaths] }))
+    : [],
   state_revision: dispatch.stateRevision,
   policy_snapshot_digest: dispatch.policySnapshotDigest,
   audit_correlation_id: dispatch.auditCorrelationId,

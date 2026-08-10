@@ -218,7 +218,7 @@ export async function resolveControlPlane(
         if (state.artifacts.find((artifact) => artifact.id === artifactId)?.status !== 'done') blockedBy.push(`artifact:${artifactId}`);
       }
       if (current.id === 'apply' && target === 'verify' && state.workPackages) {
-        for (const workPackage of state.workPackages.packages) if (workPackage.status !== 'succeeded') blockedBy.push(`work-package:${workPackage.id}:${workPackage.status}`);
+        for (const workPackage of state.workPackages.packages) if (!['succeeded', 'integrated', 'reviewed'].includes(workPackage.status)) blockedBy.push(`work-package:${workPackage.id}:${workPackage.status}`);
       }
       const exit = structuredExit(current);
       for (const [key, expected] of Object.entries(exit.conditions ?? {})) {

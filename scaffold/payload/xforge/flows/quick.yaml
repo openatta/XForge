@@ -3,7 +3,7 @@ kind: Flow
 metadata:
   name: quick
   version: 3
-  description: 强调快速交付，适用于低风险、单模块、范围明确且易回滚的变更
+  description: Fast delivery for low-risk, single-module, clearly scoped, and easily reversible changes
 policy:
   assuranceLevel: quick
   eligibleWhen:
@@ -14,8 +14,8 @@ policy:
 artifacts:
   - id: proposal
     generates: proposal.md
-    description: 说明变更原因、边界与 Flow 选择
-    instruction: 说明 Why、Scope、Non-goals、Success criteria、影响、回滚方式及选择 Quick 的事实依据。
+    description: Explain the reason, boundaries, and Flow choice
+    instruction: Describe Why, Scope, Non-goals, Success criteria, impact, rollback, and the factual basis for choosing Quick.
     outline: |
       ## Why
       ## Scope
@@ -25,18 +25,18 @@ artifacts:
       ## Impact and rollback
   - id: delta-specs
     generates: specs/**/*.md
-    description: 定义可观察的需求与场景增量
-    instruction: 使用稳定 Requirement ID 描述成功、失败、边界及兼容性场景，不写实现细节。
+    description: Define observable requirement and scenario deltas
+    instruction: Use stable Requirement IDs for success, failure, boundary, and compatibility scenarios without implementation detail.
     outline: |
       ## ADDED Requirements
-      ### Requirement: <REQ-ID> <名称>
-      #### Scenario: <名称>
+      ### Requirement: <REQ-ID> <name>
+      #### Scenario: <name>
       - **WHEN** ...
       - **THEN** ...
   - id: assurance
     generates: assurance.md
-    description: 记录实现与需求、测试和约束的核验结果
-    instruction: 按完整性、正确性、一致性和 Gate 汇总验证结论，并给出可定位证据。
+    description: Record verification against requirements, tests, and constraints
+    instruction: Summarize completeness, correctness, coherence, and Gates with traceable evidence.
     outline: |
       ## Completeness
       ## Correctness
@@ -45,8 +45,8 @@ artifacts:
       ## Findings
   - id: verification-receipt
     generates: evidence/verification-receipt.yaml
-    description: 绑定当前修订与 Gate Evidence 的验证回执
-    instruction: 只记录当前 Change revision、Git HEAD、Flow 版本、输入摘要和已通过的 Evidence 引用。
+    description: Bind a verification receipt to the current revision and Gate Evidence
+    instruction: Record only the current Change revision, Git HEAD, Flow version, input digest, and passed Evidence references.
     outline: ''
 governance:
   approvalPolicies:

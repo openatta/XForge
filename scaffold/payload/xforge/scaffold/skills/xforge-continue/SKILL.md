@@ -1,38 +1,38 @@
 ---
 name: xforge-continue
-description: 从当前机器状态恢复 Change，并执行与用户授权一致的下一合法 Action；用于用户说继续、恢复、执行下一步，或新会话需要从中断点推进时。
+description: Resume a Change from current machine state and execute the next legal Action consistent with user authority; use when the user says continue, resume, do the next step, or a new session must recover from an interruption.
 license: MIT
 metadata:
-  author: xforge（基于 OpenSpec 工作流适配）
+  author: xforge (adapted from the OpenSpec workflow)
   version: "3.0"
   source: OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab
 ---
 
-# 不变量
+# Invariants
 
-- 先运行 `npx --no-install xforge state` 并解析唯一 Change，再运行 `npx --no-install xforge state --change <id>`；不硬编码 Quick/Solid/Major 顺序。
-- 只选择 CLI typed `nextActions` 中 actor、authority 和用户授权匹配的 `status=ready` Action，并执行其 command；不得从 Markdown 或熟悉的 Flow 猜下一步。
-- 每个 Action 完成后刷新 State，不依赖旧会话或模型记忆推进。
+- Run `npx --no-install xforge state`, resolve one Change, then run State for that Change. Never hard-code Quick/Solid/Major order.
+- Select only a CLI typed `nextActions` entry with `status=ready` whose actor, authority, and user authorization match, and execute its command. Never infer the next step from Markdown or Flow familiarity.
+- Refresh State after every Action and never advance from stale session/model memory.
 
-# 权限
+# Authority
 
-- 权限来自被选择的 ready Action 与对应 Skill；Continue 本身不扩大写权限。
-- external/CLI/用户决定 Action 不得由 Agent 冒领；Archive 永远需要明确授权。
-- Approval Action 只能请求或导入人类/外部 provider receipt，Agent 永远不能自行批准。
+- Authority comes from the selected ready Action and its Skill; Continue never expands it.
+- Do not claim external, CLI, or user-decision Actions. Archive always needs explicit authority.
+- Approval Actions may only request or import human/external provider receipts; an Agent never self-approves.
 
-# 执行
+# Execution
 
-1. 解析用户要推进一个 Action 还是连续推进；多 Change 时先消除歧义。
-2. 读取 ready Actions、blocking diagnostics、inputs、writes、doneWhen、requiredEvidence 和 reworkTo。
-3. 选择与授权一致的 Action，加载并完整遵守对应 Skill，完成后重新查询 State。
-4. 连续推进时重复上述循环，但不得跳过 Clarify/Check、失败 Gate 或 revision 检查。
-5. 默认最多推进到 Verify satisfied；用户未明确授权时停在 verified-active。
+1. Resolve whether the user authorized one Action or continuous progress and remove multi-Change ambiguity first.
+2. Read ready Actions, blocking diagnostics, inputs, writes, doneWhen, requiredEvidence, and reworkTo.
+3. Choose an authorized Action, load and fully follow its Skill, then query State again.
+4. For continuous progress, repeat without skipping Clarify/Check, failed Gates, or revision checks.
+5. Stop at verified-active by default unless the user explicitly authorizes archive.
 
-# 证据
+# Evidence
 
-- 每一步报告消费的 Action、State revision、实际变更和满足的 Evidence；最终给出新的下一 Action。
+- Report each consumed Action, State revision, actual changes, satisfied Evidence, and final next Action.
 
-# 停止与返工
+# Stop and rework
 
-- 在材料性歧义、范围扩大、失败 Gate、权限扩大、stale revision、外部副作用或无 ready Action 时停止。
-- State 返回 rework 时转到指定 Stage，不自行选择更晚阶段绕过问题。
+- Stop on material ambiguity, scope or permission expansion, failed Gate, stale revision, external side effect, or no ready Action.
+- Follow State `reworkTo`; never choose a later Stage to bypass a problem.

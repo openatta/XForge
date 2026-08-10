@@ -37,7 +37,7 @@ try {
   assert(installedVersion?.data?.version === version, 'Installed tarball reports the wrong version.');
   assert(installedVersion?.data?.integrity === builtVersion?.data?.integrity, 'Installed tarball integrity differs from the built CLI.');
 
-  const installedInit = JSON.parse(run(process.execPath, [installedCli, '--root', projectRoot, 'init', '--dry-run'], true, consumerRoot));
+  const installedInit = JSON.parse(run(process.execPath, [installedCli, '--root', projectRoot, 'init', '--dry-run', '--language', 'en'], true, consumerRoot));
   assert(installedInit?.ok === true && installedInit?.command === 'init', 'Installed tarball init --dry-run failed.');
   assert(!existsSync(path.join(projectRoot, 'xforge')), 'Installed tarball init --dry-run wrote project files.');
   process.stdout.write(`Package smoke passed for @xforge/cli@${version}.\n`);

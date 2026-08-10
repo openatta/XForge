@@ -13,7 +13,8 @@ Implement the smallest change that satisfies `goal` and every `done_when`
 condition, including deterministic tests inside `write_paths`. Run every
 `verify` command from the assigned worktree root. In native delivery mode,
 commit the result and return the fixed delivery contract with the actual base
-and head commits, changed paths, command exit codes, unresolved issues, and the
+and head commits, changed paths, command exit codes, unresolved issues, an
+exact non-empty `done_when_evidence` mapping for every original criterion, and the
 unchanged `state_revision`, `policy_snapshot_digest`, and `audit_correlation_id`.
 Return the result to Main Agent; do not hand-write delivery Evidence yourself.
 

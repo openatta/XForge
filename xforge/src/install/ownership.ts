@@ -22,6 +22,7 @@ export function manifestSelectionDigest(project: ProjectContext): string {
     scaffold: {
       skills: project.manifest.scaffold.skills,
       agents: project.manifest.scaffold.agents,
+      language: project.manifest.scaffold.language,
       rules: project.manifest.scaffold.rules,
       hooks: project.manifest.scaffold.hooks,
       gates: project.manifest.scaffold.gates,
@@ -31,7 +32,7 @@ export function manifestSelectionDigest(project: ProjectContext): string {
 }
 
 export function scaffoldIdentity(project: ProjectContext): string {
-  return sha256(stableStringify({ version: project.manifest.scaffold.version, source: project.manifest.scaffold.source }));
+  return sha256(stableStringify({ version: project.manifest.scaffold.version, source: project.manifest.scaffold.source, language: project.manifest.scaffold.language }));
 }
 
 export function declaredCliIdentity(project: ProjectContext): string {

@@ -3,7 +3,7 @@ kind: Flow
 metadata:
   name: major
   version: 3
-  description: 强调重大变更治理，适用于高风险、跨系统或具有关键影响的高保障交付
+  description: High-assurance governance for high-risk, cross-system, or critical-impact changes
 policy:
   assuranceLevel: major
   eligibleWhen:
@@ -16,8 +16,8 @@ policy:
 artifacts:
   - id: proposal
     generates: proposal.md
-    description: 说明受治理变更的原因、边界与成功标准
-    instruction: 说明 Why、Scope、Non-goals、Actors、Success criteria、关键影响、Flow 选择和回滚边界。
+    description: Explain the governed change reason, boundaries, and success criteria
+    instruction: Describe Why, Scope, Non-goals, Actors, Success criteria, critical impacts, Flow choice, and rollback boundary.
     outline: |
       ## Why
       ## Scope
@@ -27,18 +27,18 @@ artifacts:
       ## Critical impacts and rollback
   - id: delta-specs
     generates: specs/**/*.md
-    description: 定义可观察的需求与场景增量
-    instruction: 使用稳定 Requirement ID，覆盖成功、失败、边界、安全、隐私和兼容性场景，不写实现细节。
+    description: Define observable requirement and scenario deltas
+    instruction: Use stable Requirement IDs for success, failure, boundary, security, privacy, and compatibility scenarios without implementation detail.
     outline: |
       ## ADDED Requirements
-      ### Requirement: <REQ-ID> <名称>
-      #### Scenario: <名称>
+      ### Requirement: <REQ-ID> <name>
+      #### Scenario: <name>
       - **WHEN** ...
       - **THEN** ...
   - id: clarifications
     generates: clarifications.md
-    description: 记录会改变范围、风险、兼容性或验收的关键问题与决定
-    instruction: 记录问题、影响、决定、来源和状态；所有 material question 必须 resolved，并原子回写 Proposal 与 delta Specs。
+    description: Record material questions and decisions affecting scope, risk, compatibility, or acceptance
+    instruction: Record the question, impact, decision, source, and status; resolve every material question and atomically update Proposal and delta Specs.
     outline: |
       ## Material questions
       Status: unresolved
@@ -47,8 +47,8 @@ artifacts:
       ## Resolved updates
   - id: design
     generates: design.md
-    description: 记录高保障技术设计、风险控制和交付边界
-    instruction: 覆盖架构决策、替代方案、trust boundaries、失败模式、兼容性、风险缓解、测试、rollout、monitoring、stop signals、owner、并行边界和 rollback。
+    description: Record the high-assurance technical design, risk controls, and delivery boundaries
+    instruction: Cover architecture decisions, alternatives, trust boundaries, failure modes, compatibility, mitigations, tests, rollout, monitoring, stop signals, owners, parallel boundaries, and rollback.
     outline: |
       ## Context and constraints
       ## Decisions and alternatives
@@ -60,8 +60,8 @@ artifacts:
       ## Migration and rollback
   - id: check-report
     generates: check-report.md
-    description: 记录实现前跨 Artifact 语义审查
-    instruction: 按 blocker、warning、suggestion 检查完整性、一致性、可测试性、风险和可实施性，并指出 rework Stage。
+    description: Record the pre-implementation semantic review across Artifacts
+    instruction: Review completeness, consistency, testability, risk, and feasibility as blockers, warnings, and suggestions, with the rework Stage.
     outline: |
       ## Completeness
       ## Consistency
@@ -70,8 +70,8 @@ artifacts:
       ## Rework
   - id: assurance
     generates: assurance.md
-    description: 记录实现与需求、设计、风险和约束的核验结果
-    instruction: 按完整性、正确性、一致性、风险和 Gate 汇总验证结论，并给出可定位证据。
+    description: Record verification against requirements, design, risks, and constraints
+    instruction: Summarize completeness, correctness, coherence, risk, and Gates with traceable evidence.
     outline: |
       ## Completeness
       ## Correctness
@@ -81,8 +81,8 @@ artifacts:
       ## Findings
   - id: verification-receipt
     generates: evidence/verification-receipt.yaml
-    description: 绑定当前修订与 Gate Evidence 的验证回执
-    instruction: 只记录当前 Change revision、Git HEAD、Flow 版本、输入摘要和已通过的 Evidence 引用。
+    description: Bind a verification receipt to the current revision and Gate Evidence
+    instruction: Record only the current Change revision, Git HEAD, Flow version, input digest, and passed Evidence references.
     outline: ''
 governance:
   approvalPolicies:

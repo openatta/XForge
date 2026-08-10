@@ -1,4 +1,4 @@
-# XForge CLI 设计（0.5.0 / Protocol 2）
+# XForge CLI 设计（0.6.0 / Protocol 2）
 
 状态：P0–P4 已实现。ADR 0002 是 Rules、PermissionPolicy、Hooks、Transitions、Approvals 和 Audit 的当前决策。
 
@@ -111,7 +111,7 @@ Adapter capability 报告 `guidance`、`permissionPolicy`、`runtimeHook.events/
 | Target | Policy/Hook 输出 |
 | --- | --- |
 | Claude | `.claude/settings.json` permissions + grouped hooks |
-| Codex | `.codex/rules/*.rules`（shell）+ `.codex/hooks.json` bridge |
+| Codex | `.codex/agents/*.toml` + `.codex/rules/*.rules`（shell）+ `.codex/hooks.json` bridge |
 | Cursor | `.cursor/hooks.json` v1 |
 | GitHub Copilot | `.github/hooks/xforge.json` v1 |
 | OpenCode | ordered `opencode.json` permissions + managed TypeScript plugin bridge |
@@ -128,9 +128,12 @@ Audit event 仅保存身份/关联元数据、revision、refs、decision、outco
 
 ## 9. Work-package runtime binding
 
-静态计划保留八字段。`work-package dispatch` 只允许 Apply Stage 的 ready node，产生单次 execution receipt 和 `work-package.dispatched` audit。Protocol 2 delivery 必须引用该 receipt 的 revision/policy/correlation，并通过 commit ancestry、actual diff、write_paths、verify argv 与 dependency commit 检查。
+静态计划保留八字段。`work-package dispatch` 只允许 Apply Stage 的 ready node，且在整份计划校验无 error 后才原子写入单次 execution receipt 和 `work-package.dispatched` audit。Protocol 2 delivery 必须引用该 receipt 的 revision/policy/correlation，为每条 `done_when` 提供精确 `done_when_evidence` 映射，并通过 commit ancestry、actual diff、write_paths、verify argv 与 dependency commit 检查。
 
-成功 check 记录 delivered/integrated workflow audit；平台可观察时再补充 subagent start/stop/tool runtime events。平台缺失 subagent 事件不会伪装成完整覆盖。
+成功 check 只记录 delivered workflow audit。Integrator 和 Reviewer 必须分别通过
+`work-package acknowledge` 提交项目内证据后才能进入 `integrated` 和 `reviewed`；平台
+可观察时再补充 subagent start/stop/tool runtime events。平台缺失 subagent 事件不会
+伪装成完整覆盖。
 
 ## 10. 失败与兼容
 

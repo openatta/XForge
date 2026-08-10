@@ -3,11 +3,12 @@
 | Product baseline area | Deterministic coverage |
 |---|---|
 | Exact npm install, bundled Scaffold integrity, `init` dry-run/atomic bootstrap, combined target projection | `product-validation.test.ts`, `init.test.ts` |
+| English-default/`_cn` Skill and sub-Agent parity, locale/explicit selection, non-interactive fail-closed behavior | `product-validation.test.ts`, `language.test.ts`, `init.test.ts` |
 | Portable/Managed identity, npm exact version, CLI integrity, legacy Git identity rejection | `cli-protocol.test.ts` |
 | Default/relocated Specs and Changes paths | `archive.test.ts`, `security-boundaries.test.ts` |
 | Traversal, overlap, generated roots, symlink escape, malicious resource IDs | `path-safety.test.ts`, `security-boundaries.test.ts` |
 | Constitution validity/conflict and Flow risk escalation | `governance.test.ts` |
-| Eight-field work packages, DAG readiness, revision-bound dispatch, shared/path boundaries, Git delivery and verify Evidence | `work-packages.test.ts`, `control-plane.test.ts` |
+| Eight-field work packages, DAG waves/parallel candidates, atomic revision-bound dispatch, shared/path boundaries, exact done-when Evidence, integration/review acknowledgement | `work-packages.test.ts`, `control-plane.test.ts` |
 | quick/solid/major Stage graphs, Flow policy, and Verify receipt boundary | `flows.test.ts`, `flows.json` golden |
 | Typed Transition receipts, stale revision rejection, rework, planning/closing Approval and separation of duties | `control-plane.test.ts`, `archive.test.ts` |
 | External Approval signature/provider/role validation and non-interactive fail-closed behavior | `control-plane.test.ts` |

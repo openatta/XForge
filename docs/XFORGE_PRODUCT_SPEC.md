@@ -15,7 +15,7 @@
 > 本文保留最初的产品/Protocol 1 基线和历史约束。Rules、PermissionPolicy、双平面
 > Hooks、Transition、Approval、Audit 与当前 Protocol 2 实现以
 > [governance-control-plane-design.md](governance-control-plane-design.md) 和 ADR 0002
-> 为准；`@xforge/cli 0.5.0` 已完成 P0–P4，Protocol 1 仅保留 Portable-read 迁移。
+> 为准；`@xforge/cli 0.6.0` 已完成 P0–P4，Protocol 1 仅保留 Portable-read 迁移。
 
 文中的“必须”“不得”表示强制要求；“应当”表示默认要求，偏离时必须记录原因；“可以”表示可选能力。
 
@@ -130,7 +130,7 @@ inventory、SHA-256、版本、Protocol、路径和符号链接边界。CLI 与 
 apiVersion: xforge.dev/v1alpha2
 kind: Scaffold
 metadata:
-  version: 0.5.0
+  version: 0.6.0
 protocol: "2"
 payload: payload
 integrity:
@@ -153,7 +153,7 @@ xforgeCompatibility:
 xforge:
   source: npm
   package: "@xforge/cli"
-  version: "0.5.0"
+  version: "0.6.0"
   protocol: "2"
 ```
 
@@ -461,11 +461,11 @@ project:
       kind: application
 
 scaffold:
-  version: 0.5.0
+  version: 0.6.0
   source:
     type: npm
     package: "@xforge/cli"
-    version: 0.5.0
+    version: 0.6.0
   skills:
     - xforge-explore
     - xforge-propose
@@ -489,7 +489,7 @@ scripts:
 xforge:
   source: npm
   package: "@xforge/cli"
-  version: "0.5.0"
+  version: "0.6.0"
   protocol: "2"
 
 flow: solid

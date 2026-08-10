@@ -2,7 +2,7 @@ import { lstat, mkdir, mkdtemp, readFile, realpath, rm, stat } from 'node:fs/pro
 import os from 'node:os';
 import path from 'node:path';
 import type { TargetId } from '../constants.js';
-import type { Diagnostic, FileChange, NextAction } from '../types.js';
+import type { Diagnostic, FileChange, NextAction, ScaffoldLanguage } from '../types.js';
 import { loadBundledScaffold, type BundledScaffold } from '../core/bundled-scaffold.js';
 import { XForgeError, diagnostic } from '../core/errors.js';
 import { atomicWrite } from '../core/files.js';
@@ -14,6 +14,7 @@ import { executeInstall } from './install.js';
 
 interface InitOptions {
   target?: TargetId;
+  language?: ScaffoldLanguage;
   dryRun: boolean;
 }
 
@@ -26,6 +27,21 @@ interface InitResult {
 
 async function exists(filePath: string): Promise<boolean> {
   try { await lstat(filePath); return true; } catch { return false; }
+}
+
+function pinBundleLanguage(bundle: BundledScaffold, language: ScaffoldLanguage): BundledScaffold {
+  const files = new Map(bundle.files);
+  for (const relative of ['xforge/manifest.yaml', 'xforge/lock.yaml']) {
+    const content = files.get(relative);
+    if (!content) throw new XForgeError(diagnostic('XFORGE_BUNDLED_SCAFFOLD_INVALID', `Bundled Scaffold is missing ${relative}.`, relative));
+    const source = content.toString('utf8');
+    const localized = source.replace(/^(  language:) (?:en|zh-CN)$/m, `$1 ${language}`);
+    if (localized === source && !source.includes(`  language: ${language}`)) {
+      throw new XForgeError(diagnostic('XFORGE_BUNDLED_SCAFFOLD_INVALID', `Bundled Scaffold cannot pin language in ${relative}.`, relative));
+    }
+    files.set(relative, Buffer.from(localized));
+  }
+  return { ...bundle, files };
 }
 
 async function exactRoot(input: string): Promise<string> {
@@ -123,29 +139,32 @@ function nextActions(target?: TargetId): NextAction[] {
 
 export async function executeInit(rootInput: string, options: InitOptions): Promise<InitResult> {
   const root = await exactRoot(rootInput);
-  const bundle = await loadBundledScaffold();
+  const bundled = await loadBundledScaffold();
   const manifestPath = path.join(root, 'xforge', 'manifest.yaml');
 
   if (await exists(manifestPath)) {
     const project = await loadProject(root, { exactRoot: true });
     if (!options.target) return {
-      data: { mode: 'init', dryRun: options.dryRun, initialized: true, scaffold: { package: bundle.package, version: bundle.version, files: bundle.files.size }, projection: null },
+      data: { mode: 'init', dryRun: options.dryRun, initialized: true, scaffold: { package: bundled.package, version: bundled.version, files: bundled.files.size, language: project.manifest.scaffold.language }, projection: null },
       diagnostics: [],
       changes: [],
       nextActions: nextActions(),
     };
     const projection = await executeInstall(project, { target: options.target, dryRun: options.dryRun });
     return {
-      data: { mode: 'init', dryRun: options.dryRun, initialized: true, scaffold: { package: bundle.package, version: bundle.version, files: bundle.files.size }, projection: projection.data },
+      data: { mode: 'init', dryRun: options.dryRun, initialized: true, scaffold: { package: bundled.package, version: bundled.version, files: bundled.files.size, language: project.manifest.scaffold.language }, projection: projection.data },
       diagnostics: projection.diagnostics,
       changes: projection.changes,
       nextActions: [],
     };
   }
 
+  if (!options.language) throw new XForgeError(diagnostic('XFORGE_LANGUAGE_REQUIRED', 'A resolved Scaffold language is required for initialization.'));
+  const bundle = pinBundleLanguage(bundled, options.language);
+
   const bootstrap = await planBootstrap(root, bundle);
   if (bootstrap.diagnostics.some((item) => item.severity === 'error')) return {
-    data: { mode: 'init', dryRun: options.dryRun, initialized: false, scaffold: { package: bundle.package, version: bundle.version, files: bundle.files.size }, projection: null },
+    data: { mode: 'init', dryRun: options.dryRun, initialized: false, scaffold: { package: bundle.package, version: bundle.version, files: bundle.files.size, language: options.language }, projection: null },
     diagnostics: bootstrap.diagnostics,
     changes: bootstrap.changes,
     nextActions: [],
@@ -153,13 +172,13 @@ export async function executeInit(rootInput: string, options: InitOptions): Prom
 
   const projection = options.target ? await preflightProjection(root, bundle, options.target) : null;
   if (projection?.diagnostics.some((item) => item.severity === 'error')) return {
-    data: { mode: 'init', dryRun: options.dryRun, initialized: false, scaffold: { package: bundle.package, version: bundle.version, files: bundle.files.size }, projection: projection.data },
+    data: { mode: 'init', dryRun: options.dryRun, initialized: false, scaffold: { package: bundle.package, version: bundle.version, files: bundle.files.size, language: options.language }, projection: projection.data },
     diagnostics: projection.diagnostics,
     changes: [...bootstrap.changes, ...projection.changes],
     nextActions: [],
   };
   if (options.dryRun) return {
-    data: { mode: 'init', dryRun: true, initialized: false, scaffold: { package: bundle.package, version: bundle.version, files: bundle.files.size }, projection: projection?.data ?? null },
+    data: { mode: 'init', dryRun: true, initialized: false, scaffold: { package: bundle.package, version: bundle.version, files: bundle.files.size, language: options.language }, projection: projection?.data ?? null },
     diagnostics: projection?.diagnostics ?? [],
     changes: [...bootstrap.changes, ...(projection?.changes ?? [])],
     nextActions: nextActions(options.target),
@@ -167,7 +186,7 @@ export async function executeInit(rootInput: string, options: InitOptions): Prom
 
   await materializeBundle(root, bundle, bootstrap.changes);
   if (!options.target) return {
-    data: { mode: 'init', dryRun: false, initialized: true, scaffold: { package: bundle.package, version: bundle.version, files: bundle.files.size }, projection: null },
+    data: { mode: 'init', dryRun: false, initialized: true, scaffold: { package: bundle.package, version: bundle.version, files: bundle.files.size, language: options.language }, projection: null },
     diagnostics: [],
     changes: bootstrap.changes,
     nextActions: nextActions(),
@@ -175,7 +194,7 @@ export async function executeInit(rootInput: string, options: InitOptions): Prom
   const project = await loadProject(root, { exactRoot: true });
   const installed = await executeInstall(project, { target: options.target, dryRun: false });
   return {
-    data: { mode: 'init', dryRun: false, initialized: true, scaffold: { package: bundle.package, version: bundle.version, files: bundle.files.size }, projection: installed.data },
+    data: { mode: 'init', dryRun: false, initialized: true, scaffold: { package: bundle.package, version: bundle.version, files: bundle.files.size, language: options.language }, projection: installed.data },
     diagnostics: installed.diagnostics,
     changes: [...bootstrap.changes, ...installed.changes],
     nextActions: [],

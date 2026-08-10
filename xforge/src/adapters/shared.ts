@@ -27,7 +27,24 @@ export function renderAgentMarkdown(agent: AgentResource, instructions: string, 
     description: agent.spec.role,
     ...extra,
   };
-  return `---\n${Object.entries(frontmatter).map(([key, value]) => `${key}: ${JSON.stringify(value)}`).join('\n')}\n---\n\n${instructions.trim()}\n\n## XForge capabilities\n\n- Skills: ${agent.spec.skills.join(', ') || 'none'}\n- Allowed tools: ${agent.spec.tools.allow.join(', ') || 'none'}\n- Model class: ${agent.spec.model.class}\n- Max concurrency: ${agent.spec.delegation.maxConcurrency}\n`;
+  return `---\n${Object.entries(frontmatter).map(([key, value]) => `${key}: ${JSON.stringify(value)}`).join('\n')}\n---\n\n${renderAgentBody(agent, instructions)}`;
+}
+
+export function renderAgentBody(agent: AgentResource, instructions: string): string {
+  return `${instructions.trim()}\n\n## XForge capabilities\n\n- Skills: ${agent.spec.skills.join(', ') || 'none'}\n- Allowed tools: ${agent.spec.tools.allow.join(', ') || 'none'}\n- Model class: ${agent.spec.model.class}\n- Max concurrency: ${agent.spec.delegation.maxConcurrency}\n`;
+}
+
+export function renderCodexAgentToml(agent: AgentResource, instructions: string): string {
+  const sandboxMode = agent.spec.tools.allow.some((tool) => ['write', 'edit'].includes(tool)) ? 'workspace-write' : 'read-only';
+  const reasoningEffort = agent.spec.model.class === 'reasoning' ? 'high' : 'medium';
+  return [
+    `name = ${JSON.stringify(agent.metadata.name)}`,
+    `description = ${JSON.stringify(agent.spec.role)}`,
+    `sandbox_mode = ${JSON.stringify(sandboxMode)}`,
+    `model_reasoning_effort = ${JSON.stringify(reasoningEffort)}`,
+    `developer_instructions = ${JSON.stringify(renderAgentBody(agent, instructions))}`,
+    '',
+  ].join('\n');
 }
 
 export function renderRuleMarkdown(rule: RuleResource, extra: Record<string, string> = {}): string {

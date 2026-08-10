@@ -113,8 +113,12 @@ function resolveCompatibility(manifest: Manifest, lock: Lockfile | null): { valu
   if (scaffoldMatches === false) {
     diagnostics.push(diagnostic('XFORGE_LOCK_SCAFFOLD_MISMATCH', 'Lockfile Scaffold version differs from the Manifest.', 'xforge/lock.yaml', 'warning'));
   }
+  const lockedLanguage = typeof lock?.scaffold?.language === 'string' ? lock.scaffold.language : null;
+  if (lockedLanguage !== null && lockedLanguage !== manifest.scaffold.language) {
+    diagnostics.push(diagnostic('XFORGE_LOCK_LANGUAGE_MISMATCH', 'Lockfile Scaffold language differs from the Manifest.', 'xforge/lock.yaml'));
+  }
 
-  const managed = protocolMatches && cliMatches && lockedCliMatches !== false;
+  const managed = protocolMatches && cliMatches && lockedCliMatches !== false && (lockedLanguage === null || lockedLanguage === manifest.scaffold.language);
   return {
     value: {
       mode: managed ? 'managed' : 'portable',

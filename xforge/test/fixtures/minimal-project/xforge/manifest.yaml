@@ -9,6 +9,7 @@ project:
       path: .
       kind: application
 scaffold:
+  language: en
   version: 0.3.0
   source:
     type: npm

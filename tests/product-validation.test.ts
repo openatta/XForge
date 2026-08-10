@@ -37,14 +37,20 @@ describe('XForge product contract', () => {
     const ids = ['explore', 'propose', 'clarify', 'design', 'check', 'apply', 'verify', 'status', 'continue', 'revise', 'scaffold', 'archive'];
     for (const id of ids) {
       const skill = await readFile(path.join(scaffold, 'payload', 'xforge', 'scaffold', 'skills', `xforge-${id}`, 'SKILL.md'), 'utf8');
-      for (const heading of ['# 不变量', '# 权限', '# 执行', '# 证据', '# 停止与返工']) expect(skill).toContain(heading);
-      expect(skill).toContain('OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab');
-      expect(skill).toContain('xforge state');
-      expect(skill).not.toMatch(/`openspec\s/);
+      const chinese = await readFile(path.join(scaffold, 'payload', 'xforge', 'scaffold', 'skills', `xforge-${id}`, 'SKILL_cn.md'), 'utf8');
+      for (const heading of ['# Invariants', '# Authority', '# Execution', '# Evidence', '# Stop and rework']) expect(skill).toContain(heading);
+      for (const heading of ['# 不变量', '# 权限', '# 执行', '# 证据', '# 停止与返工']) expect(chinese).toContain(heading);
+      for (const variant of [skill, chinese]) {
+        expect(variant).toContain('OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab');
+        expect(variant).toContain('xforge state');
+        expect(variant).not.toMatch(/`openspec\s/);
+      }
     }
     const apply = await readFile(path.join(scaffold, 'payload', 'xforge', 'scaffold', 'skills', 'xforge-apply', 'SKILL.md'), 'utf8');
+    const applyChinese = await readFile(path.join(scaffold, 'payload', 'xforge', 'scaffold', 'skills', 'xforge-apply', 'SKILL_cn.md'), 'utf8');
     expect(apply).toContain('work-packages.yaml');
-    expect(apply).toContain('并行激活 Worker');
+    expect(apply).toContain('Run Workers in parallel');
+    expect(applyChinese).toContain('并行激活 Worker');
     expect(await exists(path.join(scaffold, 'payload', 'xforge', 'flows', 'major.yaml'))).toBe(true);
     expect(await exists(path.join(scaffold, 'payload', 'xforge', 'flows', 'prime.yaml'))).toBe(false);
     expect(await exists(path.join(scaffold, 'payload', 'xforge', 'flows', 'macro.yaml'))).toBe(false);
@@ -52,6 +58,7 @@ describe('XForge product contract', () => {
     for (const id of ['worker', 'integrator', 'reviewer']) {
       expect(await exists(path.join(scaffold, 'payload', 'xforge', 'scaffold', 'agents', `${id}.yaml`))).toBe(true);
       expect(await exists(path.join(scaffold, 'payload', 'xforge', 'scaffold', 'agents', `${id}.md`))).toBe(true);
+      expect(await exists(path.join(scaffold, 'payload', 'xforge', 'scaffold', 'agents', `${id}_cn.md`))).toBe(true);
     }
     expect(await exists(path.join(scaffold, 'payload', 'xforge', 'scaffold', 'agents', 'primary.yaml'))).toBe(false);
     expect(await exists(path.join(scaffold, 'payload', 'xforge', 'scaffold', 'agents', 'tester.yaml'))).toBe(false);
@@ -81,7 +88,9 @@ describe('XForge product contract', () => {
     expect(await exists(codexSkill)).toBe(true);
     expect(await exists(claudeSkill)).toBe(true);
     expect(await readFile(codexSkill, 'utf8')).toBe(await readFile(claudeSkill, 'utf8'));
+    expect(await exists(path.join(root, '.codex', 'agents', 'worker.toml'))).toBe(true);
     expect(installed.json.data.capabilities.codex.commands).toBe('unsupported');
+    expect(installed.json.data.capabilities.codex.agents).toBe('native');
     expect(installed.json.data.capabilities.claude.commands).toBe('native');
   });
 
@@ -111,14 +120,14 @@ describe('XForge product contract', () => {
     const workflow = await readFile(path.join(repositoryRoot, '.github', 'workflows', 'publish-npm.yml'), 'utf8');
     expect(rootPackage.private).toBe(true);
     expect(cliPackage.name).toBe('@xforge/cli');
-    expect(cliPackage.version).toBe('0.5.0');
+    expect(cliPackage.version).toBe('0.6.0');
     expect(cliPackage.files).toContain('scaffold');
     expect(cliPackage.publishConfig).toEqual({ access: 'public', registry: 'https://registry.npmjs.org/' });
     expect(cliPackage.scripts.prepublishOnly).toBe('npm run verify');
-    expect(packageReadme).toContain('npm install --save-dev --save-exact @xforge/cli@0.5.0');
+    expect(packageReadme).toContain('npm install --save-dev --save-exact @xforge/cli@0.6.0');
     expect(packageReadme).toContain('npx --no-install xforge init --target codex');
     expect(packageReadme).not.toMatch(/npm install[^\n]*(?:file:|git\+)/);
-    expect(packageReadme).toContain('/blob/v0.5.0/AGENT_INSTALL.md');
+    expect(packageReadme).toContain('/blob/v0.6.0/AGENT_INSTALL.md');
     expect(workflow).toContain('workflow_dispatch:');
     expect(workflow).toContain('id-token: write');
     expect(workflow).toContain('working-directory: xforge');

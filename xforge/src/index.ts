@@ -9,7 +9,7 @@ export { executeTransition } from './commands/transition.js';
 export { executeApprove } from './commands/approve.js';
 export { executeAudit } from './commands/audit.js';
 export { executeHookDispatch } from './commands/hook.js';
-export { executeWorkPackageDispatch } from './commands/work-package.js';
+export { executeWorkPackageAcknowledge, executeWorkPackageDispatch } from './commands/work-package.js';
 export { executeArchive } from './core/archiver.js';
 export { loadProject, findProjectRoot } from './core/project-loader.js';
 export { loadFlows, resolveChangeState } from './core/flow-resolver.js';

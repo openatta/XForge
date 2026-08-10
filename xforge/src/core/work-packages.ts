@@ -22,6 +22,7 @@ import { validateSchema } from './validator.js';
 import { loadYaml } from './yaml.js';
 import { normalizeRule } from './governance.js';
 import { sha256, stableStringify } from './hash.js';
+import { readAuditEvents } from './audit.js';
 
 const GLOB_MAGIC = /[*?{}[\]]/;
 const UNSUPPORTED_GLOB_MAGIC = /[?{}[\]]/;
@@ -104,6 +105,25 @@ function dependsTransitively(packages: Map<string, WorkPackage>, start: string, 
     if (dependency === target || dependsTransitively(packages, dependency, target, seen)) return true;
   }
   return false;
+}
+
+function executionWaves(packages: WorkPackage[]): Array<{ index: number; packages: string[] }> {
+  const remaining = new Map(packages.map((item) => [item.id, new Set(item.depends_on)]));
+  const completed = new Set<string>();
+  const waves: Array<{ index: number; packages: string[] }> = [];
+  while (remaining.size > 0) {
+    const ready = [...remaining]
+      .filter(([, dependencies]) => [...dependencies].every((dependency) => completed.has(dependency)))
+      .map(([id]) => id)
+      .sort();
+    if (ready.length === 0) break;
+    waves.push({ index: waves.length + 1, packages: ready });
+    for (const id of ready) {
+      remaining.delete(id);
+      completed.add(id);
+    }
+  }
+  return waves;
 }
 
 interface GitResult {
@@ -234,6 +254,62 @@ function latestDelivery(deliveries: WorkPackageDelivery[] | undefined): WorkPack
   }).at(-1) ?? null;
 }
 
+async function loadDispatches(
+  project: ProjectContext,
+  changeId: string,
+  knownPackages: Set<string>,
+): Promise<{ dispatches: Map<string, WorkPackageDispatchReceipt[]>; diagnostics: Diagnostic[] }> {
+  const diagnostics: Diagnostic[] = [];
+  const dispatches = new Map<string, WorkPackageDispatchReceipt[]>();
+  const changeRoot = `${project.changesPath}/${changeId}`;
+  const changeDirectory = await safeResolve(project.root, changeRoot);
+  const names = (await fg('evidence/agents/*/dispatch/*.json', {
+    cwd: changeDirectory,
+    onlyFiles: true,
+    followSymbolicLinks: false,
+    unique: true,
+  })).sort();
+  for (const name of names) {
+    const projectPath = `${changeRoot}/${name}`;
+    try {
+      const dispatch = JSON.parse(await readFile(await safeResolve(project.root, projectPath), 'utf8')) as WorkPackageDispatchReceipt;
+      const schemaDiagnostics = await validateSchema('work-package-dispatch', dispatch, projectPath);
+      diagnostics.push(...schemaDiagnostics);
+      if (schemaDiagnostics.some((item) => item.severity === 'error')) continue;
+      const parts = name.split('/');
+      const directoryId = parts[2]!;
+      const executionId = path.posix.basename(name, '.json');
+      const { digest, ...unsigned } = dispatch;
+      if (dispatch.change !== changeId || dispatch.packageId !== directoryId || dispatch.executionId !== executionId) {
+        diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_DISPATCH_PATH_MISMATCH', 'Dispatch identifiers must match their Change and evidence path.', projectPath));
+        continue;
+      }
+      if (digest !== sha256(stableStringify(unsigned))) {
+        diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_DISPATCH_DIGEST_INVALID', 'Work package dispatch receipt digest is invalid.', projectPath));
+        continue;
+      }
+      if (!knownPackages.has(dispatch.packageId)) {
+        diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_DISPATCH_UNKNOWN', `Dispatch references unknown work package ${dispatch.packageId}.`, projectPath));
+        continue;
+      }
+      const list = dispatches.get(dispatch.packageId) ?? [];
+      list.push(dispatch);
+      dispatches.set(dispatch.packageId, list);
+    } catch (error) {
+      diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_DISPATCH_INVALID', `Dispatch receipt is invalid: ${(error as Error).message}`, projectPath));
+    }
+  }
+  return { dispatches, diagnostics };
+}
+
+function latestDispatch(dispatches: WorkPackageDispatchReceipt[] | undefined): WorkPackageDispatchReceipt | null {
+  if (!dispatches?.length) return null;
+  return [...dispatches].sort((left, right) => {
+    const byTime = Date.parse(left.issuedAt) - Date.parse(right.issuedAt);
+    return byTime === 0 ? left.executionId.localeCompare(right.executionId) : byTime;
+  }).at(-1) ?? null;
+}
+
 async function validateSuccessfulDelivery(
   project: ProjectContext,
   changeId: string,
@@ -307,6 +383,19 @@ async function validateSuccessfulDelivery(
   }
   if (delivery.validation.some((item) => item.exit_code !== 0)) {
     diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_VALIDATION_FAILED', 'A succeeded delivery cannot contain a failed validation result.', sourcePath));
+  }
+  const mappings = delivery.done_when_evidence ?? [];
+  const mapped = new Map<string, number>();
+  for (const mapping of mappings) mapped.set(mapping.criterion, (mapped.get(mapping.criterion) ?? 0) + 1);
+  for (const criterion of workPackage.done_when) {
+    const count = mapped.get(criterion) ?? 0;
+    if (count === 0) diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_DONE_WHEN_EVIDENCE_MISSING', `No evidence mapping was supplied for done_when criterion: ${criterion}`, sourcePath));
+    if (count > 1) diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_DONE_WHEN_EVIDENCE_DUPLICATE', `done_when criterion is mapped more than once: ${criterion}`, sourcePath));
+  }
+  for (const mapping of mappings) {
+    if (!workPackage.done_when.includes(mapping.criterion)) {
+      diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_DONE_WHEN_EVIDENCE_UNKNOWN', `Evidence maps an unknown done_when criterion: ${mapping.criterion}`, sourcePath));
+    }
   }
   return diagnostics;
 }
@@ -441,6 +530,9 @@ export async function resolveWorkPackages(
 
   const loadedDeliveries = await loadDeliveries(project, changeId, uniqueIds);
   diagnostics.push(...loadedDeliveries.diagnostics);
+  const loadedDispatches = await loadDispatches(project, changeId, uniqueIds);
+  diagnostics.push(...loadedDispatches.diagnostics);
+  const auditEvents = (await readAuditEvents(project)).filter((event) => event.change === changeId && event.outcome === 'succeeded');
   const latestByPackage = new Map<string, WorkPackageDelivery | null>();
   const invalidDeliveries = new Set<string>();
   for (const workPackage of plan.packages) {
@@ -474,21 +566,29 @@ export async function resolveWorkPackages(
 
   const packageStates: WorkPackageState[] = plan.packages.map((workPackage) => {
     const delivery = latestByPackage.get(workPackage.id) ?? null;
+    const dispatch = latestDispatch(loadedDispatches.dispatches.get(workPackage.id));
     const missingDependencies = workPackage.depends_on.filter((dependency) => {
       const dependencyDelivery = latestByPackage.get(dependency);
       return !dependencyDelivery || dependencyDelivery.status !== 'succeeded' || invalidDeliveries.has(dependency);
     });
     let status: WorkPackageState['status'];
-    if (delivery?.status === 'succeeded' && !invalidDeliveries.has(workPackage.id)) status = 'succeeded';
+    if (delivery?.status === 'succeeded' && !invalidDeliveries.has(workPackage.id)) {
+      const lifecycle = auditEvents.filter((event) => event.workPackage === workPackage.id
+        && (!delivery.audit_correlation_id || event.correlationId === delivery.audit_correlation_id));
+      if (lifecycle.some((event) => event.eventType === 'work-package.reviewed')) status = 'reviewed';
+      else if (lifecycle.some((event) => event.eventType === 'work-package.integrated')) status = 'integrated';
+      else status = 'succeeded';
+    }
     else if (delivery?.status === 'failed' || invalidDeliveries.has(workPackage.id)) status = 'failed';
     else if (delivery?.status === 'blocked') status = 'blocked';
+    else if (dispatch) status = 'running';
     else status = missingDependencies.length === 0 ? 'ready' : 'blocked';
     return { ...workPackage, status, missingDependencies, delivery };
   });
 
   if (options.requireDeliveries) {
     for (const workPackage of packageStates) {
-      if (workPackage.status !== 'succeeded') {
+      if (!['succeeded', 'integrated', 'reviewed'].includes(workPackage.status)) {
         diagnostics.push(diagnostic(
           'XFORGE_WORK_PACKAGE_INCOMPLETE',
           `Work package ${workPackage.id} is ${workPackage.status}; a valid succeeded delivery is required.`,
@@ -503,6 +603,8 @@ export async function resolveWorkPackages(
       path: planPath,
       baseCommit,
       ready: packageStates.filter((item) => item.status === 'ready').map((item) => item.id),
+      waves: executionWaves(plan.packages),
+      parallelCandidates: packageStates.filter((item) => item.status === 'ready').map((item) => item.id),
       protectedWritePaths: protectedPaths,
       packages: packageStates,
     },

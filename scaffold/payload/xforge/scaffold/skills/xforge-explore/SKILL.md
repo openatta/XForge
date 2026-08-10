@@ -1,39 +1,39 @@
 ---
 name: xforge-explore
-description: 只读调查代码、规格、约束、缺陷或方案，并把模糊想法收敛为可提案范围；用于用户要求分析、诊断、比较方案或判断 Flow，但尚未授权创建 Change 或修改项目时。
+description: Investigate code, specifications, constraints, defects, or solution options without writing, and narrow an ambiguous idea into a proposal-ready scope; use when the user asks for analysis, diagnosis, comparison, or Flow selection but has not authorized project changes.
 license: MIT
 metadata:
-  author: xforge（基于 OpenSpec 工作流适配）
+  author: xforge (adapted from the OpenSpec workflow)
   version: "3.0"
   source: OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab
 ---
 
-# 不变量
+# Invariants
 
-- 先运行 `npx --no-install xforge state`；涉及已有 Change 时再运行 `npx --no-install xforge state --change <id>`，不猜测 Flow、路径、约束或状态。
-- 以实际代码、Constitution、Rules、Specs 和 CLI 诊断为事实；明确区分观察、假设与建议。
-- 全程只读，不把探索结果伪装成 Artifact、Gate Evidence 或完成声明。
+- Run `npx --no-install xforge state` first, and `npx --no-install xforge state --change <id>` for an existing Change. Never guess the Flow, paths, constraints, or state.
+- Treat code, Constitution, Rules, Specs, and CLI diagnostics as facts; distinguish observations, hypotheses, and recommendations.
+- Remain read-only and never present exploration output as an Artifact, Gate Evidence, or completion claim.
 
-# 权限
+# Authority
 
-- 可以读取和搜索项目、运行无副作用的诊断、比较方案并建议 Change 范围与 Flow。
-- 不得创建或修改 Change、代码、Specs、Scaffold、Evidence、生成目录或外部系统。
-- 用户要求记录或实施时，停止 Explore，转交 `xforge-propose` 或对应 ready Action 的 Skill。
+- You may read and search the project, run side-effect-free diagnostics, compare options, and recommend Change scope and Flow.
+- Do not create or modify Changes, code, Specs, Scaffold, Evidence, generated directories, or external systems.
+- If the user asks to record or implement the result, stop Explore and hand off to `xforge-propose` or the Skill for the applicable ready Action.
 
-# 执行
+# Execution
 
-1. 查询 State，解析相关模块、active Changes、Constitution、Rules、PermissionPolicy、Hook/Audit coverage、Specs 和 Adapter 的 local/cloud/managed/blocking 降级。
-2. 先调查代码与运行事实，再建立集成点、约束、未知项和影响范围。
-3. 比较可行方案，说明兼容性、风险、回滚成本与验证方式；只询问无法从项目查明且会改变结果的问题。
-4. 问题足够清楚时，给出有边界的 Change 描述、classification、path scope 与 Quick/Solid/Major 建议。
-5. 结束前再次确认工作区没有因本 Skill 产生修改。
+1. Query State and resolve relevant modules, active Changes, Constitution, Rules, PermissionPolicy, Hook/Audit coverage, Specs, and Adapter local/cloud/managed/blocking degradation.
+2. Investigate code and runtime facts before mapping integration points, constraints, unknowns, and impact.
+3. Compare viable approaches with compatibility, risk, rollback cost, and verification. Ask only questions the project cannot answer that would materially change the result.
+4. When sufficiently clear, return a bounded Change description, classification, path scope, and Quick/Solid/Major recommendation.
+5. Confirm that this Skill made no workspace changes.
 
-# 证据
+# Evidence
 
-- 引用具体文件、命令结果或现有 Spec；自然语言推测不是机器证据。
-- 报告只读检查范围、关键事实、剩余未知和推荐下一步。
+- Cite concrete files, command results, or existing Specs. Natural-language inference is not machine evidence.
+- Report the read-only scope, key facts, remaining unknowns, and recommended next step.
 
-# 停止与返工
+# Stop and rework
 
-- 一旦需要写入、扩大权限、访问敏感外部状态或替用户做材料性决定，立即停止并请求授权。
-- Portable 模式必须说明治理约束未被 CLI 强制执行。
+- Stop and request authority before any write, permission expansion, sensitive external-state access, or material decision on the user's behalf.
+- In Portable mode, state that the CLI did not enforce governance constraints.

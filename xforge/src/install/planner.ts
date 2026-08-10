@@ -17,6 +17,7 @@ import { XForgeError, diagnostic } from '../core/errors.js';
 import { sha256, stableStringify } from '../core/hash.js';
 import { safeResolve } from '../core/path-safety.js';
 import { loadSelectedResources, type SelectedResources } from '../core/resource-loader.js';
+import { localizedVariant } from '../core/language.js';
 import {
   declaredCliIdentity,
   flattenOwnership,
@@ -45,6 +46,20 @@ async function sourceFiles(directory: string, prefix = ''): Promise<Array<{ rela
   return result;
 }
 
+async function localizedSourceFiles(
+  directory: string,
+  language: ProjectContext['manifest']['scaffold']['language'],
+): Promise<Array<{ relative: string; sourceRelative: string; content: Buffer }>> {
+  const files = await sourceFiles(directory);
+  const byRelative = new Map(files.map((file) => [file.relative, file]));
+  const defaults = files.filter((file) => !/_cn(?=\.[^/]+$)/.test(file.relative));
+  return defaults.map((file) => {
+    const variant = localizedVariant(file.relative);
+    const selected = language === 'zh-CN' ? byRelative.get(variant) ?? file : file;
+    return { relative: file.relative, sourceRelative: selected.relative, content: selected.content };
+  });
+}
+
 function addDesired(map: Map<string, DesiredFile>, file: DesiredFile): void {
   const existing = map.get(file.path);
   if (existing && (!existing.content.equals(file.content) || existing.source !== file.source)) {
@@ -70,12 +85,12 @@ async function buildDesired(
     for (const bootstrap of adapter.bootstrap()) addDesired(desired, bootstrap);
 
     for (const [id, directory] of resources.skills) {
-      for (const file of await sourceFiles(directory)) {
-        const sourcePath = `xforge/scaffold/skills/${id}/${file.relative}`;
+      for (const file of await localizedSourceFiles(directory, project.manifest.scaffold.language)) {
+        const sourcePath = `xforge/scaffold/skills/${id}/${file.sourceRelative}`;
         addDesired(desired, {
           path: `${adapter.skillDirectory(id)}/${file.relative}`,
           content: file.content,
-          source: `skill:${id}:${file.relative}`,
+          source: `skill:${id}:${file.sourceRelative}`,
           target,
           ...adapter.trace('skill', id, [sourcePath]),
         });
@@ -87,7 +102,7 @@ async function buildDesired(
         content: Buffer.from(commandContent),
         source: `skill-command:${id}`,
         target,
-        ...adapter.trace('skill-command', id, [`xforge/scaffold/skills/${id}/SKILL.md`]),
+        ...adapter.trace('skill-command', id, [`xforge/scaffold/skills/${id}/${project.manifest.scaffold.language === 'zh-CN' ? localizedVariant('SKILL.md') : 'SKILL.md'}`]),
       });
     }
 

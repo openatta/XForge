@@ -1,4 +1,4 @@
 interface:
-  display_name: "XForge 修订"
-  short_description: "一致修订 XForge Change 规划材料并报告下游失效范围"
-  default_prompt: "使用 $xforge-revise 修订当前 Change 的规划材料并报告失效范围。"
+  display_name: "XForge Revise"
+  short_description: "Revise XForge planning Artifacts consistently and report invalidated downstream work"
+  default_prompt: "Use $xforge-revise to revise the current Change planning and report invalidated work."

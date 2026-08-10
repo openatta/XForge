@@ -1,5 +1,5 @@
 export const CLI_NAME = '@xforge/cli';
-export const CLI_VERSION = '0.5.0';
+export const CLI_VERSION = '0.6.0';
 export const PROTOCOL_VERSION = '2';
 export const API_VERSION = 'xforge.dev/v1alpha2';
 

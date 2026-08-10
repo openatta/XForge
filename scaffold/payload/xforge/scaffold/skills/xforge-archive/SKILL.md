@@ -1,34 +1,34 @@
 ---
 name: xforge-archive
-description: 兼容旧入口，把明确的归档请求转交 xforge-verify 的 archive-current 模式；仅用于迁移期用户仍调用旧 Archive Skill 时，不再直接同步 Specs 或移动 Change。
+description: Compatibility entry that delegates an explicit archive request to xforge-verify archive-current mode; use only while callers still invoke the legacy Archive Skill, which no longer synchronizes Specs or moves a Change directly.
 license: MIT
 metadata:
-  author: xforge（基于 OpenSpec 工作流适配）
+  author: xforge (adapted from the OpenSpec workflow)
   version: "3.0"
   source: OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab
 ---
 
-# 不变量
+# Invariants
 
-- 运行 `npx --no-install xforge state --change <id>`，解析唯一 active Change，不猜测 readiness 或 Evidence freshness。
-- 本 Skill 仅是迁移 shim；归档语义、验证与权限全部由 `xforge-verify` 的 `archive-current` 模式承担。
+- Run `npx --no-install xforge state --change <id>` and resolve one active Change without guessing readiness or Evidence freshness.
+- This Skill is only a migration shim. `xforge-verify` archive-current owns all archive semantics, verification, and authority.
 
-# 权限
+# Authority
 
-- 本 Skill 不直接写 Specs、Evidence 或 Archive，不直接移动 Change。
-- 只有用户明确要求归档才可转交 archive-current；仅要求验证时改用 verify-only。
-- Agent 不能创建 Closing Approval；必须由交互式人类或已配置外部 provider 提供当前 revision 的 receipt。
+- Do not write Specs, Evidence, or Archive or move the Change directly.
+- Delegate to archive-current only for an explicit archive request; use verify-only when the user requested verification only.
+- Agents cannot create Closing Approval. A human or configured external provider must supply a current-revision receipt.
 
-# 执行
+# Execution
 
-1. 查询 State 并说明旧入口已并入 `xforge-verify`。
-2. 使用 `xforge-verify` 的 `archive-current` 流程：确认 Stage 为 `ready-to-archive`，运行 `npx --no-install xforge audit verify --change <id>`，检查当前 Gate/Approval/Audit receipts，执行 archive dry-run，确认后再归档。
-3. 刷新 State 并报告最终结果。
+1. Query State and explain that the legacy entry is merged into `xforge-verify`.
+2. Follow `xforge-verify` archive-current: require ready-to-archive, verify Audit and current Gate/Approval/Audit receipts, preview archive, and archive only after confirmation.
+3. Refresh State and report the final result.
 
-# 证据
+# Evidence
 
-- 只引用 Verify receipt、Gate Evidence、dry-run 计划和 CLI 归档事务结果。
+- Cite only the verification receipt, Gate Evidence, dry-run plan, and CLI archive transaction result.
 
-# 停止与返工
+# Stop and rework
 
-- 未明确授权、receipt stale、Gate 失败或 dry-run 有诊断时停止；不得绕过 Verify。
+- Stop on missing explicit authority, stale receipt, failed Gate, or dry-run diagnostics. Never bypass Verify.

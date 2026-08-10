@@ -26,7 +26,16 @@ export interface NextAction {
   status?: 'ready' | 'blocked' | 'pending';
   blockedBy?: string[];
   command?: string[];
+  actor?: 'main' | 'worker' | 'integrator' | 'reviewer' | 'human' | 'system';
+  authority?: FlowAuthority;
+  inputs?: string[];
+  writes?: string[];
+  doneWhen?: string[];
+  requiredEvidence?: string[];
+  reworkTo?: string[];
 }
+
+export type ScaffoldLanguage = 'en' | 'zh-CN';
 
 export interface Envelope<T = unknown> {
   protocolVersion: '2';
@@ -76,6 +85,7 @@ export interface Manifest {
   scaffold: {
     version: string;
     source: NpmScaffoldSource;
+    language: ScaffoldLanguage;
     skills: string[];
     agents: string[];
     rules: string[];
@@ -261,6 +271,7 @@ export interface WorkPackageDelivery {
   changed_paths: string[];
   validation: Array<{ command: string; exit_code: number | null }>;
   issues: string[];
+  done_when_evidence?: Array<{ criterion: string; evidence: string[] }>;
   state_revision?: string;
   policy_snapshot_digest?: string;
   audit_correlation_id?: string;
@@ -282,7 +293,7 @@ export interface WorkPackageDispatchReceipt {
 }
 
 export interface WorkPackageState extends WorkPackage {
-  status: 'ready' | 'blocked' | 'succeeded' | 'failed';
+  status: 'ready' | 'blocked' | 'running' | 'succeeded' | 'failed' | 'integrated' | 'reviewed';
   missingDependencies: string[];
   delivery: WorkPackageDelivery | null;
 }
@@ -291,6 +302,8 @@ export interface WorkPackagePlanState {
   path: string;
   baseCommit: string | null;
   ready: string[];
+  waves: Array<{ index: number; packages: string[] }>;
+  parallelCandidates: string[];
   protectedWritePaths: string[];
   packages: WorkPackageState[];
 }

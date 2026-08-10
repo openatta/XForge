@@ -13,4 +13,4 @@ spec:
       - xforge/manifest.yaml
       - xforge/lock.yaml
   exceptActors: [integrator]
-  reason: 共享治理文件只允许 Integrator 或显式的 XForge 事务写入。
+  reason: Shared governance files may be written only by the Integrator or an explicit XForge transaction.

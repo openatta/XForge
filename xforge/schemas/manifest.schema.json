@@ -24,10 +24,11 @@
     },
     "scaffold": {
       "type": "object", "additionalProperties": false,
-      "required": ["version", "source", "skills", "agents", "rules", "hooks", "gates"],
+      "required": ["version", "source", "language", "skills", "agents", "rules", "hooks", "gates"],
       "properties": {
         "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
         "source": { "$ref": "#/$defs/npmScaffoldSource" },
+        "language": { "enum": ["en", "zh-CN"] },
         "skills": { "$ref": "#/$defs/idList" }, "agents": { "$ref": "#/$defs/idList" },
         "rules": { "$ref": "#/$defs/idList" }, "policies": { "$ref": "#/$defs/idList" },
         "hooks": { "$ref": "#/$defs/idList" }, "gates": { "$ref": "#/$defs/idList" }
