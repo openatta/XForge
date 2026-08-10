@@ -86,6 +86,11 @@ resources:
     kind: skill
     license: MIT
     version: "3.0"
+  - digest: 970b0b205339cbce71ec231e7fc72e4dda4a2e9b6375ff296057aef040e01b62
+    id: xforge-kanban
+    kind: skill
+    license: MIT
+    version: "1.0"
   - digest: d1077534633a65d957084d3bb18f96c67963e3bbbc41fe1681b9806c7fb688bd
     id: xforge-propose
     kind: skill
