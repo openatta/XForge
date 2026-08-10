@@ -45,8 +45,13 @@ jobs:
       - name: Verify tagged release and privacy boundary
         run: node scripts/release-check.mjs --require-tag
 
+      - name: Diagnose OIDC token availability
+        run: node -e 'console.log("OIDC env present:", !!(process.env.ACTIONS_ID_TOKEN_REQUEST_URL && process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN))'
+
       - name: Publish exact package version
         env:
           NPM_DIST_TAG: ${{ inputs.channel }}
-        run: npm publish --access public --tag "$NPM_DIST_TAG" --provenance
+        # --loglevel verbose surfaces npm's OIDC trusted-publishing exchange result
+        # (e.g. "Successfully retrieved and set token" or the registry rejection body).
+        run: npm publish --access public --tag "$NPM_DIST_TAG" --provenance --loglevel verbose
         working-directory: xforge
