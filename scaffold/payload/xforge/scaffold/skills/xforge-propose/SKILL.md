@@ -24,7 +24,7 @@ metadata:
 # Execution
 
 1. Resolve one objective and check whether an active Change already covers it.
-2. From project facts, set `flow`, complete classification, modules, and a bounded project-relative path scope; explain the Flow choice in the Proposal.
+2. Set `flow` to the State-resolved manifest default unless the user explicitly requests a different Flow. Only deviate on your own initiative when classification (risk/security/privacy/publicApi/dataMigration) plainly conflicts with that default per Invariant 3 — then escalate or request a decision rather than silently overriding. Complete classification, modules, and a bounded project-relative path scope; note the Flow choice in the Proposal only when it was overridden or escalated, not when it simply inherited the default.
 3. Create the minimum `change.yaml`, then run `npx --no-install xforge state --change <id>`. Preserve this unwrapped shape and replace values from project facts:
 
    ```yaml
@@ -47,7 +47,7 @@ metadata:
 
 # Evidence
 
-- Report Change ID, Flow/classification, actual paths, assumptions, and the next legal Action against the Action's `doneWhen` and `requiredEvidence`.
+- Report Change ID, Flow (default or overridden, with reason if overridden)/classification, actual paths, assumptions, and the next legal Action against the Action's `doneWhen` and `requiredEvidence`.
 - Only current CLI output proves structure, policy, and path validation.
 
 # Stop and rework

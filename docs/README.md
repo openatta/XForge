@@ -258,6 +258,7 @@ XForge/
 - [Agent 安装手册](../AGENT_INSTALL.md)
 - [CLI 使用指南](cli-tool-usage.md)
 - [Flows 与 Skills](flows-and-skills-design.md)
+- [扩展 Skills 与 Flows](extending-skills-and-flows.zh-CN.md)
 - [治理控制平面](governance-control-plane-design.md)
 - [文件协议](file-protocol.md)
 - [子 Agent 设计](sub-agent-system-design.md)

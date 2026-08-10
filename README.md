@@ -293,6 +293,7 @@ XForge/
 - [Agent installation runbook](AGENT_INSTALL.md)
 - [CLI usage](docs/cli-tool-usage.md)
 - [Flows and Skills](docs/flows-and-skills-design.md)
+- [Extending Skills and Flows](docs/extending-skills-and-flows.md)
 - [Governance control plane](docs/governance-control-plane-design.md)
 - [File protocol](docs/file-protocol.md)
 - [Sub-agent design](docs/sub-agent-system-design.md)

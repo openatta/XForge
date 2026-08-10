@@ -23,9 +23,8 @@ metadata:
 
 1. 建模当前系统、目标行为、集成点、数据与接口边界。
 2. 记录主要决策、可行替代方案及拒绝理由，覆盖失败模式、兼容性、迁移和回滚。
-3. Solid 至少写清 implementation approach 与 verification notes，服务稳定交付。
-4. Major 额外覆盖 trust boundaries、风险与缓解、测试策略、rollout、monitoring、stop signals、owner 和安全并行边界。
-5. 刷新 State 并运行 `npx --no-install xforge check --change <id>`；只修复 Design 权限内的结构问题。若下一步需要 Approval，停止并请求人类决定；receipt 满足后才调用 typed nextAction 中的 Transition。
+3. 严格按照当前 Action 的 Design artifact `instruction` 与 outline 执行——Solid 与 Major 的深度差异（例如 Major 的 trust boundaries、风险与缓解、测试策略、rollout、monitoring、stop signals、owner 和并行边界）已经在其中表达，不要补充或省略 Action 未定义的章节。
+4. 刷新 State 并运行 `npx --no-install xforge check --change <id>`；只修复 Design 权限内的结构问题。若下一步需要 Approval，停止并请求人类决定；receipt 满足后才调用 typed nextAction 中的 Transition。
 
 # 证据
 

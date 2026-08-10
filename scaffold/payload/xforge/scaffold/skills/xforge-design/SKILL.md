@@ -23,9 +23,8 @@ metadata:
 
 1. Model the current system, target behavior, integration points, data, and interface boundaries.
 2. Record major decisions, viable alternatives and rejection reasons, failure modes, compatibility, migration, and rollback.
-3. For Solid, define the implementation approach and verification notes needed for stable delivery.
-4. For Major, also cover trust boundaries, risks and mitigations, test strategy, rollout, monitoring, stop signals, owner, and safe parallel boundaries.
-5. Refresh State and run `npx --no-install xforge check --change <id>`; fix only Design-authorized structural issues. Stop for human Approval and invoke only a typed ready Transition after the receipt is satisfied.
+3. Follow the current Action's Design artifact `instruction` and outline exactly — Solid vs Major depth (e.g. Major's trust boundaries, risks and mitigations, test strategy, rollout, monitoring, stop signals, owner, and parallel boundaries) is already expressed there. Do not add or omit sections the Action does not define.
+4. Refresh State and run `npx --no-install xforge check --change <id>`; fix only Design-authorized structural issues. Stop for human Approval and invoke only a typed ready Transition after the receipt is satisfied.
 
 # Evidence
 
