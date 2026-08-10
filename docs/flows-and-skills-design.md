@@ -1,6 +1,6 @@
 # XForge Flows 与 Skills 设计
 
-> 状态：Protocol 2 已实现（CLI 0.6.1 / Scaffold Skills 3.0）
+> 状态：Protocol 2 已实现（CLI 0.7.0 / Scaffold Skills 3.0）
 >
 > 模型能力基线：Claude Opus 4.6～4.8 档、GPT‑5.5 及以上
 >
@@ -928,7 +928,7 @@ x Result: success/ambiguity/failed-check/failed-gate/pending-approval/audit-gap/
 
 ## 13. P0–P4 实施状态
 
-以下阶段已在 `@xforge/cli 0.6.1` 和 Scaffold Skills 3.0 中完成；兼容策略继续有效：
+以下阶段已在 `@xforge/cli 0.7.0` 和 Scaffold Skills 3.0 中完成；兼容策略继续有效：
 
 ### P0：冻结设计（完成）
 
