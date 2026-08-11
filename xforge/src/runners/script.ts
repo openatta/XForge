@@ -39,7 +39,7 @@ function bounded(chunks: Buffer[], bytes: number, chunk: Buffer): { bytes: numbe
   return { bytes: bytes + selected.byteLength, truncated: selected.byteLength < chunk.byteLength };
 }
 
-export async function runProjectScript(project: ProjectContext, id: string, extraArguments: string[] = []): Promise<ScriptRunResult> {
+export async function runProjectScript(project: ProjectContext, id: string, extraArguments: string[] = [], options: { stdin?: string } = {}): Promise<ScriptRunResult> {
   assertManaged(project, 'project Script execution');
   const resources = await loadSelectedResources(project);
   const errors = resources.diagnostics.filter((item) => item.severity === 'error');
@@ -83,11 +83,15 @@ export async function runProjectScript(project: ProjectContext, id: string, extr
   let outputTruncated = false;
   let timedOut = false;
   const exitCode = await new Promise<number | null>((resolve, reject) => {
-    const child = spawn(command[0]!, command.slice(1), { cwd: workingDirectory, env: safeEnvironment(), shell: false, stdio: ['ignore', 'pipe', 'pipe'] });
-    child.stdout.on('data', (chunk: Buffer) => {
+    const child = spawn(command[0]!, command.slice(1), {
+      cwd: workingDirectory, env: safeEnvironment(), shell: false,
+      stdio: [options.stdin === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
+    });
+    if (options.stdin !== undefined) child.stdin!.end(options.stdin);
+    child.stdout!.on('data', (chunk: Buffer) => {
       const result = bounded(stdout, stdoutBytes, chunk); stdoutBytes = result.bytes; outputTruncated ||= result.truncated;
     });
-    child.stderr.on('data', (chunk: Buffer) => {
+    child.stderr!.on('data', (chunk: Buffer) => {
       const result = bounded(stderr, stderrBytes, chunk); stderrBytes = result.bytes; outputTruncated ||= result.truncated;
     });
     let forceTimer: NodeJS.Timeout | undefined;

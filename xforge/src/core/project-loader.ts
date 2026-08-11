@@ -162,7 +162,7 @@ export async function loadProject(start = process.cwd(), options: { exactRoot?: 
   if (lockDiagnostics.some((item) => item.severity === 'error')) {
     throw new XForgeError(lockDiagnostics, { root });
   }
-  const { constitution, diagnostics: constitutionDiagnostics } = await readConstitution(root);
+  const { constitution, diagnostics: constitutionDiagnostics } = await readConstitution(root, manifest.scaffold?.language);
   const compatibility = resolveCompatibility(manifest, lock);
   const diagnostics = [
     ...schemaDiagnostics,

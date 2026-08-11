@@ -77,7 +77,8 @@ npx --no-install xforge uninstall --target cursor --dry-run
 - 首次 `init` 的语言优先级为 `--language` / `XFORGE_LANGUAGE`、系统 locale、交互式
   二选一。无法检测且没有 TTY 时 fail closed，并要求显式传入 `--language en` 或
   `--language zh-CN`。英语是默认资源，中文资源使用 `_cn.md`（Skill 展示元数据为
-  `_cn.yaml`）；只有 Skills 和子 Agents 双语，其他 Scaffold 资产始终为英语。
+  `_cn.yaml`）；Skills、子 Agents 和 Constitution 都是双语，其他 Scaffold 资产
+  始终为英语。
 - `init --target` 会在首次写入前同时预检 Scaffold 和目标 Adapter 路径。
 - `install` 为已初始化项目首次创建或幂等协调选定 Target；不指定 `--target` 时处理
   Manifest 中全部 Target。

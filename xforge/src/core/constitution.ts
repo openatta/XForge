@@ -1,10 +1,11 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { parse } from 'yaml';
-import type { Constitution, Diagnostic } from '../types.js';
+import type { Constitution, Diagnostic, ScaffoldLanguage } from '../types.js';
 import { diagnostic } from './errors.js';
+import { localizedVariant } from './language.js';
 
-const REQUIRED_SECTIONS = [
+const REQUIRED_SECTIONS_EN = [
   'Mission and boundaries',
   'Architecture principles',
   'Security, privacy, and compliance',
@@ -13,9 +14,33 @@ const REQUIRED_SECTIONS = [
   'Governance',
 ];
 
-export async function readConstitution(root: string): Promise<{ constitution: Constitution; diagnostics: Diagnostic[] }> {
-  const relative = 'xforge/constitution.md';
-  const filePath = path.join(root, 'xforge', 'constitution.md');
+// Kept in the exact order of REQUIRED_SECTIONS_EN so the two lists stay pairwise comparable.
+const REQUIRED_SECTIONS_ZH = [
+  '使命与边界',
+  '架构原则',
+  '安全、隐私与合规',
+  '质量与可观测性',
+  '兼容性与版本管理',
+  '治理',
+];
+
+/**
+ * Like Skills, the Constitution ships an English default and an optional `_cn` variant; unlike
+ * Skills it has no per-target projection step, so the locale-appropriate file is selected here,
+ * at read time, rather than at `xforge install`/`sync`.
+ */
+export async function readConstitution(root: string, language?: ScaffoldLanguage): Promise<{ constitution: Constitution; diagnostics: Diagnostic[] }> {
+  const defaultRelative = 'xforge/constitution.md';
+  const localizedRelative = localizedVariant(defaultRelative);
+  let relative = defaultRelative;
+  if (language === 'zh-CN') {
+    try {
+      await readFile(path.join(root, ...localizedRelative.split('/')), 'utf8');
+      relative = localizedRelative;
+    } catch { /* no zh-CN variant present; fall back to the default */ }
+  }
+  const filePath = path.join(root, ...relative.split('/'));
+  const requiredSections = relative === localizedRelative ? REQUIRED_SECTIONS_ZH : REQUIRED_SECTIONS_EN;
   let source: string;
   try {
     source = await readFile(filePath, 'utf8');
@@ -65,7 +90,7 @@ export async function readConstitution(root: string): Promise<{ constitution: Co
       diagnostics.push(diagnostic('XFORGE_CONSTITUTION_DATE_INVALID', `Constitution ${key} must be YYYY-MM-DD.`, relative));
     }
   }
-  for (const section of REQUIRED_SECTIONS) {
+  for (const section of requiredSections) {
     if (!source.includes(`## ${section}`)) {
       diagnostics.push(diagnostic('XFORGE_CONSTITUTION_SECTION_MISSING', `Constitution section is missing: ${section}`, relative));
     }

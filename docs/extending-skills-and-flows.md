@@ -4,8 +4,9 @@
 
 This guide is for anyone adding a custom Skill or a custom Flow to an
 XForge-managed project, and for anyone maintaining the built-in Skills and
-Flows in this repository. It assumes familiarity with the concepts in
-[Flows and Skills](flows-and-skills-design.md).
+Flows in this repository. For what a Skill/Flow *is* before extending one,
+see [Skills, Flows, Rules, Gates, Hooks, PermissionPolicies, and Approvals](governance-concepts.md);
+for the full design rationale see [Flows and Skills](flows-and-skills-design.md).
 
 ## Adding a custom Skill
 
@@ -116,11 +117,13 @@ put that difference, in preference order:
 **Anti-pattern:** a Skill's own prose branching on a literal Flow name (`"For
 Solid, ... For Major, ..."`). This is fragile in a way the three mechanisms
 above are not — a new custom Flow (e.g. `hotfix.yaml`) gets silently
-mishandled because the Skill has never heard of it. `xforge-design`'s
-`SKILL.md`/`SKILL_cn.md` used to do exactly this for Solid vs. Major depth;
-it has been rewritten to point at the Action's `instruction`/`outline`
-instead (mechanism 2 above), which the Flow YAMLs already carried and the old
-prose was just duplicating.
+mishandled because the Skill has never heard of it. `xforge-design` is the
+concrete illustration: `solid.yaml`/`major.yaml` already carry different
+`instruction`/`outline` text for the `design` artifact, so the Skill's own
+`SKILL.md`/`SKILL_cn.md` only need to say "follow the current Action's
+instruction and outline exactly" — restating "For Solid... For Major..." in
+the Skill's prose would just duplicate data the Flow YAMLs already carry,
+and would silently miss a fourth custom Flow.
 
 ## Checklist
 

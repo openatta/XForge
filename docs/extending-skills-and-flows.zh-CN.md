@@ -3,8 +3,9 @@
 # 扩展 Skills 与 Flows
 
 本指南面向两类读者：在使用 XForge 的项目里添加自定义 Skill 或自定义 Flow 的人，
-以及维护本仓库内置 Skills/Flows 的人。阅读前建议先了解
-[Flows 与 Skills](flows-and-skills-design.md) 中的概念。
+以及维护本仓库内置 Skills/Flows 的人。想先搞清楚 Skill/Flow 到底是什么，
+见 [Skills、Flows、Rules、Gates、Hooks、PermissionPolicies 与 Approvals](governance-concepts.zh-CN.md)；
+想看完整设计理由，见 [Flows 与 Skills](flows-and-skills-design.md)。
 
 ## 添加自定义 Skill
 
@@ -100,10 +101,12 @@ Flow 是纯数据：`xforge/flows/*.yaml`，加载方式是读取该目录下的
 
 **反模式：** Skill 自己的散文里按字面 Flow 名字分支（"Solid 时……Major 时……"）。
 这比上面三种机制都脆弱——新增一个自定义 Flow（比如 `hotfix.yaml`）会被静默处理
-错，因为这个 Skill 从没"听说过"它。`xforge-design` 的 `SKILL.md`/`SKILL_cn.md`
-过去针对 Solid vs Major 的深度差异就是这么写的；现在已经改成指向 Action 的
-`instruction`/`outline`（也就是上面的机制 2）——这些内容本来就已经在 Flow YAML
-里，旧的散文只是在重复它。
+错，因为这个 Skill 从没"听说过"它。`xforge-design` 就是具体例子：
+`solid.yaml`/`major.yaml` 本身已经给 `design` artifact 准备了不同的
+`instruction`/`outline` 文本，所以 Skill 自己的 `SKILL.md`/`SKILL_cn.md` 只需
+要说"严格按当前 Action 的 instruction 和 outline 执行"——如果在 Skill 散文里
+重写一遍"Solid 时……Major 时……"，只是在重复 Flow YAML 里已经有的数据，还会
+悄悄漏掉第四个自定义 Flow。
 
 ## 检查清单
 

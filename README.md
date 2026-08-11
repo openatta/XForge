@@ -167,9 +167,9 @@ npx --no-install xforge init
 On first initialization, `--language en|zh-CN` overrides locale detection. If
 no language can be detected, an interactive terminal asks the user to choose;
 non-interactive initialization fails with an actionable `--language` command.
-Only Skills and sub-Agent instructions are localized. English is the default,
-Chinese source variants use the `_cn` suffix, and all other Scaffold assets
-remain English.
+Skills, sub-Agent instructions, and the Constitution are localized. English is
+the default, Chinese source variants use the `_cn` suffix, and all other
+Scaffold assets remain English.
 
 Project the canonical Skills, agents, Rules, permission/MCP policies, Hooks, and
 other supported assets into one Agent tool:
@@ -302,7 +302,9 @@ XForge/
 - [Agent installation runbook](AGENT_INSTALL.md)
 - [CLI usage](docs/cli-tool-usage.md)
 - [Flows and Skills](docs/flows-and-skills-design.md)
+- [Skills, Flows, Rules, Gates, Hooks, PermissionPolicies, and Approvals](docs/governance-concepts.md)
 - [Extending Skills and Flows](docs/extending-skills-and-flows.md)
+- [Extending Gates, Rules, PermissionPolicies, Hooks, and Approvals](docs/extending-gates-rules-policies-hooks-approvals.md)
 - [Governance control plane](docs/governance-control-plane-design.md)
 - [File protocol](docs/file-protocol.md)
 - [Sub-agent design](docs/sub-agent-system-design.md)
