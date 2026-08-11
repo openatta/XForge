@@ -43,7 +43,7 @@ describe('archive transaction', () => {
     expect(archiveNames[0]).toMatch(/^\d{4}-\d{2}-\d{2}-add-feature$/);
     expect(await readFile(path.join(root, 'xforge', 'specs', 'widget', 'spec.md'), 'utf8')).toContain('### Requirement: Widget works');
     expect(await exists(path.join(archiveRoot, archiveNames[0]!, 'evidence', 'tests.json'))).toBe(true);
-  }, 15_000);
+  });
 
   it('blocks archive on a missing verification receipt or failed mandatory Gate', async () => {
     const incompleteRoot = await fixture();

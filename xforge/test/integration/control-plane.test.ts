@@ -36,7 +36,7 @@ describe('Protocol 2 control plane', () => {
     const stale = await runCli(root, ['transition', '--change', 'add-feature', '--to', 'apply'], approvalTestEnv);
     expect(stale.code).toBe(1);
     expect(stale.json.diagnostics.some((item: any) => item.message.includes('approval:planning-solid'))).toBe(true);
-  }, 15_000);
+  });
 
   it('reports mandatory guidance without machine coverage as uncovered', async () => {
     const root = await fixture();

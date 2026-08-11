@@ -20,7 +20,7 @@ describe('local approval TTY attestation', () => {
     const result = await runCli(root, localApproveArgs);
     expect(result.code).toBe(1);
     expect(result.json.diagnostics.some((item: any) => item.code === 'XFORGE_APPROVAL_INTERACTIVE_REQUIRED')).toBe(true);
-  }, 15_000);
+  });
 
   it('allows a non-interactive local approval when approvals.local.requireTty is false', async () => {
     const root = await fixture();
@@ -31,5 +31,5 @@ describe('local approval TTY attestation', () => {
     const result = await runCli(root, localApproveArgs);
     expect(result.code).toBe(0);
     expect(result.json.data.receipt.approver).toEqual({ id: 'owner@example.test', provider: 'local', role: 'owner', type: 'human' });
-  }, 15_000);
+  });
 });

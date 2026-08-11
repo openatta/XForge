@@ -47,7 +47,7 @@ describe('mcp approval provider', () => {
     expect(result.code).toBe(0);
     expect(result.json.data.receipt.approver).toEqual({ id: 'alice@example.test', provider: 'review-bot', role: 'owner', type: 'external-system' });
     expect(result.json.data.receipt.signature).toBeUndefined();
-  }, 15_000);
+  });
 
   it('exits without writing anything and tells the caller how to resume when still pending', async () => {
     const root = await fixture();
@@ -61,7 +61,7 @@ describe('mcp approval provider', () => {
     expect(finding.message).toContain('xforge approve --change add-feature --for apply --policy planning-solid --provider review-bot');
     const state = await runCli(root, ['state', '--change', 'add-feature']);
     expect(state.json.data.change.governance.pendingApprovals.some((item: any) => item.policyId === 'planning-solid')).toBe(true);
-  }, 15_000);
+  });
 
   it('fails after retrying a few times when the server cannot be reached', async () => {
     const root = await fixture();
@@ -72,5 +72,5 @@ describe('mcp approval provider', () => {
     const result = await runCli(root, mcpApproveArgs, { XFORGE_TEST_MCP_TOKEN: 'shared-secret' });
     expect(result.code).toBe(1);
     expect(result.json.diagnostics.some((item: any) => item.code === 'XFORGE_APPROVAL_MCP_CONNECTION_FAILED')).toBe(true);
-  }, 15_000);
+  });
 });
