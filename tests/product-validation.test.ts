@@ -120,14 +120,14 @@ describe('XForge product contract', () => {
     const workflow = await readFile(path.join(repositoryRoot, '.github', 'workflows', 'publish-npm.yml'), 'utf8');
     expect(rootPackage.private).toBe(true);
     expect(cliPackage.name).toBe('@xforge/cli');
-    expect(cliPackage.version).toBe('0.7.3');
+    expect(cliPackage.version).toBe('0.7.4');
     expect(cliPackage.files).toContain('scaffold');
     expect(cliPackage.publishConfig).toEqual({ access: 'public', registry: 'https://registry.npmjs.org/' });
     expect(cliPackage.scripts.prepublishOnly).toBe('npm run verify');
-    expect(packageReadme).toContain('npm install --save-dev --save-exact @xforge/cli@0.7.3');
+    expect(packageReadme).toContain('npm install --save-dev --save-exact @xforge/cli@0.7.4');
     expect(packageReadme).toContain('npx --no-install xforge init --target codex');
     expect(packageReadme).not.toMatch(/npm install[^\n]*(?:file:|git\+)/);
-    expect(packageReadme).toContain('/blob/v0.7.3/AGENT_INSTALL.md');
+    expect(packageReadme).toContain('/blob/v0.7.4/AGENT_INSTALL.md');
     expect(workflow).toContain('workflow_dispatch:');
     expect(workflow).toContain('id-token: write');
     expect(workflow).toContain('working-directory: xforge');

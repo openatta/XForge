@@ -12,4 +12,4 @@ Do not install from a source checkout, locally packed tarball, Git sparse
 checkout, or separate HTTP Scaffold artifact.
 
 Do not use an older Protocol 1 bootstrap procedure with the current
-`@xforge/cli 0.7.3` Scaffold.
+`@xforge/cli 0.7.4` Scaffold.

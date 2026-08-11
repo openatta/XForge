@@ -1,4 +1,4 @@
-# XForge CLI 设计（0.7.3 / Protocol 2）
+# XForge CLI 设计（0.7.4 / Protocol 2）
 
 状态：P0–P4 已实现。ADR 0002 是 Rules、PermissionPolicy、Hooks、Transitions、Approvals 和 Audit 的当前决策。
 
