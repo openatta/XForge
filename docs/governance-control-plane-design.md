@@ -2,7 +2,7 @@
 
 - **状态：** Accepted / Protocol 2 P0–P4 已实现
 - **日期：** 2026-08-09
-- **适用目标：** XForge Protocol 2 / `@xforge/cli 0.7.6`
+- **适用目标：** XForge Protocol 2 / `@xforge/cli 0.7.7`
 - **当前基线：** [XFORGE_PRODUCT_SPEC.md](XFORGE_PRODUCT_SPEC.md)
 - **关联设计：** [Flows 与 Skills](flows-and-skills-design.md)、[子 Agent](sub-agent-system-design.md)、[CLI](cli-tool-design.md)、[Adapter 能力矩阵](adapter-matrix.md)
 
@@ -423,7 +423,7 @@ remote append-only sink
 
 ## 9. CLI 集成目标
 
-`0.7.6` 保留 `state/install/sync/update/uninstall/check/archive`，并已增加以下控制面动作：
+`0.7.7` 保留 `state/install/sync/update/uninstall/check/archive`，并已增加以下控制面动作：
 
 | 命令 | 目标语义 |
 | --- | --- |
