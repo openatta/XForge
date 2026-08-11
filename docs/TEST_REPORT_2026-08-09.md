@@ -17,7 +17,7 @@ Live lane 没有把第一次“测试通过但 Spec 与实现契约不一致”�
 - Node.js `v20.20.2`
 - npm `10.8.2`
 - Claude Code `2.1.198`
-- XForge CLI `0.7.1 / Protocol 2`
+- XForge CLI `0.7.2 / Protocol 2`
 - `.env`：Anthropic token、Base URL 和模型配置均已设置；值未输出、未复制、未提交
 
 ## 结果汇总

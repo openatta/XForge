@@ -17,7 +17,7 @@ Cursor, OpenCode, and GitHub Copilot without becoming another Agent runtime.
 Install an exact version in the target project:
 
 ```bash
-npm install --save-dev --save-exact @xforge/cli@0.7.1
+npm install --save-dev --save-exact @xforge/cli@0.7.2
 npx --no-install xforge version --text
 ```
 
@@ -42,7 +42,7 @@ tool. Source checkouts, local tarballs, Git/HTTP Scaffold distributions, and
 source-built installation are not supported.
 
 Follow the [Agent installation
-runbook](https://github.com/openatta/XForge/blob/v0.7.1/AGENT_INSTALL.md) for the
+runbook](https://github.com/openatta/XForge/blob/v0.7.2/AGENT_INSTALL.md) for the
 full npm-only procedure. Generated runtime Hooks invoke `npx --no-install
 xforge` from the project root, resolving the exact local package without a
 network fallback.
@@ -76,8 +76,8 @@ change command semantics or exit status.
 
 Run `xforge help --text` for the complete command list. Full documentation is
 available in the [XForge repository](https://github.com/openatta/XForge),
-including the [CLI guide](https://github.com/openatta/XForge/blob/v0.7.1/docs/cli-tool-usage.md)
-and [governance design](https://github.com/openatta/XForge/blob/v0.7.1/docs/governance-control-plane-design.md).
+including the [CLI guide](https://github.com/openatta/XForge/blob/v0.7.2/docs/cli-tool-usage.md)
+and [governance design](https://github.com/openatta/XForge/blob/v0.7.2/docs/governance-control-plane-design.md).
 
 ## Important boundary
 
@@ -87,5 +87,5 @@ deployment and production access.
 
 ## License
 
-Apache-2.0. See the repository [LICENSE](https://github.com/openatta/XForge/blob/v0.7.1/LICENSE)
-and [NOTICE](https://github.com/openatta/XForge/blob/v0.7.1/NOTICE).
+Apache-2.0. See the repository [LICENSE](https://github.com/openatta/XForge/blob/v0.7.2/LICENSE)
+and [NOTICE](https://github.com/openatta/XForge/blob/v0.7.2/NOTICE).
