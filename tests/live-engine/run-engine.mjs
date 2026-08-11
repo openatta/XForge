@@ -10,7 +10,7 @@ import {
 
 const repositoryRoot = path.resolve(new URL('../..', import.meta.url).pathname);
 const allowedRoot = path.join(repositoryRoot, 'tests', '.tmp');
-const promptRoot = path.join(repositoryRoot, 'tests', 'live-engine', 'prompts');
+const promptRoot = path.join(repositoryRoot, 'tests', 'live-engine', 'scenarios');
 const claudeConfigRoot = path.join(allowedRoot, 'live-engine-claude-config');
 
 function options(argv) {
@@ -139,7 +139,7 @@ Object.assign(environment, {
   USERPROFILE: claudeConfigRoot,
   XDG_CACHE_HOME: path.join(claudeConfigRoot, 'cache'),
   XDG_CONFIG_HOME: path.join(claudeConfigRoot, 'config'),
-  PATH: `${path.join(allowedRoot, 'live-engine-bin')}${path.delimiter}${environment.PATH ?? ''}`,
+  PATH: `${path.join(projectRoot, 'node_modules', '.bin')}${path.delimiter}${environment.PATH ?? ''}`,
 });
 
 const executable = selected['sandbox-launcher'] ? path.resolve(selected['sandbox-launcher']) : 'claude';

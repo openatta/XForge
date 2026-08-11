@@ -1,115 +1,120 @@
-# Live engine end-to-end test
+# Live engine end-to-end tests
 
-This harness creates an ignored, independent project at
-`tests/.tmp/live-engine-project`. It loads the repository `.env` without shell
-evaluation and never copies credentials into the sample project.
+This harness drives a real `claude` CLI call against an isolated, independent
+project seeded at `tests/.tmp/live-engine-<scenario>`. It is excluded from
+`npm run verify` (see `tests/README.md`) because it costs real provider tokens
+and is not fully deterministic — run it on a schedule or by hand, not as a
+merge gate.
 
 The engine is allowed to edit only the isolated project. Approval signing and
-delivery recording remain external deterministic harness operations.
+delivery recording remain external deterministic harness operations, and the
+repository `.env` is loaded without shell evaluation and never copied into
+the sample project.
 
-## Runbook
+## What this validates that unit/integration tests cannot
 
-Build and create the project:
+- **A real npm install, not a build artifact call.** `setup.mjs` installs
+  `@xforge/cli` into the isolated project's own `node_modules` — from the
+  real npm registry (`--cli-source npm`, the default) or from a freshly
+  `npm pack`ed local tarball (`--cli-source local`, for same-day regression
+  testing of an uncommitted change without a registry round-trip or a real
+  publish). Every later command in this harness invokes
+  `npx --no-install xforge ...` with `cwd` set to that project — the same
+  invocation form documented in the project's own `AGENTS.md` — never a
+  hardcoded path to this repository's `xforge/dist/cli.js`.
+- **A real `xforge init`.** `setup.mjs` does not copy `scaffold/payload` by
+  hand; it installs the CLI, then runs a real
+  `npx --no-install xforge init --target claude`, so init/install projection
+  itself is exercised, not bypassed.
+- **A real model reading real Skills, not scripted CLI calls standing in for
+  one.** `run-engine.mjs` spawns `claude -p ...` with the isolated project as
+  its working directory and a Skill-specific prompt; it is not a stub.
+- **All three Flows, not just one.** `run-matrix.mjs --flow quick|solid|major`
+  reads that Flow's own `xforge/flows/<name>.yaml` stage graph — stage order,
+  which Skill each stage belongs to, which Approval policies gate a stage's
+  exit, and each stage's work-package execution mode — and drives the run
+  from that data. Adding a Flow or changing its stages does not require a new
+  imperative script.
+- **Coverage across all 13 `xforge-*` Skills**, not just the ones a single
+  Change walkthrough happens to touch. See `coverage-matrix.yaml`.
+- **Enterprise-shaped multi-approver governance**, not one bare signature.
+  `approval-provider.mjs` reads the Flow's `governance.approvalPolicies`
+  (`minApprovers`, `roles`, `separationOfDuties`) and produces that many
+  distinct, role-diverse signed receipts — Major's `implementation-major`/
+  `closing-major` policies each require 2 approvers in different roles.
+- **Artifact quality, not just artifact existence.** `assert-artifact-outline.mjs`
+  checks a produced `proposal.md`/`design.md`/`assurance.md`/`check-report.md`/
+  `clarifications.md` against the exact `##` heading set the Flow's own
+  `artifacts[].outline` defines (padding or omission both fail), and checks
+  delta Specs for the presence of every `### Requirement:`/`#### Scenario:`/
+  `- **WHEN**`/`- **THEN**` marker the outline template uses.
+
+## Scenarios
+
+```text
+tests/live-engine/scenarios/
+  quick/        propose -> apply -> verify (greeter: trivial, single-module, low risk)
+  solid/        propose -> design -> apply -> verify (task-ledger)
+  major/        propose -> clarify -> design -> check -> apply -> verify (credential-store:
+                risk high, security + dataMigration impact, a deliberately unresolved
+                material question for Clarify to formally resolve)
+  standalone/   explore, kanban, scaffold (fresh project, no active Change) and
+                status, continue, revise, archive (piggyback on an in-progress
+                quick/solid/major run — see coverage-matrix.yaml's notes for exactly where)
+```
+
+Each Flow scenario's `project-seed/` carries its own `TEST_REQUEST.md`,
+`package.json`, and an immutable black-box `node:test` acceptance suite,
+already validated against an independent reference implementation before
+being committed — the model is expected to satisfy that suite, not to be
+trusted to have specified it correctly itself.
+
+## Running the matrix
 
 ```bash
 npm run build
-node tests/live-engine/setup.mjs
-node xforge/dist/cli.js --root tests/.tmp/live-engine-project install --dry-run
-node xforge/dist/cli.js --root tests/.tmp/live-engine-project install
-git -C tests/.tmp/live-engine-project add .
-git -C tests/.tmp/live-engine-project commit -m "Install XForge projections"
+
+# Cheap, deterministic, no network/model access required — run this first:
+node tests/live-engine/check-coverage.mjs
+
+# Costs real provider tokens; run where npm registry + model API access exist:
+node tests/live-engine/run-matrix.mjs --flow quick --cli-source npm
+node tests/live-engine/run-matrix.mjs --flow solid --cli-source npm
+node tests/live-engine/run-matrix.mjs --flow major --cli-source npm
 ```
 
-Run planning, inspect it, and commit the model-authored artifacts:
+Use `--cli-source local` for same-day regression testing of a local,
+uncommitted CLI change (packs `./xforge` and installs from that tarball
+instead of the registry). `--suite-budget`, `--budget`, `--max-attempts`, and
+`--timeout-seconds` override the defaults (30 USD Flow budget, 3 USD
+per-call budget capped to the remainder, 2 attempts per stage, 900 second
+timeout). Missing provider cost accounting blocks all later calls in that
+run instead of treating the cost as zero.
 
-```bash
-node tests/live-engine/run-engine.mjs \
-  --root tests/.tmp/live-engine-project \
-  --prompt tests/live-engine/prompts/01-plan.md \
-  --output tests/.tmp/live-engine-results/01-plan.json \
-  --allow-behavioral-isolation true
-git -C tests/.tmp/live-engine-project add xforge/changes/task-ledger
-git -C tests/.tmp/live-engine-project commit -m "Plan task ledger change"
-node tests/live-engine/sign-approval.mjs \
-  --root tests/.tmp/live-engine-project --change task-ledger \
-  --transition apply --policy planning-solid --actor owner@example.test --role owner
-node tests/live-engine/run-xforge.mjs --root tests/.tmp/live-engine-project \
-  transition --change task-ledger --to apply
-git -C tests/.tmp/live-engine-project add xforge/changes/task-ledger
-git -C tests/.tmp/live-engine-project commit -m "Enter task ledger apply stage"
-node tests/live-engine/run-xforge.mjs --root tests/.tmp/live-engine-project \
-  work-package dispatch --change task-ledger --package T001
-```
+`run-matrix.mjs` prints a pass/fail summary (acceptance exit code, spend,
+budget accounting) when it finishes. Per-stage engine output — cost, tokens,
+turns, the model's own JSON result — is written to
+`tests/.tmp/live-engine-results/<flow>-<stage>.json`, redacted of the auth
+token and base URL; prompts and model prose are never written there.
 
-Run implementation. Commit only the declared `src/**` write boundary, then
-record and independently verify the delivery:
+For an OS-enforced boundary, `run-engine.mjs` (called internally by
+`run-matrix.mjs`) accepts `--sandbox-launcher /absolute/path/to/launcher`;
+the launcher receives `claude` followed by its arguments and must execute it
+in the desired sandbox. Without a launcher, every call passes
+`--allow-behavioral-isolation true`: the runner minimizes inherited
+environment variables and relocates HOME/config/cache under `tests/.tmp`,
+but this is not an operating-system security boundary.
 
-```bash
-node tests/live-engine/run-engine.mjs \
-  --root tests/.tmp/live-engine-project \
-  --prompt tests/live-engine/prompts/02-apply.md \
-  --output tests/.tmp/live-engine-results/02-apply.json \
-  --allow-behavioral-isolation true
-git -C tests/.tmp/live-engine-project add src
-git -C tests/.tmp/live-engine-project commit -m "Implement task ledger"
-node tests/live-engine/record-delivery.mjs \
-  --root tests/.tmp/live-engine-project --change task-ledger --package T001
-node tests/live-engine/run-xforge.mjs --root tests/.tmp/live-engine-project check --change task-ledger
-node tests/live-engine/run-xforge.mjs --root tests/.tmp/live-engine-project \
-  transition --change task-ledger --to verify
-```
+Never put `approval-provider.mjs`, `run-xforge.mjs`, the approval secret, or
+the repository `.env` inside an isolated project. Scenario prompts prohibit
+parent-directory access; behavioral isolation is an explicit fallback, not a
+sandbox guarantee.
 
-Run model verification, commit semantic artifacts before creating fresh Gate
-Evidence, and close the workflow:
+## Extending coverage
 
-```bash
-node tests/live-engine/run-engine.mjs \
-  --root tests/.tmp/live-engine-project \
-  --prompt tests/live-engine/prompts/03-verify.md \
-  --output tests/.tmp/live-engine-results/03-verify.json \
-  --allow-behavioral-isolation true
-git -C tests/.tmp/live-engine-project add \
-  xforge/changes/task-ledger/assurance.md \
-  xforge/changes/task-ledger/evidence/verification-receipt.yaml
-git -C tests/.tmp/live-engine-project commit -m "Verify task ledger change"
-node tests/live-engine/run-xforge.mjs --root tests/.tmp/live-engine-project check --change task-ledger
-node tests/live-engine/run-xforge.mjs --root tests/.tmp/live-engine-project \
-  transition --change task-ledger --to ready-to-archive
-node tests/live-engine/sign-approval.mjs \
-  --root tests/.tmp/live-engine-project --change task-ledger \
-  --transition archive --policy closing-solid --actor maintainer@example.test --role maintainer
-node tests/live-engine/run-xforge.mjs --root tests/.tmp/live-engine-project audit verify --change task-ledger
-node tests/live-engine/run-xforge.mjs --root tests/.tmp/live-engine-project archive --change task-ledger --dry-run
-node tests/live-engine/run-xforge.mjs --root tests/.tmp/live-engine-project archive --change task-ledger
-npm --prefix tests/.tmp/live-engine-project test
-node tests/live-engine/summarize.mjs \
-  --root tests/.tmp/live-engine-project \
-  --results tests/.tmp/live-engine-results \
-  --output tests/.tmp/live-engine-results/summary.json \
-  --change task-ledger --suffix retry
-```
-
-Omit `--suffix retry` for a first-attempt run whose engine outputs use the
-base `01-plan.json`, `02-apply.json`, and `03-verify.json` names. The summary
-re-runs the acceptance suite and Audit verification, then records engine cost,
-tokens, receipts, delivery paths, archive state, and the final Git HEAD without
-including prompts, model responses, or credentials.
-
-The three engine calls share `tests/.tmp/live-engine-results/live-engine-policy.json`.
-Defaults are a 9 USD suite budget, at most two attempts per stage, a 900 second
-timeout, and a 3 USD requested per-call budget capped to the suite remainder.
-Override them consistently with `--suite-budget`, `--max-attempts`,
-`--timeout-seconds`, and `--budget`. Missing provider cost accounting blocks all
-later calls instead of treating the cost as zero.
-
-For an OS-enforced boundary, pass `--sandbox-launcher /absolute/path/to/launcher`;
-the launcher receives `claude` followed by its arguments and must execute it in
-the desired sandbox. Without a launcher, every call must explicitly pass
-`--allow-behavioral-isolation true`. The runner then minimizes inherited
-environment variables and relocates HOME/config/cache under `tests/.tmp`, but
-does not claim an operating-system sandbox.
-
-Never put `sign-approval.mjs`, `run-xforge.mjs`, the approval secret, or the
-repository `.env` inside the isolated project. Engine prompts prohibit parent
-directory access; behavioral isolation is an explicit fallback, not an
-operating-system security boundary.
+Adding a Skill or a Flow (per
+[docs/extending-skills-and-flows.md](../../docs/extending-skills-and-flows.md))
+without adding it here is exactly the gap `check-coverage.mjs` is meant to
+catch: it cross-references `coverage-matrix.yaml` against `manifest.yaml`'s
+`scaffold.skills` and every Flow yaml's `stages[].skill`, and fails when
+either side has an entry the other doesn't.

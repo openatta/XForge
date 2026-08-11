@@ -1,0 +1,55 @@
+apiVersion: xforge-live-engine/v1
+kind: CoverageMatrix
+description: >
+  Maps every xforge-* Skill to the live-engine scenario(s) that exercise it with a real
+  LLM-driven Agent, so the answer to "did we cover Skill X under Flow Y" is a lookup, not an
+  inference. check-coverage.mjs cross-references this against manifest.yaml's scaffold.skills
+  and each flow yaml's stages[].skill, and fails when either side has an entry the other
+  doesn't.
+entries:
+  - skill: xforge-propose
+    scenarios:
+      - { scenario: quick, flow: quick, stage: propose }
+      - { scenario: solid, flow: solid, stage: propose }
+      - { scenario: major, flow: major, stage: propose }
+  - skill: xforge-clarify
+    scenarios:
+      - { scenario: major, flow: major, stage: clarify }
+  - skill: xforge-design
+    scenarios:
+      - { scenario: solid, flow: solid, stage: design }
+      - { scenario: major, flow: major, stage: design }
+  - skill: xforge-check
+    scenarios:
+      - { scenario: major, flow: major, stage: check }
+  - skill: xforge-apply
+    scenarios:
+      - { scenario: quick, flow: quick, stage: apply }
+      - { scenario: solid, flow: solid, stage: apply }
+      - { scenario: major, flow: major, stage: apply }
+  - skill: xforge-verify
+    scenarios:
+      - { scenario: quick, flow: quick, stage: verify }
+      - { scenario: solid, flow: solid, stage: verify }
+      - { scenario: major, flow: major, stage: verify }
+  - skill: xforge-explore
+    scenarios:
+      - { scenario: standalone-explore, flow: null, stage: null, note: "runs against a fresh project, no active Change" }
+  - skill: xforge-kanban
+    scenarios:
+      - { scenario: standalone-kanban, flow: null, stage: null, note: "runs against a fresh project, no active Change" }
+  - skill: xforge-status
+    scenarios:
+      - { scenario: standalone-status, flow: null, stage: null, note: "injected into the quick run between apply and verify" }
+  - skill: xforge-scaffold
+    scenarios:
+      - { scenario: standalone-scaffold, flow: null, stage: null, note: "runs against a fresh project, no active Change" }
+  - skill: xforge-revise
+    scenarios:
+      - { scenario: standalone-revise, flow: null, stage: null, note: "injected into the solid run between propose and design, after the harness edits TEST_REQUEST.md" }
+  - skill: xforge-continue
+    scenarios:
+      - { scenario: standalone-continue, flow: null, stage: null, note: "injected into the major run right after check stops for implementation-major Approval" }
+  - skill: xforge-archive
+    scenarios:
+      - { scenario: standalone-archive, flow: null, stage: null, note: "runs as the quick run's terminal archive step instead of a raw CLI call" }

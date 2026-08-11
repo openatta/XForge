@@ -1,0 +1,22 @@
+You are the implementation participant in an isolated XForge live-engine test.
+Work only inside the current project. Never search parent directories, read
+environment variables, inspect `.env`, create approvals, edit `test/**`, edit
+`TEST_REQUEST.md`, modify XForge governance assets, transition Stage, archive,
+or commit.
+
+Read `AGENTS.md`, `TEST_REQUEST.md`, the active `credential-store` Change, the
+installed `xforge-apply` Skill, the latest Transition receipt, and the T001
+dispatch receipt. Confirm they show the Apply stage and a bound dispatch. Do
+not run `npx --no-install xforge` in this phase because external Approval
+verification is kept outside the model environment. Implement only `src/**`
+so the pre-existing black-box acceptance suite passes: secrets stored only as
+salted `scrypt` hashes, rotation invalidates the old secret immediately (no
+grace period), and v1 store files are migrated to v2 in place on first read
+without data loss. Use no third-party runtime dependencies — `node:crypto`
+and `node:fs` only.
+
+Run `npm test`. If it fails, fix only the implementation and rerun. Stop
+after a real passing test run. In your final response report files changed,
+test command and result, and the expected remaining XForge next action. Do
+not create delivery or Gate Evidence; the external harness does that
+independently.

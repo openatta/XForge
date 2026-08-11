@@ -1,3 +1,6 @@
+// The default 3-stage set kept for backward compatibility with the original Solid-only
+// runbook. `createLiveEnginePolicy`/`assertLiveEnginePolicy` accept any non-empty stage id
+// list now, so Quick/Major stage graphs (which differ from Solid's) are not hardcoded here.
 export const LIVE_ENGINE_STAGES = ['plan', 'apply', 'verify'];
 
 export class LiveEnginePolicyError extends Error {
@@ -25,7 +28,7 @@ function positiveInteger(value, name) {
 }
 
 function stageEntry(policy, stage) {
-  if (!LIVE_ENGINE_STAGES.includes(stage)) {
+  if (!policy.stageIds?.includes(stage)) {
     throw new LiveEnginePolicyError('LIVE_STAGE_INVALID', `Unknown live-engine stage: ${stage}`);
   }
   const entry = policy.stages?.[stage];
@@ -37,26 +40,37 @@ function rounded(value) {
   return Math.round((value + Number.EPSILON) * 1_000_000) / 1_000_000;
 }
 
-export function createLiveEnginePolicy({ suiteBudgetUsd = 9, maxAttemptsPerStage = 2, timeoutSeconds = 900 } = {}) {
+export function createLiveEnginePolicy({
+  suiteBudgetUsd = 9, maxAttemptsPerStage = 2, timeoutSeconds = 900, stages = LIVE_ENGINE_STAGES,
+} = {}) {
+  if (!Array.isArray(stages) || stages.length === 0 || stages.some((stage) => typeof stage !== 'string' || !stage)) {
+    throw new LiveEnginePolicyError('LIVE_POLICY_INVALID', 'stages must be a non-empty array of stage id strings.');
+  }
   return {
     schemaVersion: 1,
+    stageIds: [...stages],
     suiteBudgetUsd: positiveNumber(suiteBudgetUsd, 'suiteBudgetUsd'),
     maxAttemptsPerStage: positiveInteger(maxAttemptsPerStage, 'maxAttemptsPerStage'),
     timeoutSeconds: positiveInteger(timeoutSeconds, 'timeoutSeconds'),
     spentUsd: 0,
     budgetAccountingComplete: true,
-    stages: Object.fromEntries(LIVE_ENGINE_STAGES.map((stage) => [stage, { attempts: 0, runs: [] }])),
+    stages: Object.fromEntries(stages.map((stage) => [stage, { attempts: 0, runs: [] }])),
   };
 }
 
 export function assertLiveEnginePolicy(policy, expected = {}) {
-  if (policy?.schemaVersion !== 1 || typeof policy?.stages !== 'object') {
+  if (
+    policy?.schemaVersion !== 1
+    || typeof policy?.stages !== 'object'
+    || !Array.isArray(policy?.stageIds)
+    || policy.stageIds.length === 0
+  ) {
     throw new LiveEnginePolicyError('LIVE_POLICY_INVALID', 'Live-engine policy has an unsupported shape.');
   }
   positiveNumber(policy.suiteBudgetUsd, 'suiteBudgetUsd');
   positiveInteger(policy.maxAttemptsPerStage, 'maxAttemptsPerStage');
   positiveInteger(policy.timeoutSeconds, 'timeoutSeconds');
-  for (const stage of LIVE_ENGINE_STAGES) stageEntry(policy, stage);
+  for (const stage of policy.stageIds) stageEntry(policy, stage);
   for (const [name, value] of Object.entries(expected)) {
     if (value !== undefined && policy[name] !== value) {
       throw new LiveEnginePolicyError('LIVE_POLICY_MISMATCH', `${name} differs from the existing live-engine policy.`);

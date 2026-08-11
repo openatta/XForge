@@ -110,25 +110,52 @@ L5 失败需要区分 `product_failure`、`model_behavior_failure`、`provider_f
 
 ## 7. 隔离真实引擎样例
 
-样例模板位于 `tests/live-engine/project-seed`，运行副本位于 `tests/.tmp/live-engine-project`。需求是实现一个无第三方运行时依赖的 Task Ledger Node CLI，预置黑盒测试先于实现存在，模型不得修改测试来制造通过。
+场景模板位于 `tests/live-engine/scenarios/{quick,solid,major,standalone}`，运行副本位于
+`tests/.tmp/live-engine-<scenario>`，由 `run-matrix.mjs` 统一编排。与早期只有 Solid 一条
+样例、且 CLI 直接指向仓库本地 `xforge/dist/cli.js` 的版本相比，现在的设计覆盖三个 Flow 加
+全部只读/独立生命周期 Skill，且 CLI 来源是真实安装的包，不是构建产物直接调用：
 
-Solid 全流程：
+- **CLI 来源双模式**（`cli-source.mjs`）：`--cli-source npm` 从真实 npm registry 精确安装
+  `@xforge/cli@<version>`；`--cli-source local` 用 `npm pack ./xforge` 打包当前本地构建再
+  安装，二者都落到隔离项目自己的 `node_modules`，harness 一律通过
+  `npx --no-install xforge ...`（cwd 设为项目根）调用，不再硬编码仓库路径。这样同一套脚本
+  既能验证"发布到 npm 的包能不能用"，也能在日常开发时对本地未发布改动做回归，不需要两套
+  实现。
+- **真实 `xforge init`**：`setup.mjs` 不再手动复制 `scaffold/payload`，而是先安装 CLI，再
+  跑真实的 `npx --no-install xforge init --target claude`，让 CLI 自己的内置 Scaffold 投影
+  出 `.claude/skills/**`；这样 init/install 投影本身也被这条链路间接验证，而不是被绕过。
+- **三个 Flow，一份数据驱动的编排器**：`run-matrix.mjs --flow quick|solid|major` 读取该
+  Flow 自己的 `xforge/flows/<name>.yaml`（stage 顺序、每个 stage 的 Skill、`exit.approvals`、
+  `execution.workPackages`），按图依次调用 `run-engine.mjs` 触发真实模型；是否需要外部
+  Approval、是否需要 work-package dispatch 全部从这份 yaml 读出，不是每个 Flow 各写一份脚本。
+- **企业级多签 Approval mock**（`approval-provider.mjs`）：从 Flow 的
+  `governance.approvalPolicies` 读出 `minApprovers`/`roles`/`separationOfDuties`，按角色生成
+  对应数量、角色互不相同的独立签名 receipt（Major 的 `implementation-major`/`closing-major`
+  各需要 2 个不同角色），而不是固定签一次。
+- **产物质量检查**（`assert-artifact-outline.mjs`）：直接用 Flow yaml 里
+  `artifacts[].outline` 这份既有数据，断言模型产出的 `proposal.md`/`design.md`/
+  `assurance.md`/`check-report.md`/`clarifications.md` 二级标题集合与 outline 完全一致（多
+  写或漏写都失败），delta Specs 用标记存在性检查（`### Requirement:`/`#### Scenario:`/
+  `- **WHEN**`/`- **THEN**` 至少各出现一次）。这不是审阅散文，是把已经存在的 Flow 数据当
+  oracle 用。
+- **覆盖矩阵**（`coverage-matrix.yaml` + `check-coverage.mjs`）：把 13 个 `xforge-*` Skill
+  分别映射到覆盖它的场景；只读/独立生命周期 Skill（Explore/Kanban/Scaffold）单独起项目跑，
+  Status/Continue/Revise/Archive 则作为检查点插入某个 Flow 场景内部（例如 Continue 插在
+  Major 的 Check 停下等待 Approval 之后，验证它能正确识别"下一步被 Approval 卡住"而不是
+  自己伪造一个）。校验脚本从 `manifest.yaml` 的 `scaffold.skills` 和三个 Flow yaml 的
+  `stages[].skill` 反查矩阵，少覆盖一个就直接失败，不依赖人工记忆。
 
-1. setup 复制完整 Scaffold 和项目种子，初始化独立 Git；
-2. `install --dry-run` 后 `install`，检查五 Target 投影和幂等；
-3. 引擎生成 Change、Proposal、delta Spec、Design 和一个 `src/**` 工作包；
-4. CLI 执行 structure Gate 和 Stage Transition；
-5. 测试 harness 以独立 HMAC provider 签发 planning Approval；
-6. CLI 进入 Apply 并签发 work-package dispatch receipt；
-7. 引擎只实现 `src/**`，预置 `node:test` 验收测试必须通过；
-8. harness 用真实 Git diff 生成 delivery，CLI 重新执行 verify；
-9. CLI 进入 Verify；引擎生成 Assurance 和 verification receipt；
-10. CLI 执行 mandatory Gates、进入 ready-to-archive；harness 签发 closing Approval；
-11. `audit verify`、`archive --dry-run`、`archive`；
-12. 断言 Change 被移动、Spec 被合并、Evidence/receipts/audit chain 可验证；
-13. 在新的副本执行 sync/update/uninstall 和冲突注入，不破坏已归档样例证据。
+Solid 场景（`task-ledger`）沿用早期已跑通的 Task Ledger CLI 需求；Quick 场景（`greeter`）
+是一个刻意做小的单模块问候语 CLI；Major 场景（`credential-store`）刻意设计为
+`risk: high` + `security/dataMigration` 影响（使 Major 成为 Policy 下的必选项而非可选
+项），并在 Proposal 里故意留一个未解决的材料性问题（"轮换后是否有宽限期"），逼 Clarify
+阶段去读黑盒验收测试、正式记录决策、再回写 Proposal 与 delta Spec——不是把它当实现细节
+悄悄决定。三个场景的黑盒验收测试都已用独立参考实现跑通验证，确认预期行为可达。
 
-引擎阶段之间必须由 harness 提交 Git，以避免审批和 Gate 因后续 HEAD 变化自然过期。模型没有审批密钥，也不能访问签名脚本。
+引擎阶段之间必须由 harness 提交 Git，以避免审批和 Gate 因后续 HEAD 变化自然过期。模型没有
+审批密钥，也不能访问签名脚本。真实 `claude` 调用需要能访问所选模型的 API（`.env` 提供凭据
+与模型名），也需要 `--cli-source npm` 能访问 npm registry；两者在当前受限沙箱里都不可用，
+需要在有相应网络权限的机器或 CI 上运行本节描述的矩阵。
 
 ## 8. 命令与自动化入口
 
@@ -149,34 +176,26 @@ cd ..
 npm run test:product
 ```
 
-真实引擎样例：
+真实引擎矩阵（三个 Flow 各一条命令，覆盖矩阵校验先于运行且不需要网络/模型访问）：
 
 ```bash
-node tests/live-engine/setup.mjs
-node xforge/dist/cli.js --root tests/.tmp/live-engine-project install --dry-run
-node xforge/dist/cli.js --root tests/.tmp/live-engine-project install
-node tests/live-engine/run-engine.mjs \
-  --root tests/.tmp/live-engine-project \
-  --prompt tests/live-engine/prompts/01-plan.md \
-  --output tests/.tmp/live-engine-results/01-plan.json \
-  --allow-behavioral-isolation true
+node tests/live-engine/check-coverage.mjs
+
+node tests/live-engine/run-matrix.mjs --flow quick --cli-source npm
+node tests/live-engine/run-matrix.mjs --flow solid --cli-source npm
+node tests/live-engine/run-matrix.mjs --flow major --cli-source npm
 ```
 
-后续阶段按 `tests/live-engine/README.md` 执行。Runner 默认执行 9 美元整场预算、每阶段最多两次尝试、单次 3 美元请求上限和 900 秒超时；单次上限会按整场剩余额度收紧。Provider 未返回费用时后续调用 fail-closed。无外部 sandbox launcher 时必须显式确认 behavioral isolation；provider 不可用时保存分类后的失败原因，不得回退成伪造响应。
+`--cli-source local` 改用本地 `npm pack` 打包安装，不经过 registry，适合日常开发回归。
+Runner 默认执行 30 美元整场预算（覆盖一个 Flow 的全部 stage 加一次 standalone 检查点）、
+每 stage 最多两次尝试、单次 3 美元请求上限和 900 秒超时；单次上限会按整场剩余额度收紧。
+Provider 未返回费用时后续调用 fail-closed。无外部 sandbox launcher 时必须显式确认
+behavioral isolation；provider 不可用时保存分类后的失败原因，不得回退成伪造响应。
 
-完整归档后生成机器摘要：
-
-```bash
-node tests/live-engine/summarize.mjs \
-  --root tests/.tmp/live-engine-project \
-  --results tests/.tmp/live-engine-results \
-  --output tests/.tmp/live-engine-results/summary.json \
-  --change task-ledger
-```
-
-重试结果使用 `*-retry.json` 时追加 `--suffix retry`。摘要会重新执行 acceptance、
-State 和 Audit 检查，并汇总费用、tokens、receipt 数量、真实 delivery paths 与
-Archive 状态；不保存 prompt、模型自然语言结果或凭据。
+`run-matrix.mjs` 结束时直接输出通过/失败摘要（acceptance 退出码、整场花费、预算记账是否
+完整）；不需要单独再跑一次 `summarize.mjs`——按 stage 拆分的详细引擎输出仍落在
+`tests/.tmp/live-engine-results/<flow>-<stage>.json`，不保存 prompt 原文、模型自然语言结果
+或凭据。
 
 ## 9. 失败注入
 

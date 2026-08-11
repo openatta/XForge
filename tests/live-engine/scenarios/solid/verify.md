@@ -6,9 +6,10 @@ tests, run `xforge check`, transition Stage, archive, or commit.
 Read `AGENTS.md`, `TEST_REQUEST.md`, the complete active `task-ledger` Change,
 the installed `xforge-verify` Skill, work-package delivery, and the latest
 Transition receipt. Confirm the receipt shows the Verify stage. Do not run
-XForge CLI in this phase because external Approval verification is kept outside
-the model environment. Run `npm test` as an independent verification. If it
-fails, document the failure and stop without changing implementation or tests.
+`npx --no-install xforge` in this phase because external Approval verification
+is kept outside the model environment. Run `npm test` as an independent
+verification. If it fails, document the failure and stop without changing
+implementation or tests.
 
 If it passes, create a complete `assurance.md` that maps every Requirement ID to
 real test evidence and discusses completeness, correctness, coherence, risk and

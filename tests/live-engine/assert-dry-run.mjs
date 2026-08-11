@@ -1,19 +1,17 @@
 import { createHash } from 'node:crypto';
 import { lstat, readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawnXforge } from './xforge-cli.mjs';
 
 const separator = process.argv.indexOf('--');
 if (separator < 0 || separator === process.argv.length - 1) throw new Error('Usage: assert-dry-run.mjs <root> -- <xforge args>.');
 const root = path.resolve(process.argv[2]);
 const args = process.argv.slice(separator + 1);
-const repositoryRoot = path.resolve(new URL('../..', import.meta.url).pathname);
-const cliPath = path.join(repositoryRoot, 'xforge', 'dist', 'cli.js');
 
 async function snapshot(directory, relative = '') {
   const result = {};
   for (const entry of (await readdir(directory, { withFileTypes: true })).sort((left, right) => left.name.localeCompare(right.name))) {
-    if (!relative && entry.name === '.git') continue;
+    if (!relative && (entry.name === '.git' || entry.name === 'node_modules')) continue;
     const childRelative = path.posix.join(relative, entry.name);
     const absolute = path.join(directory, entry.name);
     if (entry.isDirectory()) Object.assign(result, await snapshot(absolute, childRelative));
@@ -24,12 +22,10 @@ async function snapshot(directory, relative = '') {
 }
 
 const before = await snapshot(root);
-const execution = spawnSync(process.execPath, [cliPath, '--root', root, ...args], {
-  cwd: root,
-  env: { ...process.env, XFORGE_APPROVAL_HMAC_SECRET: 'xforge-live-e2e-external-provider-secret' },
-  encoding: 'utf8',
-  stdio: ['ignore', 'pipe', 'pipe'],
-});
+// `--root root` is injected here, not expected in `args` after `--`: spawnXforge already sets
+// cwd to the resolved absolute `root`, so a caller-supplied `--root` value would be resolved
+// against that cwd a second time instead of the caller's original cwd.
+const execution = spawnXforge(root, ['--root', root, ...args], { env: { XFORGE_APPROVAL_HMAC_SECRET: 'xforge-live-e2e-external-provider-secret' } });
 let envelope = null;
 try { envelope = JSON.parse(execution.stdout); } catch {}
 if (execution.status !== 0 || !envelope?.ok) throw new Error(`Dry-run command failed: ${execution.stdout || execution.stderr}`);

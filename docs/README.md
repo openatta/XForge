@@ -127,6 +127,13 @@ Apply 可以生成带依赖关系、且写入路径互不重叠的 work packages
 
 ## 开始使用
 
+XForge 命令的正常调用方是 AI Agent，不是人类临时手敲。人类或 CI 只负责下面这
+一次性的锁版本安装；此后的每一步——初始化、执行 Flow、Transition——都是 Agent
+按已安装的 `xforge-*` Skills 里给出的原文，发出 `npx --no-install xforge ...`。
+不要把它简化成裸的 `xforge`（项目本地安装不会把可执行文件放进 Agent shell 的
+`PATH`），也不要去掉 `--no-install`（它保证找不到锁定版本时命令直接报错退出，
+而不是让 `npx` 静默拉取并运行另一个未锁定的版本）。
+
 先在目标项目中安装精确 npm 包，再由 CLI 校验并初始化包内置的 Scaffold：
 
 ```bash

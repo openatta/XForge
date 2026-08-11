@@ -5,6 +5,19 @@ the active Change under the resolved `project.paths.changes` path. Use the
 installed XForge workflow Skills. Treat CLI JSON/Gate evidence as deterministic
 facts and prompt guidance as guidance only.
 
+## Invoking the CLI
+
+XForge is designed to be operated by an Agent, not typed ad hoc by a human. A
+human or CI performs the one-time pinned install
+(`npm install --save-dev --save-exact @xforge/cli@<version>`); every
+subsequent operation is this Agent invoking `npx --no-install xforge ...`
+exactly as each Skill's Invariants specify. Never simplify a Skill's command to
+a bare `xforge` — a project-local install does not put the binary on this
+shell's `PATH`, only `npx` resolves it reliably from `node_modules`. Never
+drop `--no-install` — it is what makes the invocation fail loudly if the pinned
+CLI is missing, instead of `npx` silently fetching and running a different,
+unpinned version.
+
 ## Spec-driven parallel development
 
 Use XForge `quick` when delivery speed is the priority and the Change is low

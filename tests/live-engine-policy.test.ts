@@ -49,4 +49,25 @@ describe('live-engine suite policy', () => {
       stage: 'verify', requestedBudgetUsd: 3, isolation: 'behavioral', startedAt: '2026-08-09T00:02:00.000Z',
     })).toThrow(expect.objectContaining({ code: 'LIVE_BUDGET_UNKNOWN' }));
   });
+
+  it('supports a custom stage list for Flow graphs that differ from the default plan/apply/verify set', () => {
+    const majorStages = ['propose', 'clarify', 'design', 'check', 'apply', 'verify'];
+    const policy = createLiveEnginePolicy({ suiteBudgetUsd: 20, maxAttemptsPerStage: 2, timeoutSeconds: 900, stages: majorStages });
+    expect(policy.stageIds).toEqual(majorStages);
+    const reserved = reserveLiveEngineAttempt(policy, {
+      stage: 'clarify', requestedBudgetUsd: 2, isolation: 'behavioral', startedAt: '2026-08-09T00:00:00.000Z',
+    });
+    expect(reserved.attempt).toBe(1);
+    completeLiveEngineAttempt(policy, {
+      stage: 'clarify', attempt: reserved.attempt, costUsd: 1, exitCode: 0, timedOut: false,
+      classification: 'success', output: 'clarify.json', finishedAt: '2026-08-09T00:00:30.000Z',
+    });
+    expect(() => reserveLiveEngineAttempt(policy, {
+      stage: 'apply-with-typo', requestedBudgetUsd: 2, isolation: 'behavioral', startedAt: '2026-08-09T00:01:00.000Z',
+    })).toThrow(expect.objectContaining({ code: 'LIVE_STAGE_INVALID' }));
+  });
+
+  it('rejects an empty stage list', () => {
+    expect(() => createLiveEnginePolicy({ stages: [] })).toThrow(expect.objectContaining({ code: 'LIVE_POLICY_INVALID' }));
+  });
 });

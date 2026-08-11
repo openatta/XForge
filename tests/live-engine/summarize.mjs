@@ -1,10 +1,10 @@
 import { mkdir, readFile, readdir, realpath, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { spawnXforge } from './xforge-cli.mjs';
 
 const repositoryRoot = path.resolve(new URL('../..', import.meta.url).pathname);
 const allowedRoot = path.join(repositoryRoot, 'tests', '.tmp');
-const cliPath = path.join(repositoryRoot, 'xforge', 'dist', 'cli.js');
 
 function options(argv) {
   const result = { suffix: '' };
@@ -75,9 +75,9 @@ for (const [stage, name] of Object.entries(stages)) {
   };
 }
 
-const stateExecution = run(process.execPath, [cliPath, '--root', projectRoot, 'state'], projectRoot);
+const stateExecution = spawnXforge(projectRoot, ['--root', projectRoot, 'state']);
 const state = jsonResult(stateExecution, 'xforge state');
-const auditExecution = run(process.execPath, [cliPath, '--root', projectRoot, 'audit', 'verify'], projectRoot);
+const auditExecution = spawnXforge(projectRoot, ['--root', projectRoot, 'audit', 'verify']);
 const audit = jsonResult(auditExecution, 'xforge audit verify');
 const acceptance = run('npm', ['test'], projectRoot);
 const gitHead = run('git', ['rev-parse', 'HEAD'], projectRoot).stdout.trim();

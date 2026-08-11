@@ -2,12 +2,20 @@
 
 `@xforge/cli 0.7.1` 同时提供投影生命周期命令和治理控制面命令。默认输出单个 Protocol 2 JSON envelope；加 `--text` 只改变展示，不改变退出码与语义。
 
+这些命令的正常调用方是 AI Agent，不是人类临时手敲。人类或 CI 只负责一次性执行
+`npm install --save-dev --save-exact @xforge/cli@<version>`；此后每一次调用都
+是 Agent 按已安装 Skill 里给出的原文，发出 `npx --no-install xforge ...`。
+
 ## 1. 基本约定
 
 ```bash
 npx --no-install xforge [--root <exact-project-root>] <command> [options] [--text]
 ```
 
+- 不要把这行简化成裸的 `xforge`：项目本地安装并不会把可执行文件放进当前 shell
+  的 `PATH`，只有 `npx` 能从 `node_modules` 里可靠解析到它。
+- 不要去掉 `--no-install`：它保证找不到锁定版本时命令直接报错退出，而不是让
+  `npx` 静默拉取并运行另一个未锁定的版本。
 - `--root` 使用精确根目录，不向父目录回退。
 - 读取命令可展示 Portable 状态；写命令要求 Manifest、Lock、CLI version/protocol/integrity 完全匹配。
 - `--dry-run` 对支持它的命令保持零写入。

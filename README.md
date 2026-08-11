@@ -146,6 +146,15 @@ for multi-module projects. Both are read-only and safe to run at any time.
 
 ## Getting started
 
+XForge commands are meant to be issued by an AI coding Agent, not typed ad hoc
+by a human. A human or CI performs the one-time pinned install below; every
+later operation — initialization, Flow execution, Transitions — is an Agent
+invoking `npx --no-install xforge ...` exactly as the installed `xforge-*`
+Skills document. Never simplify that to a bare `xforge` (a project-local
+install does not put the binary on an Agent's shell `PATH`) and never drop
+`--no-install` (it makes the invocation fail loudly on a missing pinned CLI
+instead of letting `npx` silently fetch a different, unpinned version).
+
 Install the exact npm package in the target project, then let that CLI verify
 and initialize its bundled Scaffold:
 
