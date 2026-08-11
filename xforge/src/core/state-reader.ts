@@ -33,7 +33,7 @@ async function directoriesAt(root: string): Promise<string[]> {
 
 export interface StateOptions {
   change?: string;
-  kind?: 'skills' | 'agents' | 'rules' | 'policies' | 'hooks' | 'gates' | 'scripts' | 'flows' | 'approvals';
+  kind?: 'skills' | 'agents' | 'rules' | 'policies' | 'hooks' | 'gates' | 'scripts' | 'flows' | 'approvals' | 'mcp-servers';
   target?: TargetId;
 }
 
@@ -118,6 +118,7 @@ export async function readState(project: ProjectContext, options: StateOptions):
     hooks: [...resources.hooks.entries()].map(([id, hook]) => ({ id, enabled: hook.value.spec.enabled !== false })),
     gates: [...resources.gates.keys()],
     scripts: [...resources.scripts.keys()],
+    'mcp-servers': [...resources.mcpServers.keys()],
   };
   const filteredResources = options.kind ? { [options.kind]: resourceSummary[options.kind] } : resourceSummary;
   const targetList = options.target ? [options.target] : project.manifest.targets;

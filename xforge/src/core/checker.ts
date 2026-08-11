@@ -104,6 +104,11 @@ export async function checkStructure(project: ProjectContext, changeId?: string)
       catch (error) { diagnostics.push(...((error as { diagnostics?: Diagnostic[] }).diagnostics ?? [])); }
     }
   }
+  for (const provider of project.manifest.approvals?.providers ?? []) {
+    if (provider.type === 'mcp' && !resources.mcpServers.has(provider.mcpServer)) {
+      diagnostics.push(diagnostic('XFORGE_APPROVAL_MCP_SERVER_UNKNOWN', `Approval provider ${provider.id} references unknown McpServer ${provider.mcpServer}.`, 'xforge/manifest.yaml'));
+    }
+  }
 
   let change: ChangeState | null = null;
   if (changeId) {

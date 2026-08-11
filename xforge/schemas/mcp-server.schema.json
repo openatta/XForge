@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xforge.dev/schemas/mcp-server.schema.json",
+  "type": "object", "additionalProperties": false, "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "apiVersion": { "const": "xforge.dev/v1alpha2" }, "kind": { "const": "McpServer" },
+    "metadata": { "$ref": "#/$defs/metadata" },
+    "spec": {
+      "type": "object", "additionalProperties": false, "required": ["transport", "authTokenEnv", "timeoutSeconds"],
+      "properties": {
+        "transport": { "enum": ["stdio", "http"] },
+        "command": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "cwd": { "type": "string" },
+        "url": { "type": "string", "format": "uri" },
+        "authTokenEnv": { "$ref": "#/$defs/env" },
+        "timeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 300 }
+      },
+      "oneOf": [
+        { "properties": { "transport": { "const": "stdio" } }, "required": ["command"] },
+        { "properties": { "transport": { "const": "http" } }, "required": ["url"] }
+      ]
+    }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$" },
+    "env": { "type": "string", "pattern": "^[A-Z_][A-Z0-9_]*$" },
+    "metadata": { "type": "object", "additionalProperties": false, "required": ["name"], "properties": { "name": { "$ref": "#/$defs/id" }, "version": { "type": ["string", "integer"] } } }
+  }
+}

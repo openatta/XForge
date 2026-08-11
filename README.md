@@ -305,6 +305,7 @@ XForge/
 - [Skills, Flows, Rules, Gates, Hooks, PermissionPolicies, and Approvals](docs/governance-concepts.md)
 - [Extending Skills and Flows](docs/extending-skills-and-flows.md)
 - [Extending Gates, Rules, PermissionPolicies, Hooks, and Approvals](docs/extending-gates-rules-policies-hooks-approvals.md)
+- [Extending Approvals with an MCP provider](docs/extending-approvals-with-mcp.md)
 - [Governance control plane](docs/governance-control-plane-design.md)
 - [File protocol](docs/file-protocol.md)
 - [Sub-agent design](docs/sub-agent-system-design.md)

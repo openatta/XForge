@@ -12,6 +12,7 @@ import { loadSelectedResources } from '../core/resource-loader.js';
 import { safeResolve } from '../core/path-safety.js';
 import { validateSchema } from '../core/validator.js';
 import { approvalReceiptDigest, verifyApprovalReceipt } from '../core/approval-receipt.js';
+import { pollApproval, submitApprovalRequest, withMcpApprovalSession } from '../core/mcp-approval.js';
 
 export interface ApproveOptions {
   change: string;
@@ -23,6 +24,7 @@ export interface ApproveOptions {
   decision?: 'approve' | 'reject';
   attestation?: 'human';
   receipt?: string;
+  provider?: string;
   interactive: boolean;
   dryRun: boolean;
 }
@@ -61,7 +63,39 @@ export async function executeApprove(project: ProjectContext, options: ApproveOp
 
   if (!options.dryRun) await recordAudit(project, { eventType: 'approval.requested', change: options.change, flow: resolved.flow.metadata.name, stage: control.governance.currentStage, revision: control.governance.revision, decision: policy.id, outcome: 'succeeded' });
 
-  if (options.receipt) {
+  if (options.provider) {
+    const provider = project.manifest.approvals?.providers.find((item) => item.id === options.provider);
+    if (!provider) throw new XForgeError(diagnostic('XFORGE_APPROVAL_PROVIDER_FORBIDDEN', `Approval provider is not authorized: ${options.provider}.`));
+    if (provider.type !== 'mcp') throw new XForgeError(diagnostic('XFORGE_APPROVAL_PROVIDER_NOT_MCP', `Provider ${provider.id} is not an mcp provider; use --receipt instead.`));
+    if (!policy.providers.includes(provider.id)) throw new XForgeError(diagnostic('XFORGE_APPROVAL_PROVIDER_FORBIDDEN', `Policy ${policy.id} does not allow provider ${provider.id}.`));
+    const server = resources.mcpServers.get(provider.mcpServer);
+    if (!server) throw new XForgeError(diagnostic('XFORGE_APPROVAL_MCP_SERVER_MISSING', `McpServer resource is missing or not enabled: ${provider.mcpServer}.`));
+    const governingDigest = sha256(stableStringify({ change: options.change, flow: resolved.flow.metadata.name, policy: policy.id, revision: control.governance.revision }));
+    const resumeCommand = `xforge approve --change ${options.change} --for ${options.transition} --policy ${policy.id} --provider ${provider.id}`;
+    const poll = await withMcpApprovalSession(project, server.value, provider.id, async (client, timeoutMs) => {
+      await submitApprovalRequest(client, timeoutMs, {
+        change: options.change, flow: resolved.flow.metadata.name, stage: control.governance.currentStage, transition: options.transition, policyId: policy.id,
+        revision: control.governance.revision, governingDigest, roles: policy.roles, reason: options.reason ?? '',
+      });
+      return pollApproval(client, timeoutMs, governingDigest);
+    });
+    if (poll.status === 'pending') {
+      throw new XForgeError(diagnostic('XFORGE_APPROVAL_MCP_PENDING', `Approval request for policy ${policy.id} is still pending on provider ${provider.id}. Nothing was recorded. Re-run once a decision is available: ${resumeCommand}`));
+    }
+    if (!provider.roles.includes(poll.approver.role) || !policy.roles.includes(poll.approver.role)) {
+      throw new XForgeError(diagnostic('XFORGE_APPROVAL_ROLE_FORBIDDEN', `Approver role is not authorized: ${poll.approver.role}.`));
+    }
+    const unsigned = {
+      apiVersion: 'xforge.dev/v1alpha2' as const, kind: 'ApprovalReceipt' as const, receiptId: randomUUID(), change: options.change,
+      flow: resolved.flow.metadata.name, stage: control.governance.currentStage, transition: options.transition, policyId: policy.id,
+      stateRevision: control.governance.revision.stateRevision, contentRevision: control.governance.revision.contentRevision,
+      policySnapshotDigest: control.governance.revision.policySnapshotDigest, gitBase: control.governance.revision.gitBase, gitHead: control.governance.revision.gitHead,
+      governingDigest,
+      decision: poll.decision, approver: { id: poll.approver.id, provider: provider.id, role: poll.approver.role, type: 'external-system' as const },
+      decidedAt: new Date().toISOString(), reason: poll.reason, ...(poll.expiresAt ? { expiresAt: poll.expiresAt } : {}),
+    };
+    receipt = { ...unsigned, digest: approvalReceiptDigest({ ...unsigned, digest: '' }) };
+  } else if (options.receipt) {
     const source = await readFile(await safeResolve(project.root, options.receipt), 'utf8');
     receipt = JSON.parse(source) as ApprovalReceipt;
     const schemaDiagnostics = await validateSchema('approval-receipt', receipt, options.receipt);

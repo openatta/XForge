@@ -37,7 +37,7 @@ interface ParsedArguments {
   helpCommand?: string;
   subcommand?: string;
   change?: string;
-  kind?: 'skills' | 'agents' | 'rules' | 'policies' | 'hooks' | 'gates' | 'scripts' | 'flows' | 'approvals';
+  kind?: 'skills' | 'agents' | 'rules' | 'policies' | 'hooks' | 'gates' | 'scripts' | 'flows' | 'approvals' | 'mcp-servers';
   target?: TargetId;
   gate?: string;
   to?: string;
@@ -49,6 +49,7 @@ interface ParsedArguments {
   decision?: 'approve' | 'reject';
   attestation?: 'human';
   receipt?: string;
+  provider?: string;
   output?: string;
   event?: string;
   packageId?: string;
@@ -58,8 +59,8 @@ interface ParsedArguments {
 }
 
 const COMMANDS: CommandName[] = ['help', 'version', 'init', 'state', 'install', 'sync', 'update', 'uninstall', 'check', 'transition', 'approve', 'audit', 'work-package', 'hook', 'archive', 'doctor'];
-const VALID_KINDS = ['skills', 'agents', 'rules', 'policies', 'hooks', 'gates', 'scripts', 'flows', 'approvals'] as const;
-const VALUE_OPTIONS = ['--root', '--change', '--kind', '--target', '--gate', '--to', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--receipt', '--output', '--event', '--package', '--language', '--as', '--evidence'] as const;
+const VALID_KINDS = ['skills', 'agents', 'rules', 'policies', 'hooks', 'gates', 'scripts', 'flows', 'approvals', 'mcp-servers'] as const;
+const VALUE_OPTIONS = ['--root', '--change', '--kind', '--target', '--gate', '--to', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--receipt', '--provider', '--output', '--event', '--package', '--language', '--as', '--evidence'] as const;
 
 const HELP: Record<CommandName, { usage: string; description: string; options: string[] }> = {
   help: { usage: 'xforge help [command] [--text]', description: 'Show general or command-specific help.', options: ['--text'] },
@@ -72,12 +73,12 @@ const HELP: Record<CommandName, { usage: string; description: string; options: s
   uninstall: { usage: 'xforge [--root <path>] uninstall [--target <target>] [--dry-run] [--text]', description: 'Safely remove digest-matching managed target files.', options: ['--root', '--target', '--dry-run', '--text'] },
   check: { usage: 'xforge [--root <path>] check [--change <id>] [--gate <id>] [--text]', description: 'Validate project structure, deliveries, and Gates.', options: ['--root', '--change', '--gate', '--text'] },
   transition: { usage: 'xforge [--root <path>] transition --change <id> --to <stage> [--dry-run] [--text]', description: 'Evaluate and record a governed Stage transition.', options: ['--root', '--change', '--to', '--dry-run', '--text'] },
-  approve: { usage: 'xforge [--root <path>] approve --change <id> --for <stage|archive> [--policy <id>] [--receipt <path> | local fields] [--dry-run] [--text]', description: 'Record an interactive human approval or verify a signed external receipt.', options: ['--root', '--change', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--receipt', '--dry-run', '--text'] },
+  approve: { usage: 'xforge [--root <path>] approve --change <id> --for <stage|archive> [--policy <id>] [--receipt <path> | --provider <mcp-provider-id> | local fields] [--dry-run] [--text]', description: 'Record an interactive human approval, verify a signed external receipt, or submit/poll an mcp provider.', options: ['--root', '--change', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--receipt', '--provider', '--dry-run', '--text'] },
   audit: { usage: 'xforge [--root <path>] audit <status|verify|export|retry> [--change <id>] [--output <path>] [--text]', description: 'Inspect, verify, export, or redeliver the append-only audit chain.', options: ['--root', '--change', '--output', '--text'] },
   'work-package': { usage: 'xforge [--root <path>] work-package <dispatch|acknowledge> --change <id> --package <id> [--as <integrator|reviewer> --evidence <path>] [--dry-run] [--text]', description: 'Dispatch a work package or acknowledge integration/review evidence.', options: ['--root', '--change', '--package', '--as', '--evidence', '--dry-run', '--text'] },
   hook: { usage: 'xforge hook dispatch --target <target> --event <event>', description: 'Internal platform Hook dispatcher.', options: ['--root', '--target', '--event'] },
   archive: { usage: 'xforge [--root <path>] archive --change <id> [--dry-run] [--text]', description: 'Verify, merge Specs, and atomically archive a Change.', options: ['--root', '--change', '--dry-run', '--text'] },
-  doctor: { usage: 'xforge [--root <path>] doctor [--kind <kind>] [--strict] [--text]', description: 'Report unreferenced and dangling Flow/Skill/Rule/Gate/Hook/PermissionPolicy/Approval extensions.', options: ['--root', '--kind', '--strict', '--text'] },
+  doctor: { usage: 'xforge [--root <path>] doctor [--kind <kind>] [--strict] [--text]', description: 'Report unreferenced and dangling Flow/Skill/Rule/Gate/Hook/PermissionPolicy/Approval/McpServer extensions.', options: ['--root', '--kind', '--strict', '--text'] },
 };
 
 function parseArguments(argv: string[]): ParsedArguments {
@@ -117,6 +118,7 @@ function parseArguments(argv: string[]): ParsedArguments {
     if (token === '--role') parsed.role = value;
     if (token === '--reason') parsed.reason = value;
     if (token === '--receipt') parsed.receipt = value;
+    if (token === '--provider') parsed.provider = value;
     if (token === '--output') parsed.output = value;
     if (token === '--event') parsed.event = value;
     if (token === '--package') parsed.packageId = value;
@@ -365,7 +367,9 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
     return envelope({ command, root: project.root, ...result });
   }
   if (command === 'approve') {
-    const result = await executeApprove(project, { change: parsed.change!, transition: parsed.transition!, policy: parsed.policy, actor: parsed.actor, role: parsed.role, reason: parsed.reason, decision: parsed.decision, attestation: parsed.attestation, receipt: parsed.receipt, interactive: process.stdin.isTTY === true && process.stdout.isTTY === true, dryRun: parsed.dryRun });
+    const requireTty = project.manifest.approvals?.local?.requireTty ?? true;
+    const interactive = requireTty ? process.stdin.isTTY === true && process.stdout.isTTY === true : true;
+    const result = await executeApprove(project, { change: parsed.change!, transition: parsed.transition!, policy: parsed.policy, actor: parsed.actor, role: parsed.role, reason: parsed.reason, decision: parsed.decision, attestation: parsed.attestation, receipt: parsed.receipt, provider: parsed.provider, interactive, dryRun: parsed.dryRun });
     return envelope({ command, root: project.root, ...result });
   }
   if (command === 'audit') {

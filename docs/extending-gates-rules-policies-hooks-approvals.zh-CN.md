@@ -320,7 +320,13 @@ process.stdin.on('end', () => {
 
 1. **本地交互式**——要求真实 TTY 加 `--attestation human`，而且只有这条
    policy 的 `providers` 里包含 `local` 才能用。刻意做成不能自动化：
-   Agent 不能自我批准。
+   Agent 不能自我批准。如果确认这件事本身是由 Agent 所在的 harness 完成的
+   （比如 harness 已经在会话里问过人类，再由 Agent 拉起 `xforge approve`
+   子进程时天然没有 TTY），可以在 `manifest.yaml` 里设置
+   `approvals.local.requireTty: false` 跳过这一个环境检查——其它所有要求
+   （`--attestation human`、`--actor`、`--role`、`--reason`、`--decision`，
+   以及 policy 的 `providers` 必须包含 `local`）照样强制。默认值是 `true`
+   （要求真实 TTY），和之前行为一致。
 2. **外部签名 receipt**——`xforge approve --receipt <path>`，用登记在
    `manifest.yaml` 的 `approvals.providers[].secretEnv` 里的共享密钥做
    HMAC-SHA256 验证。不需要 TTY——这是扩展点所在。
@@ -357,6 +363,112 @@ approvals:
 签两次批准不了需要 2 个批准人的要求，开了 `separationOfDuties: true` 之后，
 两个角色相同的批准人也满足不了要求。
 
+### 参考：如何在外部系统里生成一份签过名的 ApprovalReceipt
+
+下面是 `xforge approve --receipt <path>` 会接受的、字节级精确的契约——外部
+平台（或者挡在它前面的一个胶水脚本）要照着这个实现。整个过程不需要跑任何
+XForge 代码，所有输入都来自文档化的、可复现的来源。
+
+**第一步：拿到绑定用的输入。** 跑（或者让胶水脚本去跑）
+`xforge state --change <id>`，需要的字段都在 `data.change.governance` 里：
+
+- `revision` → `{ contentRevision, stateRevision, policySnapshotDigest,
+  gitBase, gitHead }`——receipt 必须绑定的确切 revision。
+- `pendingApprovals[]` → 每一项的 `policyId` 和 `transition` 告诉你这份
+  receipt 对应哪条 policy id、`--for` 该填 `<stage>` 还是 `archive`。
+- `currentStage` → receipt 的 `stage` 字段。
+- 顶层 `data.change.flow` → receipt 的 `flow` 字段（Flow 的
+  `metadata.name`）。
+
+**第二步：构造未签名 payload**（`ApprovalReceipt` 除了 `signature` 和
+`digest` 之外的全部字段）：
+
+| 字段 | 取值 |
+|---|---|
+| `apiVersion` | 字面量字符串 `xforge.dev/v1alpha2` |
+| `kind` | 字面量字符串 `ApprovalReceipt` |
+| `receiptId` | 新生成的 UUID（schema 要求 `format: uuid`） |
+| `change` | Change id |
+| `flow` | 第一步拿到的 Flow 名字 |
+| `stage` | 第一步的 `currentStage` |
+| `transition` | `<stage>` 或者 `archive`——看你在批准哪一个 |
+| `policyId` | 第一步 `pendingApprovals[]` 里的 approval policy id |
+| `stateRevision`、`contentRevision`、`policySnapshotDigest`、`gitBase`、`gitHead` | 原样抄第一步的 `revision` |
+| `governingDigest` | 见第三步 |
+| `decision` | `"approve"` 或 `"reject"` |
+| `approver` | `{ id, provider, role, type: "external-system" }`——`provider` 必须是 `manifest.yaml` 的 `approvals.providers` 里登记过的 id（并且在这条 policy 的 `providers` 列表里）；`role` 必须同时在该 provider 和该 policy 的 `roles` 里 |
+| `decidedAt` | ISO 8601 date-time |
+| `reason` | 非空、人可读的字符串 |
+| `expiresAt` | 可选 ISO 8601 date-time——过了这个时间点 `xforge state` 就不再把这份 receipt 计入有效批准 |
+| `externalRef` | 可选——你们平台自己的工单/请求 id，原样透传，XForge 不做任何解释 |
+
+**第三步：算 `governingDigest`：**
+
+```
+governingDigest = sha256(stableStringify({
+  change:   <change id>,
+  flow:     <flow 名字>,
+  policy:   <policyId>,
+  revision: { contentRevision, stateRevision, policySnapshotDigest, gitBase, gitHead },
+}))
+```
+
+**第四步：签名。** `stableStringify(value)` 的定义是：递归地把每一层对象的
+key 按 `key.localeCompare()` 排序（对这份 schema 里用到的这些 ASCII 字段名
+来说，等价于普通的字典序排序，用任何语言重实现都不用引入 ICU），再对结果
+做 `JSON.stringify`，**缩进是 2 个空格**（不是紧凑 JSON——这是跨语言重实现
+时最容易踩的坑：不只是 key 顺序要对，缩进也要一模一样）。计算：
+
+```
+payload             = 第二步的未签名对象（含 governingDigest，不含 signature/digest 字段）
+signature.value      = hex(HMAC-SHA256(secretEnv 对应的密钥, stableStringify(payload)))
+signature.algorithm  = "hmac-sha256"
+```
+
+密钥是这个 provider 在 `manifest.yaml` 里 `secretEnv` 指向的那个环境变量的
+值——跟操作外部平台的人对齐这个值；XForge 从不传输或存储它。
+
+**第五步：算最终的 `digest`**（对 payload + signature 一起算，仍然不含
+`digest` 自己）：
+
+```
+signed  = { ...payload, signature }
+digest  = sha256(stableStringify(signed))
+receipt = { ...signed, digest }
+```
+
+把 `receipt` 写成文件，交给
+`xforge approve --change <id> --for <transition> --policy <policyId> --receipt <path>`。
+先跑 schema 校验（不符合 `approval-receipt.schema.json` 的直接拒绝，比如
+`receiptId` 不是合法 UUID），再由 `verifyApprovalReceipt()` 按上面同样的
+公式重新算一遍 `digest` 和 `signature.value` 做比对。
+
+**参考实现**（Node 自带的 `crypto`/`JSON.stringify` 是权威定义；下面是同一
+套算法的 Python 版本，你们平台不是 Node 的话用得上）：
+
+```python
+import hashlib, hmac, json
+
+def stable_stringify(value):
+    def normalize(item):
+        if isinstance(item, list):
+            return [normalize(v) for v in item]
+        if isinstance(item, dict):
+            return {k: normalize(item[k]) for k in sorted(item.keys())}
+        return item
+    return json.dumps(normalize(value), indent=2, ensure_ascii=False)
+
+def sha256_hex(text: str) -> str:
+    return hashlib.sha256(text.encode('utf-8')).hexdigest()
+
+def hmac_sha256_hex(secret: str, text: str) -> str:
+    return hmac.new(secret.encode('utf-8'), text.encode('utf-8'), hashlib.sha256).hexdigest()
+```
+
+`sorted(item.keys())` 就是普通的码点排序——对这份 schema 里固定的这些字段名
+来说，跟 JS 的 `localeCompare` 结果一致。别把这个等价关系推广到别处任意的
+用户输入字符串上，这里只对这份 schema 的固定字段名成立。
+
 ### 扩展它：把审批路由到外部平台（比如通过 MCP）
 
 外部签名 receipt 这条路径本来就是"决策无关"的设计——`xforge approve
@@ -368,17 +480,19 @@ approvals:
 1. Agent 调用你们审批平台暴露的 MCP tool，把 Change id、Flow、stage 和当前
    治理 revision 提交上去。
 2. 人类在平台上批准——Slack、内部审批门户、ServiceNow，随便你们已经在用什么。
-3. 平台（或者一个轮询平台 API 的脚本）按 `ApprovalReceipt` schema 构造
-   receipt JSON，算出 `governingDigest`，用 `approvals.providers[].secretEnv`
-   里的共享密钥签名。
+3. 平台（或者一个轮询平台 API 的脚本）按上面"参考：如何在外部系统里生成一份
+   签过名的 ApprovalReceipt"里的步骤构造并签名这份 receipt。
 4. 任何东西——Agent 自己、CI job、webhook handler——调用
    `xforge approve --receipt <path>` 把结果导入。
 
-这个不需要改 XForge 代码：MCP 只是你们的平台用来跟 Agent 对话的传输方式，
-XForge 真正核验的信任边界是那个 HMAC 签名。**真正需要改代码的**，是把
-"HMAC 共享密钥验签"整个换成另一套机制（非对称签名、实时回调一个外部 API 去
-验证一个审批单号）——`manifest.schema.json` 现在把 provider 的 `type` 写死成
-常量 `"hmac-sha256"`，`verifyApprovalReceipt()` 也没有第二条分支。
+这个不需要改 XForge 代码：这里的 MCP 只是你们的平台用来跟 Agent 对话的传输
+方式，XForge 真正核验的信任边界是那个 HMAC 签名。
+
+如果你们的平台能直接暴露一个 MCP server 让 XForge 自己去连——而不是绕道
+Agent 再落一份手工签名的文件——用原生的 `mcp` provider `type` 代替这套胶水
+脚本方案；submit/poll 的 tool 契约、以及跟它配套的（刻意不带签名的）信任
+模型，见
+[用 MCP provider 扩展 Approvals](extending-approvals-with-mcp.zh-CN.md)。
 
 ## 检查清单
 
@@ -421,3 +535,8 @@ XForge 真正核验的信任边界是那个 HMAC 签名。**真正需要改代�
       指向一个真实、已赋值的环境变量
 - [ ] 已在正确的 stage 的 `exit.approvals` 或者 `terminal.archive.approvals`
       里引用——没人引用的 policy 永远拦不住任何东西
+- [ ] 如果会有外部系统给它签 receipt：`stableStringify` 已经按字节级精确
+      重实现（递归 key 排序、2 空格缩进 JSON）——先拿一份真实签过名的
+      receipt（比如用 `xforge approve --receipt` 在测试项目里跑一次，或者
+      用测试里的 `approveCurrentRevision` helper）核对过，再接进任何真的会
+      拦住 transition 的地方；`--dry-run` 不会返回 receipt，没法用来比对

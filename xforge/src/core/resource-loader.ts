@@ -5,6 +5,7 @@ import type {
   Diagnostic,
   GateResource,
   HookResource,
+  McpServerResource,
   PermissionPolicyResource,
   ProjectContext,
   RuleResource,
@@ -29,12 +30,13 @@ export interface SelectedResources {
   hooks: Map<string, { value: HookResource; yamlPath: string }>;
   gates: Map<string, { value: GateResource; yamlPath: string }>;
   scripts: Map<string, { value: ScriptResource; yamlPath: string; entryPath: string }>;
+  mcpServers: Map<string, { value: McpServerResource; yamlPath: string }>;
   diagnostics: Diagnostic[];
 }
 
 async function loadFlatResource<T extends { metadata?: { name?: string } }>(
   project: ProjectContext,
-  kind: 'agents' | 'rules' | 'policies' | 'hooks' | 'gates',
+  kind: 'agents' | 'rules' | 'policies' | 'hooks' | 'gates' | 'mcp-servers',
   id: string,
   schema: SchemaName,
 ): Promise<{ value: T | null; yamlPath: string; diagnostics: Diagnostic[] }> {
@@ -57,6 +59,7 @@ export async function loadSelectedResources(project: ProjectContext): Promise<Se
   const hooks = new Map<string, { value: HookResource; yamlPath: string }>();
   const gates = new Map<string, { value: GateResource; yamlPath: string }>();
   const scripts = new Map<string, { value: ScriptResource; yamlPath: string; entryPath: string }>();
+  const mcpServers = new Map<string, { value: McpServerResource; yamlPath: string }>();
 
   for (const id of project.manifest.scaffold.skills) {
     assertResourceId(id);
@@ -137,6 +140,12 @@ export async function loadSelectedResources(project: ProjectContext): Promise<Se
     }
   }
 
+  for (const id of project.manifest.scaffold.mcpServers ?? []) {
+    const loaded = await loadFlatResource<McpServerResource>(project, 'mcp-servers', id, 'mcp-server');
+    diagnostics.push(...loaded.diagnostics);
+    if (loaded.value) mcpServers.set(id, { value: loaded.value, yamlPath: loaded.yamlPath });
+  }
+
   for (const id of project.manifest.scripts ?? []) {
     assertResourceId(id);
     const yamlPath = `xforge/scripts/${id}/script.yaml`;
@@ -162,5 +171,5 @@ export async function loadSelectedResources(project: ProjectContext): Promise<Se
     }
   }
 
-  return { skills, agents, rules, policies, hooks, gates, scripts, diagnostics };
+  return { skills, agents, rules, policies, hooks, gates, scripts, mcpServers, diagnostics };
 }

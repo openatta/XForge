@@ -92,6 +92,7 @@ export interface Manifest {
     policies?: string[];
     hooks: string[];
     gates: string[];
+    mcpServers?: string[];
   };
   scripts?: string[];
   xforge: NpmCliSource;
@@ -103,12 +104,13 @@ export interface Manifest {
     commitGeneratedFiles: boolean;
   };
   approvals?: {
-    providers: Array<{
-      id: string;
-      type: 'hmac-sha256';
-      secretEnv: string;
-      roles: string[];
-    }>;
+    providers: Array<
+      | { id: string; type: 'hmac-sha256'; secretEnv: string; roles: string[] }
+      | { id: string; type: 'mcp'; mcpServer: string; roles: string[] }
+    >;
+    local?: {
+      requireTty?: boolean;
+    };
   };
   audit?: {
     redaction: 'strict' | 'balanced';
@@ -441,6 +443,20 @@ export interface ScriptResource {
   };
 }
 
+export interface McpServerResource {
+  apiVersion: string;
+  kind: 'McpServer';
+  metadata: Metadata;
+  spec: {
+    transport: 'stdio' | 'http';
+    command?: string[];
+    cwd?: string;
+    url?: string;
+    authTokenEnv: string;
+    timeoutSeconds: number;
+  };
+}
+
 export interface Constitution {
   version: string;
   ratified: string;
@@ -658,7 +674,7 @@ export interface GovernanceState {
   transitionHead: string | null;
   transitions: TransitionReceipt[];
   revision: GovernanceRevision;
-  pendingApprovals: Array<{ policyId: string; transition: string; missing: number; roles: string[] }>;
+  pendingApprovals: Array<{ policyId: string; transition: string; missing: number; roles: string[]; providers: Array<{ id: string; type: 'local' | 'hmac-sha256' | 'mcp' }> }>;
   approvals: ApprovalReceipt[];
   rules: RuleCoverage[];
   policies: Array<{ id: string; capability: string; effect: string; applicable: boolean }>;

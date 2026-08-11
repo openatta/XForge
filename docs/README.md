@@ -268,6 +268,7 @@ XForge/
 - [Skills、Flows、Rules、Gates、Hooks、PermissionPolicies 与 Approvals](governance-concepts.zh-CN.md)
 - [扩展 Skills 与 Flows](extending-skills-and-flows.zh-CN.md)
 - [扩展 Gate、Rule、PermissionPolicy、Hook 与 Approval](extending-gates-rules-policies-hooks-approvals.zh-CN.md)
+- [用 MCP provider 扩展 Approvals](extending-approvals-with-mcp.zh-CN.md)
 - [治理控制平面](governance-control-plane-design.md)
 - [文件协议](file-protocol.md)
 - [子 Agent 设计](sub-agent-system-design.md)

@@ -8,8 +8,8 @@ import { normalizeRule } from '../core/governance.js';
 import { safeResolve } from '../core/path-safety.js';
 import { loadYaml } from '../core/yaml.js';
 
-export type DoctorKind = 'skills' | 'agents' | 'rules' | 'policies' | 'hooks' | 'gates' | 'scripts' | 'flows' | 'approvals';
-type DoctorScope = 'skills' | 'agents' | 'rules' | 'policies' | 'hooks' | 'gates' | 'flows' | 'approvals';
+export type DoctorKind = 'skills' | 'agents' | 'rules' | 'policies' | 'hooks' | 'gates' | 'scripts' | 'flows' | 'approvals' | 'mcp-servers';
+type DoctorScope = 'skills' | 'agents' | 'rules' | 'policies' | 'hooks' | 'gates' | 'flows' | 'approvals' | 'mcp-servers';
 
 export interface DoctorFinding {
   scope: DoctorScope;
@@ -43,6 +43,7 @@ const DANGLING_CODE_SCOPE: Record<string, DoctorScope> = {
   XFORGE_HOOK_SCRIPT_MISSING: 'hooks',
   XFORGE_AGENT_CALLER_UNKNOWN: 'agents',
   XFORGE_AGENT_SKILL_DISABLED: 'skills',
+  XFORGE_APPROVAL_MCP_SERVER_UNKNOWN: 'mcp-servers',
 };
 
 async function exists(filePath: string): Promise<boolean> {
@@ -155,6 +156,17 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
       id: policy,
       message: `PermissionPolicy ${policy} is enabled but not cited by any Rule's policyRefs. It still applies live to matching tool calls; verify it is intentionally freestanding.`,
       path: `xforge/scaffold/policies/${policy}.yaml`,
+    });
+  }
+
+  const referencedMcpServers = new Set((project.manifest.approvals?.providers ?? []).filter((item) => item.type === 'mcp').map((item) => item.mcpServer));
+  for (const mcpServer of project.manifest.scaffold.mcpServers ?? []) {
+    if (!referencedMcpServers.has(mcpServer)) uncited.push({
+      scope: 'mcp-servers',
+      code: 'XFORGE_DOCTOR_UNCITED',
+      id: mcpServer,
+      message: `McpServer ${mcpServer} is enabled but not referenced by any approvals.providers entry's mcpServer field. It has no effect until a provider points at it; verify it is intentionally staged ahead of use.`,
+      path: `xforge/scaffold/mcp-servers/${mcpServer}.yaml`,
     });
   }
 

@@ -34,6 +34,10 @@ export function verifyApprovalReceipt(
   if (!provider.roles.includes(receipt.approver.role) || policy && !policy.roles.includes(receipt.approver.role)) {
     diagnostics.push(diagnostic('XFORGE_APPROVAL_ROLE_FORBIDDEN', `Approver role is not authorized: ${receipt.approver.role}.`));
   }
+  if (provider.type === 'mcp') {
+    if (receipt.signature) diagnostics.push(diagnostic('XFORGE_APPROVAL_SIGNATURE_UNEXPECTED', 'MCP-issued approval receipts must not carry a signature.'));
+    return diagnostics;
+  }
   const secret = process.env[provider.secretEnv];
   if (!secret) {
     diagnostics.push(diagnostic('XFORGE_APPROVAL_PROVIDER_UNAVAILABLE', `Approval provider secret environment is unavailable: ${provider.secretEnv}.`));

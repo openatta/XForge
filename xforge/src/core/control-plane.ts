@@ -147,6 +147,13 @@ function policyById(flow: StageFlow, id: string): ApprovalPolicy | null {
   return flow.governance?.approvalPolicies.find((policy) => policy.id === id) ?? null;
 }
 
+function providerKinds(project: ProjectContext, policy: ApprovalPolicy): Array<{ id: string; type: 'local' | 'hmac-sha256' | 'mcp' }> {
+  return policy.providers.map((id) => {
+    if (id === 'local') return { id, type: 'local' as const };
+    return { id, type: project.manifest.approvals?.providers.find((item) => item.id === id)?.type ?? 'hmac-sha256' };
+  });
+}
+
 async function exitConditionSatisfied(
   project: ProjectContext,
   changeId: string,
@@ -237,7 +244,7 @@ export async function resolveControlPlane(
         if (result.rejected) blockedBy.push(`approval:${policyId}:rejected`);
         if (result.missing > 0 || !result.separationSatisfied) {
           blockedBy.push(`approval:${policyId}:missing-${result.missing || 'separation'}`);
-          pendingApprovals.push({ policyId, transition: target, missing: result.missing, roles: policy.roles });
+          pendingApprovals.push({ policyId, transition: target, missing: result.missing, roles: policy.roles, providers: providerKinds(project, policy) });
         }
       }
       for (const eventType of exit.auditEvents ?? []) if (!auditEvents.some((event) => event.eventType === eventType)) blockedBy.push(`audit:${eventType}:missing`);
@@ -252,7 +259,7 @@ export async function resolveControlPlane(
       const policy = policyById(flow, policyId);
       if (!policy) continue;
       const result = approvalsForPolicy(approvals.receipts, policy, 'archive', revision.stateRevision);
-      if (result.missing > 0 || result.rejected || !result.separationSatisfied) pendingApprovals.push({ policyId, transition: 'archive', missing: result.missing, roles: policy.roles });
+      if (result.missing > 0 || result.rejected || !result.separationSatisfied) pendingApprovals.push({ policyId, transition: 'archive', missing: result.missing, roles: policy.roles, providers: providerKinds(project, policy) });
     }
   }
 

@@ -35,6 +35,16 @@ async function addSkill(root: string, id: string): Promise<void> {
   await updateYaml(root, 'xforge/manifest.yaml', (manifest) => { manifest.scaffold.skills.push(id); });
 }
 
+async function addMcpServer(root: string, id: string): Promise<void> {
+  await write(root, `xforge/scaffold/mcp-servers/${id}.yaml`, [
+    'apiVersion: xforge.dev/v1alpha2', 'kind: McpServer', 'metadata:', `  name: ${id}`, '  version: 1',
+    'spec:', '  transport: stdio', '  command: [node, server.mjs]', '  authTokenEnv: XFORGE_TEST_TOKEN', '  timeoutSeconds: 10', '',
+  ].join('\n'));
+  await updateYaml(root, 'xforge/manifest.yaml', (manifest) => {
+    manifest.scaffold.mcpServers = [...(manifest.scaffold.mcpServers ?? []), id];
+  });
+}
+
 describe('doctor', () => {
   it('reports unused Flows and an uncited PermissionPolicy on an unmodified fixture', async () => {
     const root = await fixture();
@@ -202,6 +212,45 @@ describe('doctor', () => {
     ]));
     expect(result.json.data.uncited.some((item: any) => item.scope === 'hooks')).toBe(false);
     expect(result.json.data.deadCode.some((item: any) => item.scope === 'hooks')).toBe(false);
+  });
+
+  it('flags an mcp Approval provider pointing at a non-registered McpServer', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await updateYaml(root, 'xforge/manifest.yaml', (manifest) => {
+      manifest.approvals.providers.push({ id: 'ghost-provider', type: 'mcp', mcpServer: 'ghost-server', roles: ['owner'] });
+    });
+    const result = await runCli(root, ['doctor']);
+    expect(result.code).toBe(0);
+    expect(result.json.data.danglingReferences).toEqual(expect.arrayContaining([
+      expect.objectContaining({ scope: 'mcp-servers', code: 'XFORGE_APPROVAL_MCP_SERVER_UNKNOWN' }),
+    ]));
+  });
+
+  it('flags a registered McpServer no approvals provider references as uncited', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await addMcpServer(root, 'orphan-mcp-server');
+    expect((await runCli(root, ['install'])).code).toBe(0);
+    const result = await runCli(root, ['doctor']);
+    expect(result.code).toBe(0);
+    expect(result.json.data.uncited).toEqual(expect.arrayContaining([
+      expect.objectContaining({ scope: 'mcp-servers', code: 'XFORGE_DOCTOR_UNCITED', id: 'orphan-mcp-server' }),
+    ]));
+  });
+
+  it('clears a registered McpServer from uncited once an mcp Approval provider references it', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await addMcpServer(root, 'review-bot');
+    await updateYaml(root, 'xforge/manifest.yaml', (manifest) => {
+      manifest.approvals.providers.push({ id: 'review-bot', type: 'mcp', mcpServer: 'review-bot', roles: ['owner'] });
+    });
+    expect((await runCli(root, ['install'])).code).toBe(0);
+    const result = await runCli(root, ['doctor']);
+    expect(result.code).toBe(0);
+    expect(result.json.data.uncited.map((item: any) => item.id)).not.toContain('review-bot');
+    expect(result.json.data.danglingReferences.some((item: any) => item.code === 'XFORGE_APPROVAL_MCP_SERVER_UNKNOWN')).toBe(false);
   });
 
   it('flags an Agent delegation.callableBy entry pointing at an unknown caller', async () => {

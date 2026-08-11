@@ -31,7 +31,8 @@
         "language": { "enum": ["en", "zh-CN"] },
         "skills": { "$ref": "#/$defs/idList" }, "agents": { "$ref": "#/$defs/idList" },
         "rules": { "$ref": "#/$defs/idList" }, "policies": { "$ref": "#/$defs/idList" },
-        "hooks": { "$ref": "#/$defs/idList" }, "gates": { "$ref": "#/$defs/idList" }
+        "hooks": { "$ref": "#/$defs/idList" }, "gates": { "$ref": "#/$defs/idList" },
+        "mcpServers": { "$ref": "#/$defs/idList" }
       }
     },
     "scripts": { "$ref": "#/$defs/idList" },
@@ -51,9 +52,21 @@
         "providers": {
           "type": "array", "uniqueItems": true,
           "items": {
-            "type": "object", "additionalProperties": false, "required": ["id", "type", "secretEnv", "roles"],
-            "properties": { "id": { "$ref": "#/$defs/id" }, "type": { "const": "hmac-sha256" }, "secretEnv": { "$ref": "#/$defs/env" }, "roles": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/id" } } }
+            "oneOf": [
+              {
+                "type": "object", "additionalProperties": false, "required": ["id", "type", "secretEnv", "roles"],
+                "properties": { "id": { "$ref": "#/$defs/id" }, "type": { "const": "hmac-sha256" }, "secretEnv": { "$ref": "#/$defs/env" }, "roles": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/id" } } }
+              },
+              {
+                "type": "object", "additionalProperties": false, "required": ["id", "type", "mcpServer", "roles"],
+                "properties": { "id": { "$ref": "#/$defs/id" }, "type": { "const": "mcp" }, "mcpServer": { "$ref": "#/$defs/id" }, "roles": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/id" } } }
+              }
+            ]
           }
+        },
+        "local": {
+          "type": "object", "additionalProperties": false,
+          "properties": { "requireTty": { "type": "boolean" } }
         }
       }
     },

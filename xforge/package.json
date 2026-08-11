@@ -50,6 +50,7 @@
     "prepack": "npm run build"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "fast-glob": "3.3.3",

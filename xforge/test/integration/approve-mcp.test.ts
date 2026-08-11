@@ -1,0 +1,76 @@
+import path from 'node:path';
+import process from 'node:process';
+import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
+import { createCompleteSolidChange, fixture, runCli, updateYaml, write } from '../helpers.js';
+
+const fixtureServer = fileURLToPath(new URL('../fixtures/mcp-approval-server.mjs', import.meta.url));
+
+async function toDesignWithMcpProvider(root: string): Promise<void> {
+  await createCompleteSolidChange(root);
+  expect((await runCli(root, ['install'])).code).toBe(0);
+  expect((await runCli(root, ['check', '--change', 'add-feature', '--gate', 'structure'])).code).toBe(0);
+  expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'design'])).code).toBe(0);
+
+  await write(root, 'xforge/scaffold/mcp-servers/review-bot.yaml', [
+    'apiVersion: xforge.dev/v1alpha2',
+    'kind: McpServer',
+    'metadata: { name: review-bot, version: 1 }',
+    'spec:',
+    '  transport: stdio',
+    `  command: [${JSON.stringify(process.execPath)}, ${JSON.stringify(fixtureServer)}]`,
+    '  authTokenEnv: XFORGE_TEST_MCP_TOKEN',
+    '  timeoutSeconds: 10',
+    '',
+  ].join('\n'));
+
+  await updateYaml(root, 'xforge/manifest.yaml', (manifest) => {
+    manifest.scaffold.mcpServers = ['review-bot'];
+    manifest.approvals.providers.push({ id: 'review-bot', type: 'mcp', mcpServer: 'review-bot', roles: ['owner', 'maintainer'] });
+  });
+  await updateYaml(root, 'xforge/flows/solid.yaml', (flow) => {
+    const policy = flow.governance.approvalPolicies.find((item: any) => item.id === 'planning-solid');
+    policy.providers.push('review-bot');
+  });
+}
+
+const mcpApproveArgs = ['approve', '--change', 'add-feature', '--for', 'apply', '--policy', 'planning-solid', '--provider', 'review-bot'];
+
+describe('mcp approval provider', () => {
+  it('submits and polls to a decided approval, writing an unsigned receipt', async () => {
+    const root = await fixture();
+    await toDesignWithMcpProvider(root);
+    const result = await runCli(root, mcpApproveArgs, {
+      XFORGE_TEST_MCP_TOKEN: 'shared-secret', XFORGE_TEST_MCP_EXPECTED_TOKEN: 'shared-secret',
+      XFORGE_TEST_MCP_DECISION: 'approve', XFORGE_TEST_MCP_APPROVER_ID: 'alice@example.test', XFORGE_TEST_MCP_APPROVER_ROLE: 'owner',
+    });
+    expect(result.code).toBe(0);
+    expect(result.json.data.receipt.approver).toEqual({ id: 'alice@example.test', provider: 'review-bot', role: 'owner', type: 'external-system' });
+    expect(result.json.data.receipt.signature).toBeUndefined();
+  }, 15_000);
+
+  it('exits without writing anything and tells the caller how to resume when still pending', async () => {
+    const root = await fixture();
+    await toDesignWithMcpProvider(root);
+    const result = await runCli(root, mcpApproveArgs, {
+      XFORGE_TEST_MCP_TOKEN: 'shared-secret', XFORGE_TEST_MCP_EXPECTED_TOKEN: 'shared-secret', XFORGE_TEST_MCP_DECISION: 'pending',
+    });
+    expect(result.code).toBe(1);
+    const finding = result.json.diagnostics.find((item: any) => item.code === 'XFORGE_APPROVAL_MCP_PENDING');
+    expect(finding).toBeDefined();
+    expect(finding.message).toContain('xforge approve --change add-feature --for apply --policy planning-solid --provider review-bot');
+    const state = await runCli(root, ['state', '--change', 'add-feature']);
+    expect(state.json.data.change.governance.pendingApprovals.some((item: any) => item.policyId === 'planning-solid')).toBe(true);
+  }, 15_000);
+
+  it('fails after retrying a few times when the server cannot be reached', async () => {
+    const root = await fixture();
+    await toDesignWithMcpProvider(root);
+    await updateYaml(root, 'xforge/scaffold/mcp-servers/review-bot.yaml', (server) => {
+      server.spec.command = ['/nonexistent/xforge-test-binary'];
+    });
+    const result = await runCli(root, mcpApproveArgs, { XFORGE_TEST_MCP_TOKEN: 'shared-secret' });
+    expect(result.code).toBe(1);
+    expect(result.json.diagnostics.some((item: any) => item.code === 'XFORGE_APPROVAL_MCP_CONNECTION_FAILED')).toBe(true);
+  }, 15_000);
+});
