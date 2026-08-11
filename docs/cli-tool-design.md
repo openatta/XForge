@@ -32,6 +32,7 @@ Skill/Agent 解释意图、生成规划或 assurance 内容，但不能把自然
 | `audit status/verify` | read | chain, policy, coverage and delivery status |
 | `audit export/retry` | conditional write | redacted export or delivery receipts |
 | `archive` | write | G1–G4 validation, Specs merge and atomic move |
+| `doctor` | read | 全量或按 `--kind` 扫描 dangling reference 与未被引用的扩展资源，只警告，从不阻塞 |
 | `hook dispatch` | internal | platform Hook response plus runtime audit |
 
 所有普通命令返回一个 Protocol 2 envelope。所有写命令遵循：

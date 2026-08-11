@@ -17,6 +17,7 @@ import { executeTransition } from './commands/transition.js';
 import { executeHookDispatch, hookFailureOutput } from './commands/hook.js';
 import { executeInit } from './commands/init.js';
 import { executeWorkPackageAcknowledge, executeWorkPackageDispatch } from './commands/work-package.js';
+import { executeDoctor } from './commands/doctor.js';
 import { XForgeError, diagnostic } from './core/errors.js';
 import { actualGitIdentity, runtimeCliIntegrity } from './core/identity.js';
 import { loadProject } from './core/project-loader.js';
@@ -24,18 +25,19 @@ import { detectScaffoldLanguage, parseScaffoldLanguage } from './core/language.j
 import { envelope, present } from './protocol/envelope.js';
 import type { Diagnostic, Envelope, NextAction, ScaffoldLanguage } from './types.js';
 
-type CommandName = 'help' | 'version' | 'init' | 'state' | 'install' | 'sync' | 'update' | 'uninstall' | 'check' | 'transition' | 'approve' | 'audit' | 'work-package' | 'hook' | 'archive';
+type CommandName = 'help' | 'version' | 'init' | 'state' | 'install' | 'sync' | 'update' | 'uninstall' | 'check' | 'transition' | 'approve' | 'audit' | 'work-package' | 'hook' | 'archive' | 'doctor';
 
 interface ParsedArguments {
   command: string;
   text: boolean;
   dryRun: boolean;
   verifyDigests: boolean;
+  strict: boolean;
   root?: string;
   helpCommand?: string;
   subcommand?: string;
   change?: string;
-  kind?: 'skills' | 'agents' | 'rules' | 'policies' | 'hooks' | 'gates' | 'scripts';
+  kind?: 'skills' | 'agents' | 'rules' | 'policies' | 'hooks' | 'gates' | 'scripts' | 'flows' | 'approvals';
   target?: TargetId;
   gate?: string;
   to?: string;
@@ -55,8 +57,8 @@ interface ParsedArguments {
   evidence?: string;
 }
 
-const COMMANDS: CommandName[] = ['help', 'version', 'init', 'state', 'install', 'sync', 'update', 'uninstall', 'check', 'transition', 'approve', 'audit', 'work-package', 'hook', 'archive'];
-const VALID_KINDS = ['skills', 'agents', 'rules', 'policies', 'hooks', 'gates', 'scripts'] as const;
+const COMMANDS: CommandName[] = ['help', 'version', 'init', 'state', 'install', 'sync', 'update', 'uninstall', 'check', 'transition', 'approve', 'audit', 'work-package', 'hook', 'archive', 'doctor'];
+const VALID_KINDS = ['skills', 'agents', 'rules', 'policies', 'hooks', 'gates', 'scripts', 'flows', 'approvals'] as const;
 const VALUE_OPTIONS = ['--root', '--change', '--kind', '--target', '--gate', '--to', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--receipt', '--output', '--event', '--package', '--language', '--as', '--evidence'] as const;
 
 const HELP: Record<CommandName, { usage: string; description: string; options: string[] }> = {
@@ -75,10 +77,11 @@ const HELP: Record<CommandName, { usage: string; description: string; options: s
   'work-package': { usage: 'xforge [--root <path>] work-package <dispatch|acknowledge> --change <id> --package <id> [--as <integrator|reviewer> --evidence <path>] [--dry-run] [--text]', description: 'Dispatch a work package or acknowledge integration/review evidence.', options: ['--root', '--change', '--package', '--as', '--evidence', '--dry-run', '--text'] },
   hook: { usage: 'xforge hook dispatch --target <target> --event <event>', description: 'Internal platform Hook dispatcher.', options: ['--root', '--target', '--event'] },
   archive: { usage: 'xforge [--root <path>] archive --change <id> [--dry-run] [--text]', description: 'Verify, merge Specs, and atomically archive a Change.', options: ['--root', '--change', '--dry-run', '--text'] },
+  doctor: { usage: 'xforge [--root <path>] doctor [--kind <kind>] [--strict] [--text]', description: 'Report unreferenced and dangling Flow/Skill/Rule/Gate/Hook/PermissionPolicy/Approval extensions.', options: ['--root', '--kind', '--strict', '--text'] },
 };
 
 function parseArguments(argv: string[]): ParsedArguments {
-  const parsed: ParsedArguments = { command: '', text: false, dryRun: false, verifyDigests: false };
+  const parsed: ParsedArguments = { command: '', text: false, dryRun: false, verifyDigests: false, strict: false };
   const seen = new Set<string>();
   const positionals: string[] = [];
   let helpShortcut = false;
@@ -97,6 +100,7 @@ function parseArguments(argv: string[]): ParsedArguments {
     if (token === '--text') { parsed.text = true; continue; }
     if (token === '--dry-run') { parsed.dryRun = true; continue; }
     if (token === '--verify-digests') { parsed.verifyDigests = true; continue; }
+    if (token === '--strict') { parsed.strict = true; continue; }
     if (!VALUE_OPTIONS.includes(token as (typeof VALUE_OPTIONS)[number])) {
       throw new XForgeError(diagnostic('XFORGE_OPTION_UNKNOWN', `Unknown option: ${token}`));
     }
@@ -383,6 +387,10 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
     const payload = source ? JSON.parse(source) as Record<string, unknown> : {};
     const result = await executeHookDispatch(project, { target: parsed.target!, event: parsed.event!, payload });
     return envelope({ command, root: project.root, data: result });
+  }
+  if (command === 'doctor') {
+    const result = await executeDoctor(project, { kind: parsed.kind, strict: parsed.strict });
+    return envelope({ command, root: project.root, ...result });
   }
   const result = await executeArchive(project, parsed.change!, parsed.dryRun);
   return envelope({ command, root: project.root, ...result });

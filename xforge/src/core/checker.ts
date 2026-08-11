@@ -77,6 +77,9 @@ export async function checkStructure(project: ProjectContext, changeId?: string)
 
   const agentIds = new Set(project.manifest.scaffold.agents);
   const moduleIds = new Set(project.manifest.project.modules.map((item) => item.id));
+  const approvalPolicyIds = new Set(
+    [...flowResult.flows.values()].flatMap((flow) => (isStageFlow(flow) ? (flow.governance?.approvalPolicies.map((policy) => policy.id) ?? []) : [])),
+  );
   for (const [id, agent] of resources.agents) {
     for (const caller of agent.value.spec.delegation.callableBy) {
       if (caller !== 'main' && !agentIds.has(caller)) diagnostics.push(diagnostic('XFORGE_AGENT_CALLER_UNKNOWN', `Agent ${id} allows unknown caller ${caller}.`, agent.yamlPath));
@@ -86,6 +89,9 @@ export async function checkStructure(project: ProjectContext, changeId?: string)
     const normalized = normalizeRule(rule.value);
     for (const module of normalized.modules) {
       if (!moduleIds.has(module)) diagnostics.push(diagnostic('XFORGE_RULE_MODULE_UNKNOWN', `Rule ${id} references unknown module ${module}.`, rule.yamlPath));
+    }
+    for (const approvalRef of normalized.approvalRefs) {
+      if (!approvalPolicyIds.has(approvalRef)) diagnostics.push(diagnostic('XFORGE_RULE_APPROVAL_UNKNOWN', `Rule ${id} references unknown Approval policy ${approvalRef}.`, rule.yamlPath));
     }
     for (const scopedPath of normalized.paths) {
       try { normalizeRelative(scopedPath, `Rule ${id} path`); }

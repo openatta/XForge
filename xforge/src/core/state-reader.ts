@@ -33,7 +33,7 @@ async function directoriesAt(root: string): Promise<string[]> {
 
 export interface StateOptions {
   change?: string;
-  kind?: 'skills' | 'agents' | 'rules' | 'policies' | 'hooks' | 'gates' | 'scripts';
+  kind?: 'skills' | 'agents' | 'rules' | 'policies' | 'hooks' | 'gates' | 'scripts' | 'flows' | 'approvals';
   target?: TargetId;
 }
 

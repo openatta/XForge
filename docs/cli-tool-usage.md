@@ -235,7 +235,38 @@ Archive 要求 Stage 已为 `ready-to-archive`，Gate/Approval/Audit/Transition 
 
 Archive 是 repository closure，不等于 deploy/release 授权。
 
-## 10. 内部 Hook dispatcher
+## 10. 扩展健康检查
+
+```bash
+npx --no-install xforge doctor
+npx --no-install xforge doctor --kind gates
+npx --no-install xforge doctor --strict --text
+```
+
+`doctor` 是只读、advisory 命令，从不因发现问题而阻塞（除非显式加 `--strict`）：
+
+- 不带 `--kind` 时做一次全量扫描，覆盖 Skills/Rules/Gates/Hooks/PermissionPolicies/Flows/Approval
+  policies；带 `--kind <skills|rules|gates|hooks|policies|flows|approvals>` 时只报告该类。
+- `danglingReferences`：复用 `check` 已有的结构校验（Flow 引用不存在或未启用的 Gate/Skill、Rule
+  引用不存在的 module/Gate/Approval policy、Hook 引用不存在的 Script、Agent 允许未知 caller 等）。
+- `deadCode`：已启用但没有任何 Flow Stage/Stage exit/archive terminal 引用的 Gate，或某个 Flow
+  声明了却从未在任何 Stage exit/archive terminal 中被引用的 Approval policy——两者都意味着永远不会
+  运行，属于强信号。
+- `uncited`：已启用但没有被任何 Flow Stage 引用的 Skill（内置的 7 个 standalone Skill 除外），或
+  没有被任何 Rule 的 `enforcement.policyRefs` 引用的 PermissionPolicy——两者仍然生效（Skill 可被
+  直接调用，PermissionPolicy 对匹配的工具调用仍然实时生效），只是未与其他资源建立关联，属于弱信号，
+  需要人工判断是否是有意为之。
+- `unusedFlows`：既不是 Manifest 默认 Flow、也没有被任何当前活跃 Change 使用的 Flow 文件，最弱信号。
+- Hook 没有反向引用检查：当前 schema 没有任何字段可以合法地"引用"一个 Hook，因此 Hook 只出现在
+  `danglingReferences`（例如引用了不存在的 Script）中，不会出现在 `uncited`/`deadCode` 里。
+- 所有发现都以 `severity: warning` 出现在 `diagnostics` 中，`ok` 默认为 `true`；只有显式传入
+  `--strict` 且存在任何发现时，`ok` 才会变为 `false`、退出码变为 `1`。
+
+`doctor` 只读，不产生任何写入；它检测的是"引用完整性"和"引用惰性"，不检测 Adapter 投影本身——
+sync/update/install 已经把用户扩展的 Skill/Rule/PermissionPolicy/Hook 同步到已选定 Target 各自的
+目录，`doctor` 帮助确认这些扩展是否仍然被 Flow/Rule 实际引用、是否引用了已被删除的资源。
+
+## 11. 内部 Hook dispatcher
 
 Adapter 使用：
 
@@ -247,7 +278,7 @@ npx --no-install xforge hook dispatch --target codex --event agent.tool.before
 
 Codex 当前不支持 PreToolUse `ask`，因此 XForge 在 Codex bridge 中保守映射为 deny；平台未暴露的工具/Cloud surface 会记录 coverage gap，而不是伪装成完整审计。
 
-## 11. 推荐闭环
+## 12. 推荐闭环
 
 ```text
 state

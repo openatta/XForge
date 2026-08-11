@@ -1,4 +1,4 @@
-import { access, mkdir, readFile } from 'node:fs/promises';
+import { access, mkdir, readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { fixture, runCli, updateYaml, write, yamlFile } from '../helpers.js';
@@ -134,6 +134,38 @@ describe('projection lifecycle v2', () => {
     expect(result.code).toBe(0);
     expect((await ownership(root)).version).toBe(2);
     expect((await yamlFile<any>(root, 'xforge/lock.yaml')).xforge.version).toBe('0.7.3');
+  });
+
+  it('seeds a Constitution locale variant missing from a project initialized on an older CLI, without touching an existing one', async () => {
+    const root = await fixture();
+    await rm(path.join(root, 'xforge', 'constitution_cn.md'));
+    expect((await runCli(root, ['install', '--target', 'codex'])).code).toBe(0);
+
+    const dry = await runCli(root, ['update', '--dry-run']);
+    expect(dry.code).toBe(0);
+    expect(dry.json.changes).toContainEqual(expect.objectContaining({ action: 'create', path: 'xforge/constitution_cn.md' }));
+    expect(await exists(path.join(root, 'xforge', 'constitution_cn.md'))).toBe(false);
+
+    const result = await runCli(root, ['update']);
+    expect(result.code).toBe(0);
+    expect(result.json.changes).toContainEqual(expect.objectContaining({ action: 'create', path: 'xforge/constitution_cn.md' }));
+    expect(await exists(path.join(root, 'xforge', 'constitution_cn.md'))).toBe(true);
+
+    const customized = [
+      '---', 'version: 1.1.0', 'ratified: 2026-08-08', 'lastAmended: 2026-08-08', '---', '',
+      '# 项目宪法（项目定制）', '',
+      '## 使命与边界', '', '定制内容。', '',
+      '## 架构原则', '', '定制内容。', '',
+      '## 安全、隐私与合规', '', '定制内容。', '',
+      '## 质量与可观测性', '', '定制内容。', '',
+      '## 兼容性与版本管理', '', '定制内容。', '',
+      '## 治理', '', '定制内容。', '',
+    ].join('\n');
+    await write(root, 'xforge/constitution_cn.md', customized);
+    const again = await runCli(root, ['update']);
+    expect(again.code).toBe(0);
+    expect(again.json.changes).not.toContainEqual(expect.objectContaining({ path: 'xforge/constitution_cn.md' }));
+    expect(await readFile(path.join(root, 'xforge', 'constitution_cn.md'), 'utf8')).toBe(customized);
   });
 
   it('uses update to prune a Target removed from the Manifest', async () => {
