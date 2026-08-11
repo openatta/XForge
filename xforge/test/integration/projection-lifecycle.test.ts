@@ -24,7 +24,7 @@ describe('projection lifecycle v2', () => {
       target: 'codex',
       resource: { kind: 'skill', id: 'xforge-explore' },
       renderVersion: 'codex:skill:3',
-      cliVersion: '0.7.5',
+      cliVersion: '0.7.6',
     });
     expect(record.sources[0]).toMatchObject({ path: 'xforge/scaffold/skills/xforge-explore/SKILL.md' });
     expect(record.sources[0].mtimeMs).toEqual(expect.any(Number));
@@ -133,7 +133,7 @@ describe('projection lifecycle v2', () => {
     const result = await runCli(root, ['update', '--target', 'codex']);
     expect(result.code).toBe(0);
     expect((await ownership(root)).version).toBe(2);
-    expect((await yamlFile<any>(root, 'xforge/lock.yaml')).xforge.version).toBe('0.7.5');
+    expect((await yamlFile<any>(root, 'xforge/lock.yaml')).xforge.version).toBe('0.7.6');
   });
 
   it('seeds a Constitution locale variant missing from a project initialized on an older CLI, without touching an existing one', async () => {
