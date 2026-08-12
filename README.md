@@ -12,7 +12,7 @@ XForge is not another Agent runtime. Models and coding tools still explore,
 design, and implement the change; XForge defines what is true, which transition
 is legal, and what evidence is required before the change can advance or close.
 
-> **Current release:** `@xforge/cli 0.7.7`, Protocol 2, Node.js 20 or newer.
+> **Current release:** `@xforge/cli 0.7.8`, Protocol 2, Node.js 20 or newer.
 > Install the exact CLI version from npm. Source-based installation is not
 > supported. The implementation remains under active development.
 
@@ -159,7 +159,7 @@ Install the exact npm package in the target project, then let that CLI verify
 and initialize its bundled Scaffold:
 
 ```bash
-npm install --save-dev --save-exact @xforge/cli@0.7.7
+npm install --save-dev --save-exact @xforge/cli@0.7.8
 npx --no-install xforge init --dry-run
 npx --no-install xforge init
 ```
