@@ -1,7 +1,7 @@
 ---
 name: xforge-continue
 description: Resume a Change from current machine state and execute the next legal Action consistent with user authority; use when the user says continue, resume, do the next step, or a new session must recover from an interruption.
-tools: [read, search, test]
+allowed-tools: Read Grep Glob Bash
 ---
 
 # Invariants

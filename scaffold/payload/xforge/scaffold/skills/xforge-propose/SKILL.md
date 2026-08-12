@@ -1,7 +1,7 @@
 ---
 name: xforge-propose
 description: Create a governed Change and only the change.yaml, proposal, and delta Specs allowed by the Propose Stage; use when the user wants a sufficiently clear idea, defect, or feature formally specified but has not authorized implementation.
-tools: [read, search, write, test]
+allowed-tools: Read Grep Glob Write Edit Bash(npx:*)
 ---
 
 # Invariants

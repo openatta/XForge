@@ -1,7 +1,7 @@
 ---
 name: xforge-apply
 description: Decompose and implement the smallest delivery units for an Apply-ready Change, using a work-package DAG and parallel sub-Agents when safe; use when the user explicitly asks to start, continue, or rework implementation and State allows implementation-write.
-tools: [read, search, write, test]
+allowed-tools: Read Grep Glob Write Edit Bash Task
 ---
 
 # Invariants

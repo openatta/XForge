@@ -1,7 +1,7 @@
 ---
 name: xforge-archive
 description: 兼容旧入口，把明确的归档请求转交 xforge-verify 的 archive-current 模式；仅用于迁移期用户仍调用旧 Archive Skill 时，不再直接同步 Specs 或移动 Change。
-tools: [read, search, test]
+allowed-tools: Read Grep Glob Bash(npx:*)
 ---
 
 # 不变量

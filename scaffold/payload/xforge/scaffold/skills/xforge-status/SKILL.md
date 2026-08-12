@@ -1,7 +1,7 @@
 ---
 name: xforge-status
 description: Explain xforge state as readable progress for a Change or Requirement; use when the user asks what is done, why work is blocked, which packages remain, whether Evidence is current, or whether Verify/Archive is ready.
-tools: [read, search, test]
+allowed-tools: Read Grep Glob Bash(npx:*)
 ---
 
 # Invariants

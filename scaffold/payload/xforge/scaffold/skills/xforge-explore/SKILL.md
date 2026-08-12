@@ -1,7 +1,7 @@
 ---
 name: xforge-explore
 description: Investigate code, specifications, constraints, defects, or solution options without writing, and narrow an ambiguous idea into a proposal-ready scope; use when the user asks for analysis, diagnosis, comparison, or Flow selection but has not authorized project changes.
-tools: [read, search, test]
+allowed-tools: Read Grep Glob Bash
 ---
 
 # Invariants
