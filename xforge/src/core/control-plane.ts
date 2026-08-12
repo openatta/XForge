@@ -16,10 +16,12 @@ import { normalizeRule, policyApplies, ruleApplies } from './governance.js';
 import { sha256, stableStringify } from './hash.js';
 import { safeResolve } from './path-safety.js';
 import type { SelectedResources } from './resource-loader.js';
-import { computeGovernanceRevision } from './revision.js';
+import { changeImplementers, computeGovernanceRevision } from './revision.js';
 import { validateSchema } from './validator.js';
-import { readAuditEvents, verifyAudit } from './audit.js';
+import { approvalVerifiedInChain, readChangeAuditEvents, type ChangeAuditFacts } from './audit.js';
 import { verifyApprovalReceipt } from './approval-receipt.js';
+import { knownIdentities, unknownIdentityReason, type KnownIdentities } from './ledger-identity.js';
+import { parse as parseYaml } from 'yaml';
 
 async function exists(filePath: string): Promise<boolean> {
   try { await access(filePath); return true; } catch { return false; }
@@ -100,28 +102,91 @@ export async function loadApprovalReceipts(
       const receiptDiagnostics = await validateSchema('approval-receipt', receipt, relative);
       receiptDiagnostics.push(...verifyApprovalReceipt(project, receipt).map((item) => ({ ...item, path: relative })));
       if (receipt.change !== changeId || receipt.policyId !== policy) receiptDiagnostics.push(diagnostic('XFORGE_APPROVAL_RECEIPT_SUBJECT_MISMATCH', 'Approval receipt path does not match its subject.', relative));
+      /*
+       * Neither `local` nor `mcp` receipts carry a signature, so `verifyApprovalReceipt` above is
+       * structural only (digest self-consistency, provider/role authorized) — it cannot by itself
+       * distinguish a receipt `approve` actually produced from one someone hand-placed on disk.
+       * Authenticity comes from the project's own tamper-evident audit hash chain: `approve` always
+       * records an `approval.decided` event carrying `sha256({policy, receipt: receipt.digest})`
+       * alongside writing the receipt file, in the same run. A receipt with no matching chain event
+       * never went through `approve` and is rejected outright, regardless of how well-formed it
+       * looks. This is required unconditionally — for both approval mechanisms XForge supports
+       * (the CLI's own interactive terminal and an mcp provider) — not only as a fallback.
+       */
+      const chainVerified = await approvalVerifiedInChain(project, changeId, policy, receipt.digest);
+      if (!chainVerified) {
+        /*
+         * Warning, not error: this receipt is excluded from `receipts` below regardless, so a
+         * policy that actually needs it still reports `approval:<id>:missing-N` with a reason that
+         * names the real problem. Reporting it as an error here would instead make
+         * `executeTransition`'s whole-diagnostic-bag readiness test refuse transitions that need no
+         * approval at all, purely because some earlier, already-consumed receipt (e.g. one issued
+         * before per-Change audit sharding existed, or read before its committed index caught up)
+         * cannot be corroborated.
+         */
+        receiptDiagnostics.push(diagnostic(
+          'XFORGE_APPROVAL_NOT_IN_AUDIT_CHAIN',
+          'No approval.decided event in this Change\'s audit chain matches this receipt; it did not come from `xforge approve` and cannot be trusted.',
+          relative, 'warning',
+        ));
+      }
       diagnostics.push(...receiptDiagnostics);
-      if (receiptDiagnostics.some((item) => item.severity === 'error')) continue;
+      if (!chainVerified || receiptDiagnostics.some((item) => item.severity === 'error')) continue;
       receipts.push(receipt);
     }
   }
   return { receipts, diagnostics };
 }
 
+/**
+ * What an Approval receipt has to be bound to in order to still count.
+ *
+ * `governingRevision` is the current binding; `stateRevision` is only consulted for receipts issued
+ * before the split, which never carried a governing revision.
+ */
+export interface ApprovalBinding {
+  governingRevision: string;
+  stateRevision: string;
+  /** Identities that did the work on this Change; an approver inside this set fails separation of duties. */
+  implementers?: ReadonlySet<string>;
+  now?: number;
+}
+
+function boundToRevision(receipt: ApprovalReceipt, binding: ApprovalBinding): boolean {
+  return receipt.governingRevision
+    ? receipt.governingRevision === binding.governingRevision
+    : receipt.stateRevision === binding.stateRevision;
+}
+
+/** Compares an approver identity against Git author identities case-insensitively. */
+function isImplementer(receipt: ApprovalReceipt, implementers: ReadonlySet<string> | undefined): boolean {
+  if (!implementers || implementers.size === 0) return false;
+  return implementers.has(receipt.approver.id.trim().toLowerCase());
+}
+
 export function approvalsForPolicy(
   receipts: ApprovalReceipt[],
   policy: ApprovalPolicy,
   transition: string,
-  stateRevision: string,
-): { valid: ApprovalReceipt[]; missing: number; rejected: boolean; separationSatisfied: boolean } {
-  const now = Date.now();
-  const applicable = receipts.filter((receipt) => receipt.policyId === policy.id && receipt.transition === transition && receipt.stateRevision === stateRevision &&
+  binding: ApprovalBinding,
+): { valid: ApprovalReceipt[]; missing: number; rejected: boolean; separationSatisfied: boolean; selfApprovers: string[] } {
+  const now = binding.now ?? Date.now();
+  const applicable = receipts.filter((receipt) => receipt.policyId === policy.id && receipt.transition === transition && boundToRevision(receipt, binding) &&
     (!receipt.expiresAt || Date.parse(receipt.expiresAt) > now) && policy.providers.includes(receipt.approver.provider) && policy.roles.includes(receipt.approver.role));
   const rejected = applicable.some((receipt) => receipt.decision === 'reject');
   const byActor = new Map(applicable.filter((receipt) => receipt.decision === 'approve').map((receipt) => [receipt.approver.id, receipt]));
-  const valid = [...byActor.values()];
-  const separationSatisfied = !policy.separationOfDuties || new Set(valid.map((receipt) => receipt.approver.role)).size >= Math.min(policy.minApprovers, policy.roles.length);
-  return { valid, missing: Math.max(0, policy.minApprovers - valid.length), rejected, separationSatisfied };
+  /*
+   * Separation of duties means the approver is not the implementer. The previous rule counted
+   * distinct roles instead, which both let the author of the change approve it and rejected the
+   * most common real review shape -- two different maintainers.
+   */
+  const selfApprovers = policy.separationOfDuties
+    ? [...byActor.values()].filter((receipt) => isImplementer(receipt, binding.implementers)).map((receipt) => receipt.approver.id)
+    : [];
+  const valid = [...byActor.values()].filter((receipt) => !selfApprovers.includes(receipt.approver.id));
+  const missing = Math.max(0, policy.minApprovers - valid.length);
+  /* A self-approval never counts. It is only reported as a violation while it is what is missing. */
+  return { valid, missing, rejected, separationSatisfied: selfApprovers.length === 0 || missing === 0, selfApprovers };
 }
 
 function structuredExit(stage: StageFlow['stages'][number]): { conditions?: Record<string, string>; gates?: string[]; approvals?: string[]; auditEvents?: string[] } {
@@ -147,34 +212,77 @@ function policyById(flow: StageFlow, id: string): ApprovalPolicy | null {
   return flow.governance?.approvalPolicies.find((policy) => policy.id === id) ?? null;
 }
 
-function providerKinds(project: ProjectContext, policy: ApprovalPolicy): Array<{ id: string; type: 'local' | 'hmac-sha256' | 'mcp' }> {
+function providerKinds(project: ProjectContext, policy: ApprovalPolicy): Array<{ id: string; type: 'local' | 'mcp' }> {
   return policy.providers.map((id) => {
     if (id === 'local') return { id, type: 'local' as const };
-    return { id, type: project.manifest.approvals?.providers.find((item) => item.id === id)?.type ?? 'hmac-sha256' };
+    return { id, type: project.manifest.approvals?.providers.find((item) => item.id === id)?.type ?? 'mcp' };
   });
 }
 
-async function exitConditionSatisfied(
+const CONDITION_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+interface ConditionLedgerEntry {
+  id?: unknown;
+  question?: unknown;
+  impact?: unknown;
+  decision?: unknown;
+  decidedBy?: unknown;
+  decidedAt?: unknown;
+}
+
+function nonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function entryDecided(entry: ConditionLedgerEntry, known?: KnownIdentities): boolean {
+  if (!(nonEmptyString(entry.question) && nonEmptyString(entry.decision) && nonEmptyString(entry.decidedBy)
+    && nonEmptyString(entry.decidedAt) && !Number.isNaN(Date.parse(entry.decidedAt as string)))) return false;
+  /* A decision has to be attributable to somebody the repository has actually seen; a non-empty
+     string let a live run get away with `decidedBy: XForge Live E2E`. */
+  return known ? unknownIdentityReason(entry.decidedBy, known) === null : true;
+}
+
+/**
+ * Stage exit conditions are decided from a structured ledger, never from Artifact prose.
+ *
+ * The previous implementation regex-searched the Worker's own markdown for `<key>: <expected>`, so
+ * an Agent could clear a governance condition by typing one line into a file it wrote itself --
+ * exactly the "self-reported exit" that `xforge-apply` forbids as Gate Evidence. A condition now
+ * requires `<change>/evidence/conditions/<key>.yaml` where every entry names a decision and a
+ * decision maker, which cannot be satisfied without asserting an attributable human decision.
+ */
+async function evaluateExitCondition(
   project: ProjectContext,
   changeId: string,
-  state: ChangeState,
-  stage: StageFlow['stages'][number],
   key: string,
   expected: string,
-): Promise<boolean> {
-  const artifacts = stage.produces.map((id) => state.artifacts.find((artifact) => artifact.id === id)).filter(Boolean);
-  const sources: string[] = [];
-  for (const artifact of artifacts) {
-    for (const output of artifact!.outputPaths) {
-      try { sources.push(await readFile(await safeResolve(project.root, `${project.changesPath}/${changeId}/${output}`), 'utf8')); }
-      catch { /* missing artifacts are reported separately */ }
-    }
+  known?: KnownIdentities,
+): Promise<{ satisfied: boolean; reason: string }> {
+  if (!CONDITION_KEY_PATTERN.test(key)) return { satisfied: false, reason: 'invalid-key' };
+  let document: unknown = null;
+  let found = false;
+  for (const extension of ['yaml', 'yml', 'json']) {
+    const relative = `${project.changesPath}/${changeId}/evidence/conditions/${key}.${extension}`;
+    let source: string;
+    try { source = await readFile(await safeResolve(project.root, relative), 'utf8'); }
+    catch { continue; }
+    found = true;
+    try { document = extension === 'json' ? JSON.parse(source) : parseYaml(source, { strict: true, uniqueKeys: true }); }
+    catch { return { satisfied: false, reason: 'ledger-unreadable' }; }
+    break;
   }
-  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const escapedExpected = expected.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const explicit = new RegExp(`(?:^|\\n)\\s*(?:[-*]\\s*)?(?:${escapedKey}|xforge-condition\\s*:\\s*${escapedKey})\\s*[:=]\\s*${escapedExpected}\\s*(?:$|\\n)`, 'i');
-  if (sources.some((source) => explicit.test(source))) return true;
-  return key === 'materialQuestions' && sources.some((source) => new RegExp(`(?:^|\\n)\\s*(?:[-*]\\s*)?status\\s*:\\s*${escapedExpected}\\s*(?:$|\\n)`, 'i').test(source));
+  if (!found) return { satisfied: false, reason: `ledger-missing-expected-${expected}` };
+  const ledger = document as { condition?: unknown; status?: unknown; entries?: unknown } | null;
+  if (!ledger || typeof ledger !== 'object') return { satisfied: false, reason: 'ledger-unreadable' };
+  if (nonEmptyString(ledger.condition) && ledger.condition !== key) return { satisfied: false, reason: 'ledger-subject-mismatch' };
+  const entries = Array.isArray(ledger.entries) ? ledger.entries as ConditionLedgerEntry[] : null;
+  if (!entries) return { satisfied: false, reason: 'entries-missing' };
+  if (entries.length === 0) return { satisfied: false, reason: 'entries-empty' };
+  const undecided = entries.filter((entry) => !entry || typeof entry !== 'object' || !entryDecided(entry, known));
+  if (undecided.length > 0) return { satisfied: false, reason: `undecided-${undecided.length}` };
+  const declared = nonEmptyString(ledger.status) ? ledger.status.trim() : 'resolved';
+  if (declared !== expected) return { satisfied: false, reason: `status-${declared}-expected-${expected}` };
+  return { satisfied: true, reason: 'satisfied' };
 }
 
 export interface ResolvedControlPlane {
@@ -184,6 +292,8 @@ export interface ResolvedControlPlane {
   state: ChangeState;
   transitionRequirements: Map<string, { approvals: ApprovalReceipt[]; gates: GateEvidence[]; blockedBy: string[] }>;
   resources: SelectedResources;
+  /** Audit facts for this Change as of this resolution, usable without the local `.audit` chain. */
+  auditFacts: ChangeAuditFacts;
 }
 
 export async function resolveControlPlane(
@@ -197,12 +307,25 @@ export async function resolveControlPlane(
   const diagnostics: Diagnostic[] = [];
   const transitions = await loadTransitionReceipts(project, changeId, flow);
   const approvals = await loadApprovalReceipts(project, changeId);
+  /* Identities the repository actually records, so a ledger can cite a decision-maker but not
+     invent one. Computed once per resolve and shared by every condition ledger. */
+  const identities = await knownIdentities(project, changeId, approvals.receipts);
   diagnostics.push(...transitions.diagnostics, ...approvals.diagnostics);
   const currentStage = transitions.receipts.at(-1)?.to ?? flow.stages[0]?.id ?? 'unknown';
   const transitionHead = transitions.receipts.at(-1)?.digest ?? null;
   const revision = await computeGovernanceRevision(project, changeId, flow, state, resources, currentStage, transitionHead);
-  const auditVerification = await verifyAudit(project, changeId);
-  const auditEvents = (await readAuditEvents(project)).filter((event) => event.change === changeId);
+  /*
+   * One read of the Change's audit facts, which resolve from the committed
+   * `evidence/audit/index.json` when the gitignored local chain is absent (fresh clone, CI).
+   */
+  const auditFacts = await readChangeAuditEvents(project, changeId);
+  /* Separation of duties needs Git history; only pay for it when a selected policy asks for it. */
+  let implementers: ReadonlySet<string> | null = null;
+  const needsImplementers = (flow.governance?.approvalPolicies ?? []).some((policy) => policy.separationOfDuties);
+  const binding = async (): Promise<ApprovalBinding> => {
+    if (needsImplementers && implementers === null) implementers = await changeImplementers(project, changeId, state);
+    return { governingRevision: revision.governingRevision!, stateRevision: revision.stateRevision, implementers: implementers ?? undefined };
+  };
   const currentIndex = flow.stages.findIndex((stage) => stage.id === currentStage);
   const current = currentIndex >= 0 ? flow.stages[currentIndex]! : null;
   const candidates: string[] = [];
@@ -229,26 +352,32 @@ export async function resolveControlPlane(
       }
       const exit = structuredExit(current);
       for (const [key, expected] of Object.entries(exit.conditions ?? {})) {
-        if (!await exitConditionSatisfied(project, changeId, state, current, key, expected)) blockedBy.push(`condition:${key}:expected-${expected}`);
+        const condition = await evaluateExitCondition(project, changeId, key, expected, identities);
+        if (!condition.satisfied) blockedBy.push(`condition:${key}:${condition.reason}`);
       }
       for (const gateId of [...new Set([...(current.gates ?? []), ...(exit.gates ?? [])])]) {
         const evidence = await readGateEvidence(project, changeId, gateId, resources);
-        if (!evidence || evidence.status !== 'passed' || evidence.stateRevision !== revision.stateRevision) blockedBy.push(`gate:${gateId}:missing-or-stale`);
-        else gateEvidence.push(evidence);
+        /* Gate Evidence is bound to content, not to Stage/transition state or to gitHead. */
+        const reason = gateBlockReason(evidence, revision.contentRevision);
+        if (reason) blockedBy.push(`gate:${gateId}:${reason}`);
+        else gateEvidence.push(evidence!);
       }
       for (const policyId of exit.approvals ?? []) {
         const policy = policyById(flow, policyId);
         if (!policy) { blockedBy.push(`approval-policy:${policyId}:missing`); continue; }
-        const result = approvalsForPolicy(approvals.receipts, policy, target, revision.stateRevision);
+        const result = approvalsForPolicy(approvals.receipts, policy, target, await binding());
         approvalEvidence.push(...result.valid);
         if (result.rejected) blockedBy.push(`approval:${policyId}:rejected`);
+        if (!result.separationSatisfied) blockedBy.push(`approval:${policyId}:separation-of-duties`);
+        if (result.missing > 0) {
+          blockedBy.push(`approval:${policyId}:missing-${result.missing}`);
+        }
         if (result.missing > 0 || !result.separationSatisfied) {
-          blockedBy.push(`approval:${policyId}:missing-${result.missing || 'separation'}`);
           pendingApprovals.push({ policyId, transition: target, missing: result.missing, roles: policy.roles, providers: providerKinds(project, policy) });
         }
       }
-      for (const eventType of exit.auditEvents ?? []) if (!auditEvents.some((event) => event.eventType === eventType)) blockedBy.push(`audit:${eventType}:missing`);
-      if (!auditVerification.valid) blockedBy.push('audit:chain-invalid');
+      for (const eventType of exit.auditEvents ?? []) if (!auditFacts.eventTypes.includes(eventType)) blockedBy.push(`audit:${eventType}:missing`);
+      if (!auditFacts.chain.valid) blockedBy.push('audit:chain-invalid');
     }
     transitionRequirements.set(target, { approvals: approvalEvidence, gates: gateEvidence, blockedBy });
     readyTransitions.push({ to: target, ready: blockedBy.length === 0, blockedBy });
@@ -258,7 +387,7 @@ export async function resolveControlPlane(
     for (const policyId of flow.terminal.archive.approvals ?? []) {
       const policy = policyById(flow, policyId);
       if (!policy) continue;
-      const result = approvalsForPolicy(approvals.receipts, policy, 'archive', revision.stateRevision);
+      const result = approvalsForPolicy(approvals.receipts, policy, 'archive', await binding());
       if (result.missing > 0 || result.rejected || !result.separationSatisfied) pendingApprovals.push({ policyId, transition: 'archive', missing: result.missing, roles: policy.roles, providers: providerKinds(project, policy) });
     }
   }
@@ -268,7 +397,8 @@ export async function resolveControlPlane(
     if (rule.policyRefs.some((id) => resources.policies.has(id))) coverage.push('guarded');
     const verified = rule.gateRefs.some((id) => transitionRequirements.get(candidates[0] ?? '')?.gates.some((gate) => gate.gate === id));
     if (verified) coverage.push('verified');
-    const approved = rule.approvalRefs.some((id) => approvals.receipts.some((receipt) => receipt.policyId === id && receipt.decision === 'approve' && receipt.stateRevision === revision.stateRevision));
+    const approved = rule.approvalRefs.some((id) => approvals.receipts.some((receipt) => receipt.policyId === id && receipt.decision === 'approve'
+      && boundToRevision(receipt, { governingRevision: revision.governingRevision!, stateRevision: revision.stateRevision })));
     if (approved) coverage.push('approved');
     if (rule.severity === 'must' && rule.gateRefs.length === 0 && rule.approvalRefs.length === 0) coverage.push('uncovered');
     return { id: rule.id, severity: rule.severity, instruction: rule.instruction, coverage, gateRefs: rule.gateRefs, policyRefs: rule.policyRefs, approvalRefs: rule.approvalRefs };
@@ -281,15 +411,47 @@ export async function resolveControlPlane(
     rules,
     policies: [...resources.policies.values()].map((item) => ({ id: item.value.metadata.name, capability: item.value.spec.capability, effect: item.value.spec.effect, applicable: policyApplies(item.value, config, currentStage) })),
     hooks: [...resources.hooks.values()].map((item) => ({ id: item.value.metadata.name, plane: item.value.spec.plane ?? 'legacy', event: item.value.spec.event, selected: true, enabled: item.value.spec.enabled })),
-    audit: { chainValid: auditVerification.valid, chainHead: auditVerification.head, eventCount: auditEvents.length, remotePending: auditVerification.remotePending, coverageGaps: [...new Set(auditEvents.flatMap((event) => event.coverage.gaps))] },
+    audit: { chainValid: auditFacts.chain.valid, chainHead: auditFacts.chain.head, eventCount: auditFacts.eventCount, remotePending: auditFacts.delivery.pending, coverageGaps: auditFacts.coverageGaps },
     readyTransitions,
   };
-  return { governance, diagnostics, flow, state, transitionRequirements, resources };
+  return { governance, diagnostics, flow, state, transitionRequirements, resources, auditFacts };
+}
+
+/**
+ * Why a Gate blocks, as one of three distinct states — or `null` when it does not block.
+ *
+ * These used to collapse into a single `missing-or-stale`, which reads as a filing problem even
+ * when the Gate ran and genuinely failed. That mattered once a remedy was attached to the string:
+ * a Change held up by a real Gate failure was told to re-run `check`, which cannot help and points
+ * away from the finding the Gate reported.
+ */
+export function gateBlockReason(evidence: GateEvidence | null | undefined, contentRevision: string): 'missing' | 'failed' | 'stale' | null {
+  if (!evidence) return 'missing';
+  if (evidence.status !== 'passed') return 'failed';
+  if (evidence.contentRevision !== contentRevision) return 'stale';
+  return null;
+}
+
+/**
+ * The way out of a `gate:<id>:stale` block, spelled out.
+ *
+ * Gate Evidence binds to the content revision at the moment the Gate runs, so an Agent that runs
+ * one Gate, edits an Artifact, then runs the next has silently invalidated the first — every Gate
+ * reports `passed` and the Stage still will not close. Naming the remedy turns that dead end into
+ * one command. Only `stale` earns it: `failed` needs the finding fixed, and `missing` needs the
+ * Gate run for the first time, neither of which this sentence describes.
+ */
+export function blockRemedy(blocks: readonly string[], changeId: string): string | null {
+  if (!blocks.some((block) => /^gate:.+:stale$/.test(block))) return null;
+  /* Plain `check` runs the current Stage's whole Gate set. `--all-gates` would also run Gates
+     belonging to Stages the Change has not reached, which cannot pass yet and is not the advice. */
+  return `Gate Evidence is bound to the content revision, so editing any Artifact after a Gate ran makes that Gate stale. Run \`xforge check --change ${changeId}\` after your last write to re-run this Stage's Gates against the current content.`;
 }
 
 export async function terminalGovernanceBlocks(
   project: ProjectContext,
   control: ResolvedControlPlane,
+  options: { auditFacts?: ChangeAuditFacts } = {},
 ): Promise<string[]> {
   const { governance, flow } = control;
   const blocks: string[] = [];
@@ -298,7 +460,8 @@ export async function terminalGovernanceBlocks(
   if (!readyReceipt || readyReceipt.to !== 'ready-to-archive') {
     blocks.push('transition:ready-receipt-missing');
   } else {
-    if (readyReceipt.contentRevision !== governance.revision.contentRevision || readyReceipt.policySnapshotDigest !== governance.revision.policySnapshotDigest || readyReceipt.gitHead !== governance.revision.gitHead) {
+    /* gitHead is audit metadata: a commit that changes no governed content is not staleness. */
+    if (readyReceipt.contentRevision !== governance.revision.contentRevision || readyReceipt.policySnapshotDigest !== governance.revision.policySnapshotDigest) {
       blocks.push('transition:ready-receipt-stale');
     }
     const sourceStage = flow.stages.find((stage) => stage.id === readyReceipt.from);
@@ -306,27 +469,40 @@ export async function terminalGovernanceBlocks(
     for (const gateId of [...new Set([...(sourceStage?.gates ?? []), ...(sourceExit.gates ?? [])])]) {
       const evidence = await readGateEvidence(project, control.state.id, gateId, control.resources);
       const boundToTransition = Boolean(evidence && readyReceipt.gates.includes(evidence.digest) && evidence.stateRevision === readyReceipt.stateRevisionBefore);
-      const boundToArchiveRecheck = Boolean(evidence && evidence.stateRevision === governance.revision.stateRevision);
-      if (!evidence || evidence.status !== 'passed' || (!boundToTransition && !boundToArchiveRecheck) ||
-        evidence.policySnapshotDigest !== governance.revision.policySnapshotDigest || evidence.gitHead !== governance.revision.gitHead) {
-        blocks.push(`gate:${gateId}:missing-or-stale`);
+      const boundToArchiveRecheck = Boolean(evidence && evidence.contentRevision === governance.revision.contentRevision);
+      /* Archive accepts Evidence bound either to the closing transition or to a re-check at the
+         current revision, so staleness here is its own rule — but missing and failed are not. */
+      if (!evidence) blocks.push(`gate:${gateId}:missing`);
+      else if (evidence.status !== 'passed') blocks.push(`gate:${gateId}:failed`);
+      else if ((!boundToTransition && !boundToArchiveRecheck) || evidence.policySnapshotDigest !== governance.revision.policySnapshotDigest) {
+        blocks.push(`gate:${gateId}:stale`);
       }
     }
   }
+  let implementers: ReadonlySet<string> | null = null;
   for (const policyId of flow.terminal.archive.approvals ?? []) {
     const policy = policyById(flow, policyId);
     if (!policy) { blocks.push(`approval-policy:${policyId}:missing`); continue; }
-    const result = approvalsForPolicy(governance.approvals, policy, 'archive', governance.revision.stateRevision);
+    if (policy.separationOfDuties && implementers === null) implementers = await changeImplementers(project, control.state.id, control.state);
+    const result = approvalsForPolicy(governance.approvals, policy, 'archive', {
+      governingRevision: governance.revision.governingRevision!, stateRevision: governance.revision.stateRevision, implementers: implementers ?? undefined,
+    });
     if (result.rejected) blocks.push(`approval:${policyId}:rejected`);
-    if (result.missing > 0 || !result.separationSatisfied) blocks.push(`approval:${policyId}:missing-${result.missing || 'separation'}`);
+    if (!result.separationSatisfied) blocks.push(`approval:${policyId}:separation-of-duties`);
+    if (result.missing > 0) blocks.push(`approval:${policyId}:missing-${result.missing}`);
   }
   const policy = flow.terminal.archive.auditPolicy ?? flow.governance?.audit;
   const remoteRequired = policy?.remoteDelivery === 'required' || Boolean(project.manifest.audit?.remote?.requiredFor.includes(flow.policy.assuranceLevel));
-  const events = (await readAuditEvents(project)).filter((event) => event.change === control.state.id);
-  for (const type of policy?.requiredEventTypes ?? []) if (!events.some((event) => event.eventType === type)) blocks.push(`audit:${type}:missing`);
-  if (!governance.audit.chainValid) blocks.push('audit:chain-invalid');
-  if (policy?.runtimeCoverage === 'required' && governance.audit.coverageGaps.length > 0) blocks.push('audit:runtime-coverage-gap');
-  if (remoteRequired && governance.audit.remotePending > 0) blocks.push('audit:remote-pending');
+  /*
+   * Archive is decided from the Change's own committed audit index when the gitignored local chain
+   * is missing, so a fresh clone or a CI runner can close a Change the laptop that ran it started.
+   */
+  const facts = options.auditFacts ?? control.auditFacts ?? await readChangeAuditEvents(project, control.state.id);
+  for (const type of policy?.requiredEventTypes ?? []) if (!facts.eventTypes.includes(type)) blocks.push(`audit:${type}:missing`);
+  if (!facts.chain.valid) blocks.push('audit:chain-invalid');
+  if (!facts.trusted) blocks.push('audit:untrusted');
+  if (policy?.runtimeCoverage === 'required' && facts.coverageGaps.length > 0) blocks.push('audit:runtime-coverage-gap');
+  if (remoteRequired && facts.delivery.pending > 0) blocks.push('audit:remote-pending');
   if (remoteRequired && !project.manifest.audit?.remote) blocks.push('audit:remote-not-configured');
   return [...new Set(blocks)];
 }

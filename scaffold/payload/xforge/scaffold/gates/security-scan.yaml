@@ -4,7 +4,6 @@ metadata:
   name: security-scan
   version: 1
 spec:
-  stage: before-archive
   required: true
   command: [npm, audit, "--offline", "--audit-level=high"]
   workingDirectory: .

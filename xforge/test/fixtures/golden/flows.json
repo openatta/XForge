@@ -9,7 +9,7 @@
     "artifacts": ["proposal", "delta-specs", "assurance", "verification-receipt"],
     "gates": ["structure", "unit-tests"],
     "archiveHandler": "xforge-verify",
-    "approvals": [["quick-close", 1, false, ["local", "enterprise-hmac"]]],
+    "approvals": [["quick-close", 1, false, ["local", "enterprise-approvals"]]],
     "audit": { "requiredEventTypes": ["gate.after", "stage.entered"], "runtimeCoverage": "optional", "remoteDelivery": "optional" }
   },
   "solid": {
@@ -17,15 +17,16 @@
     "stages": [
       ["propose", []],
       ["design", ["propose"]],
-      ["apply", ["design"]],
+      ["check", ["design"]],
+      ["apply", ["check"]],
       ["verify", ["apply"]]
     ],
-    "artifacts": ["proposal", "delta-specs", "design", "assurance", "verification-receipt"],
+    "artifacts": ["proposal", "delta-specs", "design", "check-report", "check-findings", "constitution-check", "assurance", "verification-receipt"],
     "gates": ["structure", "unit-tests"],
     "archiveHandler": "xforge-verify",
     "approvals": [
-      ["planning-solid", 1, false, ["local", "enterprise-hmac"]],
-      ["closing-solid", 1, false, ["local", "enterprise-hmac"]]
+      ["planning-solid", 1, false, ["local", "enterprise-approvals"]],
+      ["closing-solid", 1, false, ["local", "enterprise-approvals"]]
     ],
     "audit": { "requiredEventTypes": ["gate.after", "stage.entered", "approval.decided"], "runtimeCoverage": "optional", "remoteDelivery": "optional" }
   },
@@ -39,12 +40,12 @@
       ["apply", ["check"]],
       ["verify", ["apply"]]
     ],
-    "artifacts": ["proposal", "delta-specs", "clarifications", "design", "check-report", "assurance", "verification-receipt"],
+    "artifacts": ["proposal", "delta-specs", "clarifications", "material-questions", "design", "check-report", "check-findings", "constitution-check", "assurance", "verification-receipt"],
     "gates": ["structure", "unit-tests", "security-scan"],
     "archiveHandler": "xforge-verify",
     "approvals": [
-      ["implementation-major", 2, true, ["enterprise-hmac"]],
-      ["closing-major", 2, true, ["enterprise-hmac"]]
+      ["implementation-major", 2, true, ["enterprise-approvals"]],
+      ["closing-major", 2, true, ["enterprise-approvals"]]
     ],
     "audit": { "requiredEventTypes": ["gate.after", "stage.entered", "approval.decided"], "runtimeCoverage": "optional", "remoteDelivery": "required" }
   }

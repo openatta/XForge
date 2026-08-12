@@ -21,6 +21,7 @@ entries:
       - { scenario: major, flow: major, stage: design }
   - skill: xforge-check
     scenarios:
+      - { scenario: solid, flow: solid, stage: check }
       - { scenario: major, flow: major, stage: check }
   - skill: xforge-apply
     scenarios:

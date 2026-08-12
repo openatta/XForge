@@ -311,6 +311,225 @@ describe('work-package protocol', () => {
     expect(result.json.data.change.workPackages.packages[0].status).toBe('failed');
   });
 
+  /*
+   * A live run produced all three of these at once: the harness recorded a delivery whose whole
+   * diff was the dispatch receipt and the audit index XForge had just written itself, mapped every
+   * done_when criterion to those same two files, and took base_commit from the HEAD the receipt
+   * recorded rather than the commit that introduced it. Only the write_paths check objected, and it
+   * objected for the wrong reason.
+   */
+  async function dispatchWithCommittedReceipt(root: string): Promise<{ base: string; binding: any; receiptPath: string }> {
+    await initializeGit(root);
+    await advanceSolidToApply(root);
+    /* Commit everything the planning Stages produced first, so the dispatch commit below contains
+       the receipt and nothing else — which is what makes `base` a meaningful start for a worker. */
+    await git(root, ['add', '-A']);
+    await git(root, ['commit', '-qm', 'advanced to apply']);
+    const base = await git(root, ['rev-parse', 'HEAD']);
+    const dispatch = await runCli(root, ['work-package', 'dispatch', '--change', 'add-feature', '--package', 'T001'], approvalTestEnv);
+    expect(dispatch.code, JSON.stringify(dispatch.json.diagnostics, null, 2)).toBe(0);
+    const binding = dispatch.json.data.receipt;
+    const receiptPath = `xforge/changes/add-feature/evidence/agents/T001/dispatch/${binding.executionId}.json`;
+    await git(root, ['add', '-A']);
+    await git(root, ['commit', '-qm', 'dispatched T001']);
+    return { base, binding, receiptPath };
+  }
+
+  function delivery(binding: any, overrides: Record<string, unknown>): string {
+    return stringify({
+      execution_id: binding.executionId,
+      recorded_at: '2026-08-12T00:00:00.000Z',
+      status: 'succeeded',
+      package_id: 'T001',
+      issues: [],
+      state_revision: binding.stateRevision,
+      policy_snapshot_digest: binding.policySnapshotDigest,
+      audit_correlation_id: binding.auditCorrelationId,
+      ...overrides,
+    });
+  }
+
+  it('rejects a base_commit that predates the commit introducing the dispatch receipt', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const verify = `${process.execPath} -e "process.exit(0)"`;
+    await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([
+      workPackage('T001', { write_paths: ['src/order/**'], verify: [verify] }),
+    ]));
+    const { base, binding } = await dispatchWithCommittedReceipt(root);
+    await write(root, 'src/order/refund.ts', 'export const refund = true;\n');
+    await git(root, ['add', 'src/order/refund.ts']);
+    await git(root, ['commit', '-qm', 'worker T001']);
+    const head = await git(root, ['rev-parse', 'HEAD']);
+    /* `base` is the pre-dispatch commit, so the receipt XForge wrote lands inside base..head. */
+    await write(root, `xforge/changes/add-feature/evidence/agents/T001/${binding.executionId}.yaml`, delivery(binding, {
+      base_commit: base,
+      head_commit: head,
+      changed_paths: ['src/order/refund.ts'],
+      validation: [{ command: verify, exit_code: 0 }],
+      done_when_evidence: [{ criterion: 'T001 is covered by an automated check', evidence: ['src/order/refund.ts'] }],
+    }));
+    const result = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
+    expect(result.code).toBe(1);
+    expect(result.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_WORK_PACKAGE_BASE_PRECEDES_DISPATCH');
+  });
+
+  it('rejects a delivery whose entire diff is the control plane\'s own bookkeeping', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const verify = `${process.execPath} -e "process.exit(0)"`;
+    await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([
+      workPackage('T001', { write_paths: ['src/order/**'], verify: [verify] }),
+    ]));
+    const { base, binding, receiptPath } = await dispatchWithCommittedReceipt(root);
+    const head = await git(root, ['rev-parse', 'HEAD']);
+    const changed = (await git(root, ['diff', '--name-only', `${base}..${head}`])).split('\n').filter(Boolean).sort();
+    await write(root, `xforge/changes/add-feature/evidence/agents/T001/${binding.executionId}.yaml`, delivery(binding, {
+      base_commit: base,
+      head_commit: head,
+      changed_paths: changed,
+      validation: [{ command: verify, exit_code: 0 }],
+      done_when_evidence: [{ criterion: 'T001 is covered by an automated check', evidence: [receiptPath] }],
+    }));
+    const result = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
+    expect(result.code).toBe(1);
+    const codes = result.json.diagnostics.map((item: any) => item.code);
+    /* The escape check also fires, but it blames the worker for a path XForge itself wrote. This
+       says what actually went wrong: the package delivered nothing. */
+    expect(codes).toContain('XFORGE_WORK_PACKAGE_NO_WORK_DELIVERED');
+    /* And the dispatch receipt is not evidence that the work was done. */
+    expect(codes).toContain('XFORGE_WORK_PACKAGE_DONE_WHEN_EVIDENCE_IRRELEVANT');
+  });
+
+  /*
+   * The base_commit-precedes-dispatch check only guards against the control plane's own dispatch
+   * commit landing in range. It doesn't help when a different control-plane write — e.g. an
+   * unrelated `xforge` invocation appending to the audit index mid-delivery — is swept into
+   * base..head for an ordinary commit-ordering reason that has nothing to do with dispatch. That
+   * write is still not attributable to the Worker, so it must not trip write_paths either.
+   */
+  it('does not flag an incidental control-plane bookkeeping write inside the delivery range as a write escape', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const verify = `${process.execPath} -e "process.exit(0)"`;
+    await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([
+      workPackage('T001', { write_paths: ['src/order/**'], verify: [verify] }),
+    ]));
+    const { binding } = await dispatchWithCommittedReceipt(root);
+    /* The delivery range starts at the dispatch commit, not before it — a base_commit that
+       predates the dispatch receipt trips XFORGE_WORK_PACKAGE_BASE_PRECEDES_DISPATCH regardless of
+       this test's own bookkeeping-exemption scenario, which is covered separately. */
+    const base = await git(root, ['rev-parse', 'HEAD']);
+    await write(root, 'src/order/refund.ts', 'export const refund = true;\n');
+    await git(root, ['add', 'src/order/refund.ts']);
+    await git(root, ['commit', '-qm', 'worker T001']);
+    /* Simulate a concurrent, unrelated `xforge` command appending to the audit index while the
+       Worker was still delivering, so the audit index change lands in base..head alongside the
+       worker's real output rather than as the dispatch commit itself. */
+    await write(root, 'xforge/changes/add-feature/evidence/audit/index.json', '{"events":[]}\n');
+    await git(root, ['add', 'xforge/changes/add-feature/evidence/audit/index.json']);
+    await git(root, ['commit', '-qm', 'concurrent audit index update']);
+    const head = await git(root, ['rev-parse', 'HEAD']);
+    await write(root, `xforge/changes/add-feature/evidence/agents/T001/${binding.executionId}.yaml`, delivery(binding, {
+      base_commit: base,
+      head_commit: head,
+      changed_paths: ['src/order/refund.ts', 'xforge/changes/add-feature/evidence/audit/index.json'],
+      validation: [{ command: verify, exit_code: 0 }],
+      done_when_evidence: [{ criterion: 'T001 is covered by an automated check', evidence: ['src/order/refund.ts'] }],
+    }));
+    const result = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
+    const codes = result.json.diagnostics.map((item: any) => item.code);
+    expect(codes).not.toContain('XFORGE_WORK_PACKAGE_WRITE_ESCAPE');
+    expect(codes).not.toContain('XFORGE_WORK_PACKAGE_BASE_PRECEDES_DISPATCH');
+    expect(result.json.data.change.workPackages.packages[0].status).toBe('succeeded');
+  });
+
+  it('still flags a genuine out-of-scope Worker-authored file alongside an incidental bookkeeping write', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const verify = `${process.execPath} -e "process.exit(0)"`;
+    await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([
+      workPackage('T001', { write_paths: ['src/order/**'], verify: [verify] }),
+    ]));
+    const { binding } = await dispatchWithCommittedReceipt(root);
+    const base = await git(root, ['rev-parse', 'HEAD']);
+    await write(root, 'src/order/refund.ts', 'export const refund = true;\n');
+    await write(root, 'src/payment/escaped.ts', 'export const escaped = true;\n');
+    await git(root, ['add', 'src/order/refund.ts', 'src/payment/escaped.ts']);
+    await git(root, ['commit', '-qm', 'worker T001 with an out-of-scope file']);
+    await write(root, 'xforge/changes/add-feature/evidence/audit/index.json', '{"events":[]}\n');
+    await git(root, ['add', 'xforge/changes/add-feature/evidence/audit/index.json']);
+    await git(root, ['commit', '-qm', 'concurrent audit index update']);
+    const head = await git(root, ['rev-parse', 'HEAD']);
+    await write(root, `xforge/changes/add-feature/evidence/agents/T001/${binding.executionId}.yaml`, delivery(binding, {
+      base_commit: base,
+      head_commit: head,
+      changed_paths: ['src/order/refund.ts', 'src/payment/escaped.ts', 'xforge/changes/add-feature/evidence/audit/index.json'],
+      validation: [{ command: verify, exit_code: 0 }],
+      done_when_evidence: [{ criterion: 'T001 is covered by an automated check', evidence: ['src/order/refund.ts'] }],
+    }));
+    const result = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
+    expect(result.code).toBe(1);
+    const codes = result.json.diagnostics.map((item: any) => item.code);
+    expect(codes).toContain('XFORGE_WORK_PACKAGE_WRITE_ESCAPE');
+    expect(codes).not.toContain('XFORGE_WORK_PACKAGE_BASE_PRECEDES_DISPATCH');
+    expect(result.json.diagnostics.some((item: any) => item.message?.includes('src/payment/escaped.ts'))).toBe(true);
+    expect(result.json.data.change.workPackages.packages[0].status).toBe('failed');
+  });
+
+  it('rejects done_when evidence that names neither a verify command nor a changed path', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const verify = `${process.execPath} -e "process.exit(0)"`;
+    await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([
+      workPackage('T001', { write_paths: ['src/order/**'], verify: [verify] }),
+    ]));
+    const { binding } = await dispatchWithCommittedReceipt(root);
+    const base = await git(root, ['rev-parse', 'HEAD']);
+    await write(root, 'src/order/refund.ts', 'export const refund = true;\n');
+    await git(root, ['add', 'src/order/refund.ts']);
+    await git(root, ['commit', '-qm', 'worker T001']);
+    const head = await git(root, ['rev-parse', 'HEAD']);
+    await write(root, `xforge/changes/add-feature/evidence/agents/T001/${binding.executionId}.yaml`, delivery(binding, {
+      base_commit: base,
+      head_commit: head,
+      changed_paths: ['src/order/refund.ts'],
+      validation: [{ command: verify, exit_code: 0 }],
+      done_when_evidence: [{ criterion: 'T001 is covered by an automated check', evidence: ['we ran the tests and they passed'] }],
+    }));
+    const result = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
+    expect(result.code).toBe(1);
+    expect(result.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_WORK_PACKAGE_DONE_WHEN_EVIDENCE_IRRELEVANT');
+  });
+
+  it('accepts a delivery based on the dispatch commit with evidence that names real output', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const verify = `${process.execPath} -e "process.exit(0)"`;
+    await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([
+      workPackage('T001', { write_paths: ['src/order/**'], verify: [verify] }),
+    ]));
+    const { binding } = await dispatchWithCommittedReceipt(root);
+    const base = await git(root, ['rev-parse', 'HEAD']);
+    await write(root, 'src/order/refund.ts', 'export const refund = true;\n');
+    await git(root, ['add', 'src/order/refund.ts']);
+    await git(root, ['commit', '-qm', 'worker T001']);
+    const head = await git(root, ['rev-parse', 'HEAD']);
+    await write(root, `xforge/changes/add-feature/evidence/agents/T001/${binding.executionId}.yaml`, delivery(binding, {
+      base_commit: base,
+      head_commit: head,
+      changed_paths: ['src/order/refund.ts'],
+      validation: [{ command: verify, exit_code: 0 }],
+      done_when_evidence: [{ criterion: 'T001 is covered by an automated check', evidence: [verify, 'src/order/refund.ts'] }],
+    }));
+    const result = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
+    const codes = result.json.diagnostics.map((item: any) => item.code);
+    expect(codes).not.toContain('XFORGE_WORK_PACKAGE_BASE_PRECEDES_DISPATCH');
+    expect(codes).not.toContain('XFORGE_WORK_PACKAGE_NO_WORK_DELIVERED');
+    expect(codes).not.toContain('XFORGE_WORK_PACKAGE_DONE_WHEN_EVIDENCE_IRRELEVANT');
+    expect(result.json.data.change.workPackages.packages[0].status).toBe('succeeded');
+  });
+
   it('does not trust a claimed validation pass when verify actually fails', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);

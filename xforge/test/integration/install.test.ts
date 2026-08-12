@@ -7,6 +7,19 @@ async function exists(filePath: string): Promise<boolean> {
   try { await access(filePath); return true; } catch { return false; }
 }
 
+async function json(root: string, relative: string): Promise<any> {
+  return JSON.parse(await readFile(path.join(root, ...relative.split('/')), 'utf8'));
+}
+
+const USER_SETTINGS = {
+  model: 'opusplan',
+  env: { MY_TEAM_FLAG: '1' },
+  statusLine: { type: 'command', command: './scripts/statusline.sh' },
+  claudeMdExcludes: ['**/other-team/CLAUDE.md'],
+  permissions: { deny: ['Read(./.env)'], allow: ['Bash(npm run lint)'] },
+  hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: './scripts/team-guard.sh' }] }] },
+};
+
 describe('install lifecycle', () => {
   it('is dry-run safe, installs all five targets, and is idempotent', async () => {
     const root = await fixture();
@@ -69,5 +82,111 @@ describe('install lifecycle', () => {
     expect(prune.code).toBe(0);
     expect(prune.json.changes).toContainEqual(expect.objectContaining({ action: 'delete', path: '.agents/skills/xforge-explore/SKILL.md' }));
     expect(await exists(path.join(cleanRoot, '.agents', 'skills', 'xforge-explore', 'SKILL.md'))).toBe(false);
+  });
+
+  // Cursor and Copilot declare an empty `permissionPolicyScopes.capabilities`, so the shipped
+  // `protected-files` policy (which carries `exceptActors: [integrator]`) never reaches the "this
+  // target would otherwise have carried it" branch that reports XFORGE_POLICY_STATIC_LAYER_DEGRADED
+  // for the other targets. Without an explicit diagnostic for that case, those two targets get no
+  // signal at all about the policy's status - not because it is fine, but because the precondition
+  // for the usual warning is never true. Assert the gap is now stated explicitly instead of silent.
+  it('reports a static-layer diagnostic for exceptActors policies even on targets with no static permission projection at all', async () => {
+    const root = await fixture();
+    const result = await runCli(root, ['install']);
+    expect(result.code, JSON.stringify(result.json.diagnostics, null, 2)).toBe(0);
+    const degraded = result.json.diagnostics.filter((item: any) => item.code === 'XFORGE_POLICY_STATIC_LAYER_DEGRADED');
+    for (const target of ['cursor', 'github-copilot']) {
+      const forTarget = degraded.find((item: any) => item.details?.target === target && item.details?.policy === 'protected-files');
+      expect(forTarget, JSON.stringify(degraded, null, 2)).toBeDefined();
+      expect(forTarget.details.reason).toBe('no-static-projection');
+      expect(forTarget.message).toContain('no static permission-policy projection');
+    }
+  });
+});
+
+// P0-2: `.claude/settings.json` is the normal home for a team's own Claude Code settings. Taking
+// the whole file made `install` fail outright on any repository already using Claude Code, and
+// froze the file afterwards.
+describe('partially owned host configuration', () => {
+  it('installs into a pre-existing .claude/settings.json and keeps every key XForge does not own', async () => {
+    const root = await fixture();
+    await write(root, '.claude/settings.json', `${JSON.stringify(USER_SETTINGS, null, 2)}\n`);
+
+    const result = await runCli(root, ['install', '--target', 'claude']);
+    expect(result.code, JSON.stringify(result.json.diagnostics, null, 2)).toBe(0);
+    expect(result.json.diagnostics.map((item: any) => item.code)).not.toContain('XFORGE_INSTALL_CONFLICT');
+
+    const settings = await json(root, '.claude/settings.json');
+    expect(settings.model).toBe('opusplan');
+    expect(settings.env).toEqual({ MY_TEAM_FLAG: '1' });
+    expect(settings.statusLine).toEqual(USER_SETTINGS.statusLine);
+    expect(settings.claudeMdExcludes).toEqual(['**/other-team/CLAUDE.md']);
+    expect(settings.permissions.deny).toEqual(['Read(./.env)']);
+    expect(settings.permissions.allow).toEqual(['Bash(npm run lint)']);
+    // XForge's governance dispatcher is added ahead of the team's own PreToolUse hook.
+    expect(settings.hooks.PreToolUse).toHaveLength(2);
+    expect(settings.hooks.PreToolUse[0].hooks[0].command).toContain('xforge hook dispatch');
+    expect(settings.hooks.PreToolUse[1]).toEqual(USER_SETTINGS.hooks.PreToolUse[0]);
+  });
+
+  it('stays idempotent and tolerates later user edits to keys XForge does not own', async () => {
+    const root = await fixture();
+    await write(root, '.claude/settings.json', `${JSON.stringify(USER_SETTINGS, null, 2)}\n`);
+    expect((await runCli(root, ['install', '--target', 'claude'])).code).toBe(0);
+    const stateBefore = await readFile(path.join(root, 'xforge', '.state.json'), 'utf8');
+
+    const second = await runCli(root, ['install', '--target', 'claude']);
+    expect(second.code).toBe(0);
+    expect(second.json.changes.filter((item: any) => item.path === '.claude/settings.json')).toEqual([
+      expect.objectContaining({ action: 'skip' }),
+    ]);
+    expect(await readFile(path.join(root, 'xforge', '.state.json'), 'utf8')).toBe(stateBefore);
+
+    const edited = await json(root, '.claude/settings.json');
+    edited.model = 'sonnet';
+    edited.permissions.deny.push('Read(./secrets/**)');
+    await write(root, '.claude/settings.json', `${JSON.stringify(edited, null, 2)}\n`);
+
+    const third = await runCli(root, ['install', '--target', 'claude']);
+    expect(third.code, JSON.stringify(third.json.diagnostics, null, 2)).toBe(0);
+    expect(third.json.diagnostics.map((item: any) => item.code)).not.toContain('XFORGE_MANAGED_FILE_MODIFIED');
+    const settings = await json(root, '.claude/settings.json');
+    expect(settings.model).toBe('sonnet');
+    expect(settings.permissions.deny).toEqual(['Read(./.env)', 'Read(./secrets/**)']);
+    // The record tracks the owned material only, so an unowned edit must not churn it.
+    expect(await readFile(path.join(root, 'xforge', '.state.json'), 'utf8')).toBe(stateBefore);
+  });
+
+  it('still refuses to proceed when a user rewrites material XForge owns', async () => {
+    const root = await fixture();
+    expect((await runCli(root, ['install', '--target', 'claude'])).code).toBe(0);
+    const settings = await json(root, '.claude/settings.json');
+    settings.hooks.PreToolUse[0].hooks[0].command = 'rm -rf /';
+    await write(root, '.claude/settings.json', `${JSON.stringify(settings, null, 2)}\n`);
+
+    const result = await runCli(root, ['install', '--target', 'claude']);
+    expect(result.code).toBe(1);
+    expect(result.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_MANAGED_FILE_MODIFIED');
+    expect((await json(root, '.claude/settings.json')).hooks.PreToolUse[0].hooks[0].command).toBe('rm -rf /');
+  });
+
+  // P0-4: Claude Code loads CLAUDE.md, never AGENTS.md, so the `npx --no-install` invocation
+  // contract never reached Claude users.
+  it('merges an XForge block into an existing CLAUDE.md that imports AGENTS.md', async () => {
+    const root = await fixture();
+    await write(root, 'CLAUDE.md', '# Our project\n\nRun `make dev` first.\n');
+    expect((await runCli(root, ['install', '--target', 'claude'])).code).toBe(0);
+
+    const memory = await readFile(path.join(root, 'CLAUDE.md'), 'utf8');
+    expect(memory).toContain('# Our project');
+    expect(memory).toContain('Run `make dev` first.');
+    expect(memory).toContain('@AGENTS.md');
+    expect(memory.indexOf('# Our project')).toBeLessThan(memory.indexOf('@AGENTS.md'));
+  });
+
+  it('creates CLAUDE.md from scratch when the repository has none', async () => {
+    const root = await fixture();
+    expect((await runCli(root, ['install', '--target', 'claude'])).code).toBe(0);
+    expect(await readFile(path.join(root, 'CLAUDE.md'), 'utf8')).toContain('@AGENTS.md');
   });
 });

@@ -14,6 +14,7 @@ metadata:
 - `xforge-check` 做语义审查；`npx --no-install xforge check` 提供 schema、路径、Gate 和 Evidence 的确定性输入，二者不能互相替代。
 - 默认只读 governing artifacts；发现问题时报告 rework，不在审查中悄悄改写上游。
 - Check report 是 LLM Review Evidence，不是 Gate Evidence；即使写出 `PASS` 也不能通过 Machine Gate、Transition 或 Approval。
+- Gate Evidence 绑定 Gate 运行当刻的 content revision。**必须在最后一次写入之后**、一次性运行 Gate。先跑一个 Gate、再改 Artifact、再跑下一个，会让先跑的 Gate 变陈旧：所有 Gate 都报 `passed`，Stage 却仍然出不去。
 
 # 权限
 
@@ -27,7 +28,8 @@ metadata:
 3. 核对测试、rollout、monitoring、stop signals、owner、path scope、依赖与并行边界是否匹配重大影响。
 4. 运行 `npx --no-install xforge check --change <id>`，把确定性诊断作为证据输入。
 5. 按 blocker、warning、suggestion 写报告；每项指出 Artifact/Requirement 位置、原因和 `reworkTo` Stage。
-6. 刷新 State；有 blocker 时请求 State 指定的 rework Transition；无 blocker 时仍由 CLI Gate 与 Approval 决定是否可运行 `npx --no-install xforge transition --change <id> --to apply`。
+6. 在 `check-report.md` 与所有 Evidence 台账都写完之后，再运行一次 `npx --no-install xforge check --change <id>`，它会对最终内容运行整个 Stage 的 Gate 集合；需要同时刷新更早 Stage 的 Evidence 时加 `--all-gates`。
+7. 刷新 State；有 blocker 时请求 State 指定的 rework Transition；无 blocker 时仍由 CLI Gate 与 Approval 决定是否可运行 `npx --no-install xforge transition --change <id> --to apply`。
 
 # 证据
 

@@ -18,7 +18,8 @@ resolved no-grace-period rotation behavior from Clarify, the v1-to-v2
 migration's atomicity and corrupt-file handling, and rollback if the
 migration itself needs to be reverted.
 
-Also create `work-packages.yaml` with root-level `apiVersion`
+Also create `work-packages.yaml` **inside the Change directory** that
+`xforge state` reports as `change.path` (not at the project root), with root-level `apiVersion`
 `xforge.dev/v1alpha1`, root-level `kind` `WorkPackagePlan`, and a root-level
 `packages` array containing exactly one package (do not add a `spec`
 wrapper). The package has the eight canonical fields: `id`, `goal`,

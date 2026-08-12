@@ -24,7 +24,8 @@
             "allow": {
               "type": "array",
               "uniqueItems": true,
-              "items": { "enum": ["read", "search", "write", "test", "network"] }
+              "items": { "enum": ["read", "search", "write", "test", "network"] },
+              "description": "Host-neutral capability allowlist, projected into each target's own enforcement frontmatter rather than prose: Claude `tools:` (read=Read, search=Grep+Glob, write=Write+Edit+NotebookEdit, test=Bash, network=WebFetch+WebSearch), GitHub Copilot `tools:` (read/search/edit/execute/web), OpenCode `permission:` (an absent capability becomes an explicit deny), Cursor `readonly:` (true when write is absent), Codex `sandbox_mode` (read-only unless write is present)."
             }
           }
         },
@@ -42,7 +43,10 @@
           "additionalProperties": false,
           "required": ["class", "fallback"],
           "properties": {
-            "class": { "type": "string" },
+            "class": {
+              "type": "string",
+              "description": "Host-neutral model class. `reasoning` and `fast` map to a concrete model where the target names one (Claude `model: opus` / `model: haiku`, Codex `model_reasoning_effort`); anything else inherits the session model. Cursor and OpenCode take no class mapping and inherit."
+            },
             "fallback": { "type": "string" }
           }
         }

@@ -1,5 +1,12 @@
-import type { Diagnostic, FileChange, ProjectContext } from '../types.js';
-import { readAuditEvents, retryAuditDelivery, verifyAudit } from '../core/audit.js';
+import type { AuditEvent, Diagnostic, FileChange, ProjectContext } from '../types.js';
+import {
+  expiredAuditEvents,
+  pruneExpiredAuditEvents,
+  readAuditEvents,
+  readChangeAuditEvents,
+  retryAuditDelivery,
+  verifyAudit,
+} from '../core/audit.js';
 import { atomicWrite } from '../core/files.js';
 import { sha256 } from '../core/hash.js';
 import { normalizeRelative } from '../core/path-safety.js';
@@ -7,25 +14,36 @@ import { assertManaged } from '../core/project-loader.js';
 import { isStageFlow, resolveChangeState } from '../core/flow-resolver.js';
 import { diagnostic } from '../core/errors.js';
 
-export async function executeAudit(project: ProjectContext, options: { action: 'status' | 'verify' | 'export' | 'retry'; change?: string; output?: string }): Promise<{
+function byTimestamp(events: AuditEvent[]): AuditEvent[] {
+  return [...events].sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp));
+}
+
+export async function executeAudit(project: ProjectContext, options: { action: 'status' | 'verify' | 'export' | 'retry' | 'prune'; change?: string; output?: string }): Promise<{
   data: Record<string, unknown>;
   diagnostics: Diagnostic[];
   changes: FileChange[];
 }> {
-  if (options.action === 'retry' || options.action === 'export' && options.output) assertManaged(project, `audit ${options.action}`);
+  if (options.action === 'retry' || options.action === 'prune' || options.action === 'export' && options.output) assertManaged(project, `audit ${options.action}`);
   const verification = await verifyAudit(project, options.change);
   const all = await readAuditEvents(project);
   const events = options.change ? all.filter((event) => event.change === options.change) : all;
+  /* On a machine that never ran the flow the local chain is absent; the committed per-Change index
+     is then the source of truth for which audit events exist. */
+  const facts = options.change ? await readChangeAuditEvents(project, options.change) : null;
   const diagnostics: Diagnostic[] = verification.diagnostics.map((item) => ({ code: item.code, severity: 'error', message: item.message, details: item.eventId ? { eventId: item.eventId } : undefined }));
+  for (const item of facts?.diagnostics ?? []) {
+    if (item.code === 'XFORGE_AUDIT_INDEX_TAMPERED') diagnostics.push({ code: item.code, severity: 'error', message: item.message });
+  }
   if (options.action === 'verify' && options.change) {
     const resolved = await resolveChangeState(project, options.change);
     if (isStageFlow(resolved.flow) && resolved.flow.governance) {
       const policy = resolved.flow.governance.audit;
+      const present = new Set(facts?.eventTypes ?? events.map((event) => event.eventType));
       const remoteRequired = policy.remoteDelivery === 'required' || Boolean(project.manifest.audit?.remote?.requiredFor.includes(resolved.flow.policy.assuranceLevel));
       for (const eventType of policy.requiredEventTypes) {
-        if (!events.some((event) => event.eventType === eventType)) diagnostics.push(diagnostic('XFORGE_AUDIT_EVENT_MISSING', `Required audit event is missing: ${eventType}.`, `${project.changesPath}/${options.change}/evidence/audit`));
+        if (!present.has(eventType)) diagnostics.push(diagnostic('XFORGE_AUDIT_EVENT_MISSING', `Required audit event is missing: ${eventType}.`, `${project.changesPath}/${options.change}/evidence/audit`));
       }
-      const coverageGaps = [...new Set(events.flatMap((event) => event.coverage.gaps))];
+      const coverageGaps = facts?.coverageGaps ?? [...new Set(events.flatMap((event) => event.coverage.gaps))];
       if (policy.runtimeCoverage === 'required' && coverageGaps.length > 0) diagnostics.push(diagnostic('XFORGE_AUDIT_RUNTIME_COVERAGE_GAP', `Runtime audit coverage has gaps: ${coverageGaps.join(', ')}.`));
       if (remoteRequired && !project.manifest.audit?.remote) diagnostics.push(diagnostic('XFORGE_AUDIT_REMOTE_NOT_CONFIGURED', 'The selected Flow requires remote audit delivery.'));
       if (remoteRequired && verification.remotePending > 0) diagnostics.push(diagnostic('XFORGE_AUDIT_REMOTE_PENDING', `${verification.remotePending} audit events still require remote delivery.`));
@@ -33,7 +51,28 @@ export async function executeAudit(project: ProjectContext, options: { action: '
   }
   if (options.action === 'retry') {
     const result = await retryAuditDelivery(project);
-    return { data: { ...result, verification: await verifyAudit(project, options.change) }, diagnostics, changes: [] };
+    /* Retention is destructive, so it only runs when the Manifest opts in. */
+    const pruned = project.manifest.audit?.localRetentionEnforce ? await pruneExpiredAuditEvents(project) : null;
+    return { data: { ...result, pruned, verification: await verifyAudit(project, options.change) }, diagnostics, changes: [] };
+  }
+  /* Pruning deletes local history, so it gets its own explicit command rather than riding along
+     with `retry`. Retention must still be declared by the Manifest — the command executes the
+     configured policy, it does not invent one. */
+  if (options.action === 'prune') {
+    if (!project.manifest.audit?.localRetentionDays) {
+      return {
+        data: { pruned: null, reason: 'not-configured' },
+        diagnostics: [...diagnostics, diagnostic('XFORGE_AUDIT_RETENTION_NOT_CONFIGURED', 'audit prune requires audit.localRetentionDays in the Manifest.', 'xforge/manifest.yaml')],
+        changes: [],
+      };
+    }
+    const expired = await expiredAuditEvents(project);
+    const pruned = await pruneExpiredAuditEvents(project);
+    return {
+      data: { pruned, expiredBefore: expired, verification: await verifyAudit(project, options.change) },
+      diagnostics,
+      changes: [],
+    };
   }
   if (options.action === 'export') {
     const content = `${JSON.stringify({ apiVersion: 'xforge.dev/v1alpha2', kind: 'AuditExport', generatedAt: new Date().toISOString(), change: options.change ?? null, events }, null, 2)}\n`;
@@ -45,18 +84,22 @@ export async function executeAudit(project: ProjectContext, options: { action: '
     }
     return { data: { verification, events: options.output ? undefined : events, output: options.output ?? null }, diagnostics, changes };
   }
+  const ordered = byTimestamp(events);
   return {
-    data: options.action === 'verify' ? { ...verification } : {
-      change: options.change ?? null, eventCount: events.length, chainHead: verification.head, chainValid: verification.valid,
-      remotePending: verification.remotePending, eventTypes: Object.fromEntries([...new Set(events.map((event) => event.eventType))].sort().map((type) => [type, events.filter((event) => event.eventType === type).length])),
-      coverageGaps: [...new Set(events.flatMap((event) => event.coverage.gaps))],
+    data: options.action === 'verify' ? { ...verification, change: facts ? { source: facts.source, trusted: facts.trusted, chain: facts.chain } : null } : {
+      change: options.change ?? null, eventCount: facts?.eventCount ?? events.length, chainHead: verification.head, chainValid: verification.valid,
+      remotePending: verification.remotePending,
+      eventTypes: Object.fromEntries([...new Set(events.map((event) => event.eventType))].sort().map((type) => [type, events.filter((event) => event.eventType === type).length])),
+      coverageGaps: facts?.coverageGaps ?? [...new Set(events.flatMap((event) => event.coverage.gaps))],
+      source: facts?.source ?? 'log',
+      shards: verification.shards ?? null,
       retention: {
         localDays: project.manifest.audit?.localRetentionDays ?? null,
-        oldestEvent: events[0]?.timestamp ?? null,
-        expiredEvents: project.manifest.audit?.localRetentionDays
-          ? events.filter((event) => Date.parse(event.timestamp) < Date.now() - project.manifest.audit!.localRetentionDays * 86_400_000).length
-          : 0,
-        policy: 'report-only-local-chain; enforce deletion/immutability at the remote sink',
+        oldestEvent: ordered[0]?.timestamp ?? null,
+        expiredEvents: await expiredAuditEvents(project),
+        enforced: project.manifest.audit?.localRetentionEnforce === true,
+        prunedFromChain: facts?.chain.prunedCount ?? 0,
+        policy: 'anchored prefix pruning keeps the per-Change chain verifiable; the committed index retains the event-type summary',
       },
     },
     diagnostics,

@@ -49,16 +49,24 @@ describe('mcp approval provider', () => {
     expect(result.json.data.receipt.signature).toBeUndefined();
   });
 
-  it('exits without writing anything and tells the caller how to resume when still pending', async () => {
+  /*
+   * P2-4: a decision that has not been made yet is a state, not a command failure. The caller gets a
+   * successful envelope with a pending next action instead of an error it has to pattern-match, and
+   * still nothing is written.
+   */
+  it('returns a pending next action without writing anything when the decision is not in yet', async () => {
     const root = await fixture();
     await toDesignWithMcpProvider(root);
     const result = await runCli(root, mcpApproveArgs, {
       XFORGE_TEST_MCP_TOKEN: 'shared-secret', XFORGE_TEST_MCP_EXPECTED_TOKEN: 'shared-secret', XFORGE_TEST_MCP_DECISION: 'pending',
     });
-    expect(result.code).toBe(1);
-    const finding = result.json.diagnostics.find((item: any) => item.code === 'XFORGE_APPROVAL_MCP_PENDING');
-    expect(finding).toBeDefined();
-    expect(finding.message).toContain('xforge approve --change add-feature --for apply --policy planning-solid --provider review-bot');
+    expect(result.code).toBe(0);
+    expect(result.json.ok).toBe(true);
+    expect(result.json.data).toMatchObject({ status: 'pending', receipt: null, policy: 'planning-solid' });
+    expect(result.json.changes).toEqual([]);
+    const pending = result.json.nextActions.find((item: any) => item.action === 'await-approval');
+    expect(pending).toMatchObject({ status: 'pending', id: 'planning-solid', type: 'approval' });
+    expect(pending.command).toEqual(['xforge', 'approve', '--change', 'add-feature', '--for', 'apply', '--policy', 'planning-solid', '--provider', 'review-bot']);
     const state = await runCli(root, ['state', '--change', 'add-feature']);
     expect(state.json.data.change.governance.pendingApprovals.some((item: any) => item.policyId === 'planning-solid')).toBe(true);
   });

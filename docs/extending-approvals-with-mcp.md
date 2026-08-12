@@ -2,22 +2,21 @@
 
 # Extending Approvals with an MCP provider
 
-This is the reference for the third Approval mechanism: an `mcp`-type
+This is the reference for the second Approval mechanism: an `mcp`-type
 provider, where `xforge approve` itself becomes an MCP client and talks
 directly to your approval platform's MCP server, live, instead of going
-through a human at a TTY or a pre-signed receipt file. Read
+through a human at a TTY. Read
 [Extending Gates, Rules, PermissionPolicies, Hooks, and Approvals](extending-gates-rules-policies-hooks-approvals.md)
 first for how Approvals bind to a Flow and revision in general, and for the
-`local` and `hmac-sha256` provider paths this one sits alongside.
+`local` provider path this one sits alongside.
 
 ## When this is the right tool
 
-Three provider types, three trust models — pick per policy, not globally:
+Two provider types, two trust models — pick per policy, not globally:
 
 | Provider `type` | Who/what decides | Trust boundary | Typical use |
 |---|---|---|---|
 | `local` | A human at a real TTY | The TTY itself (or, with `approvals.local.requireTty: false`, whatever your Agent harness already confirmed in-session) | Small teams, low-ceremony changes |
-| `hmac-sha256` | Anything, offline | A shared secret signs the receipt after the fact | Bridging into an existing approval system (ServiceNow, an internal portal) that you don't want to give live API access to |
 | `mcp` | Your platform, live | The MCP connection itself (transport + auth token) | Programmatic or automated review — a bot that evaluates the Change and decides, or a human workflow your platform already runs, reachable over MCP |
 
 If your platform can already expose an MCP server, `mcp` is the one that
@@ -42,12 +41,14 @@ invocation:
    Stage/policy/revision is always safe; your platform should recognize the
    digest and not create a duplicate request.
 3. Call `poll_approval` once.
-4. If it's still `pending`: exit non-zero, write nothing, and print the
-   exact command to re-run later — no separate resume mechanism needed,
-   since `submit` is a no-op on an already-open request.
+4. If it's still `pending`: write nothing, and return a successful envelope
+   whose `nextActions` names the exact command to re-run later — a pending
+   poll is not an error, just an incomplete one. No separate resume
+   mechanism is needed, since `submit` is a no-op on an already-open
+   request.
 5. If it's `decided`: write an `ApprovalReceipt` (no signature — see
-   "Trust model" below) and continue exactly like the other two provider
-   paths.
+   "Trust model" below), append the matching event to the project's audit
+   chain, and continue exactly like the `local` provider path.
 
 Nothing about pacing (how often to re-run) is XForge's concern — that's
 whatever polls `xforge state`'s `pendingApprovals` today already, whether
@@ -101,8 +102,8 @@ approvals:
 
 Then reference the provider id from a Flow's approval policy exactly like
 any other provider — no Flow schema changes, this is the same
-`governance.approvalPolicies[].providers` list `local` and `hmac-sha256`
-providers already use:
+`governance.approvalPolicies[].providers` list the `local` provider
+already uses:
 
 ```yaml
 # xforge/flows/solid.yaml (excerpt)
@@ -220,29 +221,33 @@ state` stops counting the resulting receipt as valid once it passes.
 ## Trust model — why there's no signature
 
 Receipts produced through this path have `approver.type: "external-system"`
-and `approver.provider` set to your provider id, same shape as an
-`hmac-sha256` receipt — but no `signature` field, and
-`verifyApprovalReceipt()` doesn't require one for `mcp`-type providers.
+and `approver.provider` set to your provider id, but no `signature`
+field — `mcp` receipts, like `local` receipts, are never signed.
 
-This isn't a weaker tier bolted on for convenience — it's the same
-trust-by-provenance model `local` receipts already have (a `local` receipt
-also carries no signature). An `hmac-sha256` receipt needs a signature
-because it arrives as a file from anywhere and has to be authenticated
-after the fact. An `mcp` receipt is authenticated by the live round trip
-itself: XForge dialed a connection it trusts (the `McpServer` resource is
-project-owned, version-controlled config) using a credential from a
-protected environment variable, and got a decision back synchronously in
-the same process invocation that writes the receipt. The receipt file is
-still tamper-evident after the fact (its own `digest` covers its content,
-and `xforge state` re-verifies that digest on every read), but there's no
-independent cryptographic proof that the decision itself was genuine beyond
-"this repository's `<change>/approvals/` directory hasn't been hand-edited"
-— exactly the same guarantee `local` approvals already rely on.
+That's not a weaker tier bolted on for convenience; it's the same
+trust-by-provenance model `local` receipts already have. What actually
+makes either kind of receipt trustworthy is the project's own
+tamper-evident audit hash chain, not a per-receipt signature: every
+successful `xforge approve` run writes the receipt file *and* appends a
+matching `approval.decided` event to the audit chain in the same run,
+before it returns. When a receipt is later loaded — for either `local` or
+`mcp` providers — `loadApprovalReceipts` calls `approvalVerifiedInChain()`
+to confirm an independently-recorded chain event matches that receipt's
+digest. A receipt file that shows up on disk without ever having gone
+through `xforge approve` (hand-copied, restored from a stale branch, etc.)
+has no corresponding chain event and is rejected with
+`XFORGE_APPROVAL_NOT_IN_AUDIT_CHAIN`, even if every other field checks out.
+On a machine without the local (gitignored) audit log — a fresh clone or a
+CI runner — the same check falls back to the committed per-Change
+`evidence/audit/index.json`.
 
-If you need retroactively-verifiable proof independent of repository
-integrity, use the `hmac-sha256` path instead, or have your MCP server sign
-its own decision with a secret it and your compliance tooling both hold
-(outside anything XForge inspects).
+For `mcp` specifically, the decision itself is also live-authenticated: it
+arrives synchronously over a connection XForge trusts (the `McpServer`
+resource is project-owned, version-controlled config) using a credential
+from a protected environment variable, in the same process invocation that
+writes the receipt and the audit event — there's no window for a receipt to
+be forged offline and dropped into place, because the audit chain check
+would reject it.
 
 ## Activating this without teaching every Agent about it
 
@@ -270,8 +275,8 @@ New `mcp` Approval provider:
 - [ ] `approvals.providers[]` entry references it by name, `roles` matches
       what your platform will actually return in `poll_approval`
 - [ ] Referenced from the Flow policy's `providers` list alongside (or
-      instead of) `local`/`hmac-sha256` — same rule as any other provider:
-      unreferenced never blocks or satisfies anything
+      instead of) `local` — same rule as any other provider: unreferenced
+      never blocks or satisfies anything
 - [ ] `authTokenEnv` points at a real, populated environment variable
       wherever `xforge approve --provider` actually runs (developer
       machine, CI, both)

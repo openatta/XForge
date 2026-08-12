@@ -332,32 +332,46 @@ file. A policy is declared inline in a Flow's `governance.approvalPolicies`
 (`id`, `minApprovers`, `roles`, `separationOfDuties`, `providers`) and
 referenced from a stage's `exit.approvals` or from
 `terminal.archive.approvals`. What gets produced at runtime is an
-`ApprovalReceipt` — signed JSON bound to the Change's exact
+`ApprovalReceipt` — JSON bound to the Change's exact
 `stateRevision`/`contentRevision`/`policySnapshotDigest`/`gitHead`; any later
-edit invalidates it.
+edit invalidates it. Neither approval path signs the receipt; instead, every
+receipt is trusted only if it's backed by a matching event in the project's
+own tamper-evident audit hash chain — see "Trust model" below.
 
 ### How it's actually invoked
 
 `xforge approve --change <id> --for <stage|archive> --policy <id> ...` has
 two paths:
 
-1. **Local interactive** — requires a real TTY and `--attestation human`,
-   and only works if the policy's `providers` includes `local`. Deliberately
-   not automatable: Agents cannot self-approve. If your Agent harness itself
-   mediates the confirmation (e.g. it already asked the human in-session
-   before shelling out) and the `xforge approve` subprocess therefore has no
-   TTY, set `approvals.local.requireTty: false` in `manifest.yaml` — every
-   other requirement (`--attestation human`, `--actor`, `--role`, `--reason`,
-   `--decision`, and the policy allowing the `local` provider) still applies.
-   The default is `true` (require a real TTY), unchanged from before.
-2. **External signed receipt** — `xforge approve --receipt <path>`, verified
-   by HMAC-SHA256 against a shared secret named in `manifest.yaml`'s
-   `approvals.providers[].secretEnv`. No TTY required — this is the
-   extension point.
+1. **Local interactive** — requires a real TTY
+   (`process.stdin.isTTY && process.stdout.isTTY`) and only works if the
+   policy's `providers` includes `local`. The CLI runs its own
+   `readline`-based dialogue that asks for approver identity, role, the
+   decision word (approve/reject), and a reason, all typed live at the
+   terminal — there is no confirmation/challenge code to read back, and none
+   of this is taken from command-line flags: `--actor`/`--role`/`--reason`
+   are only pre-fill suggestions for the prompts, never authoritative, and
+   `--attestation human` is only an intent hint, not itself a decision.
+   Deliberately not automatable: Agents cannot self-approve. If your Agent
+   harness itself mediates the confirmation (e.g. it already asked the
+   human in-session before shelling out) and the `xforge approve` subprocess
+   therefore has no TTY, set `approvals.local.requireTty: false` in
+   `manifest.yaml` — every other requirement (the live dialogue, and the
+   policy allowing the `local` provider) still applies. The default is
+   `true` (require a real TTY), unchanged from before.
+2. **`mcp` provider** — `xforge approve --provider <id>`, where `<id>` names
+   an entry in `manifest.yaml`'s `approvals.providers` of the only shape
+   that exists, `{ id, type: mcp, mcpServer: <id>, roles: [...] }`. XForge
+   calls `submit_approval_request` then `poll_approval` against the
+   registered `McpServer`; a `pending` poll returns a successful envelope
+   with a `nextActions` entry telling the caller to re-run later — it's not
+   an error. See
+   [Extending Approvals with an MCP provider](extending-approvals-with-mcp.md)
+   for the full contract.
 
 Receipts are re-verified on *every* `xforge state` computation, not cached
 from approve-time — edit the Change after approval and the receipt goes
-stale (`XFORGE_APPROVAL_STALE`, or a signature/digest check fails).
+stale (`XFORGE_APPROVAL_STALE`, or the audit-chain check fails).
 
 ### Worked example: defining a policy
 
@@ -369,16 +383,16 @@ governance:
       minApprovers: 2
       roles: [owner, maintainer, security]
       separationOfDuties: true
-      providers: [enterprise-hmac]
+      providers: [enterprise-approvals]
 ```
 
 ```yaml
 # manifest.yaml
 approvals:
   providers:
-    - id: enterprise-hmac
-      type: hmac-sha256
-      secretEnv: XFORGE_APPROVAL_SECRET
+    - id: enterprise-approvals
+      type: mcp
+      mcpServer: enterprise-approvals
       roles: [owner, maintainer, security]
 ```
 
@@ -388,151 +402,42 @@ receipts for the current revision — one person cannot satisfy a 2-approver
 requirement by approving twice, and with `separationOfDuties: true`, two
 approvers sharing one role don't satisfy it either.
 
-### Reference: generating a signed `ApprovalReceipt` from an external system
+Note that the `enterprise-approvals` example above is a name/shape only —
+there's no working default `McpServer` resource behind it. Using it without
+registering a real `McpServer` (see
+[Extending Approvals with an MCP provider](extending-approvals-with-mcp.md))
+fails closed with `XFORGE_APPROVAL_MCP_SERVER_MISSING`, the same pattern the
+`runtime-audit` Hook uses by shipping disabled by default.
 
-This is the exact, byte-level contract an external platform (or a glue
-script sitting in front of one) needs to implement to produce a receipt
-`xforge approve --receipt <path>` will accept. It does not require running
-any XForge code — everything here is reproducible from documented inputs.
+### Trust model — why there's no signature
 
-**1. Get the binding inputs.** Run (or have your glue script run)
-`xforge state --change <id>`. The fields you need are in
-`data.change.governance`:
+Neither `local` nor `mcp` receipts carry a `signature` field. What makes a
+receipt trustworthy is the project's own tamper-evident audit hash chain,
+not per-receipt cryptography: every successful `xforge approve` run writes
+the receipt file *and* appends a matching `approval.decided` event to the
+audit chain in the same run, before it returns. When receipts are loaded —
+`loadApprovalReceipts` in `xforge/src/core/control-plane.ts` — each one is
+checked, unconditionally for both provider types, against the chain via
+`approvalVerifiedInChain()` (`xforge/src/core/audit.ts`). A receipt file
+that was never produced by an actual `xforge approve` run (hand-copied,
+restored from a stale branch, etc.) has no matching chain event and is
+rejected with `XFORGE_APPROVAL_NOT_IN_AUDIT_CHAIN` — a non-blocking-severity
+finding, so it doesn't accidentally freeze unrelated transitions, but the
+receipt itself never counts as valid. On a fresh clone or CI machine without
+the local (gitignored) audit log, the same check falls back to the
+committed per-Change `evidence/audit/index.json`.
 
-- `revision` → `{ contentRevision, stateRevision, policySnapshotDigest,
-  gitBase, gitHead }` — the exact revision the receipt must be bound to.
-- `pendingApprovals[]` → each entry's `policyId` and `transition` tell you
-  which policy id and which `--for` value (`<stage>` or `archive`) the
-  receipt is for.
-- `currentStage` → the receipt's `stage` field.
-- top-level `data.change.flow` → the receipt's `flow` field (the Flow's
-  `metadata.name`).
-
-**2. Build the unsigned payload** (every `ApprovalReceipt` field except
-`signature` and `digest`):
-
-| Field | Value |
-|---|---|
-| `apiVersion` | the literal string `xforge.dev/v1alpha2` |
-| `kind` | the literal string `ApprovalReceipt` |
-| `receiptId` | a fresh UUID (schema requires `format: uuid`) |
-| `change` | the Change id |
-| `flow` | Flow name from step 1 |
-| `stage` | `currentStage` from step 1 |
-| `transition` | `<stage>` or `archive` — whichever you're approving |
-| `policyId` | the approval policy id from `pendingApprovals[]` |
-| `stateRevision`, `contentRevision`, `policySnapshotDigest`, `gitBase`, `gitHead` | copied verbatim from `revision` in step 1 |
-| `governingDigest` | see step 3 |
-| `decision` | `"approve"` or `"reject"` |
-| `approver` | `{ id, provider, role, type: "external-system" }` — `provider` must be an id listed in `manifest.yaml`'s `approvals.providers` (and in this policy's `providers` list); `role` must be one of the provider's and the policy's `roles` |
-| `decidedAt` | ISO 8601 date-time |
-| `reason` | non-empty human-readable string |
-| `expiresAt` | optional ISO 8601 date-time — `xforge state` stops counting the receipt once this passes |
-| `externalRef` | optional — your platform's own ticket/request id, carried through unchanged, not otherwise interpreted by XForge |
-
-**3. Compute `governingDigest`:**
-
-```
-governingDigest = sha256(stableStringify({
-  change:   <change id>,
-  flow:     <flow name>,
-  policy:   <policyId>,
-  revision: { contentRevision, stateRevision, policySnapshotDigest, gitBase, gitHead },
-}))
-```
-
-**4. Sign it.** `stableStringify(value)` is: recursively sort every object's
-keys (plain `key.localeCompare()`; for the ASCII field names used
-throughout this schema that's equivalent to ordinary lexicographic sort —
-safe to reimplement in any language without pulling in ICU), then
-`JSON.stringify` the result **with 2-space indentation** (not compact JSON —
-this is a common source of signature mismatches when porting to another
-language; match the indentation, not just the key order). Compute:
-
-```
-payload   = the unsigned object from step 2 (governingDigest included, no signature/digest field)
-signature.value     = hex(HMAC-SHA256(secretEnv value, stableStringify(payload)))
-signature.algorithm = "hmac-sha256"
-```
-
-The secret is whatever's in the environment variable named by this
-provider's `secretEnv` in `manifest.yaml` — coordinate that value with
-whoever operates the external platform; XForge never transmits or stores it.
-
-**5. Compute the final `digest`** over payload + signature (still excluding
-`digest` itself):
-
-```
-signed  = { ...payload, signature }
-digest  = sha256(stableStringify(signed))
-receipt = { ...signed, digest }
-```
-
-Write `receipt` to a file and hand it to
-`xforge approve --change <id> --for <transition> --policy <policyId> --receipt <path>`.
-Schema validation runs first (reject anything that doesn't match
-`approval-receipt.schema.json`, e.g. a non-UUID `receiptId`), then
-`verifyApprovalReceipt()` re-derives `digest` and `signature.value` exactly
-as above and compares.
-
-**Reference implementation** (Node's `crypto`/`JSON.stringify` is the source
-of truth; here's the same algorithm in Python, useful if your platform isn't
-Node):
-
-```python
-import hashlib, hmac, json
-
-def stable_stringify(value):
-    def normalize(item):
-        if isinstance(item, list):
-            return [normalize(v) for v in item]
-        if isinstance(item, dict):
-            return {k: normalize(item[k]) for k in sorted(item.keys())}
-        return item
-    return json.dumps(normalize(value), indent=2, ensure_ascii=False)
-
-def sha256_hex(text: str) -> str:
-    return hashlib.sha256(text.encode('utf-8')).hexdigest()
-
-def hmac_sha256_hex(secret: str, text: str) -> str:
-    return hmac.new(secret.encode('utf-8'), text.encode('utf-8'), hashlib.sha256).hexdigest()
-```
-
-`sorted(item.keys())` is a plain codepoint sort — for this schema's field
-names it produces the same order as JS's `localeCompare`. Don't assume that
-equivalence holds for arbitrary user-supplied strings elsewhere; it's only
-being claimed for the fixed field names in this schema.
-
-### Extending it: routing approval through an external platform (e.g. via MCP)
-
-The external-receipt path is intentionally decision-agnostic —
-`xforge approve --receipt` only checks that the receipt is validly signed,
-bound to the current revision, and uses an authorized role/provider. It
-doesn't care what produced it. A common extension: have the Agent submit the
-approval request to an internal platform through an MCP tool, wait for a
-human decision, then have that platform (or a small glue script) emit a
-signed receipt:
-
-1. The Agent calls an MCP tool exposed by your approval platform, submitting
-   the Change id, Flow, stage, and governing revision.
-2. A human approves on the platform — Slack, an internal portal, ServiceNow,
-   whatever you already use for change approval.
-3. The platform (or a script polling its API) constructs and signs the
-   receipt exactly as described above in
-   "Reference: generating a signed `ApprovalReceipt`".
-4. Anything — the Agent itself, a CI job, a webhook handler — calls
-   `xforge approve --receipt <path>` to import the result.
-
-No XForge code changes are needed for this: MCP here is just the transport
-your platform happens to use to talk to the Agent; the trust boundary
-XForge actually checks is the HMAC signature.
-
-If your platform can expose an MCP server that XForge itself talks to
-directly — rather than routing through the Agent and a hand-signed file —
-use the native `mcp` provider `type` instead of this glue-script pattern;
-see [Extending Approvals with an MCP provider](extending-approvals-with-mcp.md)
-for the submit/poll tool contract and the (deliberately signature-free)
-trust model that goes with it.
+This replaced an earlier design where local approvals were paired with a
+typed confirmation/challenge code and external approvals were authenticated
+by an HMAC signature over a shared secret. Both were removed: the
+confirmation code was a pure deterministic function of already
+publicly-known data (change id, flow, policy, revision — all readable via
+`xforge state`), so anyone with repo write access could compute it without
+ever using a terminal; it forced a live dialogue to *exist* without adding
+real forgery resistance, which the interactive-TTY requirement already
+provides on its own. The audit-chain check above is what replaces both: it
+verifies the receipt was actually produced by a real `xforge approve`
+invocation, rather than asking the receipt to prove itself.
 
 ## Checklist
 
@@ -574,15 +479,13 @@ New Approval policy:
       authorization requirement — distinct approver *ids*, not receipt
       count, satisfy `minApprovers`
 - [ ] `providers` matches an entry actually declared in `manifest.yaml`'s
-      `approvals.providers`; `secretEnv` points at a real, populated
-      environment variable wherever `xforge approve --receipt` runs
+      `approvals.providers` — for an `mcp` provider, its `mcpServer` names a
+      registered `McpServer` resource, not just an aspirational id
 - [ ] Referenced from the right stage's `exit.approvals` or
       `terminal.archive.approvals` — a policy nobody references never
       blocks anything
-- [ ] If an external system will sign receipts for it: `stableStringify` is
-      reimplemented byte-for-byte (recursive key sort, 2-space-indented
-      JSON) — verify it against a real signed receipt (e.g. one produced by
-      `xforge approve --receipt` against a test project, or by the
-      `approveCurrentRevision` test helper) before wiring it into anything
-      that gates a real transition; `--dry-run` does not return a receipt to
-      diff against
+- [ ] For an `mcp` provider: confirm at least one real approve/reject round
+      trip against a test project (e.g. via the `approveCurrentRevision`
+      test helper) before wiring it into anything that gates a real
+      transition; `--dry-run` does not append an audit event or a receipt to
+      check against

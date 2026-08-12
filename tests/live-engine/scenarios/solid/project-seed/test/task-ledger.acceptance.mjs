@@ -103,3 +103,36 @@ test('creates storage parents and never overwrites corrupt data', () => {
   assert.equal(corrupt.json.diagnostics[0].code, 'DATA_INVALID');
   assert.equal(readFileSync(store, 'utf8'), '{not-json\n');
 });
+
+/* REQ-TASK-006 arrives mid-run as a simulated upstream stakeholder edit (run-matrix.mjs injects it
+   before the revise step). Without coverage here the Change would carry an externally observable
+   requirement with no automated verification, which the project Constitution's "Quality and
+   observability" principle forbids — and the constitution-check Gate correctly refuses to let such
+   a Change leave the Check Stage. */
+test('limits list results and rejects a non-positive limit', () => {
+  const { store } = fixture();
+  for (const title of ['First', 'Second', 'Third']) {
+    assertEnvelope(run(store, ['add', '--title', title]), { code: 0, ok: true });
+  }
+
+  const limited = run(store, ['list', '--limit', '2']);
+  assertEnvelope(limited, { code: 0, ok: true });
+  assert.deepEqual(limited.json.data.tasks.map((task) => task.id), ['T0001', 'T0002']);
+
+  // A limit past the end of the result set is not an error, it just returns everything.
+  const generous = run(store, ['list', '--limit', '99']);
+  assertEnvelope(generous, { code: 0, ok: true });
+  assert.equal(generous.json.data.tasks.length, 3);
+
+  // --limit composes with --status rather than replacing it.
+  assertEnvelope(run(store, ['done', '--id', 'T0001']), { code: 0, ok: true });
+  const composed = run(store, ['list', '--status', 'open', '--limit', '1']);
+  assertEnvelope(composed, { code: 0, ok: true });
+  assert.deepEqual(composed.json.data.tasks.map((task) => task.id), ['T0002']);
+
+  for (const bad of ['0', '-1', 'abc']) {
+    const rejected = run(store, ['list', '--limit', bad]);
+    assertEnvelope(rejected, { code: 2, ok: false });
+    assert.equal(rejected.json.diagnostics[0].code, 'USAGE_ERROR');
+  }
+});

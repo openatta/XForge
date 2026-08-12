@@ -2,6 +2,7 @@ import type {
   AdapterCapability,
   AgentResource,
   DesiredFile,
+  Diagnostic,
   RuleResource,
   HookResource,
   PermissionPolicyResource,
@@ -20,11 +21,20 @@ export interface Adapter {
   renderAgent(agent: AgentResource, instructions: string): string | null;
   rulePath(ruleId: string): string | null;
   renderRule(rule: RuleResource): string | null;
-  renderGovernance(input: GovernanceProjectionInput): DesiredFile[];
+  renderGovernance(input: GovernanceProjectionInput): GovernanceProjection;
   bootstrap(): DesiredFile[];
 }
 
 export interface GovernanceProjectionInput {
   policies: Array<{ id: string; value: PermissionPolicyResource; yamlPath: string }>;
   hooks: Array<{ id: string; value: HookResource; yamlPath: string }>;
+}
+
+/**
+ * Governance projection reports what it could not express alongside what it produced, so a policy
+ * the host format cannot represent surfaces as a diagnostic instead of vanishing.
+ */
+export interface GovernanceProjection {
+  files: DesiredFile[];
+  diagnostics: Diagnostic[];
 }

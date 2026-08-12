@@ -19,8 +19,28 @@ migration/rollback section; and `work-packages.yaml` inputs actually list the
 delta Spec, Clarifications, and Design. Do not soften a real blocker into a
 suggestion to let the Change proceed.
 
-Run the structure Gate. Run `xforge state --change credential-store` at the
+Two machine-decidable ledgers decide whether this Stage can be left; the
+prose above does not. Write `evidence/check-findings.yaml` with one entry per
+finding carrying `id`, `severity` (blocker|warning|suggestion), `summary`,
+`refs` to the Artifacts it concerns, and for a blocker a `status` and the
+`reworkTo` Stage. Record `findings: []` explicitly if the review is genuinely
+clean. Write `evidence/constitution-check.yaml` answering every `## ` principle
+in `xforge/constitution.md` by its exact heading, each with status
+compliant|violation|not-applicable; a violation needs a justification and a
+named `approvedBy`.
+
+Run the structure, check-findings, and constitution-check Gates. Run
+`xforge state --change credential-store` at the
 end. Stop with the `implementation-major` Approval still pending — do not
 attempt to approve or transition past Check yourself. Do not commit. In your
 final response report the check findings, current Stage, blockers, and no
 claim unsupported by CLI output.
+
+Every Markdown Artifact you write must use exactly the `##` section set its
+Flow `artifacts[].outline` defines — no extra section, none omitted. The
+outline is the contract; if something you want to report has no section, put
+it inside the closest one rather than inventing a heading. Everything the Change owns — Artifacts, `work-packages.yaml`, and everything
+under `evidence/` — lives under the Change directory that `xforge state`
+reports as `change.path`, never at the project root. Use the project-relative
+path the CLI states (`writes` in a next action, `change.path` otherwise);
+never infer a location from a bare file name.

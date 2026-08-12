@@ -7,6 +7,7 @@ import { flowArchiveOperation, isStageFlow, loadFlows } from '../core/flow-resol
 import { normalizeRule } from '../core/governance.js';
 import { safeResolve } from '../core/path-safety.js';
 import { loadYaml } from '../core/yaml.js';
+import { capabilityGapDiagnostics } from '../install/planner.js';
 
 export type DoctorKind = 'skills' | 'agents' | 'rules' | 'policies' | 'hooks' | 'gates' | 'scripts' | 'flows' | 'approvals' | 'mcp-servers';
 type DoctorScope = 'skills' | 'agents' | 'rules' | 'policies' | 'hooks' | 'gates' | 'flows' | 'approvals' | 'mcp-servers';
@@ -44,6 +45,8 @@ const DANGLING_CODE_SCOPE: Record<string, DoctorScope> = {
   XFORGE_AGENT_CALLER_UNKNOWN: 'agents',
   XFORGE_AGENT_SKILL_DISABLED: 'skills',
   XFORGE_APPROVAL_MCP_SERVER_UNKNOWN: 'mcp-servers',
+  XFORGE_FLOW_GOVERNANCE_MISSING: 'flows',
+  XFORGE_HOOK_EVENT_UNSUPPORTED: 'hooks',
 };
 
 async function exists(filePath: string): Promise<boolean> {
@@ -86,7 +89,15 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
   const diagnostics: Diagnostic[] = [];
 
   const danglingReferences: DoctorFinding[] = [];
-  for (const item of structure.diagnostics) {
+  /* A Hook whose event no enabled target exposes is a dangling extension in exactly the sense
+     doctor reports: selected, but it can never fire. Produced by the projection planner rather than
+     checkStructure, so doctor asks for it directly instead of waiting for the next install.
+     XFORGE_POLICY_STATIC_LAYER_DEGRADED is deliberately NOT mapped here — such a policy is still
+     enforced, by the runtime Hook bridge instead of the static layer, so it is degraded rather than
+     dangling. It also fires for the shipped `protected-files` policy on every run, and a permanent
+     finding teaches readers to ignore the report. `install` reports it situationally instead. */
+  const projectionDiagnostics = capabilityGapDiagnostics(structure.resources, project.manifest.targets);
+  for (const item of [...structure.diagnostics, ...projectionDiagnostics]) {
     const scope = DANGLING_CODE_SCOPE[item.code];
     if (!scope) continue;
     danglingReferences.push({ scope, code: item.code, message: item.message, path: item.path, severity: item.severity });

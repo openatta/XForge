@@ -1,7 +1,8 @@
 import type { HookResource, PermissionPolicyResource, ProjectContext } from '../types.js';
 import type { TargetId } from '../constants.js';
 import { recordAudit } from '../core/audit.js';
-import { effectivePolicyEffect } from '../core/governance.js';
+import { effectivePolicyEffect, matchPathGlob, matchWildcard } from '../core/governance.js';
+import { parseMcpTool, resolveToolCapability, unknownToolDecision, unknownToolGap, type Capability } from '../core/tool-capability.js';
 import { isStageFlow, resolveChangeState } from '../core/flow-resolver.js';
 import { loadSelectedResources, type SelectedResources } from '../core/resource-loader.js';
 import { resolveControlPlane } from '../core/control-plane.js';
@@ -76,9 +77,10 @@ async function runScriptHooks(project: ProjectContext, resources: SelectedResour
   return outcomes;
 }
 
-function wildcard(pattern: string, value: string): boolean {
-  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.');
-  return new RegExp(`^${escaped}$`, process.platform === 'win32' ? 'i' : '').test(value);
+/** Path capabilities use real glob semantics (`*` never crosses `/`); everything else stays loose. */
+function matchesPattern(capabilityName: Capability, pattern: string, value: string): boolean {
+  if (capabilityName === 'fs.read' || capabilityName === 'fs.write') return matchPathGlob(pattern, value);
+  return matchWildcard(pattern, value);
 }
 
 function strings(value: unknown): string[] {
@@ -96,22 +98,11 @@ function toolInput(payload: Record<string, any>): Record<string, any> {
   return input && typeof input === 'object' ? input : { value: input };
 }
 
-function capability(toolName: string, input: Record<string, any>): PermissionPolicyResource['spec']['capability'] | null {
-  const name = toolName.toLowerCase();
-  if (/bash|shell|terminal|exec_command/.test(name)) return 'shell';
-  if (/write|edit|patch|delete/.test(name)) return 'fs.write';
-  if (/read|view/.test(name)) return 'fs.read';
-  if (/agent|task|subagent|spawn/.test(name)) return 'subagent';
-  if (/web|fetch|browser/.test(name) || typeof input.url === 'string') return 'network';
-  if (/^mcp|mcp__|mcp:/.test(name)) return 'mcp';
-  return null;
-}
-
 function patchPaths(command: string): string[] {
   return [...command.matchAll(/^\*\*\* (?:Add|Update|Delete) File:\s*(.+)$/gm)].map((match) => match[1]!.trim());
 }
 
-function resourcesFor(capabilityName: PermissionPolicyResource['spec']['capability'], input: Record<string, any>, toolName: string, root: string): string[] {
+function resourcesFor(capabilityName: Capability, input: Record<string, any>, toolName: string, root: string): string[] {
   if (capabilityName === 'shell') return strings(input.command ?? input.cmd ?? input.value);
   if (capabilityName === 'fs.read' || capabilityName === 'fs.write') {
     const paths = strings(input.file_path ?? input.filePath ?? input.path ?? input.paths);
@@ -120,7 +111,12 @@ function resourcesFor(capabilityName: PermissionPolicyResource['spec']['capabili
   }
   if (capabilityName === 'network') return strings(input.url ?? input.host ?? input.domain);
   if (capabilityName === 'subagent') return strings(input.agent ?? input.agent_id ?? input.subagent ?? toolName);
-  if (capabilityName === 'mcp') return [toolName];
+  if (capabilityName === 'mcp') {
+    // `match.mcpServers` holds bare server ids while the payload carries the namespaced tool name,
+    // so expose both: `filesystem` and `mcp__filesystem__read_file` must each be matchable.
+    const ref = parseMcpTool(toolName);
+    return ref ? [...new Set([toolName, ref.server, ...(ref.tool ? [`${ref.server}__${ref.tool}`] : [])])] : [toolName];
+  }
   return [toolName];
 }
 
@@ -134,7 +130,24 @@ function policyPatterns(policy: PermissionPolicyResource): string[] {
   return match.tools ?? [];
 }
 
-function platformOutput(target: TargetId, event: string, decision: Decision, reason: string): Record<string, unknown> {
+/**
+ * Codex has no `ask`, so an `ask` must be resolved before it reaches the platform. Which way it
+ * resolves depends on where the `ask` came from, and conflating the two sources is a real bug:
+ *
+ * - a PermissionPolicy that says `ask` is a human decision someone deliberately wrote down, so on a
+ *   target that cannot ask, the conservative reading is `deny`;
+ * - the `unknownToolPolicy` default is not an opinion about the call at all, it only says XForge
+ *   could not classify the tool. Denying that would block `Grep`/`Glob`/`Search` on every Codex
+ *   call as soon as any policy exists, which is most projects. The gap is still recorded in the
+ *   audit chain, and a genuinely dangerous unrecognised tool is still caught through the capability
+ *   hint, so degrading to "no opinion" loses no enforcement.
+ */
+function resolveUnaskable(decision: Decision, askIsUnknownToolOnly: boolean): Decision {
+  if (decision !== 'ask') return decision;
+  return askIsUnknownToolOnly ? null : 'deny';
+}
+
+function platformOutput(target: TargetId, event: string, decision: Decision, reason: string, askIsUnknownToolOnly = false): Record<string, unknown> {
   if (!decision || !event.includes('before') && !event.includes('permission')) return {};
   if (target === 'cursor') return { permission: decision, user_message: reason, agent_message: reason };
   if (target === 'github-copilot') return { permissionDecision: decision, permissionDecisionReason: reason };
@@ -144,7 +157,8 @@ function platformOutput(target: TargetId, event: string, decision: Decision, rea
     if (decision === 'ask') return {};
     return { hookSpecificOutput: { hookEventName, decision: { behavior: decision, ...(decision === 'deny' ? { message: reason } : {}) } } };
   }
-  const effective = target === 'codex' && decision === 'ask' ? 'deny' : decision;
+  const effective = target === 'codex' ? resolveUnaskable(decision, askIsUnknownToolOnly) : decision;
+  if (!effective) return {};
   return { hookSpecificOutput: { hookEventName, permissionDecision: effective, permissionDecisionReason: reason } };
 }
 
@@ -162,7 +176,11 @@ export async function executeHookDispatch(project: ProjectContext, options: { ta
   const selected = await loadSelectedResources(project);
   const payloadTool = tool(options.payload);
   const input = toolInput(options.payload);
-  const capabilityName = capability(payloadTool, input);
+  const resolution = resolveToolCapability(options.target, payloadTool);
+  const capabilityName = resolution.capability;
+  /** Capability actually used to select and match policies. For an unrecognised tool this is the
+   * heuristic hint, which only ever adds coverage — the `unknown` verdict below still stands. */
+  const matchCapability: Capability | null = capabilityName === 'none' ? null : capabilityName === 'unknown' ? resolution.hint : capabilityName;
   const actor = String(options.payload.actor ?? options.payload.agent ?? options.payload.agent_id ?? 'agent');
   let change = String(options.payload.change ?? process.env.XFORGE_CHANGE ?? '') || null;
   let flow: string | null = null;
@@ -179,24 +197,33 @@ export async function executeHookDispatch(project: ProjectContext, options: { ta
       }
     } catch { change = null; }
   }
-  const values = capabilityName ? resourcesFor(capabilityName, input, payloadTool, project.root) : [];
-  const applicable = capabilityName ? [...selected.policies.values()].map((item) => item.value).filter((policy) => {
-    if (policy.spec.capability !== capabilityName || policy.spec.exceptActors?.includes(actor)) return false;
+  const values = matchCapability ? resourcesFor(matchCapability, input, payloadTool, project.root) : capabilityName === 'unknown' ? [payloadTool] : [];
+  const applicable = matchCapability ? [...selected.policies.values()].map((item) => item.value).filter((policy) => {
+    if (policy.spec.capability !== matchCapability || policy.spec.exceptActors?.includes(actor)) return false;
     if (policy.spec.match.stages?.length && stage && !policy.spec.match.stages.includes(stage)) return false;
     const patterns = policyPatterns(policy);
     if (patterns.length === 0) return true;
-    return values.some((value) => patterns.some((pattern) => wildcard(pattern, value)));
+    return values.some((value) => patterns.some((pattern) => matchesPattern(matchCapability, pattern, value)));
   }) : [];
   const policyDecision = effectivePolicyEffect(applicable);
   const policyReason = applicable.map((policy) => policy.spec.reason).join(' ') || 'No XForge PermissionPolicy matched.';
   const policyRefs = applicable.map((policy) => policy.metadata.name);
 
+  /** An unclassifiable tool must never be silently allowed: it is a hole in the policy surface.
+   * On a target with no `ask`, see `resolveUnaskable` for why this specific ask is not a deny. */
+  const unknownDecision = capabilityName === 'unknown' ? unknownToolDecision(project.manifest) : null;
+  const unknownReason = unknownDecision ? `Tool "${payloadTool}" is not mapped to an XForge capability for target ${options.target}; applying unknownToolPolicy=${unknownDecision}.` : null;
+
   const scriptOutcomes = await runScriptHooks(project, selected, options.event, options.payload);
-  const decision = combineDecisions([policyDecision, ...scriptOutcomes.map((item) => item.decision)]);
-  const reasonParts = [applicable.length ? policyReason : null, ...scriptOutcomes.filter((item) => item.reason).map((item) => `[${item.hookId}] ${item.reason}`)].filter((part): part is string => Boolean(part));
+  const decision = combineDecisions([policyDecision, unknownDecision, ...scriptOutcomes.map((item) => item.decision)]);
+  const reasonParts = [applicable.length ? policyReason : null, unknownReason, ...scriptOutcomes.filter((item) => item.reason).map((item) => `[${item.hookId}] ${item.reason}`)].filter((part): part is string => Boolean(part));
   const reason = reasonParts.join(' ') || 'No XForge PermissionPolicy or script Hook matched.';
   const anySpooled = scriptOutcomes.some((item) => item.spooled);
   const anyFailedBlocking = scriptOutcomes.some((item) => item.failed && !item.spooled);
+
+  const coverageGaps: string[] = [];
+  if (capabilityName === 'unknown') coverageGaps.push(unknownToolGap(payloadTool));
+  if (matchCapability && values.length === 0) coverageGaps.push(`resource-unavailable:${matchCapability}`);
 
   await recordAudit(project, {
     eventType: options.event, plane: 'runtime', platform: options.target, surface: options.payload.surface === 'cloud' ? 'cloud' : 'local',
@@ -205,11 +232,17 @@ export async function executeHookDispatch(project: ProjectContext, options: { ta
     actor: { id: actor, provider: options.target, role: String(options.payload.agent_type ?? 'agent'), type: 'agent' }, change, flow, stage, revision,
     refs: { policies: policyRefs }, decision, reason: reasonParts.length ? reason : null,
     outcome: decision === 'deny' ? 'denied' : anySpooled ? 'spooled' : anyFailedBlocking ? 'failed' : 'succeeded',
-    input: { tool: payloadTool, capability: capabilityName, resourceDigests: values.map((value) => sha256(value)), scriptHooks: scriptOutcomes.map((item) => item.hookId) },
-    output: { decision }, coverage: { observed: true, gaps: values.length === 0 && capabilityName ? [`resource-unavailable:${capabilityName}`] : [] },
+    input: { tool: payloadTool, capability: capabilityName, capabilitySource: resolution.source, capabilityHint: resolution.hint, resourceDigests: values.map((value) => sha256(value)), scriptHooks: scriptOutcomes.map((item) => item.hookId) },
+    output: { decision }, coverage: { observed: true, gaps: coverageGaps },
   });
+  /* True only when nothing but the unknown-tool default asked. A policy or script Hook that also
+     asked keeps the conservative deny on targets without `ask`. */
+  const askIsUnknownToolOnly = decision === 'ask'
+    && unknownDecision === 'ask'
+    && policyDecision !== 'ask'
+    && !scriptOutcomes.some((item) => item.decision === 'ask');
   return {
-    platformOutput: platformOutput(options.target, options.event, decision, reason),
+    platformOutput: platformOutput(options.target, options.event, decision, reason, askIsUnknownToolOnly),
     decision, policyRefs,
     scriptHooks: scriptOutcomes.map((item) => ({ hookId: item.hookId, scriptId: item.scriptId, decision: item.decision, failed: item.failed })),
   };

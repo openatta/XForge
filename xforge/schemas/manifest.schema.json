@@ -2,99 +2,446 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://xforge.dev/schemas/manifest.schema.json",
   "type": "object",
-  "required": ["apiVersion", "kind", "metadata", "project", "scaffold", "xforge", "flow", "targets", "install"],
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "project",
+    "scaffold",
+    "xforge",
+    "flow",
+    "targets",
+    "install"
+  ],
   "additionalProperties": false,
   "properties": {
-    "apiVersion": { "enum": ["xforge.dev/v1alpha1", "xforge.dev/v1alpha2"] },
-    "kind": { "const": "Project" },
-    "metadata": { "$ref": "#/$defs/metadata" },
+    "apiVersion": {
+      "enum": [
+        "xforge.dev/v1alpha1",
+        "xforge.dev/v1alpha2"
+      ]
+    },
+    "kind": {
+      "const": "Project"
+    },
+    "metadata": {
+      "$ref": "#/$defs/metadata"
+    },
     "project": {
-      "type": "object", "additionalProperties": false, "required": ["layout", "modules"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "layout",
+        "modules"
+      ],
       "properties": {
-        "layout": { "enum": ["single", "monorepo"] },
-        "paths": { "type": "object", "additionalProperties": false, "properties": { "specs": { "$ref": "#/$defs/path" }, "changes": { "$ref": "#/$defs/path" } } },
+        "layout": {
+          "enum": [
+            "single",
+            "monorepo"
+          ]
+        },
+        "paths": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "specs": {
+              "$ref": "#/$defs/path"
+            },
+            "changes": {
+              "$ref": "#/$defs/path"
+            }
+          }
+        },
         "modules": {
-          "type": "array", "minItems": 1,
+          "type": "array",
+          "minItems": 1,
           "items": {
-            "type": "object", "additionalProperties": false, "required": ["id", "path", "kind"],
-            "properties": { "id": { "$ref": "#/$defs/id" }, "path": { "$ref": "#/$defs/path" }, "kind": { "enum": ["application", "service", "library", "module"] } }
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "path",
+              "kind"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/id"
+              },
+              "path": {
+                "$ref": "#/$defs/path"
+              },
+              "kind": {
+                "enum": [
+                  "application",
+                  "service",
+                  "library",
+                  "module"
+                ]
+              }
+            }
           }
         }
       }
     },
     "scaffold": {
-      "type": "object", "additionalProperties": false,
-      "required": ["version", "source", "language", "skills", "agents", "rules", "hooks", "gates"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "source",
+        "language",
+        "skills",
+        "agents",
+        "rules",
+        "hooks",
+        "gates"
+      ],
       "properties": {
-        "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
-        "source": { "$ref": "#/$defs/npmScaffoldSource" },
-        "language": { "enum": ["en", "zh-CN"] },
-        "skills": { "$ref": "#/$defs/idList" }, "agents": { "$ref": "#/$defs/idList" },
-        "rules": { "$ref": "#/$defs/idList" }, "policies": { "$ref": "#/$defs/idList" },
-        "hooks": { "$ref": "#/$defs/idList" }, "gates": { "$ref": "#/$defs/idList" },
-        "mcpServers": { "$ref": "#/$defs/idList" }
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+        },
+        "source": {
+          "$ref": "#/$defs/npmScaffoldSource"
+        },
+        "language": {
+          "enum": [
+            "en",
+            "zh-CN"
+          ]
+        },
+        "skills": {
+          "$ref": "#/$defs/idList"
+        },
+        "agents": {
+          "$ref": "#/$defs/idList"
+        },
+        "rules": {
+          "$ref": "#/$defs/idList"
+        },
+        "policies": {
+          "$ref": "#/$defs/idList"
+        },
+        "hooks": {
+          "$ref": "#/$defs/idList"
+        },
+        "gates": {
+          "$ref": "#/$defs/idList"
+        },
+        "mcpServers": {
+          "$ref": "#/$defs/idList"
+        }
       }
     },
-    "scripts": { "$ref": "#/$defs/idList" },
-    "xforge": {
-      "type": "object", "additionalProperties": false, "required": ["source", "package", "version", "protocol"],
-      "properties": { "source": { "const": "npm" }, "package": { "const": "@xforge/cli" }, "version": { "$ref": "#/$defs/semver" }, "protocol": { "enum": ["1", "2"] } }
+    "scripts": {
+      "$ref": "#/$defs/idList"
     },
-    "flow": { "$ref": "#/$defs/id" },
-    "targets": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["claude", "codex", "cursor", "opencode", "github-copilot"] } },
+    "xforge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "package",
+        "version",
+        "protocol"
+      ],
+      "properties": {
+        "source": {
+          "const": "npm"
+        },
+        "package": {
+          "const": "@xforge/cli"
+        },
+        "version": {
+          "$ref": "#/$defs/semver"
+        },
+        "protocol": {
+          "enum": [
+            "1",
+            "2"
+          ]
+        }
+      }
+    },
+    "flow": {
+      "$ref": "#/$defs/id"
+    },
+    "targets": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "claude",
+          "codex",
+          "cursor",
+          "opencode",
+          "github-copilot"
+        ]
+      }
+    },
     "install": {
-      "type": "object", "additionalProperties": false, "required": ["conflictPolicy", "prune", "commitGeneratedFiles"],
-      "properties": { "conflictPolicy": { "const": "fail" }, "prune": { "const": "managed-only" }, "commitGeneratedFiles": { "type": "boolean" } }
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "conflictPolicy",
+        "prune",
+        "commitGeneratedFiles"
+      ],
+      "properties": {
+        "conflictPolicy": {
+          "const": "fail"
+        },
+        "prune": {
+          "const": "managed-only"
+        },
+        "commitGeneratedFiles": {
+          "type": "boolean"
+        }
+      }
     },
     "approvals": {
-      "type": "object", "additionalProperties": false, "required": ["providers"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "providers"
+      ],
       "properties": {
         "providers": {
-          "type": "array", "uniqueItems": true,
+          "type": "array",
+          "uniqueItems": true,
+          "description": "External approval providers. Only the mcp type is supported: XForge's two approval mechanisms are the CLI's own interactive terminal (local) and an mcp provider (an external system reached over the Model Context Protocol). There is no signed-file-import path.",
           "items": {
-            "oneOf": [
-              {
-                "type": "object", "additionalProperties": false, "required": ["id", "type", "secretEnv", "roles"],
-                "properties": { "id": { "$ref": "#/$defs/id" }, "type": { "const": "hmac-sha256" }, "secretEnv": { "$ref": "#/$defs/env" }, "roles": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/id" } } }
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "type",
+              "mcpServer",
+              "roles"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/id"
               },
-              {
-                "type": "object", "additionalProperties": false, "required": ["id", "type", "mcpServer", "roles"],
-                "properties": { "id": { "$ref": "#/$defs/id" }, "type": { "const": "mcp" }, "mcpServer": { "$ref": "#/$defs/id" }, "roles": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/id" } } }
+              "type": {
+                "const": "mcp"
+              },
+              "mcpServer": {
+                "$ref": "#/$defs/id"
+              },
+              "roles": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "$ref": "#/$defs/id"
+                }
               }
-            ]
+            }
           }
         },
         "local": {
-          "type": "object", "additionalProperties": false,
-          "properties": { "requireTty": { "type": "boolean" } }
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "requireTty": {
+              "type": "boolean"
+            }
+          }
         }
       }
     },
     "audit": {
-      "type": "object", "additionalProperties": false, "required": ["redaction", "localRetentionDays"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "redaction",
+        "localRetentionDays"
+      ],
       "properties": {
-        "redaction": { "enum": ["strict", "balanced"] }, "localRetentionDays": { "type": "integer", "minimum": 1, "maximum": 3650 },
+        "redaction": {
+          "enum": [
+            "strict",
+            "balanced"
+          ]
+        },
+        "localRetentionDays": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3650
+        },
         "remote": {
-          "type": "object", "additionalProperties": false, "required": ["endpointEnv", "timeoutSeconds", "requiredFor"],
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "endpointEnv",
+            "timeoutSeconds",
+            "requiredFor"
+          ],
           "properties": {
-            "endpointEnv": { "$ref": "#/$defs/env" }, "tokenEnv": { "$ref": "#/$defs/env" }, "hmacSecretEnv": { "$ref": "#/$defs/env" },
-            "timeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 60 },
-            "requiredFor": { "type": "array", "uniqueItems": true, "items": { "enum": ["quick", "solid", "major"] } }
+            "endpointEnv": {
+              "$ref": "#/$defs/env"
+            },
+            "tokenEnv": {
+              "$ref": "#/$defs/env"
+            },
+            "hmacSecretEnv": {
+              "$ref": "#/$defs/env"
+            },
+            "timeoutSeconds": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 60
+            },
+            "requiredFor": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "enum": [
+                  "quick",
+                  "solid",
+                  "major"
+                ]
+              }
+            }
+          }
+        },
+        "delivery": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Whether audit events are delivered to the remote sink inline or spooled for `xforge audit retry`. Runtime-plane events default to spool so a per-tool-call Hook never blocks on HTTP.",
+          "properties": {
+            "workflow": {
+              "enum": [
+                "inline",
+                "spool"
+              ]
+            },
+            "runtime": {
+              "enum": [
+                "inline",
+                "spool"
+              ]
+            }
+          }
+        },
+        "localRetentionEnforce": {
+          "type": "boolean",
+          "description": "Enable destructive pruning of audit events older than localRetentionDays. Pruning moves the per-Change chain anchor forward so the retained chain still verifies. Default false."
+        }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "unknownToolPolicy": {
+          "description": "Decision applied by the hook dispatcher when a tool call cannot be mapped to a PermissionPolicy capability. 'allow' defers to the platform's own permission model. Default 'ask'.",
+          "enum": [
+            "allow",
+            "ask",
+            "deny"
+          ]
+        }
+      }
+    },
+    "gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Project-wide Gate execution settings. A hard credential denylist is applied after every allowlist, so a secret-shaped variable can never be opted back in.",
+      "properties": {
+        "env": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "allow": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+              }
+            },
+            "allowPrefixes": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+              }
+            }
           }
         }
       }
     }
   },
   "$defs": {
-    "id": { "type": "string", "pattern": "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$" },
-    "idList": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/id" } },
-    "env": { "type": "string", "pattern": "^[A-Z_][A-Z0-9_]*$" },
-    "metadata": { "type": "object", "additionalProperties": false, "required": ["name"], "properties": { "name": { "$ref": "#/$defs/id" }, "version": { "type": ["string", "integer"] }, "description": { "type": "string" } } },
-    "path": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\u0000).+$" },
-    "semver": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$" },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$"
+    },
+    "idList": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/id"
+      }
+    },
+    "env": {
+      "type": "string",
+      "pattern": "^[A-Z_][A-Z0-9_]*$"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/id"
+        },
+        "version": {
+          "type": [
+            "string",
+            "integer"
+          ]
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\u0000).+$"
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$"
+    },
     "npmScaffoldSource": {
-      "type": "object", "additionalProperties": false, "required": ["type", "package", "version"],
-      "properties": { "type": { "const": "npm" }, "package": { "const": "@xforge/cli" }, "version": { "$ref": "#/$defs/semver" } }
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "package",
+        "version"
+      ],
+      "properties": {
+        "type": {
+          "const": "npm"
+        },
+        "package": {
+          "const": "@xforge/cli"
+        },
+        "version": {
+          "$ref": "#/$defs/semver"
+        }
+      }
     }
   }
 }

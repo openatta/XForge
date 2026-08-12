@@ -110,7 +110,13 @@ export async function loadSelectedResources(project: ProjectContext): Promise<Se
     if (loaded.value) {
       const normalized = normalizeRule(loaded.value);
       if (normalized.constitutionCompatibility === 'conflict') diagnostics.push(diagnostic('XFORGE_CONSTITUTION_RULE_CONFLICT', `Rule ${id} declares a Constitution conflict.`, loaded.yamlPath));
-      if (normalized.severity === 'must' && normalized.gateRefs.length === 0 && normalized.approvalRefs.length === 0) diagnostics.push(diagnostic('XFORGE_RULE_NOT_ENFORCED', `Must Rule ${id} has no executable Gate or Approval coverage and remains guidance.`, loaded.yamlPath, 'warning'));
+      /* A policy-guarded Rule is enforced — the PreToolUse bridge refuses the call — so counting
+         only Gates and Approvals reported "remains guidance" for a Rule that actively denies. The
+         three coverage kinds are not equivalent in strength, but they are all enforcement; only a
+         Rule backed by none of them is guidance alone. */
+      if (normalized.severity === 'must' && normalized.gateRefs.length === 0 && normalized.approvalRefs.length === 0 && normalized.policyRefs.length === 0) {
+        diagnostics.push(diagnostic('XFORGE_RULE_NOT_ENFORCED', `Must Rule ${id} declares no Gate, PermissionPolicy, or Approval coverage and remains guidance.`, loaded.yamlPath, 'warning'));
+      }
       for (const gate of normalized.gateRefs) if (!project.manifest.scaffold.gates.includes(gate)) diagnostics.push(diagnostic('XFORGE_RULE_GATE_DISABLED', `Rule ${id} references non-enabled Gate ${gate}.`, loaded.yamlPath));
       rules.set(id, { value: loaded.value, yamlPath: loaded.yamlPath });
     }

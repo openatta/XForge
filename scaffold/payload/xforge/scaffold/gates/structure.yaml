@@ -4,7 +4,6 @@ metadata:
   name: structure
   version: 1
 spec:
-  stage: before-archive
   required: true
   builtin: structure
   timeoutSeconds: 30

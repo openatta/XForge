@@ -26,7 +26,7 @@ Skill/Agent 解释意图、生成规划或 assurance 内容，但不能把自然
 | `update` | write | full projection/identity migration |
 | `uninstall` | write | digest-safe managed-only cleanup |
 | `check` | conditional write | structure diagnostics and real Gate Evidence |
-| `approve` | write | interactive local or verified external Approval receipt |
+| `approve` | write | interactive local or mcp-provider Approval receipt, verified against the audit chain |
 | `transition` | write | guarded Stage transition receipt |
 | `work-package dispatch` | write | revision-bound dispatch receipt and audit |
 | `audit status/verify` | read | chain, policy, coverage and delivery status |
@@ -71,11 +71,11 @@ Transition guard 检查当前 Stage 的：
 
 ## 4. Approval 安全模型
 
-Local 模式要求 TTY、`--attestation human` 和显式 actor/role/decision/reason。它只能证明“有人通过本机 CLI 作出仓库内声明”，不能证明企业身份。
+Local 模式要求真实 TTY；CLI 自己的 `readline` 对话现场询问 actor/role/decision/reason，不接受这些字段作为命令行 flag 的权威值（`--actor`/`--role`/`--reason` 只是预填建议，`--attestation human` 只是意图提示）。它只能证明"有人通过本机 CLI 作出仓库内声明"，不能证明企业身份，也不再有需要读回去的确认码。
 
-External 模式要求 Manifest provider、环境变量中的 HMAC key、允许的 role，以及绑定当前 revision 的 receipt。导入时和每次 state/control-plane load 时都复验 schema、digest、signature、subject 和 freshness。无效 receipt 不进入有效 approvals 集合。
+`mcp` 模式要求 Manifest 里登记的 `type: mcp` provider、一个已注册的 `McpServer` 资源、允许的 role，以及绑定当前 revision 的 receipt。两种模式产出的 receipt 都不带签名——真正的信任边界是项目自己的防篡改 audit hash chain：`xforge approve` 写 receipt 的同一次运行里会追加一条匹配的 `approval.decided` 事件，导入时和每次 state/control-plane load 时都会核对 receipt 与 chain 里的事件是否对应，无匹配事件的 receipt 不进入有效 approvals 集合。
 
-Major 只接受 external provider，默认两个不同 actor 且角色分离。Agent/Reviewer 不能通过生成 JSON 获得有效批准权。
+Major 只接受 `mcp` provider，默认两个不同 actor 且角色分离。Agent/Reviewer 不能通过生成 JSON 获得有效批准权——一份从未经过 `xforge approve` 的手工 receipt 文件在 chain 里没有对应事件，会被拒绝。
 
 ## 5. Gate 与 Archive G4
 
@@ -140,7 +140,7 @@ Audit event 仅保存身份/关联元数据、revision、refs、decision、outco
 
 - Manifest/Lock/CLI 不匹配：Portable read，managed write fail closed。
 - stale Artifact/Flow/Policy/Gate/Git：Transition/Archive 拒绝。
-- 无 HMAC key：external Approval 无效，不降级到 local。
+- receipt 在 audit chain 里找不到匹配事件：Approval 无效，不降级到 local。
 - runtime Hook dispatcher before/permission 崩溃：deny；audit-only after 可 spool/warn。
 - 远端审计失败：本地 spool；Major archive 和 CI verify 失败直到 retry 成功。
 - generated file 被用户修改：sync/update/uninstall 冲突，不覆盖。

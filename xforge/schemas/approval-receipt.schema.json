@@ -11,8 +11,9 @@
     "decision": { "enum": ["approve", "reject"] },
     "approver": { "type": "object", "additionalProperties": false, "required": ["id", "provider", "role", "type"], "properties": { "id": { "type": "string", "minLength": 1 }, "provider": { "type": "string", "minLength": 1 }, "role": { "type": "string", "minLength": 1 }, "type": { "enum": ["human", "external-system"] } } },
     "decidedAt": { "type": "string", "format": "date-time" }, "reason": { "type": "string", "minLength": 1 }, "expiresAt": { "type": "string", "format": "date-time" }, "externalRef": { "type": "string" },
-    "signature": { "type": "object", "additionalProperties": false, "required": ["algorithm", "value"], "properties": { "algorithm": { "const": "hmac-sha256" }, "value": { "$ref": "#/$defs/hash" } } },
-    "digest": { "$ref": "#/$defs/hash" }
+    "digest": { "$ref": "#/$defs/hash" },
+    "governingRevision": { "$ref": "#/$defs/hash" },
+    "attestation": { "type": "object", "additionalProperties": false, "required": ["method", "respondedAt"], "properties": { "method": { "const": "cli-terminal" }, "respondedAt": { "type": "string", "format": "date-time" } } }
   },
   "$defs": { "hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" } }
 }

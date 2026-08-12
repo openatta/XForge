@@ -156,15 +156,18 @@ required` 的 Flow（默认是 Major），如果必需事件还没投递到配�
 
 ## Approval
 
-人类或外部系统的决定，产出一份签名的 `ApprovalReceipt`，绑定在当前确切的
+人类或外部系统的决定，产出一份 `ApprovalReceipt`，绑定在当前确切的
 `stateRevision`/`contentRevision`/`gitHead` 上——之后任何一次编辑都会让它
-失效。产出方式有两种：本地交互式（`--attestation human`，要求真实 TTY，
-刻意做成不能自动化——Agent 不能自我批准）或者外部签名 receipt
-（`xforge approve --receipt <path>`，用登记在 `manifest.yaml` 的
-`approvals.providers` 里的共享密钥做 HMAC-SHA256，不需要 TTY 就能验证）。
-默认自带的每个 Flow 归档前都至少要求一次 Approval，连 Quick 也不例外——严格
-程度随 Flow 变化（Quick：一个本地确认人；Major：两个不同角色的外部签名人，
-`separationOfDuties` 靠数不同角色而不是数不同 receipt 来强制）。在这七个里，
+失效。产出方式有两种：本地交互式（`xforge approve` 在真实 TTY 里运行，一个
+`readline` 对话现场询问身份、角色、决定和理由——刻意做成不能自动化，Agent
+不能自我批准）或者登记在 `manifest.yaml` 的 `approvals.providers` 里的
+`mcp` provider（向外部 `McpServer` 提交并轮询请求）。两条路径产出的
+receipt 都不带签名；`xforge approve` 会在同一次运行里写 receipt，并往项目
+的防篡改 audit chain 里追加一条对应事件，只有能在 chain 里找到匹配事件的
+receipt 才算有效。默认自带的每个 Flow 归档前都至少要求一次 Approval，连
+Quick 也不例外——严格程度随 Flow 变化（Quick：一个本地确认人；Major：两个
+不同角色的 `mcp` 批准人，`separationOfDuties` 靠数不同角色而不是数不同
+receipt 来强制）。在这七个里，
 Approval 是"要不要"在默认配置下基本不算可选项的那一个——只有力度是可以调的。
 
 ## 接下来去哪看

@@ -14,20 +14,101 @@ export function actionId(skillId: string): string {
   return skillId.startsWith('xforge-') ? skillId.slice('xforge-'.length) : skillId;
 }
 
-export function commandBody(skillId: string, frontmatter: Record<string, string> = {}): string {
-  const header = Object.keys(frontmatter).length === 0
-    ? ''
-    : `---\n${Object.entries(frontmatter).map(([key, value]) => `${key}: ${JSON.stringify(value)}`).join('\n')}\n---\n\n`;
+export type FrontmatterValue = string | number | boolean | string[] | Record<string, string> | undefined;
+
+/**
+ * Frontmatter used to be a `Record<string, string>` serialized with `JSON.stringify`, which made
+ * every enforceable field — Claude's `paths:` array, Copilot's `tools:` list, OpenCode's
+ * `permission:` map — impossible to express. Values are now rendered in their real YAML shape and
+ * empty values are dropped rather than emitted as `""`.
+ */
+export function renderFrontmatter(fields: Record<string, FrontmatterValue>): string {
+  const lines: string[] = [];
+  for (const [key, value] of Object.entries(fields)) {
+    if (value === undefined) continue;
+    if (Array.isArray(value)) {
+      if (value.length === 0) continue;
+      lines.push(`${key}:`, ...value.map((item) => `  - ${JSON.stringify(item)}`));
+    } else if (typeof value === 'object') {
+      const entries = Object.entries(value);
+      if (entries.length === 0) continue;
+      lines.push(`${key}:`, ...entries.map(([name, item]) => `  ${name}: ${JSON.stringify(item)}`));
+    } else if (typeof value === 'string') {
+      if (value === '') continue;
+      lines.push(`${key}: ${JSON.stringify(value)}`);
+    } else {
+      lines.push(`${key}: ${String(value)}`);
+    }
+  }
+  return `---\n${lines.join('\n')}\n---\n\n`;
+}
+
+export function commandBody(skillId: string, frontmatter: Record<string, FrontmatterValue> = {}): string {
+  const header = Object.keys(frontmatter).length === 0 ? '' : renderFrontmatter(frontmatter);
   return `${header}Use the \`${skillId}\` Skill for this request. Begin with \`xforge state\`${skillId === 'xforge-explore' ? '' : ' and resolve the Change ID'}, consume all Flow instructions dynamically, and distinguish Agent guidance from CLI/Gate evidence.\n`;
 }
 
-export function renderAgentMarkdown(agent: AgentResource, instructions: string, extra: Record<string, string> = {}): string {
-  const frontmatter = {
-    name: agent.metadata.name,
-    description: agent.spec.role,
-    ...extra,
+/**
+ * `spec.tools.allow` is the canonical, host-neutral capability set. Every target below enforces
+ * tool access through frontmatter; previously only Codex read it and the other four rendered it as
+ * a bullet list in the prose body, which left "Reviewer is read-only" as an unenforced slogan.
+ */
+export function agentAllows(agent: AgentResource, capability: 'read' | 'search' | 'write' | 'test' | 'network'): boolean {
+  return agent.spec.tools.allow.includes(capability);
+}
+
+/** Claude Code subagent `tools:` is a comma-separated list of canonical tool names. */
+export function claudeAgentFrontmatter(agent: AgentResource): Record<string, FrontmatterValue> {
+  const tools = [
+    ...(agentAllows(agent, 'read') ? ['Read'] : []),
+    ...(agentAllows(agent, 'search') ? ['Grep', 'Glob'] : []),
+    ...(agentAllows(agent, 'write') ? ['Write', 'Edit', 'NotebookEdit'] : []),
+    ...(agentAllows(agent, 'test') ? ['Bash'] : []),
+    ...(agentAllows(agent, 'network') ? ['WebFetch', 'WebSearch'] : []),
+    'TodoWrite',
+  ];
+  const model = { reasoning: 'opus', fast: 'haiku' }[agent.spec.model.class] ?? 'inherit';
+  return { tools: tools.join(', '), model };
+}
+
+/**
+ * Cursor subagents have no `tools` frontmatter — tools are inherited from the parent agent and the
+ * documented write constraint is the `readonly` boolean, so that is what the contract maps onto.
+ */
+export function cursorAgentFrontmatter(agent: AgentResource): Record<string, FrontmatterValue> {
+  return { readonly: !agentAllows(agent, 'write') };
+}
+
+/** GitHub Copilot custom agents take a `tools:` list of documented aliases. */
+export function copilotAgentFrontmatter(agent: AgentResource): Record<string, FrontmatterValue> {
+  return {
+    tools: [
+      ...(agentAllows(agent, 'read') ? ['read'] : []),
+      ...(agentAllows(agent, 'search') ? ['search'] : []),
+      ...(agentAllows(agent, 'write') ? ['edit'] : []),
+      ...(agentAllows(agent, 'test') ? ['execute'] : []),
+      ...(agentAllows(agent, 'network') ? ['web'] : []),
+      'todo',
+    ],
   };
-  return `---\n${Object.entries(frontmatter).map(([key, value]) => `${key}: ${JSON.stringify(value)}`).join('\n')}\n---\n\n${renderAgentBody(agent, instructions)}`;
+}
+
+/**
+ * OpenCode agents enforce access through a `permission:` map keyed by tool name, so a capability
+ * the contract withholds becomes an explicit `deny` rather than an unstated default.
+ */
+export function opencodeAgentFrontmatter(agent: AgentResource): Record<string, FrontmatterValue> {
+  const permission: Record<string, string> = {};
+  if (!agentAllows(agent, 'read')) permission.read = 'deny';
+  if (!agentAllows(agent, 'search')) { permission.glob = 'deny'; permission.grep = 'deny'; }
+  if (!agentAllows(agent, 'write')) permission.edit = 'deny';
+  if (!agentAllows(agent, 'test')) permission.bash = 'deny';
+  if (!agentAllows(agent, 'network')) { permission.webfetch = 'deny'; permission.websearch = 'deny'; }
+  return { mode: 'subagent', permission };
+}
+
+export function renderAgentMarkdown(agent: AgentResource, instructions: string, extra: Record<string, FrontmatterValue> = {}): string {
+  return `${renderFrontmatter({ name: agent.metadata.name, description: agent.spec.role, ...extra })}${renderAgentBody(agent, instructions)}`;
 }
 
 export function renderAgentBody(agent: AgentResource, instructions: string): string {
@@ -47,13 +128,17 @@ export function renderCodexAgentToml(agent: AgentResource, instructions: string)
   ].join('\n');
 }
 
-export function renderRuleMarkdown(rule: RuleResource, extra: Record<string, string> = {}): string {
+export function renderRuleMarkdown(
+  rule: RuleResource,
+  extra: Record<string, FrontmatterValue> = {},
+  options: { description?: boolean } = {},
+): string {
   const normalized = normalizeRule(rule);
-  const frontmatter = {
-    description: `${rule.metadata.name} (${normalized.severity})`,
+  const frontmatter: Record<string, FrontmatterValue> = {
+    ...(options.description === false ? {} : { description: `${rule.metadata.name} (${normalized.severity})` }),
     ...extra,
   };
-  return `---\n${Object.entries(frontmatter).map(([key, value]) => `${key}: ${JSON.stringify(value)}`).join('\n')}\n---\n\n# ${rule.metadata.name}\n\nSeverity: ${normalized.severity}\n\n${normalized.instruction.trim()}\n\nEnforcement: gates=${normalized.gateRefs.join(', ') || 'none'}; policies=${normalized.policyRefs.join(', ') || 'none'}; approvals=${normalized.approvalRefs.join(', ') || 'none'}.\n`;
+  return `${renderFrontmatter(frontmatter)}# ${rule.metadata.name}\n\nSeverity: ${normalized.severity}\n\n${normalized.instruction.trim()}\n\nEnforcement: gates=${normalized.gateRefs.join(', ') || 'none'}; policies=${normalized.policyRefs.join(', ') || 'none'}; approvals=${normalized.approvalRefs.join(', ') || 'none'}.\n`;
 }
 
 export function rulePaths(rule: RuleResource): string[] {
@@ -61,3 +146,23 @@ export function rulePaths(rule: RuleResource): string[] {
 }
 
 export const BOOTSTRAP_BODY = `# XForge bootstrap\n\nBefore project work, read \`xforge/manifest.yaml\`, \`xforge/constitution.md\`, and the active Change under the resolved logical Changes path. Use installed \`xforge-*\` Skills and treat only matching CLI/Gate evidence as enforced facts.\n`;
+
+/**
+ * Claude Code loads `CLAUDE.md`, never `AGENTS.md`. The CLI invocation contract
+ * (`npx --no-install xforge`) and the parallel-development policy live in `AGENTS.md`, so Claude
+ * users would otherwise never see them. The documented fix is a `CLAUDE.md` that imports
+ * `AGENTS.md`, which keeps both tools on one source instead of forking the text.
+ */
+export const CLAUDE_MEMORY_BEGIN = '<!-- XFORGE:BEGIN -->';
+export const CLAUDE_MEMORY_END = '<!-- XFORGE:END -->';
+export const CLAUDE_MEMORY_BODY = [
+  '# XForge',
+  '',
+  'The XForge project bootstrap, the CLI invocation contract, and the spec-driven parallel',
+  'development policy are maintained in one place and imported here:',
+  '',
+  '@AGENTS.md',
+  '',
+  'Claude Code reads `CLAUDE.md`, not `AGENTS.md`; this import keeps both on the same source.',
+  'Per-topic XForge guidance is installed under `.claude/rules/`.',
+].join('\n');

@@ -10,8 +10,8 @@ import { safeResolve } from './path-safety.js';
 import { planSpecMutations, type SpecMutation } from './spec-merger.js';
 import { isStageFlow, resolveChangeState } from './flow-resolver.js';
 import { loadSelectedResources } from './resource-loader.js';
-import { resolveControlPlane, terminalGovernanceBlocks } from './control-plane.js';
-import { recordAudit } from './audit.js';
+import { blockRemedy, resolveControlPlane, terminalGovernanceBlocks } from './control-plane.js';
+import { readChangeAuditEvents, recordAudit, type ChangeAuditFacts } from './audit.js';
 
 async function exists(filePath: string): Promise<boolean> {
   try { await access(filePath); return true; } catch { return false; }
@@ -43,7 +43,17 @@ export interface ArchivePlan {
   mandatoryGates: string[];
 }
 
-export async function planArchive(project: ProjectContext, changeId: string): Promise<ArchivePlan> {
+export interface PlanArchiveOptions {
+  /**
+   * Audit facts captured before `archive` recorded any event of its own. Archive appends
+   * `archive.before` and Gate events to the Change's chain while it runs; on a machine that only
+   * has the committed index (fresh clone, CI) those appends rebuild the index from a local chain
+   * that starts empty, so the pre-archive facts must be carried through both planning passes.
+   */
+  auditFacts?: ChangeAuditFacts;
+}
+
+export async function planArchive(project: ProjectContext, changeId: string, options: PlanArchiveOptions = {}): Promise<ArchivePlan> {
   assertManaged(project, 'archive');
   const structure = await checkStructure(project, changeId);
   const diagnostics = [...structure.diagnostics];
@@ -61,8 +71,10 @@ export async function planArchive(project: ProjectContext, changeId: string): Pr
       const resources = await loadSelectedResources(project);
       const control = await resolveControlPlane(project, changeId, resolved.flow, resolved.state, resources, resolved.config);
       diagnostics.push(...control.diagnostics);
-      const governanceBlocks = await terminalGovernanceBlocks(project, control);
+      const governanceBlocks = await terminalGovernanceBlocks(project, control, { auditFacts: options.auditFacts });
       for (const block of governanceBlocks) diagnostics.push(diagnostic('XFORGE_ARCHIVE_GOVERNANCE_BLOCKED', `Archive governance is blocked by ${block}.`, `${project.changesPath}/${changeId}`));
+      const remedy = blockRemedy(governanceBlocks, changeId);
+      if (remedy) diagnostics.push(diagnostic('XFORGE_GATE_EVIDENCE_STALE_REMEDY', remedy, `${project.changesPath}/${changeId}`, 'info'));
     }
     const tracker = structure.change.apply.tracks;
     if (tracker) {
@@ -124,7 +136,8 @@ export async function executeArchive(project: ProjectContext, changeId: string, 
   diagnostics: Diagnostic[];
   changes: FileChange[];
 }> {
-  let plan = await planArchive(project, changeId);
+  const auditFacts = await readChangeAuditEvents(project, changeId);
+  let plan = await planArchive(project, changeId, { auditFacts });
   if (plan.diagnostics.some((item) => item.severity === 'error') || dryRun) {
     return {
       data: { change: changeId, target: plan.target, dryRun, mandatoryGates: plan.mandatoryGates, specs: plan.mutations.map((item) => item.path) },
@@ -150,7 +163,7 @@ export async function executeArchive(project: ProjectContext, changeId: string, 
     };
   }
 
-  plan = await planArchive(project, changeId);
+  plan = await planArchive(project, changeId, { auditFacts });
   if (plan.diagnostics.some((item) => item.severity === 'error')) {
     return {
       data: { change: changeId, target: plan.target, dryRun: false, mandatoryGates: plan.mandatoryGates, specs: [] },

@@ -36,15 +36,23 @@ scaffold:
     - worker
     - integrator
     - reviewer
-  rules: []
+  rules:
+    - governance-assets-are-integrator-only
+    - observable-requirements-are-tested
+    - design-decisions-need-a-human
+    - prefer-small-explicit-contracts
   policies:
     - protected-files
   hooks:
     - runtime-audit
   gates:
     - structure
+    - check-findings
+    - constitution-check
     - unit-tests
     - security-scan
+  mcpServers:
+    - enterprise-approvals
 scripts:
   - project-context
 xforge:
@@ -63,11 +71,19 @@ install:
   conflictPolicy: fail
   prune: managed-only
   commitGeneratedFiles: true
+# XForge supports exactly two approval mechanisms: the CLI's own interactive terminal (always
+# available, not listed here) and an mcp provider reached over the Model Context Protocol. There is
+# no signed-file-import path. `enterprise-approvals` is the provider Major's policies require; its
+# matching McpServer resource (scaffold/mcp-servers/enterprise-approvals.yaml) is a placeholder — it
+# ships with a command that does not exist, on purpose. Replace it with the approval system your
+# organization actually runs before Major can produce a real decision; until then,
+# `xforge approve --provider enterprise-approvals` fails loudly with XFORGE_APPROVAL_MCP_CONNECTION_FAILED
+# instead of silently pretending to work.
 approvals:
   providers:
-    - id: enterprise-hmac
-      type: hmac-sha256
-      secretEnv: XFORGE_APPROVAL_HMAC_SECRET
+    - id: enterprise-approvals
+      type: mcp
+      mcpServer: enterprise-approvals
       roles: [owner, maintainer, security]
 audit:
   redaction: strict

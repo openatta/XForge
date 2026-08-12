@@ -66,6 +66,44 @@ describe('archive transaction', () => {
     expect(await exists(path.join(failedRoot, 'xforge', 'specs', 'widget', 'spec.md'))).toBe(false);
   });
 
+  /*
+   * P0-7: `xforge/.audit/**` is gitignored, so a fresh clone or a CI runner never has the local
+   * chain. Archive must decide from the committed `<change>/evidence/audit/index.json`.
+   */
+  it('archives on a machine that has no local audit chain at all', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await updateYaml(root, 'xforge/scaffold/gates/unit-tests.yaml', (gate) => { gate.spec.command = [process.execPath, '-e', 'process.exit(0)']; });
+    expect((await runCli(root, ['install'])).code).toBe(0);
+    await advanceSolidToReadyToArchive(root);
+    const index = JSON.parse(await readFile(path.join(root, 'xforge', 'changes', 'add-feature', 'evidence', 'audit', 'index.json'), 'utf8'));
+    expect(Object.keys(index.eventTypes)).toEqual(expect.arrayContaining(['gate.after', 'stage.entered', 'approval.decided']));
+
+    await rm(path.join(root, 'xforge', '.audit'), { recursive: true, force: true });
+    const archived = await runCli(root, ['archive', '--change', 'add-feature'], approvalTestEnv);
+    expect(archived.code, JSON.stringify(archived.json.diagnostics, null, 2)).toBe(0);
+    expect(await exists(path.join(root, 'xforge', 'changes', 'add-feature'))).toBe(false);
+  });
+
+  it('blocks archive when the committed audit index was hand-edited', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await updateYaml(root, 'xforge/scaffold/gates/unit-tests.yaml', (gate) => { gate.spec.command = [process.execPath, '-e', 'process.exit(0)']; });
+    expect((await runCli(root, ['install'])).code).toBe(0);
+    await advanceSolidToReadyToArchive(root);
+    const indexPath = path.join(root, 'xforge', 'changes', 'add-feature', 'evidence', 'audit', 'index.json');
+    const index = JSON.parse(await readFile(indexPath, 'utf8'));
+    index.eventTypes['gate.after'] = { count: 99, lastTimestamp: new Date().toISOString(), lastHash: 'f'.repeat(64) };
+    await write(root, 'xforge/changes/add-feature/evidence/audit/index.json', `${JSON.stringify(index, null, 2)}\n`);
+    await rm(path.join(root, 'xforge', '.audit'), { recursive: true, force: true });
+
+    const blocked = await runCli(root, ['archive', '--change', 'add-feature'], approvalTestEnv);
+    expect(blocked.code).toBe(1);
+    const messages = blocked.json.diagnostics.map((item: any) => item.message).join('\n');
+    expect(messages).toContain('audit:untrusted');
+    expect(await exists(path.join(root, 'xforge', 'changes', 'add-feature'))).toBe(true);
+  });
+
   it('uses relocated docs/specs and docs/changes consistently', async () => {
     const root = await fixture();
     await updateYaml(root, 'xforge/manifest.yaml', (manifest) => {

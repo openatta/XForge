@@ -21,6 +21,17 @@ export { runProjectScript } from './runners/script.js';
 export { runtimeCliIntegrity, actualGitIdentity } from './core/identity.js';
 export { resolveWorkPackages, workPackageVerificationGates } from './core/work-packages.js';
 export { resolveControlPlane, terminalGovernanceBlocks } from './core/control-plane.js';
-export { recordAudit, readAuditEvents, retryAuditDelivery, verifyAudit } from './core/audit.js';
+export {
+  recordAudit,
+  readAuditEvents,
+  readChangeAuditEvents,
+  readChangeAuditIndex,
+  readChangeLogEvents,
+  refreshChangeAuditIndex,
+  pruneExpiredAuditEvents,
+  expiredAuditEvents,
+  retryAuditDelivery,
+  verifyAudit,
+} from './core/audit.js';
 export { computeGovernanceRevision } from './core/revision.js';
 export * from './types.js';

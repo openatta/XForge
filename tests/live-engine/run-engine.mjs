@@ -11,7 +11,12 @@ import {
 const repositoryRoot = path.resolve(new URL('../..', import.meta.url).pathname);
 const allowedRoot = path.join(repositoryRoot, 'tests', '.tmp');
 const promptRoot = path.join(repositoryRoot, 'tests', 'live-engine', 'scenarios');
-const claudeConfigRoot = path.join(allowedRoot, 'live-engine-claude-config');
+/* Must match setup.mjs's per-scenario root, or parallel engines share one Claude config dir.
+   Falls back to the original shared path when the scenario is not set, so a run whose setup
+   predates this change keeps finding its existing config instead of silently re-authenticating. */
+const claudeConfigRoot = process.env.XFORGE_LIVE_ENGINE_SCENARIO
+  ? path.join(allowedRoot, `live-engine-${process.env.XFORGE_LIVE_ENGINE_SCENARIO}-tmp`, 'claude-config')
+  : path.join(allowedRoot, 'live-engine-claude-config');
 
 function options(argv) {
   const result = { budget: '3', 'suite-budget': '9', 'max-attempts': '2', 'timeout-seconds': '900' };

@@ -29,7 +29,8 @@
         "description": { "type": "string", "minLength": 1 },
         "instruction": { "type": "string", "minLength": 1 },
         "outline": { "type": "string" },
-        "requires": { "$ref": "#/$defs/idList" }
+        "requires": { "$ref": "#/$defs/idList" },
+        "validator": { "$ref": "#/$defs/artifactValidator" }
       }
     },
     "stageArtifact": {
@@ -41,9 +42,11 @@
         "generates": { "$ref": "#/$defs/path" },
         "description": { "type": "string", "minLength": 1 },
         "instruction": { "type": "string", "minLength": 1 },
-        "outline": { "type": "string" }
+        "outline": { "type": "string" },
+        "validator": { "$ref": "#/$defs/artifactValidator" }
       }
     },
+    "artifactValidator": { "enum": ["spec-delta"] },
     "v1alpha1": {
       "type": "object",
       "additionalProperties": false,

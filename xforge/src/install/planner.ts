@@ -19,6 +19,15 @@ import { safeResolve } from '../core/path-safety.js';
 import { loadSelectedResources, type SelectedResources } from '../core/resource-loader.js';
 import { localizedVariant } from '../core/language.js';
 import {
+  FragmentParseError,
+  adoptWholeFileAsFragment,
+  applyFragment,
+  fragmentDigest,
+  fragmentDrifted,
+  removeFragment,
+  type Fragment,
+} from './fragments.js';
+import {
   declaredCliIdentity,
   flattenOwnership,
   installedTargets,
@@ -74,12 +83,84 @@ function addDesired(map: Map<string, DesiredFile>, file: DesiredFile): void {
   map.set(file.path, file);
 }
 
+/**
+ * Cross-checks the selection against what each Adapter *declares* it can do.
+ *
+ * `AdapterCapability` used to be read-only decoration echoed by `state` and `install`: nothing
+ * compared it against the resources being projected, so an unsupported Hook event was dropped by a
+ * bare `continue` and a policy the host cannot express simply never appeared. This is where the
+ * README's "reporting capability gaps instead of pretending the platforms are equal" is enforced.
+ */
+export function capabilityGapDiagnostics(resources: SelectedResources, targets: TargetId[]): Diagnostic[] {
+  const result: Diagnostic[] = [];
+  for (const target of targets) {
+    const { capability } = getAdapter(target);
+    for (const [id, hook] of resources.hooks) {
+      if (!hook.value.spec.enabled || (hook.value.spec.plane ?? 'runtime') !== 'runtime') continue;
+      if (capability.runtimeHook.events.includes(hook.value.spec.event)) continue;
+      result.push(diagnostic(
+        'XFORGE_HOOK_EVENT_UNSUPPORTED',
+        `Target ${target} does not expose Hook event ${hook.value.spec.event}; Hook ${id} is not projected for that target.`,
+        hook.yamlPath,
+        'warning',
+        { target, hook: id, event: hook.value.spec.event, supportedEvents: capability.runtimeHook.events },
+      ));
+    }
+    const scopes = capability.permissionPolicyScopes;
+    if (!scopes) continue;
+    for (const [id, policy] of resources.policies) {
+      const spec = policy.value.spec;
+      const usesExceptActors = Boolean(spec.exceptActors?.length);
+      const usesStages = Boolean(spec.match.stages?.length);
+      if (!usesExceptActors && !usesStages) continue;
+
+      // "This target has no static rule for capability C" is a structural, unchanging property of
+      // the target, fully declared in `capability.permissionPolicyScopes` and echoed by `install`
+      // and `state`. Repeating it as a per-install diagnostic on every run would train readers to
+      // ignore the stream; what is reported here is the situational loss — a policy the target
+      // would otherwise have carried, dropped because of a dimension it cannot express.
+      //
+      // Targets whose `permissionPolicyScopes.capabilities` is empty (Cursor, Copilot today) never
+      // reach that "would otherwise have carried it" precondition for any capability, so without an
+      // explicit branch here a policy using `exceptActors`/`match.stages` gets no diagnostic at all
+      // on those targets — silence that reads as "this policy is fine here" when in fact there is no
+      // static projection to have withheld anything from in the first place. State that plainly
+      // instead of leaving it to be inferred from an absence.
+      if (!scopes.capabilities.includes(spec.capability)) {
+        result.push(diagnostic(
+          'XFORGE_POLICY_STATIC_LAYER_DEGRADED',
+          `Target ${target} has no static permission-policy projection at all, so PermissionPolicy ${id} (which uses exceptActors/match.stages) is enforced only by the XForge runtime Hook bridge.`,
+          policy.yamlPath,
+          'info',
+          { target, policy: id, capability: spec.capability, reason: 'no-static-projection' },
+        ));
+        continue;
+      }
+
+      const unexpressible = [
+        ...(usesExceptActors && !scopes.actorScoped ? ['exceptActors'] : []),
+        ...(usesStages && !scopes.stageScoped ? ['match.stages'] : []),
+      ];
+      if (unexpressible.length === 0) continue;
+      result.push(diagnostic(
+        'XFORGE_POLICY_STATIC_LAYER_DEGRADED',
+        `Target ${target} cannot express ${unexpressible.join(' or ')} in its static permission layer, so PermissionPolicy ${id} is withheld from it and enforced only by the XForge runtime Hook bridge.`,
+        policy.yamlPath,
+        'warning',
+        { target, policy: id, unexpressible },
+      ));
+    }
+  }
+  return result;
+}
+
 async function buildDesired(
   project: ProjectContext,
   resources: SelectedResources,
   targets: TargetId[],
-): Promise<Map<string, DesiredFile>> {
+): Promise<{ desired: Map<string, DesiredFile>; diagnostics: Diagnostic[] }> {
   const desired = new Map<string, DesiredFile>();
+  const diagnostics = capabilityGapDiagnostics(resources, targets);
   for (const target of targets) {
     const adapter = getAdapter(target);
     for (const bootstrap of adapter.bootstrap()) addDesired(desired, bootstrap);
@@ -129,12 +210,30 @@ async function buildDesired(
         ...adapter.trace('rule', id, [rule.yamlPath]),
       });
     }
-    for (const file of adapter.renderGovernance({
+    const governance = adapter.renderGovernance({
       policies: [...resources.policies].map(([id, item]) => ({ id, ...item })),
       hooks: [...resources.hooks].map(([id, item]) => ({ id, ...item })),
-    })) addDesired(desired, file);
+    });
+    for (const file of governance.files) addDesired(desired, file);
+    diagnostics.push(...governance.diagnostics);
   }
-  return desired;
+
+  if (resources.mcpServers.size > 0) {
+    // Deliberate: `McpServer` defines an XForge approval channel (`core/mcp-approval.ts`), not an
+    // MCP server for the coding tool to orchestrate. Its fields (`authTokenEnv`, `timeoutSeconds`)
+    // have no counterpart in `.mcp.json`, and projecting it would take over another file a team
+    // owns. Rather than project a misleading config, the limited semantics are stated out loud.
+    for (const [id, server] of resources.mcpServers) {
+      diagnostics.push(diagnostic(
+        'XFORGE_MCP_SERVER_NOT_PROJECTED',
+        `McpServer ${id} defines an XForge approval channel and is not projected as a coding-tool MCP configuration; configure the server in the host's own MCP config (for example .mcp.json) if agents should call its tools.`,
+        server.yamlPath,
+        'info',
+        { server: id, usedBy: 'approvals' },
+      ));
+    }
+  }
+  return { desired, diagnostics };
 }
 
 async function currentFile(project: ProjectContext, relative: string): Promise<{ digest: string; symlink: boolean } | null> {
@@ -147,6 +246,71 @@ async function currentFile(project: ProjectContext, relative: string): Promise<{
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw error;
   }
+}
+
+async function currentText(project: ProjectContext, relative: string): Promise<string | null> {
+  const absolute = await safeResolve(project.root, relative);
+  try {
+    const stat = await lstat(absolute);
+    if (stat.isSymbolicLink() || !stat.isFile()) return null;
+    return await readFile(absolute, 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
+interface FragmentPlan {
+  /** Full file content to write: XForge's material merged into everything the user owns. */
+  merged: string;
+  /** Digest of the owned material only, so unrelated user edits never churn the record. */
+  ownedDigest: string;
+  /** The user removed or rewrote material XForge previously installed. */
+  drifted: boolean;
+  /** The destination exists but cannot be parsed in the fragment's format. */
+  parseError: string | null;
+}
+
+/**
+ * Resolves every partially-owned destination before planning, so the rest of the planner works on
+ * final content. Also migrates records written under whole-file ownership: when the destination
+ * still matches the recorded whole-file digest, everything at the owned locations was XForge's and
+ * is adopted as the fragment baseline without prompting the user.
+ */
+async function planFragments(
+  project: ProjectContext,
+  desired: Map<string, DesiredFile>,
+  previous: OwnershipStateV2,
+): Promise<Map<string, FragmentPlan>> {
+  const result = new Map<string, FragmentPlan>();
+  for (const file of desired.values()) {
+    if (!file.fragment) continue;
+    const text = await currentText(project, file.path);
+    const old = previous.targets[file.target]?.files[file.path];
+    let recorded: Fragment | null = old?.fragment ?? null;
+    let drifted = false;
+    try {
+      if (old && !recorded) {
+        if (text !== null && sha256(Buffer.from(text)) === old.lastInstalledDigest) recorded = adoptWholeFileAsFragment(text, file.fragment, file.path);
+        else drifted = true;
+      } else if (old && recorded) {
+        drifted = fragmentDrifted(text, recorded, file.path);
+      }
+      const merged = applyFragment(text, file.fragment, recorded, file.path);
+      file.content = Buffer.from(merged);
+      result.set(file.path, { merged, ownedDigest: fragmentDigest(file.fragment), drifted, parseError: null });
+    } catch (error) {
+      if (!(error instanceof FragmentParseError)) throw error;
+      result.set(file.path, { merged: text ?? '', ownedDigest: fragmentDigest(file.fragment), drifted, parseError: error.message });
+    }
+  }
+  return result;
+}
+
+/** Only XForge's own material is scanned; a user's unrelated keys are not XForge's to police. */
+function scannedContent(file: DesiredFile): Buffer {
+  if (!file.fragment) return file.content;
+  return Buffer.from(file.fragment.format === 'markers' ? file.fragment.body : stableStringify({ arrays: file.fragment.arrays ?? [], values: file.fragment.values ?? [] }));
 }
 
 function hasSecretLikeContent(content: Buffer): boolean {
@@ -281,15 +445,17 @@ export async function planProjection(project: ProjectContext, options: Projectio
   const previous = await readOwnership(project);
   const { targets, scopeTargets } = resolveTargets(project, previous, options);
   const resources = await loadSelectedResources(project);
-  const desired = await buildDesired(project, resources, targets);
+  const built = await buildDesired(project, resources, targets);
+  const desired = built.desired;
   const previousV2 = toOwnershipV2(project, previous);
   const next = structuredClone(previousV2);
-  const diagnostics = [...resources.diagnostics];
+  const diagnostics = [...resources.diagnostics, ...built.diagnostics];
   const changes: FileChange[] = [];
   const now = new Date().toISOString();
+  const fragments = await planFragments(project, desired, previousV2);
 
   for (const file of desired.values()) {
-    if (hasSecretLikeContent(file.content)) diagnostics.push(diagnostic(
+    if (hasSecretLikeContent(scannedContent(file))) diagnostics.push(diagnostic(
       'XFORGE_SECRET_IN_GENERATED_CONTENT',
       'Secret-like material is forbidden in generated Adapter files.',
       file.path,
@@ -337,7 +503,10 @@ export async function planProjection(project: ProjectContext, options: Projectio
 
     for (const [relative, file] of [...targetDesired].sort(([left], [right]) => left.localeCompare(right))) {
       const old = working.files[relative];
-      const desiredDigest = sha256(file.content);
+      const fragmentPlan = fragments.get(relative);
+      // For a partially-owned file the record tracks the owned material, not the whole file, so an
+      // edit to a key XForge does not own never marks the record dirty.
+      const desiredDigest = fragmentPlan ? fragmentPlan.ownedDigest : sha256(file.content);
       const sources = file.sourcePaths
         .map((sourcePath) => fingerprints.get(sourcePath))
         .filter((item): item is SourceFingerprint => Boolean(item))
@@ -352,6 +521,7 @@ export async function planProjection(project: ProjectContext, options: Projectio
         protocolVersion: PROTOCOL_VERSION,
         desiredDigest,
         lastInstalledDigest: desiredDigest,
+        ...(file.fragment ? { fragment: file.fragment } : {}),
       };
       if (!old
         || old.renderVersion !== file.renderVersion
@@ -362,6 +532,24 @@ export async function planProjection(project: ProjectContext, options: Projectio
       if (current?.symlink) {
         changes.push({ action: 'conflict', path: relative, source: file.source, target: file.target, reason: 'Destination is a symlink or non-file.' });
         diagnostics.push(diagnostic('XFORGE_INSTALL_CONFLICT', 'Generated destination is a symlink or non-file.', relative));
+        continue;
+      }
+      if (fragmentPlan) {
+        if (fragmentPlan.parseError) {
+          changes.push({ action: 'conflict', path: relative, digest: current?.digest, source: file.source, target: file.target, reason: fragmentPlan.parseError });
+          diagnostics.push(diagnostic('XFORGE_INSTALL_CONFLICT', `Partially managed destination cannot be parsed: ${fragmentPlan.parseError}`, relative));
+          continue;
+        }
+        if (fragmentPlan.drifted) {
+          changes.push({ action: 'conflict', path: relative, digest: current?.digest, source: file.source, target: file.target, reason: 'XForge-owned keys were modified after installation.' });
+          diagnostics.push(diagnostic('XFORGE_MANAGED_FILE_MODIFIED', 'XForge-owned keys in a partially managed destination were modified after installation.', relative));
+          continue;
+        }
+        const mergedDigest = sha256(Buffer.from(fragmentPlan.merged));
+        if (!current) changes.push({ action: 'create', path: relative, digest: mergedDigest, source: file.source, target: file.target });
+        else if (current.digest === mergedDigest) changes.push({ action: 'skip', path: relative, digest: mergedDigest, source: file.source, target: file.target, reason: 'Already current.' });
+        else changes.push({ action: 'modify', path: relative, digest: mergedDigest, source: file.source, target: file.target });
+        working.files[relative] = record;
         continue;
       }
       if (!current) {
@@ -388,6 +576,31 @@ export async function planProjection(project: ProjectContext, options: Projectio
       if (targetDesired.has(relative)) continue;
       const current = await currentFile(project, relative);
       if (!current) {
+        delete working.files[relative];
+        continue;
+      }
+      if (owned.fragment && !current.symlink) {
+        // Retract only XForge's own material; the file survives if the user has anything in it.
+        const text = await currentText(project, relative);
+        let remainder: string | null = null;
+        try {
+          if (text === null || fragmentDrifted(text, owned.fragment, relative)) throw new FragmentParseError('XForge-owned keys were modified after installation.');
+          remainder = removeFragment(text, owned.fragment, relative);
+        } catch (error) {
+          if (!(error instanceof FragmentParseError)) throw error;
+          changes.push({ action: 'conflict', path: relative, digest: current.digest, source: owned.source, target: owned.target, reason: (error as Error).message });
+          diagnostics.push(diagnostic('XFORGE_MANAGED_FILE_MODIFIED', 'Modified partially managed file cannot be reverted by managed-only pruning.', relative));
+          continue;
+        }
+        if (remainder === null) changes.push({ action: 'delete', path: relative, digest: current.digest, source: owned.source, target: owned.target });
+        else {
+          // The writer resolves content from `desired`, so publish the retracted file there.
+          desired.set(relative, {
+            path: relative, content: Buffer.from(remainder), source: owned.source, target: owned.target,
+            resource: owned.resource, sourcePaths: [], renderVersion: owned.renderVersion,
+          });
+          changes.push({ action: 'modify', path: relative, digest: sha256(Buffer.from(remainder)), source: owned.source, target: owned.target });
+        }
         delete working.files[relative];
         continue;
       }

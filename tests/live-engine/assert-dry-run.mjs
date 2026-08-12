@@ -25,7 +25,7 @@ const before = await snapshot(root);
 // `--root root` is injected here, not expected in `args` after `--`: spawnXforge already sets
 // cwd to the resolved absolute `root`, so a caller-supplied `--root` value would be resolved
 // against that cwd a second time instead of the caller's original cwd.
-const execution = spawnXforge(root, ['--root', root, ...args], { env: { XFORGE_APPROVAL_HMAC_SECRET: 'xforge-live-e2e-external-provider-secret' } });
+const execution = spawnXforge(root, ['--root', root, ...args], {});
 let envelope = null;
 try { envelope = JSON.parse(execution.stdout); } catch {}
 if (execution.status !== 0 || !envelope?.ok) throw new Error(`Dry-run command failed: ${execution.stdout || execution.stderr}`);

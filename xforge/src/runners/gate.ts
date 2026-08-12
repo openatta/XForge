@@ -12,6 +12,44 @@ import { loadSelectedResources } from '../core/resource-loader.js';
 import { resolveControlPlane } from '../core/control-plane.js';
 import { runtimeCliIntegrity } from '../core/identity.js';
 import { recordAudit } from '../core/audit.js';
+import { evaluateCheckFindings } from '../core/check-findings.js';
+import { evaluateConstitutionCheck } from '../core/constitution-check.js';
+import { knownIdentities } from '../core/ledger-identity.js';
+
+/**
+ * Gate subprocesses never inherit the ambient environment. This is the built-in allowlist: enough
+ * for the shipped `npm test` / `npm audit` Gates to work on a developer machine, in CI, and behind
+ * a corporate proxy, without becoming a blanket passthrough.
+ */
+const DEFAULT_GATE_ENV_ALLOW = [
+  'PATH', 'HOME', 'SHELL', 'USER', 'LOGNAME', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TZ', 'TERM',
+  'TMPDIR', 'TEMP', 'TMP',
+  'SystemRoot', 'COMSPEC', 'PATHEXT', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'ProgramData',
+  'ProgramFiles', 'ProgramFiles(x86)', 'NUMBER_OF_PROCESSORS', 'OS',
+  'CI', 'NODE_ENV', 'FORCE_COLOR', 'NO_COLOR',
+  'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'no_proxy',
+  'NODE_EXTRA_CA_CERTS', 'SSL_CERT_FILE', 'SSL_CERT_DIR',
+];
+
+/** `npm_config_*` carries registry/cache/proxy settings; credential-shaped names are filtered below. */
+const DEFAULT_GATE_ENV_PREFIXES = ['npm_config_', 'NPM_CONFIG_'];
+
+/** Never inherited, from any source: the manifest cannot opt a credential back in. */
+const GATE_ENV_DENY = /(?:password|passwd|secret|token|api[_-]?key|auth|credential|cookie|session|private[_-]?key)/i;
+
+function gateEnvironment(project: ProjectContext, gate: GateResource): NodeJS.ProcessEnv {
+  const manifest = project.manifest.gates?.env;
+  const allow = new Set([...DEFAULT_GATE_ENV_ALLOW, ...(manifest?.allow ?? []), ...(gate.spec.env?.allow ?? [])]);
+  const prefixes = [...DEFAULT_GATE_ENV_PREFIXES, ...(manifest?.allowPrefixes ?? []), ...(gate.spec.env?.allowPrefixes ?? [])];
+  const environment: NodeJS.ProcessEnv = {};
+  for (const [name, value] of Object.entries(process.env)) {
+    if (value === undefined || value === '') continue;
+    if (GATE_ENV_DENY.test(name)) continue;
+    if (!allow.has(name) && !prefixes.some((prefix) => prefix.length > 0 && name.startsWith(prefix))) continue;
+    environment[name] = value;
+  }
+  return environment;
+}
 
 function redact(input: string): string {
   let output = input.replace(/((?:password|passwd|secret|api[_-]?key|(?:access[_-]?)?token|authorization)\s*[:=]\s*)([^\s]+)/gi, '$1[REDACTED]');
@@ -45,10 +83,7 @@ async function runCommand(project: ProjectContext, gate: GateResource): Promise<
   let truncated = false;
   let timedOut = false;
 
-  const safeEnvironment: NodeJS.ProcessEnv = {};
-  for (const name of ['PATH', 'SystemRoot', 'TMPDIR', 'TEMP', 'TMP', 'HOME']) {
-    if (process.env[name]) safeEnvironment[name] = process.env[name];
-  }
+  const safeEnvironment = gateEnvironment(project, gate);
 
   const result = await new Promise<{ exitCode: number | null }>((resolve, reject) => {
     const child = spawn(command[0]!, command.slice(1), {
@@ -127,6 +162,37 @@ export async function runGate(
       outputTruncated: false,
       stdout: structurePassed ? 'Structural validation passed.' : '',
       stderr: structurePassed ? '' : 'Structural validation failed.',
+    };
+  } else if (gate.spec.builtin === 'check-findings') {
+    /* Turns the Check Stage from "the Agent says it reviewed things" into a decidable result. */
+    const findings = await evaluateCheckFindings(project, changeId);
+    result = {
+      command: ['builtin:check-findings'],
+      shell: false,
+      workingDirectory: '.',
+      exitCode: findings.status === 'passed' ? 0 : 1,
+      timedOut: false,
+      outputTruncated: false,
+      stdout: findings.status === 'passed'
+        ? `Check findings ledger accepted: ${findings.counts.blocker} blocker(s) all resolved, ${findings.counts.warning} warning(s), ${findings.counts.suggestion} suggestion(s).`
+        : '',
+      stderr: findings.status === 'passed' ? '' : findings.problems.join('\n'),
+    };
+  } else if (gate.spec.builtin === 'constitution-check') {
+    /* The Constitution is documented as the first governance layer; this is what makes it one. */
+    const known = await knownIdentities(project, changeId, control?.governance.approvals ?? []);
+    const constitution = await evaluateConstitutionCheck(project, changeId, known);
+    result = {
+      command: ['builtin:constitution-check'],
+      shell: false,
+      workingDirectory: '.',
+      exitCode: constitution.status === 'passed' ? 0 : 1,
+      timedOut: false,
+      outputTruncated: false,
+      stdout: constitution.status === 'passed'
+        ? `Constitution ledger accepted: ${constitution.covered.length}/${constitution.principles.length} principles answered, ${constitution.violations.length} recorded violation(s).`
+        : '',
+      stderr: constitution.status === 'passed' ? '' : constitution.problems.join('\n'),
     };
   } else {
     try {

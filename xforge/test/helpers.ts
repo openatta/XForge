@@ -2,10 +2,12 @@ import { cp, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { createHmac, randomUUID } from 'node:crypto';
 import { parse, stringify } from 'yaml';
 import { afterAll } from 'vitest';
-import { sha256, stableStringify } from '../src/core/hash.js';
+import { CHECK_FINDINGS_PATH } from '../src/core/check-findings.js';
+import { CONSTITUTION_CHECK_PATH, constitutionPrinciples } from '../src/core/constitution-check.js';
+import { executeApprove, type ApprovalTerminal } from '../src/commands/approve.js';
+import { loadProject } from '../src/core/project-loader.js';
 
 export const xforgeRoot = path.resolve(new URL('..', import.meta.url).pathname);
 export const repositoryRoot = path.resolve(xforgeRoot, '..');
@@ -91,22 +93,54 @@ export function changeYaml(flow: 'quick' | 'solid' | 'major', overrides: Record<
   return stringify(value, { sortMapEntries: true });
 }
 
+/** The machine-decidable half of a Check Stage: a review that found nothing still has to say so. */
+export function checkFindings(entries = ''): string {
+  return entries ? `findings:\n${entries}` : 'findings: []\n';
+}
+
+/** Answers every `## ` principle in the shipped Constitution as compliant. */
+export async function constitutionLedger(root: string): Promise<string> {
+  const source = await readFile(path.join(root, 'xforge', 'constitution.md'), 'utf8');
+  const principles = constitutionPrinciples(source);
+  return `principles:\n${principles.map((name) => `  - principle: ${JSON.stringify(name)}\n    status: compliant\n`).join('')}`;
+}
+
 export async function createCompleteSolidChange(root: string, id = 'add-feature'): Promise<void> {
   const base = `xforge/changes/${id}`;
   await write(root, `${base}/change.yaml`, changeYaml('solid'));
   await write(root, `${base}/proposal.md`, '## Why\nTest\n\n## Flow choice\nsolid\n');
   await write(root, `${base}/specs/widget/spec.md`, '## ADDED Requirements\n\n### Requirement: Widget works\n\n#### Scenario: success\n- **WHEN** used\n- **THEN** it works\n');
   await write(root, `${base}/design.md`, '## Decisions\nUse a deterministic fixture.\n');
+  await write(root, `${base}/check-report.md`, '## Completeness\nProposal, delta Specs, and Design agree.\n');
+  await write(root, `${base}/${CHECK_FINDINGS_PATH}`, checkFindings());
+  await write(root, `${base}/${CONSTITUTION_CHECK_PATH}`, await constitutionLedger(root));
   await write(root, `${base}/assurance.md`, '## Completeness\nAll requirements are covered.\n');
   await write(root, `${base}/evidence/verification-receipt.yaml`, 'status: passed\nrevision: fixture\n');
 }
 
-export const approvalTestEnv = { XFORGE_APPROVAL_HMAC_SECRET: 'xforge-test-approval-secret' };
+/**
+ * There is no `--receipt` import path anymore, and every receipt (local or mcp) is only trusted once
+ * XForge's own audit chain independently records the `approval.decided` event that produced it. So
+ * test setup that needs "an approval already exists" can no longer shortcut by writing a hand-signed
+ * file — it goes through the real `executeApprove` local path, exactly as `xforge approve` run at a
+ * terminal would, via a scripted `ApprovalTerminal` that answers the live dialogue.
+ */
+export const approvalTestEnv = {};
 
 async function successful(root: string, args: string[], env: NodeJS.ProcessEnv = {}): Promise<any> {
-  const result = await runCli(root, args, { ...approvalTestEnv, ...env });
+  const result = await runCli(root, args, env);
   if (result.code !== 0) throw new Error(`${args.join(' ')} failed: ${JSON.stringify(result.json?.diagnostics ?? result.stderr)}`);
   return result.json;
+}
+
+function scriptedApprovalTerminal(answers: Record<string, string>): ApprovalTerminal {
+  return {
+    present() {},
+    async question(prompt: string) {
+      for (const [key, answer] of Object.entries(answers)) if (prompt.includes(key)) return answer;
+      return '';
+    },
+  };
 }
 
 export async function approveCurrentRevision(
@@ -117,29 +151,23 @@ export async function approveCurrentRevision(
   actor = 'owner@example.test',
   role = 'owner',
 ): Promise<any> {
-  const state = await successful(root, ['state', '--change', change]);
-  const governance = state.data.change.governance;
-  const payload = {
-    apiVersion: 'xforge.dev/v1alpha2', kind: 'ApprovalReceipt', receiptId: randomUUID(), change,
-    flow: state.data.change.flow, stage: governance.currentStage, transition, policyId,
-    stateRevision: governance.revision.stateRevision, contentRevision: governance.revision.contentRevision,
-    policySnapshotDigest: governance.revision.policySnapshotDigest, gitBase: governance.revision.gitBase, gitHead: governance.revision.gitHead,
-    governingDigest: sha256(stableStringify({ change, flow: state.data.change.flow, policyId, revision: governance.revision })),
-    decision: 'approve', approver: { id: actor, provider: 'enterprise-hmac', role, type: 'external-system' },
-    decidedAt: new Date().toISOString(), reason: 'Approved by the test governance provider.', externalRef: `test:${actor}:${transition}`,
-  };
-  const signature = { algorithm: 'hmac-sha256', value: createHmac('sha256', approvalTestEnv.XFORGE_APPROVAL_HMAC_SECRET).update(stableStringify(payload)).digest('hex') };
-  const signed = { ...payload, signature };
-  const receipt = { ...signed, digest: sha256(stableStringify(signed)) };
-  const receiptPath = `external-approvals/${receipt.receiptId}.json`;
-  await write(root, receiptPath, `${JSON.stringify(receipt, null, 2)}\n`);
-  return successful(root, ['approve', '--change', change, '--for', transition, '--policy', policyId, '--receipt', receiptPath]);
+  const project = await loadProject(root, { exactRoot: true });
+  const terminal = scriptedApprovalTerminal({
+    'Approver identity': actor, 'Approver role': role, 'Decision': 'approve', 'Reason': 'Approved by the test governance dialogue.',
+  });
+  const result = await executeApprove(project, { change, transition, policy: policyId, interactive: true, dryRun: false, terminal });
+  if (result.data.status !== 'recorded') throw new Error(`approve --change ${change} --for ${transition} --policy ${policyId} did not record: ${JSON.stringify(result.diagnostics)}`);
+  return result;
 }
 
 export async function advanceSolidToApply(root: string, id = 'add-feature'): Promise<void> {
   await successful(root, ['check', '--change', id, '--gate', 'structure']);
   await successful(root, ['transition', '--change', id, '--to', 'design']);
-  await approveCurrentRevision(root, id, 'apply', 'planning-solid');
+  /* Solid now reviews before it implements: design -> check -> apply, with the planning approval
+     guarding entry to Check rather than straight to Apply. */
+  await approveCurrentRevision(root, id, 'check', 'planning-solid');
+  await successful(root, ['transition', '--change', id, '--to', 'check']);
+  await successful(root, ['check', '--change', id]);
   await successful(root, ['transition', '--change', id, '--to', 'apply']);
 }
 

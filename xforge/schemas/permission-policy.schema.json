@@ -13,11 +13,37 @@
         "match": {
           "type": "object", "additionalProperties": false, "minProperties": 1,
           "properties": {
-            "paths": { "$ref": "#/$defs/stringList" }, "commands": { "$ref": "#/$defs/stringList" }, "tools": { "$ref": "#/$defs/stringList" },
-            "hosts": { "$ref": "#/$defs/stringList" }, "mcpServers": { "$ref": "#/$defs/stringList" }, "stages": { "$ref": "#/$defs/idList" }
+            "paths": {
+              "$ref": "#/$defs/stringList",
+              "description": "Project-relative, POSIX-separated path globs. Strict segment semantics: `*` matches within a single path segment and never crosses `/`; `**` crosses `/`; `?` matches exactly one non-`/` character; `[...]` character classes are supported; dotfiles are matched."
+            },
+            "commands": {
+              "$ref": "#/$defs/stringList",
+              "description": "Shell command-line patterns with loose wildcard semantics: `*` matches any run of characters and does cross `/`, so `rm -rf *` also matches `rm -rf /tmp/x`. A command line is not a `/`-segmented namespace."
+            },
+            "tools": {
+              "$ref": "#/$defs/stringList",
+              "description": "Tool or sub-Agent identifiers with loose wildcard semantics: `*` matches any run of characters, including `/`."
+            },
+            "hosts": {
+              "$ref": "#/$defs/stringList",
+              "description": "Network hosts with loose wildcard semantics: `*` matches any run of characters, including `/`."
+            },
+            "mcpServers": {
+              "$ref": "#/$defs/stringList",
+              "description": "MCP server names with loose wildcard semantics: `*` matches any run of characters, including `/`."
+            },
+            "stages": {
+              "$ref": "#/$defs/idList",
+              "description": "Flow Stages the policy applies to. No host's static permission format can express Stage scoping, so a Stage-scoped policy is withheld from every static projection and enforced only by the XForge runtime Hook bridge."
+            }
           }
         },
-        "exceptActors": { "$ref": "#/$defs/idList" }, "reason": { "type": "string", "minLength": 1 }
+        "exceptActors": {
+          "$ref": "#/$defs/idList",
+          "description": "Agent identities the policy does not apply to. No host's static permission format can express an actor exception, so a policy using this is withheld from every static projection and enforced only by the XForge runtime Hook bridge, which does honour it."
+        },
+        "reason": { "type": "string", "minLength": 1 }
       }
     }
   },

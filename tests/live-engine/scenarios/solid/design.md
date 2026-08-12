@@ -13,7 +13,8 @@ outline exactly — do not add or omit sections it does not define. Cover
 atomic storage, corrupt input, CLI envelope/exit codes, testing and rollback,
 using the same `data.task`/`data.tasks` envelope oracle as the delta Spec.
 
-Also create `work-packages.yaml` with root-level `apiVersion`
+Also create `work-packages.yaml` **inside the Change directory** that
+`xforge state` reports as `change.path` (not at the project root), with root-level `apiVersion`
 `xforge.dev/v1alpha1`, root-level `kind` `WorkPackagePlan`, and a root-level
 `packages` array containing exactly one package (do not add a `spec`
 wrapper). The package has the eight canonical fields: `id`, `goal`,
