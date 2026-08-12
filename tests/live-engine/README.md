@@ -69,6 +69,47 @@ already validated against an independent reference implementation before
 being committed — the model is expected to satisfy that suite, not to be
 trusted to have specified it correctly itself.
 
+### Major's expected outcome: often stops at Check, and that is a pass, not a failure
+
+Unlike quick/solid, a major (`credential-store`) run reaching `verify`/archive
+is not the bar for "the product works." `credential-store` is deliberately a
+security-heavy Spec (secret length limits, "never appears in output"
+guarantees, v1→v2 migration atomicity) against a fixed, black-box acceptance
+suite that cannot be extended mid-run. Across independent runs, the Check
+Agent has repeatedly found a *different* specific requirement the Spec
+claims but the immutable suite does not actually verify (a CLI argument-name
+mismatch in one run; untested >1024-character secrets and an untested
+no-leakage guarantee in the next) — each one a real, well-reasoned violation
+of the `observable-requirements-are-tested` Rule, each with exact file/line
+citations, each correctly blocking `check → apply` (`gate:check-findings:failed`)
+before implementation starts.
+
+**This is the intended outcome, not a bug in XForge or in this harness.**
+A major run that stops at Check with a specific, correctly-attributed
+blocker is validating exactly what Major exists to validate — self-answer
+the question "did the pass-through governance chain work?" this way, not by
+"did it reach archive?":
+
+1. propose → clarify → design → check all completed and produced their
+   required Artifacts and evidence ledgers.
+2. `implementation-major`'s mcp approval round-trip succeeded with two
+   distinct-role receipts (`owner` + `maintainer`) — see
+   `xforge/changes/<id>/approvals/implementation-major/*.json` in the
+   project root reported by `setup.mjs`.
+3. `check-findings` and `constitution-check` ran and either passed cleanly
+   or blocked with a finding that cites real Artifact/test evidence — not
+   prose the model could have fabricated.
+
+If a future run needs major to reach `apply`/`verify`/archive specifically
+(e.g. to test *those* stages, which quick/solid's own successful runs
+already exercise via the same underlying mechanisms), the acceptance suite
+under `major/project-seed/test/` will likely need broadening to cover
+whatever property the model's Proposal/Design claimed that round — expect
+to do this more than once, since different runs surface different gaps.
+Chasing every one is not required for a passing regression; one clean
+propose→check pass with a correctly-attributed blocker (or a clean
+check-findings pass) is sufficient evidence the governance chain works.
+
 ## Running the matrix
 
 ```bash

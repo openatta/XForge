@@ -1,3 +1,12 @@
+/*
+ * This suite is intentionally fixed (immutable to the model under test) and intentionally does not
+ * cover every security property the delta Spec ends up claiming each run (e.g. secrets over 1024
+ * characters, "never appears in output" guarantees). That gap is the point, not an oversight to
+ * close: a major run reaching Check and stopping there with a check-findings blocker that cites a
+ * real, specific under-tested requirement is the Check Stage + observable-requirements-are-tested
+ * Rule working correctly, not a harness failure. See tests/live-engine/README.md, "Major's expected
+ * outcome" for the full explanation before treating a Check-stage stop as something to fix here.
+ */
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -147,7 +156,7 @@ test('returns stable usage diagnostics', () => {
 test('uses the documented default store path when CREDENTIAL_STORE_FILE is unset', () => {
   const { root } = fixture();
   const { CREDENTIAL_STORE_FILE: _unset, ...environment } = process.env;
-  const result = spawnSync(process.execPath, [cli, 'put', '--name', 'db', '--secret', 's3cr3t'], {
+  const result = spawnSync(process.execPath, [cli, 'store', '--id', 'db', '--secret', 's3cr3t'], {
     cwd: root,
     env: environment,
     encoding: 'utf8',
@@ -162,7 +171,7 @@ test('uses the documented default store path when CREDENTIAL_STORE_FILE is unset
      correctly refused to advance. Assert the location, and that the credential round-trips. */
   const defaultStore = path.join(root, '.credential-store', 'store.json');
   assert.ok(JSON.parse(readFileSync(defaultStore, 'utf8')), 'default store must be valid JSON');
-  const verified = spawnSync(process.execPath, [cli, 'verify', '--name', 'db', '--secret', 's3cr3t'], {
+  const verified = spawnSync(process.execPath, [cli, 'verify', '--id', 'db', '--secret', 's3cr3t'], {
     cwd: root, env: environment, encoding: 'utf8',
   });
   assert.equal(verified.status, 0);

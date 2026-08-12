@@ -20,7 +20,8 @@ Also create `work-packages.yaml` **inside the Change directory** that
 wrapper). The package has the eight canonical fields: `id`, `goal`,
 `depends_on`, `inputs`, `write_paths`, `skills`, `verify`, and `done_when`.
 Its ID is `T001`, write path is `src/**`, inputs include the delta Spec and
-Design, skill is `xforge-apply`, and verify is `npm test`.
+Design, skill is `xforge-apply`, and verify is the one-element array
+`[npm test]` (`verify` is a list of commands, not a single string).
 
 Run `xforge state --change task-ledger` at the end. Stop with the planning
 Approval still pending — do not attempt to approve or transition past Design
