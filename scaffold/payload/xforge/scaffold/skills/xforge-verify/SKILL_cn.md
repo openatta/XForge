@@ -38,3 +38,8 @@ allowed-tools: Read Grep Glob Write Edit Bash(npx:*)
 
 - 在不完整实现、失败 Gate、无效 delivery、stale receipt、Spec 冲突、路径安全问题、目标碰撞或未授权归档时停止。
 - Verify 失败返回 Apply；governing artifact 自相矛盾时按 State 的 `reworkTo` 返回更早 Stage。
+
+# 判断要点
+
+- 一个 mandatory Gate 通过是可以归档的必要条件，不是充分条件——Gate 只检查它被写来检查的那件事。一条 Requirement 可以拥有完整测试覆盖、Gate 也是绿的，但测试断言的其实是错的行为；要核对 Scenario 的意图和测试实际检查的内容是否一致，不能只看它跑过且退出码为零。
+- 一份每条 `done_when` 都填了引用的 `done_when_evidence` 映射看起来像证据，但引用本身可能和它要证明的结论无关——比如一条日志只证明某个函数执行过，不证明它产出了正确结果。接受这份映射之前要看引用实际展示了什么，不能只看每一项是不是都填了。

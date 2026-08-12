@@ -37,9 +37,9 @@ allowed-tools: Read Grep Glob Write Edit Bash(npx:*)
    ```
 
    Continue only with ready Propose Artifacts/Actions and clear all schema diagnostics first.
-4. Reread dependencies from disk; write Why, Scope, Non-goals, Actors, Success criteria, and stable Requirement IDs with success, failure, boundary, and compatibility scenarios. Preserve exact contracts already fixed by immutable acceptance tests; stop on a test/requirement conflict.
+4. Reread dependencies from disk; write Why, Scope, Non-goals, Actors, Success criteria, and stable Requirement IDs with success, failure, boundary, and compatibility scenarios. Do not guess an unstated precise contract into a Spec fact; where an immutable acceptance test already fixes a field, output shape, or exit behavior, match it exactly, and stop as material ambiguity on any test/Requirement conflict.
 5. Refresh State after each Artifact and stop when the next Action belongs to another Skill.
-6. Run `npx --no-install xforge check --change <id>`, fix only Propose-stage structural issues, and invoke a transition only when the CLI returns a ready Transition.
+6. Run `npx --no-install xforge check --change <id>`, fix only Propose-stage structural issues, and do not call advisory text a passed Gate; invoke a transition only when the CLI returns a ready Transition.
 
 # Evidence
 

@@ -41,3 +41,8 @@ allowed-tools: Read Grep Glob Write Edit Bash Task
 
 - Stop on stale prerequisites/revision, invalid DAG, missing inputs/skills, path conflict/escape, dependency drift, non-isolated shared resources, failed tests, secrets, unauthorized migration, or material ambiguity.
 - Return implementation failure to `apply:rework`; if governing assumptions fail, follow `reworkTo` through `xforge-revise` or the owning Stage Skill. Never archive.
+
+# Judgment calls
+
+- "`write_paths` don't overlap" is necessary but not sufficient for safe parallel dispatch — two work packages can have fully disjoint `write_paths` and still race on a shared port, database, cache key, or a generated/lock file that no `write_paths` entry names. Verify actual resource isolation before dispatch, not glob disjointness alone; matching module or path counts is not evidence of independence.
+- Work-package granularity is itself a judgment call with failure modes on both sides: splitting too fine adds coordination and Integrator overhead and multiplies the chance of an undeclared shared write; splitting too coarse hides a real internal dependency inside one package and forecloses parallelism that was actually available. Size packages to the dependency graph the code actually has, not to an even division of the task list.

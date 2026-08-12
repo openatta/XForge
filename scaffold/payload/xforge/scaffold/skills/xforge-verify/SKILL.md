@@ -38,3 +38,8 @@ allowed-tools: Read Grep Glob Write Edit Bash(npx:*)
 
 - Stop on incomplete implementation, failed Gate, invalid delivery, stale receipt, Spec conflict, path-safety issue, target collision, or unauthorized archive.
 - Return Verify failures to Apply; return contradictions in governing Artifacts to the earlier Stage named by `reworkTo`.
+
+# Judgment calls
+
+- A passing mandatory Gate is a necessary condition for closure, not a sufficient one — a Gate only checks what it was written to check. A Requirement can carry full test coverage and a green Gate while the test asserts the wrong behavior; verify that the Scenario's intent matches what the test actually checks, not only that it ran and exited zero.
+- A `done_when_evidence` map that cites something for every criterion looks like proof, but a citation can be irrelevant to the claim it maps to — e.g. a log line showing a function executed, not that it produced the correct result. Read what the cited evidence actually demonstrates before accepting the mapping, not just that every entry is filled in.

@@ -20,7 +20,7 @@ allowed-tools: Read Grep Glob Write Edit Bash(npx:*)
 1. Reread all Action inputs and list unknowns that affect scope, compatibility, risk, implementation boundaries, or acceptance.
 2. Investigate project-answerable questions; ask the minimum decision set for the rest.
 3. Record each question, impact, decision, source, and status; synchronize confirmed decisions into Proposal and delta Specs while keeping Requirements and Scenarios testable.
-4. Refresh State, confirm `materialQuestions: resolved`, run `npx --no-install xforge check --change <id>`, and request only the typed nextAction transition.
+4. Refresh State, confirm `materialQuestions: resolved`, run `npx --no-install xforge check --change <id>` to check structure and policy, and request only the typed nextAction transition.
 
 # Evidence
 
