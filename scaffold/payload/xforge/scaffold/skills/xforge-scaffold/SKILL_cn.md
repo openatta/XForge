@@ -1,11 +1,7 @@
 ---
 name: xforge-scaffold
 description: 定制当前项目的 agents、skills、rules、permission policies、hooks、gates 等 XForge canonical 资产并安全投影到目标工具；用于用户要求新增、修改、启停或安装项目 Agent 能力时。
-license: MIT
-metadata:
-  author: xforge（借鉴 OpenSpec 动态工作流并按 XForge 资源协议实现）
-  version: "3.0"
-  source: OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab
+tools: [read, search, write, test]
 ---
 
 # 不变量

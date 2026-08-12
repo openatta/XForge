@@ -1,11 +1,7 @@
 ---
 name: xforge-design
 description: 为 Solid 或 Major Change 形成受治理的技术设计、替代方案、失败与验证边界；用于 State 返回 ready Design Action，且 Proposal/Specs 与所需 Clarifications 已满足时。
-license: MIT
-metadata:
-  author: xforge（基于 OpenSpec 工作流适配）
-  version: "3.0"
-  source: OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab
+tools: [read, search, write, test]
 ---
 
 # 不变量
@@ -35,3 +31,8 @@ metadata:
 
 - 在材料性歧义、规格冲突、未知 trust boundary、不可回滚影响或需要修改上游时停止。
 - 将上游问题交给 Clarify/Revise；不要在 Design 中静默扩大 Scope。
+
+# 判断要点
+
+- 看起来成本最低的方案，不代表就该最后一个被否决。即使一个更简单的方案"明显不够用"，也要写清楚为什么否决它——"明显不够用"恰恰是那种六个月后的评审者，如果没有当初的推理过程就无法自行验证的判断。
+- 兼容性和可回滚性是两个不同的问题。一个数据格式向后兼容的设计，仍可能因为迁移是单向的而在实际中不可回滚——要分别检查这两点，不要把"兼容"当成"可回滚"的同义词。

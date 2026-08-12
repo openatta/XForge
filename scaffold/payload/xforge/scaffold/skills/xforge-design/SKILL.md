@@ -1,11 +1,7 @@
 ---
 name: xforge-design
 description: Produce a governed technical design for a Solid or Major Change, including alternatives, failure boundaries, and verification; use for a ready Design Action after Proposal, Specs, and required Clarifications are satisfied.
-license: MIT
-metadata:
-  author: xforge (adapted from the OpenSpec workflow)
-  version: "3.0"
-  source: OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab
+tools: [read, search, write, test]
 ---
 
 # Invariants
@@ -35,3 +31,8 @@ metadata:
 
 - Stop on material ambiguity, Spec conflict, unknown trust boundary, irreversible impact, or an upstream change requirement.
 - Hand upstream issues to Clarify/Revise and never silently expand Scope in Design.
+
+# Judgment calls
+
+- The cheapest-looking alternative is not automatically the right one to reject last. Write down why a simpler approach was rejected even when it seems obviously insufficient — "obviously insufficient" is exactly the kind of claim a reviewer six months later cannot verify without the reasoning that produced it.
+- Compatibility and rollback are two different questions. A design that is backward-compatible in its data format can still be irreversible in practice if the migration is one-directional — check both independently instead of treating "compatible" as implying "reversible."

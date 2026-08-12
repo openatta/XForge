@@ -1,11 +1,7 @@
 ---
 name: xforge-revise
 description: 一致地修订已有 Change 的规划 Artifacts，并让受影响的下游状态与证据失效；用于需求、范围或决定变化，或 Check/Apply 发现上游假设错误时。
-license: MIT
-metadata:
-  author: xforge（基于 OpenSpec 工作流适配）
-  version: "3.0"
-  source: OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab
+tools: [read, search, write, test]
 ---
 
 # 不变量

@@ -1,11 +1,7 @@
 ---
 name: xforge-archive
 description: Compatibility entry that delegates an explicit archive request to xforge-verify archive-current mode; use only while callers still invoke the legacy Archive Skill, which no longer synchronizes Specs or moves a Change directly.
-license: MIT
-metadata:
-  author: xforge (adapted from the OpenSpec workflow)
-  version: "3.0"
-  source: OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab
+tools: [read, search, test]
 ---
 
 # Invariants

@@ -1,11 +1,7 @@
 ---
 name: xforge-check
 description: 对 Major Change 做实现前跨 Artifact 语义审查，检查完整性、一致性、可测试性、风险与可实施性；用于 State 返回 ready Check Action 或 Major 规划需要正式质量门时。
-license: MIT
-metadata:
-  author: xforge（基于 OpenSpec 工作流适配）
-  version: "3.0"
-  source: OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab
+tools: [read, search, write, test]
 ---
 
 # 不变量
@@ -40,3 +36,8 @@ metadata:
 
 - 在材料性遗漏、矛盾、范围漂移、不可测试 Requirement、缺少 rollback 或路径/owner 冲突时停止。
 - 按最早受影响点返回 Propose、Clarify 或 Design，不检查不存在的长期任务计划。
+
+# 判断要点
+
+- "评审通过"和"CLI Gate 是绿的"是两句不同的话。一份 Design 完全可以内部自洽、写得很好，却因为某条 Requirement 完全没有测试策略而在 Check 里不通过——单个 Artifact 内部一致，不代表所有 Artifact 之间彼此覆盖。
+- 缺失的反面场景（失败路径、边界条件、兼容性破坏）最容易被漏掉，因为一份看起来干净的 Design 里，没有任何东西会主动指出"这里本该有、但没有"。要检查的是本该存在却不存在的东西，不只是已经存在但写错的东西。

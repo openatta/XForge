@@ -81,71 +81,71 @@ resources:
     kind: script
     license: project
     version: 1
-  - digest: 613c36bc3a4c16e79985866decd65bc940e2b7ee3a92bdfedafb91960b0e70cf
+  - digest: a23d1e01c0837748ef14abad29b881f198d361d1e40569e78d479d53a372ada9
     id: xforge-apply
     kind: skill
-    license: MIT
-    version: "3.0"
-  - digest: e2464420b3dd95f62de8ae3dc8bc0d43d8b433368aa4af0179d8b773957ce2e0
+    license: project
+    version: "1"
+  - digest: 8dc95fba26b9159084fc35c405400f7c0918d94c641c56978da5a99e4b625c50
     id: xforge-archive
     kind: skill
-    license: MIT
-    version: "3.0"
-  - digest: e12088e9934c7cebd33fa663801cb792da8a086d50877c0e01ef6cb3bf31d7c9
+    license: project
+    version: "1"
+  - digest: e59fad276314de79a9cccee14fb5e57784353125e51584796a3fb10c1626db57
     id: xforge-check
     kind: skill
-    license: MIT
-    version: "3.0"
-  - digest: 169fe18af921e00469a93bb2f7ee685e26febc04bc9f00757989f639e043b332
+    license: project
+    version: "1"
+  - digest: 4118c2c69b8947fa84a5b2ed23c1976277b818d203c0d1dd3c06cd9bdeb7be1c
     id: xforge-clarify
     kind: skill
-    license: MIT
-    version: "3.0"
-  - digest: 15e14717f17c3cdfd58f3f146ceb397d4cd23c29d1c3f6da95e818be73bb0cb9
+    license: project
+    version: "1"
+  - digest: 6c9be9a8f65eb73a9cd7f5668885c38a5bc213853bcaa44e31f474059d74ffca
     id: xforge-continue
     kind: skill
-    license: MIT
-    version: "3.0"
-  - digest: c788b2b416bfb85278117a6fea2b45a0e0e015831fcb56e923a7d47d733dcecb
+    license: project
+    version: "1"
+  - digest: c64463539806b1c58c7cb2ba76a30c78bf3d5be25f6a44ecb5826a30c40f19f1
     id: xforge-design
     kind: skill
-    license: MIT
-    version: "3.0"
-  - digest: d393f6206cb331da4ea5e710a6fcf6defc6b505bae1f0d26d6f123c004cd9e12
+    license: project
+    version: "1"
+  - digest: 4c93ffe5bd47b3bd31d631076fcd050e2363150a130676d56fe9b29cdd6ba33e
     id: xforge-explore
     kind: skill
-    license: MIT
-    version: "3.0"
-  - digest: 3d21d92cfbb74fd08d75125922284355f0b881174522bc1e05fa23a3d5d3f02d
+    license: project
+    version: "1"
+  - digest: 594794f626be7821f4317e5e246dd7eecdd25875f22ca4027fc1725c746e2b86
     id: xforge-kanban
     kind: skill
-    license: MIT
-    version: "1.0"
-  - digest: 345200b295b1767023a82e4fce87914b837e8748ac787aec750bc1ba49edfe65
+    license: project
+    version: "1"
+  - digest: f92a794c97dc4d1954702ad35c005899c70c536bdef37596b2563a540b006041
     id: xforge-propose
     kind: skill
-    license: MIT
-    version: "3.0"
-  - digest: 4f1429074970c5874bd3f0018e1591cfffcf5ad23fb3e4281080ae8a2e8b1e25
+    license: project
+    version: "1"
+  - digest: daffd195cb32340b679d56ca08dbbe348aae40be3f73da37c9bff2b9cd945e45
     id: xforge-revise
     kind: skill
-    license: MIT
-    version: "3.0"
-  - digest: e9bf626c8ba9994fbcb379565bddb33085015b69d0b84f915981c718c8c4973a
+    license: project
+    version: "1"
+  - digest: 3daf8c2d0d344f86549650804e7eaf4349a1787fd4b37ae252a0e587608deb2c
     id: xforge-scaffold
     kind: skill
-    license: MIT
-    version: "3.0"
-  - digest: c320607b10c65ac16cd9602929f1e568d17550b33bbe6756aa5b07d19875c194
+    license: project
+    version: "1"
+  - digest: dcb836557973394e9cb371a3a28e1dc2fd8d8c54bb924c2e110eef7a0d2e461f
     id: xforge-status
     kind: skill
-    license: MIT
-    version: "3.0"
-  - digest: 0c8743101c24660a1e438b2a125fe8d95ebe709dc83a088bdfb1804babe6b1fc
+    license: project
+    version: "1"
+  - digest: e111bed74390a6a7e120d1ba9844ae41b4667d76ccf212537c2e7525b068e24f
     id: xforge-verify
     kind: skill
-    license: MIT
-    version: "3.0"
+    license: project
+    version: "1"
 scaffold:
   language: en
   source:

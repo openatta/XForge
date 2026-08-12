@@ -1,11 +1,7 @@
 ---
 name: xforge-archive
 description: 兼容旧入口，把明确的归档请求转交 xforge-verify 的 archive-current 模式；仅用于迁移期用户仍调用旧 Archive Skill 时，不再直接同步 Specs 或移动 Change。
-license: MIT
-metadata:
-  author: xforge（基于 OpenSpec 工作流适配）
-  version: "3.0"
-  source: OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab
+tools: [read, search, test]
 ---
 
 # 不变量

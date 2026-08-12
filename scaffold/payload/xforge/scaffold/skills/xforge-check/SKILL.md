@@ -1,11 +1,7 @@
 ---
 name: xforge-check
 description: Perform a pre-implementation semantic review across Major Change Artifacts for completeness, consistency, testability, risk, and feasibility; use for a ready Check Action or a formal Major planning quality gate.
-license: MIT
-metadata:
-  author: xforge (adapted from the OpenSpec workflow)
-  version: "3.0"
-  source: OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab
+tools: [read, search, write, test]
 ---
 
 # Invariants
@@ -40,3 +36,8 @@ metadata:
 
 - Stop on material omissions, contradictions, scope drift, untestable Requirements, missing rollback, or path/owner conflicts.
 - Return to the earliest affected Propose, Clarify, or Design Stage; do not inspect a nonexistent persistent task plan.
+
+# Judgment calls
+
+- "Passes review" and "the CLI Gate is green" are different claims. A Design can be internally consistent and well-written and still fail Check because a Requirement has no test strategy at all — consistency inside one Artifact does not imply coverage across all of them.
+- A missing negative case (the failure path, a boundary, a compatibility break) is easy to miss because nothing in a clean-looking Design points at its own absence. Check what should exist and is not there, not only what exists and is wrong.

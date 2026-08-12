@@ -1,11 +1,7 @@
 ---
 name: xforge-propose
 description: Create a governed Change and only the change.yaml, proposal, and delta Specs allowed by the Propose Stage; use when the user wants a sufficiently clear idea, defect, or feature formally specified but has not authorized implementation.
-license: MIT
-metadata:
-  author: xforge (adapted from the OpenSpec workflow)
-  version: "3.0"
-  source: OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab
+tools: [read, search, write, test]
 ---
 
 # Invariants
@@ -54,3 +50,8 @@ metadata:
 
 - Stop on unknown modules, path/identity/protocol diagnostics, material ambiguity, Flow-policy mismatch, or an authority boundary.
 - Hand changed upstream facts to `xforge-revise`; do not implement opportunistically.
+
+# Judgment calls
+
+- The Flow default exists so the common case needs no risk-classification reasoning; overriding it is the unusual path, and doing so without noting it in the Proposal makes a deliberate call look like an oversight to the next reader.
+- A Requirement that reads clearly to the author but only makes sense with unstated implementation knowledge is not testable by anyone else. Write scenarios a reviewer with no context on this Change could still verify against the running system.

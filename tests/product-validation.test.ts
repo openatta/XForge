@@ -41,9 +41,13 @@ describe('XForge product contract', () => {
       for (const heading of ['# Invariants', '# Authority', '# Execution', '# Evidence', '# Stop and rework']) expect(skill).toContain(heading);
       for (const heading of ['# 不变量', '# 权限', '# 执行', '# 证据', '# 停止与返工']) expect(chinese).toContain(heading);
       for (const variant of [skill, chinese]) {
-        expect(variant).toContain('OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab');
         expect(variant).toContain('xforge state');
         expect(variant).not.toMatch(/`openspec\s/);
+        /* Attribution lives once in scaffold/NOTICE, not repeated per file; frontmatter carries
+           only what a host or the CLI actually reads. */
+        expect(variant).not.toMatch(/^license:/m);
+        expect(variant).not.toMatch(/^metadata:/m);
+        expect(variant).toMatch(/^tools: \[.+\]$/m);
       }
     }
     const apply = await readFile(path.join(scaffold, 'payload', 'xforge', 'scaffold', 'skills', 'xforge-apply', 'SKILL.md'), 'utf8');
