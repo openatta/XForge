@@ -32,7 +32,7 @@ describe('CLI protocol', () => {
     expect(help.json.data.commandHelp.usage).toContain('sync');
     const version = await runCli(root, ['version']);
     expect(version.code).toBe(0);
-    expect(version.json.data).toMatchObject({ name: '@xforge/cli', version: '0.7.7', protocolVersion: '2' });
+    expect(version.json.data).toMatchObject({ name: '@xforge/cli', version: '0.7.8', protocolVersion: '2' });
 
     const result = await runCli(root, ['frobnicate']);
     expect(result.code).toBe(1);

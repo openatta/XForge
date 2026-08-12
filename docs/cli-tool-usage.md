@@ -1,6 +1,6 @@
-# XForge 命令行使用指南（0.7.7 / Protocol 2）
+# XForge 命令行使用指南（0.7.8 / Protocol 2）
 
-`@xforge/cli 0.7.7` 同时提供投影生命周期命令和治理控制面命令。默认输出单个 Protocol 2 JSON envelope；加 `--text` 只改变展示，不改变退出码与语义。
+`@xforge/cli 0.7.8` 同时提供投影生命周期命令和治理控制面命令。默认输出单个 Protocol 2 JSON envelope；加 `--text` 只改变展示，不改变退出码与语义。
 
 这些命令的正常调用方是 AI Agent，不是人类临时手敲。人类或 CI 只负责一次性执行
 `npm install --save-dev --save-exact @xforge/cli@<version>`；此后每一次调用都
@@ -50,7 +50,7 @@ Change/Flow/Gate 生命周期查询。
 ## 3. npm 安装、初始化与投影
 
 ```bash
-npm install --save-dev --save-exact @xforge/cli@0.7.7
+npm install --save-dev --save-exact @xforge/cli@0.7.8
 
 npx --no-install xforge init --dry-run
 npx --no-install xforge init
