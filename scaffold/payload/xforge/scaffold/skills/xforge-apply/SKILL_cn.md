@@ -41,3 +41,8 @@ allowed-tools: Read Grep Glob Write Edit Bash Task
 
 - 在 prerequisite/revision 失效、DAG 非法、inputs/skills 缺失、路径冲突或逃逸、依赖漂移、共享资源不可隔离、测试失败、秘密信息、未授权迁移或材料性歧义时停止。
 - 实现失败返回 `apply:rework`；Proposal/Specs/Design 假设失效时按 `reworkTo` 交给 `xforge-revise` 或对应 Stage Skill。不得归档。
+
+# 判断要点
+
+- "`write_paths` 不相交"是并行派工的必要条件，不是充分条件——两个工作包的 `write_paths` 可以完全不重叠，却仍然争用同一个端口、数据库、缓存 key，或某个 `write_paths` 里根本没写出来的生成物/lock 文件。派工前要核实的是实际资源隔离，不是 glob 不相交；模块数或路径数一致，不代表两者互相独立。
+- 工作包粒度本身是一个判断，两个方向都有失败模式：拆得太细会增加协调和 Integrator 开销，并放大出现未声明共享写入的概率；拆得太粗会掩盖包内部真正的依赖关系，压掉本可并行的空间。粒度应该按代码里真实的依赖图来定，不是把任务列表平均分成几份。
