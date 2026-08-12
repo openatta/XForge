@@ -6,8 +6,10 @@ import { installCli, writeMinimalPackageJson } from './cli-source.mjs';
 const repositoryRoot = path.resolve(new URL('../..', import.meta.url).pathname);
 const temporaryRoot = path.join(repositoryRoot, 'tests', '.tmp');
 const scenariosRoot = path.join(repositoryRoot, 'tests', 'live-engine', 'scenarios');
-const claudeConfigRoot = path.join(temporaryRoot, 'live-engine-claude-config');
-const packRoot = path.join(temporaryRoot, 'live-engine-npm-pack');
+/* Per scenario, not shared: two concurrent setups would `npm pack` the same tarball path and one
+   would install a half-written file, and two concurrent engines would share a CLAUDE_CONFIG_DIR.
+   Scoping both by scenario is what makes `--flow quick|solid|major` safe to run in parallel. */
+const scenarioTempRoot = (scenario) => path.join(temporaryRoot, `live-engine-${scenario}-tmp`);
 
 function options(argv) {
   const result = { 'cli-source': 'npm' };
@@ -73,6 +75,8 @@ if (!await exists(scenarioRoot)) throw new Error(`Unknown scenario: ${selected.s
 const projectRoot = path.join(temporaryRoot, `live-engine-${selected.scenario}`);
 
 await rm(projectRoot, { recursive: true, force: true });
+const claudeConfigRoot = path.join(scenarioTempRoot(selected.scenario), 'claude-config');
+const packRoot = path.join(scenarioTempRoot(selected.scenario), 'npm-pack');
 await mkdir(claudeConfigRoot, { recursive: true });
 await writeMinimalPackageJson(projectRoot, `live-engine-${selected.scenario}`);
 await writeFile(path.join(projectRoot, '.gitignore'), 'node_modules/\n');

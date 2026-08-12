@@ -13,6 +13,7 @@ import type {
 } from '../types.js';
 import { XForgeError, diagnostic } from './errors.js';
 import { assertResourceId, normalizeRelative, safeResolve, toProjectPath } from './path-safety.js';
+import { isSpecDeltaArtifact, specDeltaIsValid } from './spec-delta.js';
 import { validateSchema } from './validator.js';
 import { loadYaml } from './yaml.js';
 
@@ -240,6 +241,31 @@ async function artifactOutputs(changeDirectory: string, artifact: ArtifactDefini
   return outputs;
 }
 
+/**
+ * An Artifact counts as produced only when every output it generated carries content. A
+ * placeholder or truncated write is an unfinished Artifact, not a completed one, and a delta
+ * Spec must additionally parse as a valid requirement delta before it satisfies its Artifact.
+ */
+async function outputsSatisfyArtifact(
+  changeDirectory: string,
+  artifact: ArtifactDefinition,
+  outputs: string[],
+): Promise<boolean> {
+  if (outputs.length === 0) return false;
+  const validateDelta = isSpecDeltaArtifact(artifact);
+  for (const output of outputs) {
+    let content: string;
+    try {
+      content = await readFile(await safeResolve(changeDirectory, output), 'utf8');
+    } catch {
+      return false;
+    }
+    if (content.trim().length === 0) return false;
+    if (validateDelta && !specDeltaIsValid(content)) return false;
+  }
+  return true;
+}
+
 async function approvalGranted(changeDirectory: string, outputs: string[]): Promise<boolean> {
   if (outputs.length === 0) return false;
   const content = await readFile(await safeResolve(changeDirectory, outputs[0]!), 'utf8');
@@ -286,7 +312,7 @@ export async function resolveChangeState(
   for (const artifact of artifacts) {
     const outputs = await artifactOutputs(changeDirectory, artifact);
     rawOutputs.set(artifact.id, outputs);
-    let done = outputs.length > 0;
+    let done = await outputsSatisfyArtifact(changeDirectory, artifact, outputs);
     if (!isStageFlow(flow) && artifact.id === 'approval' && done) done = await approvalGranted(changeDirectory, outputs);
     if (done) completed.add(artifact.id);
   }
@@ -295,7 +321,13 @@ export async function resolveChangeState(
     const status: ArtifactState['status'] = completed.has(artifact.id)
       ? 'done'
       : missingDependencies.length === 0 ? 'ready' : 'blocked';
-    artifactStates.push({ ...artifact, status, outputPaths: rawOutputs.get(artifact.id) ?? [], missingDependencies });
+    artifactStates.push({
+      ...artifact,
+      status,
+      outputPaths: rawOutputs.get(artifact.id) ?? [],
+      writePath: `${changeRelative}/${normalizeRelative(artifact.generates, `Artifact ${artifact.id} output`)}`,
+      missingDependencies,
+    });
   }
 
   const apply = flowApplyOperation(flow);

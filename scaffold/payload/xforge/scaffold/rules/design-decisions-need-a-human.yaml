@@ -1,0 +1,20 @@
+apiVersion: xforge.dev/v1alpha2
+kind: Rule
+metadata:
+  name: design-decisions-need-a-human
+  version: 1
+spec:
+  severity: must
+  instruction: >-
+    A Change may not enter implementation on an Agent's own reading of the Design. A human records
+    the planning decision before the Check Stage is entered.
+  scope:
+    stages:
+      - design
+      - check
+  enforcement:
+    # approved: satisfied by a current-revision human approval receipt.
+    gateRefs: []
+    policyRefs: []
+    approvalRefs:
+      - planning-solid

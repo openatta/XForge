@@ -20,7 +20,9 @@ security scenarios.
 For REQ-CRED-003 (rotation), write the requirement's success/failure scenarios
 but explicitly do not resolve whether a post-rotation grace period exists —
 `TEST_REQUEST.md` deliberately leaves this open. State plainly in the Proposal
-that this is an unresolved material question blocking Clarify, and do not
+that this is an unresolved material question blocking Clarify — inside the
+Proposal's own `## Critical impacts and rollback` section, since the Proposal
+outline has no material-questions heading — and do not
 guess an answer.
 
 Run the structure Gate and, once the CLI reports a ready Transition into
@@ -28,3 +30,12 @@ Clarify, invoke it. Run `xforge state --change credential-store` at the end
 and confirm the current Stage is Clarify. Do not commit. In your final
 response report files changed, commands run, current Stage, blockers, and no
 claim unsupported by CLI output.
+
+Every Markdown Artifact you write must use exactly the `##` section set its
+Flow `artifacts[].outline` defines — no extra section, none omitted. The
+outline is the contract; if something you want to report has no section, put
+it inside the closest one rather than inventing a heading. Everything the Change owns — Artifacts, `work-packages.yaml`, and everything
+under `evidence/` — lives under the Change directory that `xforge state`
+reports as `change.path`, never at the project root. Use the project-relative
+path the CLI states (`writes` in a next action, `change.path` otherwise);
+never infer a location from a bare file name.

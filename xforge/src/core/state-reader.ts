@@ -6,6 +6,7 @@ import { TARGETS } from '../constants.js';
 import { capabilityMatrix } from '../adapters/index.js';
 import type { ChangeState, Diagnostic, ProjectContext } from '../types.js';
 import { diagnostic } from './errors.js';
+import { flowEligibilityDiagnostics } from './checker.js';
 import { flowApplyOperation, flowArchiveOperation, flowArtifacts, isStageFlow, loadFlows, resolveChangeState } from './flow-resolver.js';
 import { safeResolve } from './path-safety.js';
 import { loadSelectedResources } from './resource-loader.js';
@@ -89,6 +90,13 @@ export async function readState(project: ProjectContext, options: StateOptions):
     const resolved = await resolveChangeState(project, options.change, flowResult.flows);
     selectedChange = resolved.state;
     diagnostics.push(...resolved.diagnostics);
+    // Surface a mismatched Flow on the very first read, not only at transition or archive.
+    diagnostics.push(...flowEligibilityDiagnostics(
+      resolved.flow,
+      resolved.config,
+      flowResult.flows.values(),
+      `${project.changesPath}/${options.change}/change.yaml`,
+    ));
     const workPackages = await resolveWorkPackages(project, options.change, resolved.config, resources);
     diagnostics.push(...workPackages.diagnostics);
     selectedChange.workPackages = workPackages.state;

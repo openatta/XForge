@@ -7,6 +7,7 @@ import { XForgeError, diagnostic } from '../core/errors.js';
 import { sha256 } from '../core/hash.js';
 import { safeResolve } from '../core/path-safety.js';
 import { installedTargets, readOwnership, toOwnershipV2 } from '../install/ownership.js';
+import { FragmentParseError, fragmentDrifted, removeFragment } from '../install/fragments.js';
 import { applyManagedTransaction } from '../install/writer.js';
 
 const CLEANUP_COMPATIBILITY_IGNORED = new Set([
@@ -67,6 +68,29 @@ export async function executeUninstall(
         changes.push({ action: 'skip', path: relative, source: record.source, target, reason: 'Managed file is already absent.' });
         continue;
       }
+      if (record.fragment && !current.invalidType) {
+        // Partially managed destination: subtract exactly the recorded material and keep the file
+        // if anything the user owns is still in it.
+        const text = await readFile(await safeResolve(project.root, relative), 'utf8');
+        let remainder: string | null = null;
+        try {
+          if (fragmentDrifted(text, record.fragment, relative)) throw new FragmentParseError('XForge-owned keys differ from the installation record.');
+          remainder = removeFragment(text, record.fragment, relative);
+        } catch (error) {
+          if (!(error instanceof FragmentParseError)) throw error;
+          changes.push({ action: 'conflict', path: relative, digest: current.digest, source: record.source, target, reason: (error as Error).message });
+          diagnostics.push(diagnostic('XFORGE_UNINSTALL_CONFLICT', 'Modified partially managed destination cannot be uninstalled.', relative));
+          continue;
+        }
+        if (remainder === null) {
+          changes.push({ action: 'delete', path: relative, digest: current.digest, source: record.source, target });
+          writes.set(relative, null);
+        } else {
+          changes.push({ action: 'modify', path: relative, digest: sha256(remainder), source: record.source, target });
+          writes.set(relative, remainder);
+        }
+        continue;
+      }
       if (current.invalidType || current.digest !== record.lastInstalledDigest) {
         changes.push({ action: 'conflict', path: relative, digest: current.digest, source: record.source, target, reason: 'Managed file differs from its installation record.' });
         diagnostics.push(diagnostic('XFORGE_UNINSTALL_CONFLICT', 'Modified or non-file managed destination cannot be uninstalled.', relative));
@@ -99,7 +123,7 @@ export async function executeUninstall(
       dryRun: options.dryRun,
       targets,
       remainingTargets,
-      summary: Object.fromEntries(['delete', 'skip', 'conflict'].map((action) => [action, changes.filter((item) => item.action === action).length])),
+      summary: Object.fromEntries(['delete', 'modify', 'skip', 'conflict'].map((action) => [action, changes.filter((item) => item.action === action).length])),
     },
     diagnostics,
     changes,

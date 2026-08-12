@@ -1,24 +1,52 @@
-import type { Diagnostic, FileChange, GateEvidence, ProjectContext } from '../types.js';
+import type { Diagnostic, FileChange, Flow, GateEvidence, ProjectContext, StageFlow } from '../types.js';
 import { checkStructure } from '../core/checker.js';
-import { XForgeError, diagnostic } from '../core/errors.js';
+import { diagnostic } from '../core/errors.js';
 import { assertManaged } from '../core/project-loader.js';
 import { workPackageVerificationGates } from '../core/work-packages.js';
 import { runGate } from '../runners/gate.js';
 import { readAuditEvents, recordAudit } from '../core/audit.js';
 import { isStageFlow, resolveChangeState } from '../core/flow-resolver.js';
-import { resolveControlPlane } from '../core/control-plane.js';
+import { loadTransitionReceipts, resolveControlPlane } from '../core/control-plane.js';
 import { sha256, stableStringify } from '../core/hash.js';
+
+/** Stages that run before any implementation exists, so no work-package verify can be meaningful. */
+const PRE_APPLY_STAGES = new Set(['propose', 'clarify', 'design', 'check']);
 
 export interface CheckOptions {
   change?: string;
+  /**
+   * A single Gate ID, or one of the overrides `all` (every Gate the Flow can ever require) and
+   * `stage:<id>` (that Stage's Gates). The overrides only apply when no Gate carries that name.
+   */
   gate?: string;
+  /** Run every Gate the Flow can require, regardless of the current Stage. Archive uses this. */
+  allGates?: boolean;
+  /** Resolve Gates for this Stage instead of the Change's current Stage. */
+  stage?: string;
 }
+
+export type GateSelection = 'none' | 'explicit' | 'stage' | 'all' | 'archive';
 
 export interface CheckData {
   structure: { passed: boolean };
   change: string | null;
+  /** The Stage whose Gates were selected, or null when selection did not come from a Stage. */
+  stage: string | null;
+  gateSelection: GateSelection;
   workPackages: Array<{ packageId: string; command: string; status: 'passed' | 'failed'; evidence: GateEvidence }>;
   gates: Array<{ id: string; status: 'passed' | 'failed'; evidence: GateEvidence | null }>;
+}
+
+const ALL_GATES = 'all';
+const STAGE_PREFIX = 'stage:';
+
+function flowGateIds(flow: StageFlow): string[] {
+  return [...new Set(flow.stages.flatMap((stage) => [...(stage.gates ?? []), ...(stage.exit?.gates ?? [])]))];
+}
+
+function stageGateIds(flow: StageFlow, stageId: string): string[] | null {
+  const stage = flow.stages.find((candidate) => candidate.id === stageId);
+  return stage ? [...new Set([...(stage.gates ?? []), ...(stage.exit?.gates ?? [])])] : null;
 }
 
 export async function executeCheck(project: ProjectContext, options: CheckOptions): Promise<{
@@ -38,16 +66,72 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
   const gateResults: CheckData['gates'] = [];
   const workPackageResults: CheckData['workPackages'] = [];
 
+  /*
+   * Gate selection is owned by the Flow's Stages, not by a fixed archive-time set. `xforge-propose`
+   * runs `check --change <id>` while still in propose; running the verify Stage's Gates there costs
+   * a full test suite and a security scan whose Evidence the next file edit invalidates anyway.
+   * Overrides: `--gate <id>`, `--gate all` / allGates, `--gate stage:<id>` / stage.
+   */
   let gateIds: string[] = [];
-  if (options.gate) gateIds = [options.gate];
-  else if (options.change && structure.change) gateIds = structure.change.archive.mandatoryGates;
+  let gateSelection: GateSelection = 'none';
+  let selectedStage: string | null = null;
+  const gateOption = options.gate && structure.resources.gates.has(options.gate) ? options.gate : undefined;
+  const sentinel = options.gate && !gateOption ? options.gate : undefined;
+  const wantsAllGates = options.allGates === true || sentinel === ALL_GATES;
+  const wantsStage = options.stage ?? (sentinel?.startsWith(STAGE_PREFIX) ? sentinel.slice(STAGE_PREFIX.length) : undefined);
+
+  if (gateOption) {
+    gateIds = [gateOption];
+    gateSelection = 'explicit';
+  } else if (sentinel && !wantsAllGates && !wantsStage) {
+    /* An unknown Gate ID must still be reported, exactly as before. */
+    gateIds = [sentinel];
+    gateSelection = 'explicit';
+  } else if (options.change && structure.change) {
+    const archiveGates = structure.change.archive.mandatoryGates;
+    let flow: Flow | null = null;
+    try { flow = (await resolveChangeState(project, options.change)).flow; } catch { flow = null; }
+    if (flow && isStageFlow(flow)) {
+      if (wantsAllGates) {
+        gateIds = [...new Set([...flowGateIds(flow), ...archiveGates])];
+        gateSelection = 'all';
+      } else {
+        const transitions = await loadTransitionReceipts(project, options.change, flow);
+        selectedStage = wantsStage ?? transitions.receipts.at(-1)?.to ?? flow.stages[0]?.id ?? null;
+        const stageGates = selectedStage ? stageGateIds(flow, selectedStage) : null;
+        if (stageGates) {
+          gateIds = stageGates;
+          gateSelection = 'stage';
+        } else {
+          /* ready-to-archive and any Stage the Flow does not declare fall back to the archive set. */
+          if (wantsStage && wantsStage !== 'ready-to-archive') diagnostics.push(diagnostic(
+            'XFORGE_CHECK_STAGE_UNKNOWN',
+            `Flow ${flow.metadata.name} does not declare Stage ${wantsStage}; falling back to the archive Gate set.`,
+            `xforge/flows/${flow.metadata.name}.yaml`, 'warning',
+          ));
+          gateIds = archiveGates;
+          gateSelection = 'archive';
+        }
+      }
+    } else {
+      gateIds = archiveGates;
+      gateSelection = 'archive';
+    }
+  } else if (!options.change && (wantsAllGates || wantsStage)) {
+    gateSelection = wantsAllGates ? 'all' : 'stage';
+    diagnostics.push(diagnostic('XFORGE_CHANGE_REQUIRED', 'A Change is required to resolve Stage Gates and save Evidence.'));
+  }
 
   if (gateIds.length > 0 && !options.change) {
     const external = gateIds.some((id) => structure.resources.gates.get(id)?.value.spec.builtin !== 'structure');
     if (external) diagnostics.push(diagnostic('XFORGE_CHANGE_REQUIRED', 'A Change is required to run a Gate and save Evidence.'));
   }
 
-  if (!hasStructureErrors && !options.gate && options.change && structure.change?.workPackages) {
+  /* Work packages are Apply-stage assets: their `verify` commands exercise code that does not exist
+     until implementation starts. Running them from an earlier Stage's check would fail a Change for
+     work it has not been asked to do yet. `null` covers legacy Flows and whole-Flow overrides. */
+  const workPackagesInScope = selectedStage === null || !PRE_APPLY_STAGES.has(selectedStage);
+  if (!hasStructureErrors && !options.gate && options.change && workPackagesInScope && structure.change?.workPackages) {
     for (const verification of workPackageVerificationGates(structure.change.workPackages)) {
       const result = await runGate(project, options.change, verification.gate, true);
       changes.push(result.change);
@@ -108,7 +192,11 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
   }
 
   return {
-    data: { structure: { passed: !hasStructureErrors }, change: options.change ?? null, workPackages: workPackageResults, gates: gateResults },
+    data: {
+      structure: { passed: !hasStructureErrors }, change: options.change ?? null,
+      stage: gateSelection === 'stage' ? selectedStage : null, gateSelection,
+      workPackages: workPackageResults, gates: gateResults,
+    },
     diagnostics,
     changes,
   };

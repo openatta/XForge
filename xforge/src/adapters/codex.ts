@@ -1,5 +1,6 @@
 import type { Adapter } from './types.js';
 import { artifactTrace, renderCodexAgentToml } from './shared.js';
+import { PERMISSION_POLICY_SCOPES, RUNTIME_HOOK_EVENTS } from './capabilities.js';
 import { renderGovernance } from './governance.js';
 
 export const codexAdapter: Adapter = {
@@ -8,8 +9,9 @@ export const codexAdapter: Adapter = {
   trace: artifactTrace('codex', '3'),
   capability: {
     skills: 'native', commands: 'unsupported', agents: 'native', rules: 'degraded', hooks: 'native', guidance: 'degraded', permissionPolicy: 'degraded',
-    runtimeHook: { events: ['agent.session.start', 'agent.session.end', 'agent.prompt.submit', 'agent.tool.before', 'agent.tool.after', 'agent.permission.request', 'agent.subagent.start', 'agent.subagent.stop', 'agent.turn.stop'], blocking: 'native', managed: 'native', local: 'native', cloud: 'unsupported', trust: 'platform-review', bypasses: ['hosted tools', 'specialized opt-out tool paths'] },
+    runtimeHook: { events: RUNTIME_HOOK_EVENTS.codex, blocking: 'native', managed: 'native', local: 'native', cloud: 'unsupported', trust: 'platform-review', bypasses: ['hosted tools', 'specialized opt-out tool paths'] },
     auditDelivery: 'native', subagent: 'native',
+    permissionPolicyScopes: PERMISSION_POLICY_SCOPES.codex,
   },
   skillDirectory: (id) => `.agents/skills/${id}`,
   commandPath: () => null,

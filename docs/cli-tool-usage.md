@@ -132,7 +132,7 @@ CLI 只允许 Flow 声明的下一 Stage 或 rework Stage，并检查当前 revi
 
 ## 6. Approval
 
-本地交互式决定：
+本地交互式决定，必须在真实 TTY 里运行：
 
 ```bash
 npx --no-install xforge approve \
@@ -141,25 +141,33 @@ npx --no-install xforge approve \
   --policy planning-solid \
   --actor alice@example.com \
   --role owner \
-  --decision approve \
   --reason "Design reviewed" \
   --attestation human
 ```
 
-该模式必须连接 TTY，是仓库级自证明，适合 Quick/Solid 的本地协作，不是企业身份保证。
+`--actor`/`--role`/`--reason` 只是给终端对话框预填的建议，不是权威依据；
+`--attestation human` 也只是意图提示，本身不构成决定。CLI 自己的
+`readline` 对话会现场询问批准人身份、角色、决定（approve/reject）和理由
+——不再有需要读回去的确认码。该模式是仓库级自证明，适合 Quick/Solid 的本地
+协作，不是企业身份保证。
 
-外部签名 receipt：
+`mcp` provider（对接外部审批平台，实时提交+轮询）：
 
 ```bash
-export XFORGE_APPROVAL_HMAC_SECRET='provided-out-of-band'
 npx --no-install xforge approve \
   --change add-login \
   --for apply \
   --policy implementation-major \
-  --receipt .tmp/approval-receipt.json
+  --provider enterprise-approvals
 ```
 
-receipt 必须绑定当前 Change/Flow/Stage/transition/contentRevision/stateRevision/policySnapshot/Git HEAD，provider 与 role 必须被 policy 允许，HMAC 和 digest 每次加载都会复验。Major 默认要求两个不同 actor、不同角色的外部签名批准；Agent 不能自行产生有效 Approval。
+`--provider` 必须是 `manifest.yaml` 的 `approvals.providers` 里登记的
+`type: mcp` 条目，指向一个已注册的 `McpServer` 资源；role 必须被 policy 允许。
+`local`/`mcp` 两种 receipt 都不带签名——是否有效靠的是项目自己的防篡改
+audit hash chain 里有没有一条匹配的 `approval.decided` 事件，每次加载都会
+复验。轮询结果是 `pending` 时返回成功 envelope，`nextActions` 里给出稍后
+重跑的命令，不是错误。Major 默认要求两个不同 actor、不同角色的批准；Agent
+不能自行产生有效 Approval。
 
 ## 7. Work-package dispatch
 

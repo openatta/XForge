@@ -54,7 +54,7 @@ governance:
       minApprovers: 1
       roles: [owner, maintainer]
       separationOfDuties: false
-      providers: [local, enterprise-hmac]
+      providers: [local, enterprise-approvals]
   audit:
     requiredEventTypes: [gate.after, stage.entered]
     runtimeCoverage: optional
@@ -66,13 +66,13 @@ stages:
     requires: []
     produces: [proposal, delta-specs]
     gates: [structure]
-    reworkTo: [propose]
+
   - id: apply
     skill: xforge-apply
     authority: implementation-write
     requires: [propose]
     produces: []
-    reworkTo: [propose, apply]
+    reworkTo: [propose]
     execution:
       planning: just-in-time
       workPackages: internal

@@ -229,6 +229,69 @@ describe('projection lifecycle v2', () => {
     expect(failed.json.diagnostics[0].code).toBe('XFORGE_ROOT_NOT_FOUND');
   });
 
+  // P0-2 / P0-4: uninstall must subtract exactly what XForge added and leave the rest.
+  it('uninstall restores a shared .claude/settings.json and CLAUDE.md instead of deleting them', async () => {
+    const root = await fixture();
+    const userSettings = { model: 'opusplan', permissions: { deny: ['Read(./.env)'] } };
+    await write(root, '.claude/settings.json', `${JSON.stringify(userSettings, null, 2)}\n`);
+    await write(root, 'CLAUDE.md', '# Our project\n\nRun `make dev` first.\n');
+    expect((await runCli(root, ['install', '--target', 'claude'])).code).toBe(0);
+    expect(JSON.parse(await readFile(path.join(root, '.claude', 'settings.json'), 'utf8')).hooks).toBeDefined();
+
+    const result = await runCli(root, ['uninstall', '--target', 'claude']);
+    expect(result.code, JSON.stringify(result.json.diagnostics, null, 2)).toBe(0);
+    expect(JSON.parse(await readFile(path.join(root, '.claude', 'settings.json'), 'utf8'))).toEqual(userSettings);
+    const memory = await readFile(path.join(root, 'CLAUDE.md'), 'utf8');
+    expect(memory).toContain('Run `make dev` first.');
+    expect(memory).not.toContain('@AGENTS.md');
+  });
+
+  it('uninstall deletes a shared file it created and left nothing else in', async () => {
+    const root = await fixture();
+    await write(root, 'xforge/scaffold/policies/no-force-push.yaml', [
+      'apiVersion: xforge.dev/v1alpha2', 'kind: PermissionPolicy', 'metadata:', '  name: no-force-push', '  version: 1',
+      'spec:', '  capability: shell', '  effect: deny', '  match:', '    commands:', '      - git push --force *',
+      '  reason: Force pushes are forbidden.', '',
+    ].join('\n'));
+    await updateYaml(root, 'xforge/manifest.yaml', (manifest) => { manifest.scaffold.policies.push('no-force-push'); });
+    expect((await runCli(root, ['install'])).code).toBe(0);
+
+    // The one statically expressible policy reaches OpenCode as a real `permission` object.
+    expect(JSON.parse(await readFile(path.join(root, 'opencode.json'), 'utf8'))).toEqual({
+      $schema: 'https://opencode.ai/config.json',
+      permission: { bash: { 'git push --force *': 'deny' } },
+    });
+    expect(await exists(path.join(root, 'CLAUDE.md'))).toBe(true);
+
+    expect((await runCli(root, ['uninstall'])).code).toBe(0);
+    expect(await exists(path.join(root, 'CLAUDE.md'))).toBe(false);
+    expect(await exists(path.join(root, '.claude', 'settings.json'))).toBe(false);
+    // Nothing but the `$schema` seed XForge itself wrote would remain, so the file goes too.
+    expect(await exists(path.join(root, 'opencode.json'))).toBe(false);
+  });
+
+  // P1-2: an unsupported Hook event used to be dropped by a bare `continue`, with the declared
+  // capability matrix never consulted by anything.
+  it('reports a Hook event a target cannot deliver instead of dropping it silently', async () => {
+    const root = await fixture();
+    await write(root, 'xforge/scaffold/hooks/session-audit.yaml', [
+      'apiVersion: xforge.dev/v1alpha2', 'kind: Hook', 'metadata:', '  name: session-audit', '  version: 1',
+      'spec:', '  enabled: true', '  plane: runtime', '  event: agent.session.start',
+      '  action: { builtin: audit }', '  failurePolicy: warn', '  timeoutSeconds: 5', '',
+    ].join('\n'));
+    await updateYaml(root, 'xforge/manifest.yaml', (manifest) => { manifest.scaffold.hooks.push('session-audit'); });
+
+    const result = await runCli(root, ['install']);
+    expect(result.code, JSON.stringify(result.json.diagnostics, null, 2)).toBe(0);
+    const unsupported = result.json.diagnostics.filter((item: any) => item.code === 'XFORGE_HOOK_EVENT_UNSUPPORTED');
+    // OpenCode's plugin bridge only receives tool execute events.
+    expect(unsupported.map((item: any) => item.details.target)).toEqual(['opencode']);
+    expect(unsupported[0].severity).toBe('warning');
+    expect(unsupported[0].details.event).toBe('agent.session.start');
+    // Targets that do support it still get the hook.
+    expect(JSON.parse(await readFile(path.join(root, '.claude', 'settings.json'), 'utf8')).hooks.SessionStart).toHaveLength(1);
+  });
+
   it('requires install before update, sync, or uninstall', async () => {
     const root = await fixture();
     for (const command of ['update', 'sync', 'uninstall']) {

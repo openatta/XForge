@@ -170,17 +170,21 @@ governance files from accidental self-inflicted damage.
 
 ## Approvals
 
-A human or external-system decision, produced as a signed `ApprovalReceipt`
-bound to the exact current `stateRevision`/`contentRevision`/`gitHead` — any
-later edit invalidates it. Two ways to produce one: local interactive
-(`--attestation human`, requires a real TTY, deliberately not automatable —
-Agents cannot self-approve) or an externally signed receipt
-(`xforge approve --receipt <path>`, HMAC-SHA256 against a shared secret
-registered in `manifest.yaml`'s `approvals.providers`, verifiable without a
-TTY). Every shipped Flow requires at least one Approval before Archive, even
-Quick — the rigor scales with the Flow (Quick: one local attester; Major:
-two distinct-role external signers, `separationOfDuties` enforced by
-counting distinct roles, not distinct receipts). Approval is the one
+A human or external-system decision, produced as an `ApprovalReceipt` bound
+to the exact current `stateRevision`/`contentRevision`/`gitHead` — any later
+edit invalidates it. Two ways to produce one: local interactive
+(`xforge approve` run in a real TTY, a `readline` dialogue asks for
+identity, role, decision and reason live — deliberately not automatable,
+Agents cannot self-approve) or an `mcp` provider registered in
+`manifest.yaml`'s `approvals.providers`, which submits and polls a request
+against an external `McpServer`. Neither path signs the receipt; instead,
+`xforge approve` writes the receipt and appends a matching event to the
+project's tamper-evident audit chain in the same run, and a receipt is only
+trusted if that chain event exists. Every shipped Flow requires at least one
+Approval before Archive, even Quick — the rigor scales with the Flow
+(Quick: one local attester; Major: two distinct-role `mcp` approvers,
+`separationOfDuties` enforced by counting distinct roles, not distinct
+receipts). Approval is the one
 concept among the seven where "do I need this" isn't really optional in the
 defaults — only the weight is adjustable.
 

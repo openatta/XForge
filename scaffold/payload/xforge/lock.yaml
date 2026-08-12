@@ -21,17 +21,27 @@ resources:
     kind: agent
     license: project
     version: 2
-  - digest: 422072bcaf0441808b131b5f9ceb0277e90262387253ca79daa68e16ae2571ad
+  - digest: 5c8002edf491245450f870a3a26ebca9af4612aa73a5b839806b7c7de9ac4caa
+    id: check-findings
+    kind: gate
+    license: project
+    version: 1
+  - digest: 446780229cd7fb5c0f5655fba443dc07b36450ed95f2a7da55528cfd2c6bc959
+    id: constitution-check
+    kind: gate
+    license: project
+    version: 1
+  - digest: 7dfb319028245e821ced590de5896da9835a325265ef9f5254c40ad37ea1a696
     id: security-scan
     kind: gate
     license: project
     version: 1
-  - digest: 25ff82152311f0ceddf12f9f09ceb2ed4609a8429c1ed595dee8925cce2b4358
+  - digest: 39a4adc3ccd641cbd900d17d3a4abaac397f30730de1d58bee86f0bf2d66e853
     id: structure
     kind: gate
     license: project
     version: 1
-  - digest: 4a76cb31fdae41e88e4aa1866d93aa32cacb6b9327704269e5b5136dc09091a1
+  - digest: cf4a1fde192a9643dfbb585f3a3e5f8a1156bd068cf61ad637905c518eaf8bde
     id: unit-tests
     kind: gate
     license: project
@@ -44,6 +54,26 @@ resources:
   - digest: a89cf8c7941cc40868fef76f1398c4666ccc938bf03a726f6cb1a8832e4e89fb
     id: protected-files
     kind: permission-policy
+    license: project
+    version: 1
+  - digest: 4f60cdab3c7c34a06f912d57404af898f7f6c71558a04738e5d2507327163b83
+    id: design-decisions-need-a-human
+    kind: rule
+    license: project
+    version: 1
+  - digest: ce9ffd2f872aba458202acbe7ab265c486525682416f254375a90bbf8f9e600e
+    id: governance-assets-are-integrator-only
+    kind: rule
+    license: project
+    version: 1
+  - digest: 31a19248041aedef5b83184209ecee32b5121fce98b9420b12848048ecfc3dc9
+    id: observable-requirements-are-tested
+    kind: rule
+    license: project
+    version: 1
+  - digest: 6377d51cfbe4187fd79d86837a3da974a0219dab8a04647f22148d2609436053
+    id: prefer-small-explicit-contracts
+    kind: rule
     license: project
     version: 1
   - digest: ec29d19d015fe53c97000a6a2a673bc1fae0cd0236a7b2c200062cc8efb419e4
@@ -61,7 +91,7 @@ resources:
     kind: skill
     license: MIT
     version: "3.0"
-  - digest: 1b7e070311970af1163c53c32d7d9551598e675dd678114db031e5e5a2aa430f
+  - digest: e12088e9934c7cebd33fa663801cb792da8a086d50877c0e01ef6cb3bf31d7c9
     id: xforge-check
     kind: skill
     license: MIT
@@ -130,7 +160,7 @@ targets:
   - opencode
   - github-copilot
 xforge:
-  integrity: sha256:3bd49e3f0419faab163cc8c4dc7366287e22beb3f244fc7d0261ce8ff7f169c0
+  integrity: sha256:0f66f9efdcc97e50a59f2ce9851b51b94749f11d1009f5bf491cb7fb2863809c
   package: "@xforge/cli"
   protocol: "2"
   source: npm

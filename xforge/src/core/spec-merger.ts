@@ -5,6 +5,7 @@ import type { FileChange, ProjectContext } from '../types.js';
 import { XForgeError, diagnostic } from './errors.js';
 import { sha256 } from './hash.js';
 import { safeResolve } from './path-safety.js';
+import { hasDeltaSections, renamePairs } from './spec-delta.js';
 
 interface RequirementBlock {
   name: string;
@@ -50,23 +51,6 @@ function uniqueRequirements(blocks: RequirementBlock[], label: string, filePath:
   return result;
 }
 
-function renamePairs(source: string): Array<{ from: string; to: string }> {
-  const result: Array<{ from: string; to: string }> = [];
-  const lines = source.split(/\r?\n/);
-  let from: string | null = null;
-  for (const line of lines) {
-    const fromMatch = line.match(/FROM:\s*(?:`?### Requirement:\s*)?(.+?)`?\s*$/i);
-    if (fromMatch) { from = fromMatch[1]!.trim(); continue; }
-    const toMatch = line.match(/TO:\s*(?:`?### Requirement:\s*)?(.+?)`?\s*$/i);
-    if (toMatch && from) { result.push({ from, to: toMatch[1]!.trim() }); from = null; }
-  }
-  return result;
-}
-
-function hasDeltaSections(source: string): boolean {
-  return /^## (?:ADDED|MODIFIED|REMOVED|RENAMED) Requirements\s*$/m.test(source);
-}
-
 function mainParts(source: string): { before: string; after: string; blocks: RequirementBlock[] } {
   const match = /^## Requirements\s*$/m.exec(source);
   if (!match || match.index === undefined) throw new XForgeError(diagnostic('XFORGE_SPEC_MAIN_INVALID', 'Existing main Spec requires a ## Requirements section.'));
@@ -90,7 +74,13 @@ function convertNewDelta(delta: string, relative: string): string {
   }
   const blocks = requirements(added ?? '');
   if (blocks.length === 0) throw new XForgeError(diagnostic('XFORGE_SPEC_DELTA_EMPTY', 'A new delta Spec must add at least one requirement.', relative));
-  const title = path.posix.basename(path.posix.dirname(relative)).replace(/-/g, ' ');
+  // The delta glob matches nested and flat shapes alike: a capability may be a directory
+  // (`specs/x/spec.md`) or a flat file (`specs/x.md`). Taking the parent directory
+  // unconditionally titled every flat capability "specs".
+
+  const base = path.posix.basename(relative, '.md');
+  const capability = base === 'spec' ? path.posix.basename(path.posix.dirname(relative)) : base;
+  const title = capability.replace(/-/g, ' ');
   return `# ${title}\n\n## Purpose\n\nEstablished by archived XForge Changes.\n\n## Requirements\n\n${blocks.map((block) => block.content).join('\n\n')}\n`;
 }
 
@@ -139,7 +129,19 @@ export async function planSpecMutations(project: ProjectContext, changeId: strin
     const destinationExists = await exists(destination);
     let content: string | null;
     if (!destinationExists) {
-      content = hasDeltaSections(delta) ? convertNewDelta(delta, deltaPath) : delta.endsWith('\n') ? delta : `${delta}\n`;
+      /* Delta sections are the only accepted shape, for a brand-new capability too. `check` already
+         refuses a full main Spec (XFORGE_SPEC_DELTA_NO_SECTION), and the propose Skill and every
+         shipped Flow outline prescribe `## ADDED Requirements`. Accepting the full-Spec form only
+         here would mean archive silently admitting a document that never passed Scenario
+         validation — the exact gap between check and archive this closes. */
+      if (!hasDeltaSections(delta)) {
+        throw new XForgeError(diagnostic(
+          'XFORGE_SPEC_DELTA_NO_SECTION',
+          'A new capability Spec must use requirement delta sections (## ADDED Requirements), not a full main Spec.',
+          deltaPath,
+        ));
+      }
+      content = convertNewDelta(delta, deltaPath);
     } else {
       const main = await readFile(destination, 'utf8');
       if (!hasDeltaSections(delta)) {

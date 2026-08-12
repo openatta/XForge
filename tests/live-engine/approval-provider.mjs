@@ -24,7 +24,7 @@ function stableStringify(value) {
   return JSON.stringify(normalize(value), null, 2);
 }
 
-const approvalSecret = 'xforge-live-e2e-external-provider-secret';
+import { APPROVAL_SECRET as approvalSecret } from './xforge-cli.mjs';
 
 function options(argv) {
   const result = { 'simulate-rejection': 'false' };

@@ -103,11 +103,15 @@ export interface Manifest {
     prune: 'managed-only';
     commitGeneratedFiles: boolean;
   };
+  /**
+   * XForge supports exactly two approval mechanisms: the CLI's own interactive terminal (`local`,
+   * always available, not listed here) and an external system reached over MCP. There is no
+   * signed-file-import path — an external decision must come from a live `submit_approval_request`
+   * / `poll_approval` round trip against a registered McpServer, never from a receipt file dropped
+   * on disk.
+   */
   approvals?: {
-    providers: Array<
-      | { id: string; type: 'hmac-sha256'; secretEnv: string; roles: string[] }
-      | { id: string; type: 'mcp'; mcpServer: string; roles: string[] }
-    >;
+    providers: Array<{ id: string; type: 'mcp'; mcpServer: string; roles: string[] }>;
     local?: {
       requireTty?: boolean;
     };
@@ -122,7 +126,21 @@ export interface Manifest {
       timeoutSeconds: number;
       requiredFor: Array<'quick' | 'solid' | 'major'>;
     };
+    /**
+     * Per-plane remote delivery. Defaults to `inline` for the workflow plane and `spool` for the
+     * runtime plane, so an agent tool call never blocks on an audit HTTP round-trip.
+     */
+    delivery?: { workflow?: 'inline' | 'spool'; runtime?: 'inline' | 'spool' };
+    /** Opt in to actually truncating the local chain at `localRetentionDays`. Default false. */
+    localRetentionEnforce?: boolean;
   };
+  runtime?: {
+    /** Decision applied by the hook dispatcher when a tool cannot be mapped to a capability.
+     * `allow` means "no XForge opinion, defer to the platform". Default `ask`. */
+    unknownToolPolicy?: 'allow' | 'ask' | 'deny';
+  };
+  /** Extra environment variable names Gate subprocesses may inherit, on top of the built-in allowlist. */
+  gates?: { env?: { allow?: string[]; allowPrefixes?: string[] } };
 }
 
 export interface Lockfile {
@@ -144,6 +162,7 @@ export interface ArtifactDefinition {
   instruction: string;
   outline: string;
   requires: string[];
+  validator?: 'spec-delta';
 }
 
 export interface LegacyFlow {
@@ -312,7 +331,15 @@ export interface WorkPackagePlanState {
 
 export interface ArtifactState extends ArtifactDefinition {
   status: 'done' | 'ready' | 'blocked';
+  /** Files that actually exist, relative to the Change directory. Empty until the Artifact is written. */
   outputPaths: string[];
+  /**
+   * Where this Artifact belongs, as a path from the project root. `generates` alone is relative to
+   * the Change directory, and nothing said so: an Agent running the CLI from the project root read
+   * `assurance.md` as a project-root file and wrote it there. The next-action `writes` field is
+   * built from this, so the destination is stated rather than inferred.
+   */
+  writePath: string;
   missingDependencies: string[];
 }
 
@@ -415,15 +442,19 @@ export interface GateResource {
   kind: 'Gate';
   metadata: Metadata;
   spec: {
-    stage: 'check' | 'before-archive';
     required: boolean;
-    builtin?: 'structure';
+    builtin?: 'structure' | 'check-findings' | 'constitution-check';
     command?: string[];
     shell?: boolean;
     workingDirectory?: string;
     timeoutSeconds: number;
     maxOutputBytes?: number;
     evidence: string;
+    /**
+     * Extra environment variable names this Gate's subprocess may inherit, on top of the built-in
+     * allowlist and `Manifest.gates.env`. Names that look like credentials are always dropped.
+     */
+    env?: { allow?: string[]; allowPrefixes?: string[] };
   };
 }
 
@@ -519,6 +550,12 @@ export interface ManagedFileRecord {
   protocolVersion: string;
   desiredDigest: string;
   lastInstalledDigest: string;
+  /**
+   * Present when XForge owns only part of the destination file (see `DesiredFile.fragment`).
+   * Records the exact material XForge wrote, so `sync`/`update`/`uninstall` can touch that
+   * material and nothing else. When absent the record has whole-file ownership.
+   */
+  fragment?: DesiredFile['fragment'];
 }
 
 export interface TargetInstallationState {
@@ -563,6 +600,20 @@ export interface AdapterCapability {
   };
   auditDelivery: CapabilityLevel;
   subagent: CapabilityLevel;
+  /**
+   * What the target's *static* permission layer can actually express. `permissionPolicy` above
+   * only says whether such a layer exists; this says which PermissionPolicy dimensions survive
+   * projection into it. Anything not covered here is enforced solely by the XForge PreToolUse
+   * bridge, and `planProjection` emits a diagnostic saying so instead of dropping it silently.
+   */
+  permissionPolicyScopes?: {
+    /** `spec.capability` values that become real static rules on this target. */
+    capabilities: string[];
+    /** Whether the static layer can honour `spec.exceptActors`. */
+    actorScoped: boolean;
+    /** Whether the static layer can honour `spec.match.stages`. */
+    stageScoped: boolean;
+  };
 }
 
 export interface DesiredFile {
@@ -573,6 +624,23 @@ export interface DesiredFile {
   resource: { kind: string; id: string };
   sourcePaths: string[];
   renderVersion: string;
+  /**
+   * Declares that XForge owns only part of this destination instead of the whole file, so a
+   * host-owned config file (`.claude/settings.json`, `CLAUDE.md`, `opencode.json`, ...) can be
+   * shared. Everything outside the declared material is read in and written back untouched.
+   *
+   * - `json`   — owns individual array items and/or leaf values addressed by a key path.
+   *              `seed` is applied only when the file does not exist yet and is never owned.
+   * - `markers`— owns the text between `begin` and `end` marker lines.
+   */
+  fragment?:
+    | {
+      format: 'json';
+      seed?: Record<string, unknown>;
+      arrays?: Array<{ path: string[]; items: unknown[] }>;
+      values?: Array<{ path: string[]; value: unknown }>;
+    }
+    | { format: 'markers'; begin: string; end: string; body: string };
 }
 
 export interface GateEvidence {
@@ -589,7 +657,7 @@ export interface GateEvidence {
   gitHead: string;
   inputDigest: string;
   runner: { name: string; version: string; integrity: string };
-  command: string[] | ['builtin:structure'];
+  command: string[] | ['builtin:structure'] | ['builtin:check-findings'] | ['builtin:constitution-check'];
   shell: boolean;
   workingDirectory: string;
   startedAt: string;
@@ -610,6 +678,12 @@ export interface GovernanceRevision {
   policySnapshotDigest: string;
   gitBase: string;
   gitHead: string;
+  /**
+   * Governance-only binding for Approvals: `change.yaml`, the Flow, the policy snapshot, and the
+   * Artifacts produced up to and including the current Stage. Excludes `gitHead` and later Stages'
+   * Evidence, so a commit or a downstream Artifact write does not invalidate a human decision.
+   */
+  governingRevision?: string;
 }
 
 export interface ApprovalReceipt {
@@ -633,8 +707,20 @@ export interface ApprovalReceipt {
   reason: string;
   expiresAt?: string;
   externalRef?: string;
-  signature?: { algorithm: 'hmac-sha256'; value: string };
   digest: string;
+  /** Governance binding of the approved Stage; absent on receipts issued before the split. */
+  governingRevision?: string;
+  /**
+   * How a local human decision was obtained. Only the CLI's own terminal dialogue can set this;
+   * it can never be supplied on the command line. Absent on provider-issued receipts. There is no
+   * typed code here: the receipt is trusted because the project's own audit hash chain independently
+   * recorded the `approval.decided` event that produced it (see `approvalVerifiedInChain`), not
+   * because of anything carried on the receipt itself.
+   */
+  attestation?: {
+    method: 'cli-terminal';
+    respondedAt: string;
+  };
 }
 
 export interface TransitionReceipt {
@@ -674,7 +760,7 @@ export interface GovernanceState {
   transitionHead: string | null;
   transitions: TransitionReceipt[];
   revision: GovernanceRevision;
-  pendingApprovals: Array<{ policyId: string; transition: string; missing: number; roles: string[]; providers: Array<{ id: string; type: 'local' | 'hmac-sha256' | 'mcp' }> }>;
+  pendingApprovals: Array<{ policyId: string; transition: string; missing: number; roles: string[]; providers: Array<{ id: string; type: 'local' | 'mcp' }> }>;
   approvals: ApprovalReceipt[];
   rules: RuleCoverage[];
   policies: Array<{ id: string; capability: string; effect: string; applicable: boolean }>;

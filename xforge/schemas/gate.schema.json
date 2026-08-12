@@ -1,28 +1,151 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://xforge.dev/schemas/v1alpha1/gate.schema.json",
-  "type": "object", "additionalProperties": false,
-  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "spec"
+  ],
   "properties": {
-    "apiVersion": { "enum": ["xforge.dev/v1alpha1", "xforge.dev/v1alpha2"] }, "kind": { "const": "Gate" },
-    "metadata": { "$ref": "#/$defs/metadata" },
+    "apiVersion": {
+      "enum": [
+        "xforge.dev/v1alpha1",
+        "xforge.dev/v1alpha2"
+      ]
+    },
+    "kind": {
+      "const": "Gate"
+    },
+    "metadata": {
+      "$ref": "#/$defs/metadata"
+    },
     "spec": {
-      "type": "object", "additionalProperties": false,
-      "required": ["stage", "required", "timeoutSeconds", "evidence"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required",
+        "timeoutSeconds",
+        "evidence"
+      ],
       "properties": {
-        "stage": { "enum": ["check", "before-archive"] }, "required": { "type": "boolean" },
-        "builtin": { "const": "structure" }, "command": { "type": "array", "minItems": 1, "items": { "type": "string" } },
-        "shell": { "type": "boolean" }, "workingDirectory": { "$ref": "#/$defs/path" },
-        "timeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 3600 },
-        "maxOutputBytes": { "type": "integer", "minimum": 1024, "maximum": 1048576 },
-        "evidence": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]*\\.json$" }
+        "required": {
+          "type": "boolean"
+        },
+        "stage": {
+          "enum": [
+            "check",
+            "before-archive"
+          ],
+          "deprecated": true,
+          "description": "Ignored. Gate scheduling is owned by the Flow via stage.gates / stage.exit.gates and the archive terminal. Accepted so Gates written before that move keep validating; new Gates should omit it."
+        },
+        "builtin": {
+          "enum": [
+            "structure",
+            "check-findings",
+            "constitution-check"
+          ],
+          "description": "Runs an in-process XForge check instead of a subprocess. structure = project/Change structural validation; check-findings = the Check Stage findings ledger has no open blocker; constitution-check = every Constitution principle is answered and any violation is justified and approved."
+        },
+        "command": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "shell": {
+          "type": "boolean"
+        },
+        "workingDirectory": {
+          "$ref": "#/$defs/path"
+        },
+        "timeoutSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3600
+        },
+        "maxOutputBytes": {
+          "type": "integer",
+          "minimum": 1024,
+          "maximum": 1048576
+        },
+        "evidence": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]*\\.json$"
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Extra environment variables this Gate subprocess may inherit. Credential-looking names are always dropped.",
+          "properties": {
+            "allow": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/envName"
+              }
+            },
+            "allowPrefixes": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/envName"
+              }
+            }
+          }
+        }
       },
-      "oneOf": [ { "required": ["builtin"] }, { "required": ["command"] } ]
+      "oneOf": [
+        {
+          "required": [
+            "builtin"
+          ]
+        },
+        {
+          "required": [
+            "command"
+          ]
+        }
+      ]
     }
   },
   "$defs": {
-    "id": { "type": "string", "pattern": "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$" },
-    "path": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$" },
-    "metadata": { "type": "object", "required": ["name"], "properties": { "name": { "$ref": "#/$defs/id" }, "version": { "type": ["string", "integer"] } }, "additionalProperties": false }
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$"
+    },
+    "envName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+    },
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    },
+    "metadata": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/id"
+        },
+        "version": {
+          "type": [
+            "string",
+            "integer"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
   }
 }

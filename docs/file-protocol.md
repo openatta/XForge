@@ -126,7 +126,7 @@ Changes to governing artifacts, Flow, Rules, Policies, Hooks, Gates or Git HEAD 
 
 ## 6. Approval receipt
 
-Approval is a first-class receipt bound to Change, Flow, Stage, transition, policy and revision. Local approval requires an interactive terminal plus `--attestation human`; it is repository-level self-attestation and is not enterprise-grade identity proof. External receipts use configured HMAC providers and are revalidated on every state load. Major policies accept external receipts only and require two approvers with role separation.
+Approval is a first-class receipt bound to Change, Flow, Stage, transition, policy and revision, produced through exactly two mechanisms: local (an interactive terminal running a `readline` dialogue that asks for actor, role, decision and reason live — no confirmation code, and it is repository-level self-attestation, not enterprise-grade identity proof) or an `mcp` provider (a registered `McpServer`, submit + poll). Neither receipt is signed; trust comes from the project's own tamper-evident audit hash chain — a receipt is only valid if a matching `approval.decided` event exists in that chain, and it is revalidated on every state load. Major policies accept `mcp` receipts only and require two approvers with role separation.
 
 Agents, Reviewers and Skills cannot issue a valid human Approval. A Review `PASS` is assurance, not Approval or Gate Evidence.
 

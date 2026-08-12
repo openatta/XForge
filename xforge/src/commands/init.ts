@@ -53,17 +53,74 @@ async function exactRoot(input: string): Promise<string> {
   return realpath(candidate);
 }
 
-async function planBootstrap(root: string, bundle: BundledScaffold): Promise<{ changes: FileChange[]; diagnostics: Diagnostic[] }> {
+/**
+ * Files XForge co-owns with the project instead of owning outright. Every repository that already
+ * talks to Codex / Cursor / Copilot ships its own `AGENTS.md`, so a whole-file digest comparison
+ * would make `init` impossible in exactly the repositories XForge targets. These files are merged
+ * through a marker block: everything between the markers belongs to XForge, everything outside is
+ * preserved byte-for-byte.
+ */
+const MERGE_FILES = new Set(['AGENTS.md']);
+const MERGE_BEGIN = '<!-- XFORGE:BEGIN -->';
+const MERGE_END = '<!-- XFORGE:END -->';
+
+interface MarkerBlock {
+  before: string;
+  block: string;
+  after: string;
+}
+
+/**
+ * Locates the single XForge marker block. Returns `null` when the text carries no marker at all
+ * (a plain project-owned file the block gets appended to) and `'malformed'` when the markers are
+ * present but unusable — unbalanced, reversed, or duplicated. Malformed markers are the one case
+ * that stays a conflict: guessing which half of an ambiguous file XForge owns would destroy
+ * project content.
+ */
+function locateMarkerBlock(text: string): MarkerBlock | null | 'malformed' {
+  const begins: number[] = [];
+  const ends: number[] = [];
+  for (let index = text.indexOf(MERGE_BEGIN); index !== -1; index = text.indexOf(MERGE_BEGIN, index + 1)) begins.push(index);
+  for (let index = text.indexOf(MERGE_END); index !== -1; index = text.indexOf(MERGE_END, index + 1)) ends.push(index);
+  if (begins.length === 0 && ends.length === 0) return null;
+  if (begins.length !== 1 || ends.length !== 1) return 'malformed';
+  const begin = begins[0]!;
+  const end = ends[0]!;
+  if (end < begin) return 'malformed';
+  return { before: text.slice(0, begin), block: text.slice(begin, end + MERGE_END.length), after: text.slice(end + MERGE_END.length) };
+}
+
+/** The bundled Scaffold copy is authoritative for the block body, markers included. */
+function bundledBlock(relative: string, content: Buffer): string {
+  const located = locateMarkerBlock(content.toString('utf8'));
+  if (located === null || located === 'malformed') {
+    throw new XForgeError(diagnostic('XFORGE_BUNDLED_SCAFFOLD_INVALID', `Bundled Scaffold file ${relative} is missing a well-formed XForge marker block.`, relative));
+  }
+  return located.block;
+}
+
+function mergeMarkerBlock(existing: string, block: string): string | 'malformed' {
+  const located = locateMarkerBlock(existing);
+  if (located === 'malformed') return 'malformed';
+  if (located) return `${located.before}${block}${located.after}`;
+  if (existing.length === 0) return `${block}\n`;
+  return `${existing}${existing.endsWith('\n') ? '' : '\n'}\n${block}\n`;
+}
+
+async function planBootstrap(root: string, bundle: BundledScaffold): Promise<{ changes: FileChange[]; diagnostics: Diagnostic[]; writes: Map<string, Buffer> }> {
   const changes: FileChange[] = [];
   const diagnostics: Diagnostic[] = [];
+  const writes = new Map<string, Buffer>();
   const source = `npm:${bundle.package}@${bundle.version}:scaffold`;
   for (const [relative, content] of bundle.files) {
+    const merged = MERGE_FILES.has(relative);
     const destination = await safeResolve(root, relative);
     let info;
     try { info = await lstat(destination); }
     catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
         changes.push({ action: 'create', path: relative, digest: sha256(content), source });
+        writes.set(relative, content);
         continue;
       }
       throw error;
@@ -73,22 +130,36 @@ async function planBootstrap(root: string, bundle: BundledScaffold): Promise<{ c
       diagnostics.push(diagnostic('XFORGE_INIT_CONFLICT', 'Bundled Scaffold destination is a symlink or non-file.', relative));
       continue;
     }
-    const currentDigest = sha256(await readFile(destination));
-    const desiredDigest = sha256(content);
-    if (currentDigest === desiredDigest) changes.push({ action: 'skip', path: relative, digest: desiredDigest, source, reason: 'Bundled Scaffold file is already current.' });
-    else {
-      changes.push({ action: 'conflict', path: relative, digest: currentDigest, source, reason: 'Existing file differs from the bundled Scaffold.' });
-      diagnostics.push(diagnostic('XFORGE_INIT_CONFLICT', 'XForge will not overwrite an existing project file during initialization.', relative));
+    const current = await readFile(destination);
+    const currentDigest = sha256(current);
+    if (!merged) {
+      const desiredDigest = sha256(content);
+      if (currentDigest === desiredDigest) changes.push({ action: 'skip', path: relative, digest: desiredDigest, source, reason: 'Bundled Scaffold file is already current.' });
+      else {
+        changes.push({ action: 'conflict', path: relative, digest: currentDigest, source, reason: 'Existing file differs from the bundled Scaffold.' });
+        diagnostics.push(diagnostic('XFORGE_INIT_CONFLICT', 'XForge will not overwrite an existing project file during initialization.', relative));
+      }
+      continue;
     }
+    const desired = mergeMarkerBlock(current.toString('utf8'), bundledBlock(relative, content));
+    if (desired === 'malformed') {
+      changes.push({ action: 'conflict', path: relative, digest: currentDigest, source, reason: `Existing file has unbalanced ${MERGE_BEGIN} / ${MERGE_END} markers.` });
+      diagnostics.push(diagnostic('XFORGE_INIT_CONFLICT', `XForge cannot merge its managed block into a file with unbalanced ${MERGE_BEGIN} / ${MERGE_END} markers. Repair or remove the markers, then re-run init.`, relative));
+      continue;
+    }
+    const desiredContent = Buffer.from(desired, 'utf8');
+    const desiredDigest = sha256(desiredContent);
+    if (currentDigest === desiredDigest) {
+      changes.push({ action: 'skip', path: relative, digest: desiredDigest, source, reason: 'Managed XForge block is already current.' });
+      continue;
+    }
+    changes.push({ action: 'modify', path: relative, digest: desiredDigest, source, reason: 'Merged the managed XForge block; content outside the markers is preserved.' });
+    writes.set(relative, desiredContent);
   }
-  return { changes, diagnostics };
+  return { changes, diagnostics, writes };
 }
 
-async function materializeBundle(root: string, bundle: BundledScaffold, changes: FileChange[]): Promise<void> {
-  const writes = new Map<string, Buffer>();
-  for (const change of changes) {
-    if (change.action === 'create') writes.set(change.path, bundle.files.get(change.path)!);
-  }
+async function materializeBundle(root: string, writes: Map<string, Buffer>): Promise<void> {
   if (writes.size > 0) await applyManagedTransaction({ root }, writes);
 }
 
@@ -108,12 +179,7 @@ async function mirrorDestination(actualRoot: string, stagedRoot: string, relativ
 async function preflightProjection(root: string, bundle: BundledScaffold, target: TargetId) {
   const stagedRoot = await mkdtemp(path.join(os.tmpdir(), 'xforge-init-'));
   try {
-    await materializeBundle(stagedRoot, bundle, [...bundle.files].map(([relative, content]) => ({
-      action: 'create' as const,
-      path: relative,
-      digest: sha256(content),
-      source: `npm:${bundle.package}@${bundle.version}:scaffold`,
-    })));
+    await materializeBundle(stagedRoot, new Map(bundle.files));
     const stagedProject = await loadProject(stagedRoot, { exactRoot: true });
     const initial = await executeInstall(stagedProject, { target, dryRun: true });
     for (const relative of [...new Set(initial.changes.map((change) => change.path))]) {
@@ -184,7 +250,7 @@ export async function executeInit(rootInput: string, options: InitOptions): Prom
     nextActions: nextActions(options.target),
   };
 
-  await materializeBundle(root, bundle, bootstrap.changes);
+  await materializeBundle(root, bootstrap.writes);
   if (!options.target) return {
     data: { mode: 'init', dryRun: false, initialized: true, scaffold: { package: bundle.package, version: bundle.version, files: bundle.files.size, language: options.language }, projection: null },
     diagnostics: [],

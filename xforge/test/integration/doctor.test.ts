@@ -46,7 +46,7 @@ async function addMcpServer(root: string, id: string): Promise<void> {
 }
 
 describe('doctor', () => {
-  it('reports unused Flows and an uncited PermissionPolicy on an unmodified fixture', async () => {
+  it('reports only unused Flows on an unmodified fixture, because every shipped asset is now cited', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
     const result = await runCli(root, ['doctor']);
@@ -54,7 +54,9 @@ describe('doctor', () => {
     expect(result.json.ok).toBe(true);
     expect(result.json.data.danglingReferences).toEqual([]);
     expect(result.json.data.deadCode).toEqual([]);
-    expect(result.json.data.uncited.map((item: any) => item.id)).toContain('protected-files');
+    /* The shipped Rules cite protected-files, so the freestanding-policy finding is gone. The old
+       expectation encoded an empty Rule layer: a policy nobody referenced was the normal state. */
+    expect(result.json.data.uncited.map((item: any) => item.id)).not.toContain('protected-files');
     expect(result.json.data.unusedFlows.map((item: any) => item.id).sort()).toEqual(['major', 'quick']);
   });
 

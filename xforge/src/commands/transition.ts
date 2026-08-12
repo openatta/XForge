@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import type { Diagnostic, FileChange, ProjectContext, TransitionReceipt } from '../types.js';
 import { recordAudit, verifyAudit } from '../core/audit.js';
-import { resolveControlPlane } from '../core/control-plane.js';
+import { blockRemedy, resolveControlPlane } from '../core/control-plane.js';
 import { XForgeError, diagnostic } from '../core/errors.js';
 import { atomicWrite } from '../core/files.js';
-import { isStageFlow, resolveChangeState } from '../core/flow-resolver.js';
+import { flowEligibilityDiagnostics } from '../core/checker.js';
+import { isStageFlow, loadFlows, resolveChangeState } from '../core/flow-resolver.js';
 import { sha256, stableStringify } from '../core/hash.js';
 import { assertManaged } from '../core/project-loader.js';
 import { loadSelectedResources } from '../core/resource-loader.js';
@@ -18,14 +19,30 @@ export async function executeTransition(project: ProjectContext, options: { chan
   assertManaged(project, 'transition');
   const resolved = await resolveChangeState(project, options.change);
   if (!isStageFlow(resolved.flow) || !resolved.flow.governance) throw new XForgeError(diagnostic('XFORGE_GOVERNANCE_FLOW_REQUIRED', 'transition requires a Protocol 2 governed Flow.'));
+  // A Change whose classification outgrew its Flow must fail here, at the first Stage
+  // transition, rather than after all implementation work is done at archive time.
+  const flowsResult = await loadFlows(project);
+  const eligibility = flowEligibilityDiagnostics(
+    resolved.flow,
+    resolved.config,
+    flowsResult.flows.values(),
+    `${project.changesPath}/${options.change}/change.yaml`,
+  );
   const resources = await loadSelectedResources(project);
   const workPackages = await resolveWorkPackages(project, options.change, resolved.config, resources);
   resolved.state.workPackages = workPackages.state;
   const control = await resolveControlPlane(project, options.change, resolved.flow, resolved.state, resources, resolved.config);
   const requirement = control.transitionRequirements.get(options.to);
-  if (!requirement) throw new XForgeError(diagnostic('XFORGE_TRANSITION_INVALID', `Transition ${control.governance.currentStage} -> ${options.to} is not allowed by the Flow.`));
-  const diagnostics = [...resources.diagnostics, ...workPackages.diagnostics, ...control.diagnostics];
+  if (!requirement) {
+    throw new XForgeError([
+      ...eligibility,
+      diagnostic('XFORGE_TRANSITION_INVALID', `Transition ${control.governance.currentStage} -> ${options.to} is not allowed by the Flow.`),
+    ]);
+  }
+  const diagnostics = [...eligibility, ...resources.diagnostics, ...workPackages.diagnostics, ...control.diagnostics];
   for (const block of requirement.blockedBy) diagnostics.push(diagnostic('XFORGE_TRANSITION_BLOCKED', `Transition is blocked by ${block}.`, `${project.changesPath}/${options.change}`));
+  const remedy = blockRemedy(requirement.blockedBy, options.change);
+  if (remedy) diagnostics.push(diagnostic('XFORGE_GATE_EVIDENCE_STALE_REMEDY', remedy, `${project.changesPath}/${options.change}`, 'info'));
   const ready = !diagnostics.some((item) => item.severity === 'error');
   if (options.dryRun || !ready) return { data: { change: options.change, from: control.governance.currentStage, to: options.to, ready, receipt: null, dryRun: options.dryRun }, diagnostics, changes: [] };
 

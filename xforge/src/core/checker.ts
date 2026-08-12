@@ -1,4 +1,4 @@
-import type { ChangeConfig, ChangeState, Diagnostic, ProjectContext, StageFlow } from '../types.js';
+import type { ChangeConfig, ChangeState, Diagnostic, Flow, ProjectContext, StageFlow } from '../types.js';
 import { diagnostic } from './errors.js';
 import { flowArchiveOperation, isStageFlow, loadFlows } from './flow-resolver.js';
 import { resolvedResourceEntries } from './lockfile.js';
@@ -9,6 +9,7 @@ import { resolveChangeState } from './flow-resolver.js';
 import { resolveWorkPackages } from './work-packages.js';
 import { normalizeRule } from './governance.js';
 import { loadTransitionReceipts } from './control-plane.js';
+import { validateChangeSpecDeltas } from './spec-delta.js';
 
 export interface StructureResult {
   diagnostics: Diagnostic[];
@@ -40,6 +41,49 @@ function eligibilityProblems(flow: StageFlow, config: ChangeConfig): string[] {
   return problems;
 }
 
+/**
+ * Reports whether the Flow a Change selected is strong enough for how the Change classified
+ * itself. Shared by checkStructure and commands/transition.ts so a mismatched Flow is refused at
+ * the first Stage transition instead of surfacing only at archive.
+ */
+export function flowEligibilityDiagnostics(
+  flow: Flow,
+  config: ChangeConfig,
+  flows: Iterable<Flow>,
+  changePath: string,
+): Diagnostic[] {
+  const diagnostics: Diagnostic[] = [];
+  const classification = config.classification;
+  const requiredFlows = [...flows].filter(isStageFlow).filter((candidate) => requiredPolicyMatches(candidate, classification));
+  const satisfiesRequired = requiredFlows.some((candidate) => candidate.metadata.name === flow.metadata.name);
+  const requiredPolicyDiagnostic = diagnostic(
+    'XFORGE_FLOW_REQUIRED_POLICY',
+    `Classification requires one of the policy-mandated Flows: ${requiredFlows.map((candidate) => candidate.metadata.name).join(', ')}.`,
+    changePath,
+  );
+
+  if (isStageFlow(flow)) {
+    const problems = eligibilityProblems(flow, config);
+    if (problems.length > 0) diagnostics.push(diagnostic(
+      'XFORGE_FLOW_TOO_WEAK',
+      `Flow ${flow.metadata.name} is not eligible for this Change: ${problems.join('; ')}.`,
+      changePath,
+    ));
+    if (requiredFlows.length > 0 && !satisfiesRequired) diagnostics.push(requiredPolicyDiagnostic);
+    return diagnostics;
+  }
+
+  // Legacy v1alpha1 Flows carry no policy block, so the escalation target is derived from the
+  // policy-bearing Flows the project actually ships rather than from a hard-coded Flow name.
+  const critical = activeImpacts(classification).length > 0;
+  if (flow.metadata.name === 'quick') {
+    if (config.scope.modules.length > 1) diagnostics.push(diagnostic('XFORGE_FLOW_TOO_WEAK', 'A cross-module Change cannot use quick.', changePath));
+    if (classification.risk !== 'low' || critical) diagnostics.push(diagnostic('XFORGE_FLOW_TOO_WEAK', 'quick is limited to low-risk Changes with no critical impact flags.', changePath));
+  }
+  if (requiredFlows.length > 0 && !satisfiesRequired) diagnostics.push(requiredPolicyDiagnostic);
+  return diagnostics;
+}
+
 export async function checkStructure(project: ProjectContext, changeId?: string): Promise<StructureResult> {
   const diagnostics = [...project.diagnostics];
   const flowResult = await loadFlows(project);
@@ -60,6 +104,14 @@ export async function checkStructure(project: ProjectContext, changeId?: string)
       }
     }
     if (isStageFlow(flow)) {
+      if (!flow.governance) {
+        diagnostics.push(diagnostic(
+          'XFORGE_FLOW_GOVERNANCE_MISSING',
+          `Flow ${flow.metadata.name} declares no governance block, so xforge transition and xforge approve are unavailable for Changes on this Flow.`,
+          `xforge/flows/${flow.metadata.name}.yaml`,
+          'warning',
+        ));
+      }
       for (const stage of flow.stages) {
         if (!project.manifest.scaffold.skills.includes(stage.skill)) {
           diagnostics.push(diagnostic('XFORGE_FLOW_SKILL_DISABLED', `Flow ${flow.metadata.name} Stage ${stage.id} references non-enabled Skill ${stage.skill}.`, `xforge/flows/${flow.metadata.name}.yaml`));
@@ -115,35 +167,13 @@ export async function checkStructure(project: ProjectContext, changeId?: string)
     const resolved = await resolveChangeState(project, changeId, flowResult.flows);
     diagnostics.push(...resolved.diagnostics);
     change = resolved.state;
-    const classification = resolved.config.classification;
-    if (isStageFlow(resolved.flow)) {
-      const problems = eligibilityProblems(resolved.flow, resolved.config);
-      if (problems.length > 0) diagnostics.push(diagnostic(
-        'XFORGE_FLOW_TOO_WEAK',
-        `Flow ${resolved.flow.metadata.name} is not eligible for this Change: ${problems.join('; ')}.`,
-        `${project.changesPath}/${changeId}/change.yaml`,
-      ));
-      const requiredFlows = [...flowResult.flows.values()]
-        .filter(isStageFlow)
-        .filter((flow) => requiredPolicyMatches(flow, classification));
-      const selectedSatisfiesRequired = requiredFlows.some((flow) => flow.metadata.name === resolved.flow.metadata.name);
-      if (requiredFlows.length > 0 && !selectedSatisfiesRequired) diagnostics.push(diagnostic(
-        'XFORGE_FLOW_REQUIRED_POLICY',
-        `Classification requires one of the policy-mandated Flows: ${requiredFlows.map((flow) => flow.metadata.name).join(', ')}.`,
-        `${project.changesPath}/${changeId}/change.yaml`,
-      ));
-    } else {
-      const critical = activeImpacts(classification).length > 0;
-      if (resolved.config.scope.modules.length > 1 && resolved.flow.metadata.name === 'quick') {
-        diagnostics.push(diagnostic('XFORGE_FLOW_TOO_WEAK', 'A cross-module Change cannot use quick.', `${project.changesPath}/${changeId}/change.yaml`));
-      }
-      if ((classification.risk !== 'low' || critical) && resolved.flow.metadata.name === 'quick') {
-        diagnostics.push(diagnostic('XFORGE_FLOW_TOO_WEAK', 'quick is limited to low-risk Changes with no critical impact flags.', `${project.changesPath}/${changeId}/change.yaml`));
-      }
-      if ((classification.risk === 'high' || critical) && resolved.flow.metadata.name !== 'prime') {
-        diagnostics.push(diagnostic('XFORGE_FLOW_PRIME_REQUIRED', 'High risk or a critical impact flag requires prime.', `${project.changesPath}/${changeId}/change.yaml`));
-      }
-    }
+    diagnostics.push(...flowEligibilityDiagnostics(
+      resolved.flow,
+      resolved.config,
+      flowResult.flows.values(),
+      `${project.changesPath}/${changeId}/change.yaml`,
+    ));
+    diagnostics.push(...await validateChangeSpecDeltas(project, changeId));
     for (const module of resolved.config.scope.modules) {
       if (!moduleIds.has(module)) diagnostics.push(diagnostic('XFORGE_CHANGE_MODULE_UNKNOWN', `Change references unknown module ${module}.`, `${project.changesPath}/${changeId}/change.yaml`));
     }

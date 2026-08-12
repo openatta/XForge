@@ -38,13 +38,25 @@ artifacts:
   - id: clarifications
     generates: clarifications.md
     description: Record material questions and decisions affecting scope, risk, compatibility, or acceptance
-    instruction: Record the question, impact, decision, source, and status; resolve every material question and atomically update Proposal and delta Specs.
+    instruction: Narrate the question, impact, decision, and source, then atomically update Proposal and delta Specs. Stage exit is decided by the material-questions ledger, not by this prose.
     outline: |
       ## Material questions
-      Status: unresolved
       ## Decisions
       ## Sources
       ## Resolved updates
+  - id: material-questions
+    generates: evidence/conditions/materialQuestions.yaml
+    description: Machine-decidable record of every material question and who decided it
+    instruction: One entry per material question with question, impact, decision, decidedBy (a named person), and decidedAt (ISO 8601). The Stage cannot exit while any entry is undecided; prose in clarifications.md does not satisfy it.
+    outline: |
+      condition: materialQuestions
+      entries:
+        - id: <q-id>
+          question: <what was unclear>
+          impact: <scope|risk|compatibility|acceptance>
+          decision: <what was decided>
+          decidedBy: <person>
+          decidedAt: <ISO 8601>
   - id: design
     generates: design.md
     description: Record the high-assurance technical design, risk controls, and delivery boundaries
@@ -60,14 +72,37 @@ artifacts:
       ## Migration and rollback
   - id: check-report
     generates: check-report.md
-    description: Record the pre-implementation semantic review across Artifacts
-    instruction: Review completeness, consistency, testability, risk, and feasibility as blockers, warnings, and suggestions, with the rework Stage.
+    description: Narrate the pre-implementation semantic review across Artifacts
+    instruction: Explain completeness, consistency, testability, risk, and feasibility. Stage exit is decided by the findings ledger, not by this prose.
     outline: |
       ## Completeness
       ## Consistency
+      ## Testability
       ## Feasibility and risk
-      ## Findings
       ## Rework
+  - id: check-findings
+    generates: evidence/check-findings.yaml
+    description: Machine-decidable findings ledger the Check Gate can actually decide
+    instruction: One entry per finding with id, severity (blocker|warning|suggestion), summary, refs to the Artifacts it concerns, and for a blocker a status, a reworkTo Stage while open, and a resolvedBy identity once resolved. Record an explicit empty list when the review found nothing. The Stage cannot exit while any blocker is unresolved.
+    outline: |
+      findings:
+        - id: <finding-id>
+          severity: <blocker|warning|suggestion>
+          summary: <what is wrong>
+          refs: [<artifact or spec path>]
+          status: <open|resolved>
+          reworkTo: <stage id, required while a blocker is open>
+          resolvedBy: <name or email, required once status is resolved for a blocker; must match a known approver or Git author>
+  - id: constitution-check
+    generates: evidence/constitution-check.yaml
+    description: Answer every Constitution principle for this Change
+    instruction: One entry per `## ` principle in xforge/constitution.md, each with status compliant|violation|not-applicable. A violation needs a justification and a named approvedBy; not-applicable needs a justification. A general claim of compliance does not satisfy the Gate.
+    outline: |
+      principles:
+        - principle: <exact `## ` heading from constitution.md>
+          status: <compliant|violation|not-applicable>
+          justification: <required for violation and not-applicable>
+          approvedBy: <named person, required for violation>
   - id: assurance
     generates: assurance.md
     description: Record verification against requirements, design, risks, and constraints
@@ -90,12 +125,12 @@ governance:
       minApprovers: 2
       roles: [owner, maintainer, security]
       separationOfDuties: true
-      providers: [enterprise-hmac]
+      providers: [enterprise-approvals]
     - id: closing-major
       minApprovers: 2
       roles: [owner, maintainer, security]
       separationOfDuties: true
-      providers: [enterprise-hmac]
+      providers: [enterprise-approvals]
   audit:
     requiredEventTypes: [gate.after, stage.entered, approval.decided]
     runtimeCoverage: optional
@@ -107,14 +142,14 @@ stages:
     requires: []
     produces: [proposal, delta-specs]
     gates: [structure]
-    reworkTo: [propose]
+
   - id: clarify
     skill: xforge-clarify
     authority: planning-write
     requires: [propose]
-    produces: [clarifications]
+    produces: [clarifications, material-questions]
     revises: [proposal, delta-specs]
-    reworkTo: [propose, clarify]
+    reworkTo: [propose]
     exit:
       conditions:
         materialQuestions: resolved
@@ -123,13 +158,13 @@ stages:
     authority: planning-write
     requires: [clarify]
     produces: [design]
-    reworkTo: [propose, clarify, design]
+    reworkTo: [propose, clarify]
   - id: check
     skill: xforge-check
     authority: assurance-write
     requires: [design]
-    produces: [check-report]
-    gates: [structure]
+    produces: [check-report, check-findings, constitution-check]
+    gates: [structure, check-findings, constitution-check]
     reworkTo: [propose, clarify, design]
     exit:
       approvals: [implementation-major]
@@ -138,7 +173,7 @@ stages:
     authority: implementation-write
     requires: [check]
     produces: []
-    reworkTo: [propose, clarify, design, apply]
+    reworkTo: [propose, clarify, design]
     execution:
       planning: just-in-time
       workPackages: adaptive

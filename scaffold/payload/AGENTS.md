@@ -1,3 +1,4 @@
+<!-- XFORGE:BEGIN -->
 # XForge project bootstrap
 
 Before project work, read `xforge/manifest.yaml`, `xforge/constitution.md`, and
@@ -31,3 +32,4 @@ Integrator only when multiple commits, shared files, or integration verification
 require it, then use an independent Reviewer for Major or cross-system work.
 Only activate parallel Workers when the target runtime reports native Agent
 support; otherwise execute the packages sequentially and report the degradation.
+<!-- XFORGE:END -->

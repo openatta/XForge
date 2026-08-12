@@ -168,6 +168,19 @@ async function git(root: string, args: string[]): Promise<GitResult> {
   });
 }
 
+/**
+ * Paths the control plane writes on its own behalf: dispatch receipts and the audit index.
+ *
+ * These can never count as a worker's output. Citing `evidence/audit/index.json` as proof that a
+ * verify command passed is circular — the file exists because XForge dispatched the package, not
+ * because anybody did the work.
+ */
+function isControlPlaneBookkeeping(filePath: string, changeRoot: string): boolean {
+  if (!filePath.startsWith(`${changeRoot}/evidence/`)) return false;
+  const tail = filePath.slice(`${changeRoot}/evidence/`.length);
+  return tail.startsWith('audit/') || /^agents\/[^/]+\/dispatch\//.test(tail);
+}
+
 function protectedWritePaths(project: ProjectContext, changeId: string, config: ChangeConfig, resources: SelectedResources): string[] {
   const changeRoot = `${project.changesPath}/${changeId}`;
   const paths = new Set([
@@ -333,6 +346,31 @@ async function validateSuccessfulDelivery(
           dispatch.stateRevision !== delivery.state_revision || dispatch.policySnapshotDigest !== delivery.policy_snapshot_digest || dispatch.auditCorrelationId !== delivery.audit_correlation_id) {
           diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_DISPATCH_MISMATCH', 'Delivery does not match its dispatch receipt.', sourcePath));
         }
+        /*
+         * `base_commit` must be a commit that already contains the dispatch receipt.
+         *
+         * Dispatching writes the receipt and the audit index, and those writes are committed after
+         * `xforge work-package dispatch` returns. A worker that takes `base_commit` from the HEAD
+         * the dispatch receipt recorded therefore starts one commit too early, and the control
+         * plane's own bookkeeping lands inside `base..head` — where it is indistinguishable from
+         * the worker's output and trips the write_paths check for a reason the worker did not
+         * cause. Requiring the receipt to be present at `base_commit` pins the start of the work
+         * to the commit that dispatched it.
+         */
+        if (delivery.base_commit && delivery.head_commit) {
+          const atHead = await git(project.root, ['cat-file', '-e', `${delivery.head_commit}:${dispatchPath}`]);
+          const atBase = await git(project.root, ['cat-file', '-e', `${delivery.base_commit}:${dispatchPath}`]);
+          /* An untracked receipt cannot land in the diff, so only the committed-after-base case is wrong. */
+          if (atHead.code === 0 && atBase.code !== 0) {
+            diagnostics.push(diagnostic(
+              'XFORGE_WORK_PACKAGE_BASE_PRECEDES_DISPATCH',
+              `base_commit ${delivery.base_commit} predates the commit that introduced the dispatch receipt, so the control plane's own writes fall inside the delivery diff. Start the work package from the commit that contains the receipt.`,
+              sourcePath,
+              'error',
+              { baseCommit: delivery.base_commit, dispatchPath },
+            ));
+          }
+        }
       } catch (error) {
         diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_DISPATCH_MISSING', `Dispatch receipt is missing or invalid: ${(error as Error).message}`, dispatchPath));
       }
@@ -367,7 +405,18 @@ async function validateSuccessfulDelivery(
       { declared: declaredPaths, actual: actualPaths },
     ));
   }
+  const changeRoot = `${project.changesPath}/${changeId}`;
   for (const changed of actualPaths) {
+    /*
+     * A control-plane bookkeeping path (dispatch receipts, the audit index) can land inside
+     * `base..head` for reasons that have nothing to do with what the Worker wrote — e.g. a
+     * concurrent `xforge` invocation appending to the audit index mid-delivery. The
+     * `base_commit`-precedes-dispatch check above only catches the case where XForge's own
+     * dispatch commit is the cause; it doesn't help when some other bookkeeping write is swept
+     * into the range. Since these paths are never attributable to the Worker either way, they're
+     * exempted from write_paths here too, on the same reasoning.
+     */
+    if (isControlPlaneBookkeeping(changed, changeRoot)) continue;
     if (!workPackage.write_paths.some((pattern) => matchesPattern(changed, pattern))) {
       diagnostics.push(diagnostic(
         'XFORGE_WORK_PACKAGE_WRITE_ESCAPE',
@@ -375,6 +424,20 @@ async function validateSuccessfulDelivery(
         sourcePath,
       ));
     }
+  }
+  /*
+   * A delivery whose entire diff is the control plane's own bookkeeping delivered nothing. The
+   * write_paths check alone did not catch it: bookkeeping that happens to sit under a declared
+   * write path would have passed, and every remaining check on a delivery is self-reported.
+   */
+  if (actualPaths.length > 0 && actualPaths.every((item) => isControlPlaneBookkeeping(item, changeRoot))) {
+    diagnostics.push(diagnostic(
+      'XFORGE_WORK_PACKAGE_NO_WORK_DELIVERED',
+      `Work package ${workPackage.id} reports success but changed only XForge's own dispatch and audit bookkeeping. A succeeded delivery must change something the package was asked to write.`,
+      sourcePath,
+      'error',
+      { changedPaths: actualPaths },
+    ));
   }
 
   const commands = delivery.validation.map((item) => item.command);
@@ -391,6 +454,32 @@ async function validateSuccessfulDelivery(
     const count = mapped.get(criterion) ?? 0;
     if (count === 0) diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_DONE_WHEN_EVIDENCE_MISSING', `No evidence mapping was supplied for done_when criterion: ${criterion}`, sourcePath));
     if (count > 1) diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_DONE_WHEN_EVIDENCE_DUPLICATE', `done_when criterion is mapped more than once: ${criterion}`, sourcePath));
+  }
+  /*
+   * Evidence used to be counted, never judged. A live run mapped every criterion to the dispatch
+   * receipt and the audit index — files XForge wrote itself — and the mapping was accepted, so
+   * "npm test exits 0" was evidenced by the fact that the package had been dispatched. An entry
+   * now has to be either a command the package actually ran or a path the delivery actually
+   * changed; the control plane's own writes count as neither.
+   */
+  const ranCommands = new Set(delivery.validation.map((item) => item.command));
+  const changedSet = new Set(actualPaths);
+  for (const mapping of mappings) {
+    const relevant = (mapping.evidence ?? []).filter((item) => {
+      if (ranCommands.has(item)) return true;
+      let normalized: string;
+      try { normalized = normalizeRelative(item, 'Evidence path'); } catch { return false; }
+      return changedSet.has(normalized) && !isControlPlaneBookkeeping(normalized, changeRoot);
+    });
+    if (relevant.length === 0) {
+      diagnostics.push(diagnostic(
+        'XFORGE_WORK_PACKAGE_DONE_WHEN_EVIDENCE_IRRELEVANT',
+        `No evidence for done_when criterion "${mapping.criterion}" names a verify command this delivery ran or a path it changed.`,
+        sourcePath,
+        'error',
+        { criterion: mapping.criterion, evidence: mapping.evidence ?? [] },
+      ));
+    }
   }
   for (const mapping of mappings) {
     if (!workPackage.done_when.includes(mapping.criterion)) {
@@ -632,7 +721,6 @@ export function workPackageVerificationGates(state: WorkPackagePlanState): WorkP
           kind: 'Gate',
           metadata: { name: `work-package-${slug}-${index + 1}`, version: 1 },
           spec: {
-            stage: 'check',
             required: true,
             command: [command],
             shell: true,

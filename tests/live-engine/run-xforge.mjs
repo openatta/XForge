@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { spawnXforge } from './xforge-cli.mjs';
 
-const approvalSecret = 'xforge-live-e2e-external-provider-secret';
+import { APPROVAL_SECRET as approvalSecret } from './xforge-cli.mjs';
 const args = process.argv.slice(2);
 const rootIndex = args.indexOf('--root');
 if (rootIndex === -1 || !args[rootIndex + 1]) throw new Error('--root <project> is required.');

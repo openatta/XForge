@@ -2,21 +2,20 @@
 
 # 用 MCP provider 扩展 Approvals
 
-这是第三种 Approval 机制的参考文档：`mcp` 类型的 provider——`xforge
+这是第二种 Approval 机制的参考文档：`mcp` 类型的 provider——`xforge
 approve` 自己变成一个 MCP client，实时直接跟你们审批平台的 MCP server 对话，
-而不是靠一个坐在 TTY 前的人，也不是靠一份提前签好名的 receipt 文件。先看
+而不是靠一个坐在 TTY 前的人。先看
 [扩展 Gate、Rule、PermissionPolicy、Hook 与 Approval](extending-gates-rules-policies-hooks-approvals.zh-CN.md)
 了解 Approval 一般是怎么绑定到 Flow 和 revision 上的，以及和这个机制并列的
-`local`、`hmac-sha256` 两条路径。
+`local` 路径。
 
 ## 什么时候该用这个
 
-三种 provider type，三种信任模型——按 policy 挑，不是全局二选一：
+两种 provider type，两种信任模型——按 policy 挑，不是全局二选一：
 
 | provider `type` | 谁/什么在做决定 | 信任边界 | 典型场景 |
 |---|---|---|---|
 | `local` | 坐在真实 TTY 前的人 | TTY 本身（或者，设了 `approvals.local.requireTty: false` 之后，是 Agent harness 已经在会话里确认过的事实） | 小团队、轻量流程的变更 |
-| `hmac-sha256` | 任何东西，离线产出 | 一个共享密钥事后给 receipt 签名 | 对接一个已有的审批系统（ServiceNow、内部门户），又不想给它实时 API 权限 |
 | `mcp` | 你们的平台，实时 | MCP 连接本身（传输方式 + 认证 token） | 程序化/自动化评审——一个评估 Change 并做决定的 bot，或者你们平台本来就跑的人工审批流程，只是暴露成了 MCP |
 
 如果你们的平台已经能暴露一个 MCP server，`mcp` 这条路径的好处是不需要任何人
@@ -37,11 +36,13 @@ approve` 自己变成一个 MCP client，实时直接跟你们审批平台的 MC
    参考文档）。对同一个 Change/Flow/Stage/policy/revision 重复提交永远
    安全；你们平台应该认出这个 digest，不要重复开工单。
 3. 调一次 `poll_approval`。
-4. 如果还是 `pending`：非 0 退出，什么都不写，打印出稍后要重跑的确切命令
-   ——不需要额外的"恢复轮询"机制，因为对一个已经在途的请求重新 `submit`
-   本来就是空操作。
+4. 如果还是 `pending`：什么都不写，返回一个成功的 envelope，`nextActions`
+   里给出稍后要重跑的确切命令——`pending` 不是错误，只是还没跑完；不需要
+   额外的"恢复轮询"机制，因为对一个已经在途的请求重新 `submit` 本来就是
+   空操作。
 5. 如果 `decided` 了：写一份 `ApprovalReceipt`（不带签名——见下面"信任
-   模型"），剩下的流程和另外两条 provider 路径完全一样。
+   模型"），往 audit chain 里追加对应事件，剩下的流程和 `local` provider
+   路径完全一样。
 
 轮询节奏（多久重跑一次）不是 XForge 该管的事——不管是 Agent 按自己的节奏
 去看 `xforge state` 的 `pendingApprovals`，还是 CI 里的重试循环，还是人类
@@ -91,8 +92,8 @@ approvals:
 ```
 
 然后像其它 provider 一样，从某个 Flow 的 approval policy 里引用这个
-provider id——不需要改 Flow schema，用的还是 `local`/`hmac-sha256`
-provider 已经在用的那个 `governance.approvalPolicies[].providers` 列表：
+provider id——不需要改 Flow schema，用的还是 `local` provider 已经在用的
+那个 `governance.approvalPolicies[].providers` 列表：
 
 ```yaml
 # xforge/flows/solid.yaml（节选）
@@ -203,24 +204,28 @@ xforge approve --change <id> --for <stage|archive> --policy planning-solid --pro
 ## 信任模型——为什么不需要签名
 
 这条路径产出的 receipt，`approver.type` 是 `"external-system"`，
-`approver.provider` 是你的 provider id，形状和 `hmac-sha256` receipt 一样
-——但没有 `signature` 字段，`verifyApprovalReceipt()` 对 `mcp` 类型的
-provider 也不会要求有。
+`approver.provider` 是你的 provider id，但没有 `signature` 字段——`mcp`
+receipt 和 `local` receipt 一样，从来不签名。
 
-这不是为了图方便硬凑出来的一个更弱的信任等级——它跟 `local` receipt 本来
-就有的"靠来源担保信任"模型完全一样（`local` receipt 同样不带签名）。
-`hmac-sha256` receipt 需要签名，是因为它是以文件形式从任意地方过来的，事后
-必须能被认证。`mcp` receipt 的认证方式是那次实时往返本身：XForge 拨的是它
-信任的连接（`McpServer` 资源是项目自有、纳入版本控制的配置），用的是受保护
-环境变量里的凭证，并且在同一次写 receipt 的进程调用里同步拿到了决定。
-receipt 文件事后依然是防篡改的（它自己的 `digest` 覆盖了自身内容，
-`xforge state` 每次读的时候都会重新校验这个 digest），但除了"这个仓库的
-`<change>/approvals/` 目录没有被手工改过"之外，没有独立的密码学证据能证明
-这个决定本身是真的——这跟 `local` 审批一直以来依赖的保证完全一样。
+这不是为了图方便硬凑出来的一个更弱的信任等级，它跟 `local` receipt 本来
+就有的"靠来源担保信任"模型完全一样。真正让这两种 receipt 都可信的，是
+项目自己的防篡改 audit hash chain，而不是每份 receipt 各自的签名：每一次
+成功的 `xforge approve` 都会在同一次运行里先写 receipt 文件，再往 audit
+chain 里追加一条匹配的 `approval.decided` 事件，然后才返回。之后加载
+receipt 时——不管是 `local` 还是 `mcp` provider——`loadApprovalReceipts`
+都会调用 `approvalVerifiedInChain()`，确认 chain 里存在一条 digest 对得上
+的独立记录事件。一份从未经过 `xforge approve` 就出现在磁盘上的 receipt
+文件（手工复制进来的、从旧分支恢复的，等等），在 chain 里找不到对应事件，
+即便其它字段都对，也会被 `XFORGE_APPROVAL_NOT_IN_AUDIT_CHAIN` 拒绝。在没有
+本地（被 gitignore 掉的）audit 日志的机器上——比如一个新 clone 或者 CI
+runner——同样的检查会退回去比对已提交的、每个 Change 自带的
+`evidence/audit/index.json`。
 
-如果你需要独立于仓库完整性、事后可核验的证据，要么用 `hmac-sha256` 路径，
-要么让你的 MCP server 自己用一个它和你们合规工具都持有、XForge 完全不检查
-的密钥给自己的决定签名。
+对 `mcp` 来说，这个决定本身也是实时认证的：它是通过 XForge 信任的连接
+（`McpServer` 资源是项目自有、纳入版本控制的配置）同步拿到的，用的是受保护
+环境变量里的凭证，跟写 receipt、写 audit 事件是同一次进程调用——不存在"先
+离线伪造一份 receipt 再摆到该放的位置"这种空档，因为 audit chain 校验会
+拒绝它。
 
 ## 怎么激活它，同时不用教每个 Agent 认识它
 
@@ -246,9 +251,9 @@ receipt 文件事后依然是防篡改的（它自己的 `digest` 覆盖了自�
       的形式出现）
 - [ ] `approvals.providers[]` 条目按名字引用它，`roles` 跟你们平台在
       `poll_approval` 里实际会返回的角色对得上
-- [ ] 已经从 Flow policy 的 `providers` 列表里引用（可以和
-      `local`/`hmac-sha256` 并存，也可以单独用）——跟其它 provider 一个
-      规矩：没被引用的永远不会拦住或满足任何东西
+- [ ] 已经从 Flow policy 的 `providers` 列表里引用（可以和 `local` 并存，
+      也可以单独用）——跟其它 provider 一个规矩：没被引用的永远不会拦住
+      或满足任何东西
 - [ ] `authTokenEnv` 在 `xforge approve --provider` 实际运行的地方（开发者
       本机、CI，或者两者）都指向一个真实、已赋值的环境变量
 - [ ] 你的 server 完整实现了 `submit_approval_request`（按

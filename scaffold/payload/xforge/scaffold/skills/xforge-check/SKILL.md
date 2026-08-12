@@ -14,6 +14,7 @@ metadata:
 - `xforge-check` performs semantic review; `npx --no-install xforge check` supplies deterministic schema, path, Gate, and Evidence input. Neither replaces the other.
 - Governing Artifacts are read-only by default. Report rework instead of silently rewriting upstream content.
 - A Check report is LLM Review Evidence, not Gate Evidence; `PASS` cannot satisfy a Machine Gate, Transition, or Approval.
+- Gate Evidence binds to the content revision at the moment the Gate runs. Run Gates **after your last write**, in one invocation. Running a Gate, editing an Artifact, then running the next Gate leaves the first stale: every Gate reports `passed` and the Stage still will not close.
 
 # Authority
 
@@ -27,7 +28,8 @@ metadata:
 3. Verify that tests, rollout, monitoring, stop signals, owners, path scope, dependencies, and parallel boundaries match the critical impact.
 4. Run `npx --no-install xforge check --change <id>` and use deterministic diagnostics as evidence input.
 5. Write blocker, warning, and suggestion findings with Artifact/Requirement location, reason, and `reworkTo` Stage.
-6. Refresh State. Request the State-specified rework transition for blockers; without blockers, let CLI Gates and Approval determine whether transition to Apply is ready.
+6. With `check-report.md` and every Evidence ledger written, run `npx --no-install xforge check --change <id>` once more; it runs the whole Stage Gate set against the final content. Use `--all-gates` when Evidence from earlier Stages must be refreshed too.
+7. Refresh State. Request the State-specified rework transition for blockers; without blockers, let CLI Gates and Approval determine whether transition to Apply is ready.
 
 # Evidence
 

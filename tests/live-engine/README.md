@@ -54,7 +54,7 @@ the sample project.
 ```text
 tests/live-engine/scenarios/
   quick/        propose -> apply -> verify (greeter: trivial, single-module, low risk)
-  solid/        propose -> design -> apply -> verify (task-ledger)
+  solid/        propose -> design -> check -> apply -> verify (task-ledger)
   major/        propose -> clarify -> design -> check -> apply -> verify (credential-store:
                 risk high, security + dataMigration impact, a deliberately unresolved
                 material question for Clarify to formally resolve)

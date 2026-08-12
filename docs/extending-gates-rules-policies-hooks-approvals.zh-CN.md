@@ -309,31 +309,41 @@ process.stdin.on('end', () => {
 内联声明在某个 Flow 的 `governance.approvalPolicies` 里的（`id`、
 `minApprovers`、`roles`、`separationOfDuties`、`providers`），再从某个 stage
 的 `exit.approvals` 或者 `terminal.archive.approvals` 里引用它。运行时真正产
-出的是一份 `ApprovalReceipt`——签名的 JSON，绑定在这个 Change 当前确切的
+出的是一份 `ApprovalReceipt`——JSON，绑定在这个 Change 当前确切的
 `stateRevision`/`contentRevision`/`policySnapshotDigest`/`gitHead` 上；之后
-任何一次编辑都会让它失效。
+任何一次编辑都会让它失效。两条批准路径产出的 receipt 都不带签名；每份
+receipt 只有在项目自己的防篡改 audit hash chain 里能找到匹配事件时才算有效
+——详见下面"信任模型"。
 
 ### 实际是怎么被调用的
 
 `xforge approve --change <id> --for <stage|archive> --policy <id> ...` 有
 两条路径：
 
-1. **本地交互式**——要求真实 TTY 加 `--attestation human`，而且只有这条
-   policy 的 `providers` 里包含 `local` 才能用。刻意做成不能自动化：
-   Agent 不能自我批准。如果确认这件事本身是由 Agent 所在的 harness 完成的
-   （比如 harness 已经在会话里问过人类，再由 Agent 拉起 `xforge approve`
-   子进程时天然没有 TTY），可以在 `manifest.yaml` 里设置
+1. **本地交互式**——要求真实 TTY（`process.stdin.isTTY &&
+   process.stdout.isTTY`），而且只有这条 policy 的 `providers` 里包含
+   `local` 才能用。CLI 自己跑一个基于 `readline` 的对话，现场询问批准人
+   身份、角色、决定词（approve/reject）和理由，全部在终端里现场输入——
+   不再有需要读回去的确认/挑战码，也没有一项来自命令行 flag：
+   `--actor`/`--role`/`--reason` 只是给对话框预填的建议，从不作为权威依据；
+   `--attestation human` 也只是一个意图提示，本身不构成决定。刻意做成不能
+   自动化：Agent 不能自我批准。如果确认这件事本身是由 Agent 所在的 harness
+   完成的（比如 harness 已经在会话里问过人类，再由 Agent 拉起
+   `xforge approve` 子进程时天然没有 TTY），可以在 `manifest.yaml` 里设置
    `approvals.local.requireTty: false` 跳过这一个环境检查——其它所有要求
-   （`--attestation human`、`--actor`、`--role`、`--reason`、`--decision`，
-   以及 policy 的 `providers` 必须包含 `local`）照样强制。默认值是 `true`
-   （要求真实 TTY），和之前行为一致。
-2. **外部签名 receipt**——`xforge approve --receipt <path>`，用登记在
-   `manifest.yaml` 的 `approvals.providers[].secretEnv` 里的共享密钥做
-   HMAC-SHA256 验证。不需要 TTY——这是扩展点所在。
+   （现场对话、以及 policy 的 `providers` 必须包含 `local`）照样强制。默认值
+   是 `true`（要求真实 TTY），和之前行为一致。
+2. **`mcp` provider**——`xforge approve --provider <id>`，`<id>` 指
+   `manifest.yaml` 的 `approvals.providers` 里的一条，唯一存在的形状是
+   `{ id, type: mcp, mcpServer: <id>, roles: [...] }`。XForge 会对登记好的
+   `McpServer` 依次调用 `submit_approval_request` 和 `poll_approval`；轮询
+   结果是 `pending` 的话，返回的是一个成功的 envelope，`nextActions` 里
+   给出稍后要重跑的命令——不是错误。完整契约见
+   [用 MCP provider 扩展 Approvals](extending-approvals-with-mcp.zh-CN.md)。
 
 Receipt 在**每一次**算 `xforge state` 时都会被重新验证，不是在 approve 那一
 刻验证完就缓存起来——批准之后再改这个 Change，receipt 就会失效
-（`XFORGE_APPROVAL_STALE`，或者签名/digest 校验直接不通过）。
+（`XFORGE_APPROVAL_STALE`，或者 audit-chain 校验不通过）。
 
 ### 示例：定义一条 policy
 
@@ -345,16 +355,16 @@ governance:
       minApprovers: 2
       roles: [owner, maintainer, security]
       separationOfDuties: true
-      providers: [enterprise-hmac]
+      providers: [enterprise-approvals]
 ```
 
 ```yaml
 # manifest.yaml
 approvals:
   providers:
-    - id: enterprise-hmac
-      type: hmac-sha256
-      secretEnv: XFORGE_APPROVAL_SECRET
+    - id: enterprise-approvals
+      type: mcp
+      mcpServer: enterprise-approvals
       roles: [owner, maintainer, security]
 ```
 
@@ -363,136 +373,36 @@ approvals:
 签两次批准不了需要 2 个批准人的要求，开了 `separationOfDuties: true` 之后，
 两个角色相同的批准人也满足不了要求。
 
-### 参考：如何在外部系统里生成一份签过名的 ApprovalReceipt
+注意上面的 `enterprise-approvals` 只是一个名字/形状示例——背后并没有一个
+能直接用的默认 `McpServer` 资源。不先按
+[用 MCP provider 扩展 Approvals](extending-approvals-with-mcp.zh-CN.md)
+登记一个真实的 `McpServer` 就直接用它，会以 `XFORGE_APPROVAL_MCP_SERVER_MISSING`
+失败关闭——跟 `runtime-audit` Hook 默认禁用出厂是同一个套路。
 
-下面是 `xforge approve --receipt <path>` 会接受的、字节级精确的契约——外部
-平台（或者挡在它前面的一个胶水脚本）要照着这个实现。整个过程不需要跑任何
-XForge 代码，所有输入都来自文档化的、可复现的来源。
+### 信任模型——为什么不需要签名
 
-**第一步：拿到绑定用的输入。** 跑（或者让胶水脚本去跑）
-`xforge state --change <id>`，需要的字段都在 `data.change.governance` 里：
+`local` 和 `mcp` receipt 都不带 `signature` 字段。真正让 receipt 可信的，是
+项目自己的防篡改 audit hash chain，而不是每份 receipt 各自的密码学签名：
+每一次成功的 `xforge approve` 都会在同一次运行里先写 receipt 文件，再往
+audit chain 里追加一条匹配的 `approval.decided` 事件，然后才返回。加载
+receipt 时——`xforge/src/core/control-plane.ts` 里的
+`loadApprovalReceipts`——每一份都会被拿去跟 chain 核对，不区分 provider
+类型，用的是 `approvalVerifiedInChain()`（`xforge/src/core/audit.ts`）。
+一份从未真正经过 `xforge approve` 产出的 receipt 文件（手工复制、从旧分支
+恢复等等），在 chain 里找不到匹配事件，会被 `XFORGE_APPROVAL_NOT_IN_AUDIT_CHAIN`
+拒绝——这是一个非阻断级别的发现，不会意外冻结无关的 transition，但这份
+receipt 本身永远不算有效。在没有本地（被 gitignore 掉的）audit 日志的机器
+上——比如一个新 clone 或者 CI 机器——同样的检查会退回去比对已提交的、每个
+Change 自带的 `evidence/audit/index.json`。
 
-- `revision` → `{ contentRevision, stateRevision, policySnapshotDigest,
-  gitBase, gitHead }`——receipt 必须绑定的确切 revision。
-- `pendingApprovals[]` → 每一项的 `policyId` 和 `transition` 告诉你这份
-  receipt 对应哪条 policy id、`--for` 该填 `<stage>` 还是 `archive`。
-- `currentStage` → receipt 的 `stage` 字段。
-- 顶层 `data.change.flow` → receipt 的 `flow` 字段（Flow 的
-  `metadata.name`）。
-
-**第二步：构造未签名 payload**（`ApprovalReceipt` 除了 `signature` 和
-`digest` 之外的全部字段）：
-
-| 字段 | 取值 |
-|---|---|
-| `apiVersion` | 字面量字符串 `xforge.dev/v1alpha2` |
-| `kind` | 字面量字符串 `ApprovalReceipt` |
-| `receiptId` | 新生成的 UUID（schema 要求 `format: uuid`） |
-| `change` | Change id |
-| `flow` | 第一步拿到的 Flow 名字 |
-| `stage` | 第一步的 `currentStage` |
-| `transition` | `<stage>` 或者 `archive`——看你在批准哪一个 |
-| `policyId` | 第一步 `pendingApprovals[]` 里的 approval policy id |
-| `stateRevision`、`contentRevision`、`policySnapshotDigest`、`gitBase`、`gitHead` | 原样抄第一步的 `revision` |
-| `governingDigest` | 见第三步 |
-| `decision` | `"approve"` 或 `"reject"` |
-| `approver` | `{ id, provider, role, type: "external-system" }`——`provider` 必须是 `manifest.yaml` 的 `approvals.providers` 里登记过的 id（并且在这条 policy 的 `providers` 列表里）；`role` 必须同时在该 provider 和该 policy 的 `roles` 里 |
-| `decidedAt` | ISO 8601 date-time |
-| `reason` | 非空、人可读的字符串 |
-| `expiresAt` | 可选 ISO 8601 date-time——过了这个时间点 `xforge state` 就不再把这份 receipt 计入有效批准 |
-| `externalRef` | 可选——你们平台自己的工单/请求 id，原样透传，XForge 不做任何解释 |
-
-**第三步：算 `governingDigest`：**
-
-```
-governingDigest = sha256(stableStringify({
-  change:   <change id>,
-  flow:     <flow 名字>,
-  policy:   <policyId>,
-  revision: { contentRevision, stateRevision, policySnapshotDigest, gitBase, gitHead },
-}))
-```
-
-**第四步：签名。** `stableStringify(value)` 的定义是：递归地把每一层对象的
-key 按 `key.localeCompare()` 排序（对这份 schema 里用到的这些 ASCII 字段名
-来说，等价于普通的字典序排序，用任何语言重实现都不用引入 ICU），再对结果
-做 `JSON.stringify`，**缩进是 2 个空格**（不是紧凑 JSON——这是跨语言重实现
-时最容易踩的坑：不只是 key 顺序要对，缩进也要一模一样）。计算：
-
-```
-payload             = 第二步的未签名对象（含 governingDigest，不含 signature/digest 字段）
-signature.value      = hex(HMAC-SHA256(secretEnv 对应的密钥, stableStringify(payload)))
-signature.algorithm  = "hmac-sha256"
-```
-
-密钥是这个 provider 在 `manifest.yaml` 里 `secretEnv` 指向的那个环境变量的
-值——跟操作外部平台的人对齐这个值；XForge 从不传输或存储它。
-
-**第五步：算最终的 `digest`**（对 payload + signature 一起算，仍然不含
-`digest` 自己）：
-
-```
-signed  = { ...payload, signature }
-digest  = sha256(stableStringify(signed))
-receipt = { ...signed, digest }
-```
-
-把 `receipt` 写成文件，交给
-`xforge approve --change <id> --for <transition> --policy <policyId> --receipt <path>`。
-先跑 schema 校验（不符合 `approval-receipt.schema.json` 的直接拒绝，比如
-`receiptId` 不是合法 UUID），再由 `verifyApprovalReceipt()` 按上面同样的
-公式重新算一遍 `digest` 和 `signature.value` 做比对。
-
-**参考实现**（Node 自带的 `crypto`/`JSON.stringify` 是权威定义；下面是同一
-套算法的 Python 版本，你们平台不是 Node 的话用得上）：
-
-```python
-import hashlib, hmac, json
-
-def stable_stringify(value):
-    def normalize(item):
-        if isinstance(item, list):
-            return [normalize(v) for v in item]
-        if isinstance(item, dict):
-            return {k: normalize(item[k]) for k in sorted(item.keys())}
-        return item
-    return json.dumps(normalize(value), indent=2, ensure_ascii=False)
-
-def sha256_hex(text: str) -> str:
-    return hashlib.sha256(text.encode('utf-8')).hexdigest()
-
-def hmac_sha256_hex(secret: str, text: str) -> str:
-    return hmac.new(secret.encode('utf-8'), text.encode('utf-8'), hashlib.sha256).hexdigest()
-```
-
-`sorted(item.keys())` 就是普通的码点排序——对这份 schema 里固定的这些字段名
-来说，跟 JS 的 `localeCompare` 结果一致。别把这个等价关系推广到别处任意的
-用户输入字符串上，这里只对这份 schema 的固定字段名成立。
-
-### 扩展它：把审批路由到外部平台（比如通过 MCP）
-
-外部签名 receipt 这条路径本来就是"决策无关"的设计——`xforge approve
---receipt` 只检查这份 receipt 签名是否有效、是否绑在当前 revision 上、用的
-角色/provider 是否被允许，不关心它是怎么产生的。一个常见的扩展做法：让 Agent
-通过一个 MCP tool 把审批请求提交到你们内部的平台，等人类做出决定，再让平台
-（或者一个小的胶水脚本）产出一份签名 receipt：
-
-1. Agent 调用你们审批平台暴露的 MCP tool，把 Change id、Flow、stage 和当前
-   治理 revision 提交上去。
-2. 人类在平台上批准——Slack、内部审批门户、ServiceNow，随便你们已经在用什么。
-3. 平台（或者一个轮询平台 API 的脚本）按上面"参考：如何在外部系统里生成一份
-   签过名的 ApprovalReceipt"里的步骤构造并签名这份 receipt。
-4. 任何东西——Agent 自己、CI job、webhook handler——调用
-   `xforge approve --receipt <path>` 把结果导入。
-
-这个不需要改 XForge 代码：这里的 MCP 只是你们的平台用来跟 Agent 对话的传输
-方式，XForge 真正核验的信任边界是那个 HMAC 签名。
-
-如果你们的平台能直接暴露一个 MCP server 让 XForge 自己去连——而不是绕道
-Agent 再落一份手工签名的文件——用原生的 `mcp` provider `type` 代替这套胶水
-脚本方案；submit/poll 的 tool 契约、以及跟它配套的（刻意不带签名的）信任
-模型，见
-[用 MCP provider 扩展 Approvals](extending-approvals-with-mcp.zh-CN.md)。
+这替换掉了更早的设计：本地批准配一个需要读回去的确认/挑战码，外部批准靠一个
+共享密钥做的 HMAC 签名来认证。这两者都被去掉了：确认码本来就是对已经公开
+可得的数据（change id、flow、policy、revision——通过 `xforge state` 谁都能
+读到）做的一个纯确定性运算，任何有仓库写权限的人（Agent 默认就有）不需要碰
+一次终端就能算出来它，它并没有提供真正的防伪造能力，只是强行要求"存在一次
+现场对话"——而交互式 TTY 这个要求本身就已经保证了这一点。上面的 audit-chain
+校验才是真正替代它们的东西：它验证的是这份 receipt 确实来自一次真实的
+`xforge approve` 调用，而不是让 receipt 自己证明自己。
 
 ## 检查清单
 
@@ -531,12 +441,11 @@ Agent 再落一份手工签名的文件——用原生的 `mcp` provider `type` 
 - [ ] `minApprovers`/`roles`/`separationOfDuties` 匹配真实的授权要求——记住
       满足 `minApprovers` 靠的是不同的 approver **id**，不是 receipt 数量
 - [ ] `providers` 和 `manifest.yaml` 的 `approvals.providers` 里真实登记的
-      条目对得上；`secretEnv` 在 `xforge approve --receipt` 实际运行的地方
-      指向一个真实、已赋值的环境变量
+      条目对得上——如果是 `mcp` provider，它的 `mcpServer` 要指向一个真正
+      登记过的 `McpServer` 资源，而不只是一个理想中的 id
 - [ ] 已在正确的 stage 的 `exit.approvals` 或者 `terminal.archive.approvals`
       里引用——没人引用的 policy 永远拦不住任何东西
-- [ ] 如果会有外部系统给它签 receipt：`stableStringify` 已经按字节级精确
-      重实现（递归 key 排序、2 空格缩进 JSON）——先拿一份真实签过名的
-      receipt（比如用 `xforge approve --receipt` 在测试项目里跑一次，或者
-      用测试里的 `approveCurrentRevision` helper）核对过，再接进任何真的会
-      拦住 transition 的地方；`--dry-run` 不会返回 receipt，没法用来比对
+- [ ] 如果是 `mcp` provider：先在测试项目里跑通至少一次真实的批准/拒绝往返
+      （比如用测试里的 `approveCurrentRevision` helper）核对过，再接进任何
+      真的会拦住 transition 的地方；`--dry-run` 不会追加 audit 事件，也不
+      返回 receipt，没法用来比对

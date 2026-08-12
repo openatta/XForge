@@ -138,3 +138,33 @@ test('returns stable usage diagnostics', () => {
     assert.equal(result.json.diagnostics[0].code, 'USAGE_ERROR');
   }
 });
+
+/* REQ-CRED-005 states a default store location for an unset CREDENTIAL_STORE_FILE, but every other
+   case here goes through run(), which always sets it — so the default branch was specified and
+   never exercised. The Check Stage caught that as a blocker against the
+   observable-requirements-are-tested Rule and refused to advance, which is correct: an externally
+   observable requirement with no automated verification cannot pass Quality and observability. */
+test('uses the documented default store path when CREDENTIAL_STORE_FILE is unset', () => {
+  const { root } = fixture();
+  const { CREDENTIAL_STORE_FILE: _unset, ...environment } = process.env;
+  const result = spawnSync(process.execPath, [cli, 'put', '--name', 'db', '--secret', 's3cr3t'], {
+    cwd: root,
+    env: environment,
+    encoding: 'utf8',
+  });
+  assert.equal(result.status, 0);
+  assert.equal(result.stderr, '');
+  const envelope = JSON.parse(result.stdout);
+  assert.equal(envelope.ok, true);
+
+  /* REQ-CRED-005 fixes the default *location*; it does not fix the record shape, which
+     REQ-CRED-001 owns. Asserting a shape here contradicted the delta Spec and the Check Stage
+     correctly refused to advance. Assert the location, and that the credential round-trips. */
+  const defaultStore = path.join(root, '.credential-store', 'store.json');
+  assert.ok(JSON.parse(readFileSync(defaultStore, 'utf8')), 'default store must be valid JSON');
+  const verified = spawnSync(process.execPath, [cli, 'verify', '--name', 'db', '--secret', 's3cr3t'], {
+    cwd: root, env: environment, encoding: 'utf8',
+  });
+  assert.equal(verified.status, 0);
+  assert.equal(JSON.parse(verified.stdout).data.valid, true);
+});

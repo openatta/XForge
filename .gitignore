@@ -96,6 +96,9 @@ dist
 .output
 /xforge/scaffold/
 
+# XForge internal review notes (not published)
+docs/internal/
+
 # XForge local/generated state
 **/xforge/.state.json
 **/.xforge-archive-*
