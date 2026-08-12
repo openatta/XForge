@@ -1,7 +1,7 @@
 ---
 name: xforge-archive
 description: Compatibility entry that delegates an explicit archive request to xforge-verify archive-current mode; use only while callers still invoke the legacy Archive Skill, which no longer synchronizes Specs or moves a Change directly.
-tools: [read, search, test]
+allowed-tools: Read Grep Glob Bash(npx:*)
 ---
 
 # Invariants

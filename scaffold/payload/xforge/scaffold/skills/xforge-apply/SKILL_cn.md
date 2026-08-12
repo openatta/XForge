@@ -1,7 +1,7 @@
 ---
 name: xforge-apply
 description: 对 Apply ready 的 Change 即时拆分并实现最小交付单元，必要时通过工作包 DAG 激活并行子 Agent；用于用户明确要求开始、继续或返工实现，并且 State 已允许 implementation-write 时。
-tools: [read, search, write, test]
+allowed-tools: Read Grep Glob Write Edit Bash Task
 ---
 
 # 不变量

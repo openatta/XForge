@@ -1,7 +1,7 @@
 ---
 name: xforge-revise
 description: 一致地修订已有 Change 的规划 Artifacts，并让受影响的下游状态与证据失效；用于需求、范围或决定变化，或 Check/Apply 发现上游假设错误时。
-tools: [read, search, write, test]
+allowed-tools: Read Grep Glob Write Edit Bash(npx:*)
 ---
 
 # 不变量

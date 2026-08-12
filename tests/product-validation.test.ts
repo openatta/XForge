@@ -47,7 +47,7 @@ describe('XForge product contract', () => {
            only what a host or the CLI actually reads. */
         expect(variant).not.toMatch(/^license:/m);
         expect(variant).not.toMatch(/^metadata:/m);
-        expect(variant).toMatch(/^tools: \[.+\]$/m);
+        expect(variant).toMatch(/^allowed-tools: .+$/m);
       }
     }
     const apply = await readFile(path.join(scaffold, 'payload', 'xforge', 'scaffold', 'skills', 'xforge-apply', 'SKILL.md'), 'utf8');

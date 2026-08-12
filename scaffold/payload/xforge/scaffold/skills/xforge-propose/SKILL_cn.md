@@ -1,7 +1,7 @@
 ---
 name: xforge-propose
 description: 创建受治理的 Change，并仅生成 Propose Stage 允许的 change.yaml、proposal 与 delta Specs；用于用户要求把已足够明确的想法、缺陷或功能正式规格化，但尚未授权实现时。
-tools: [read, search, write, test]
+allowed-tools: Read Grep Glob Write Edit Bash(npx:*)
 ---
 
 # 不变量

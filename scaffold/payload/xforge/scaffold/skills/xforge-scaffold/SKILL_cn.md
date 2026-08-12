@@ -1,7 +1,7 @@
 ---
 name: xforge-scaffold
 description: 定制当前项目的 agents、skills、rules、permission policies、hooks、gates 等 XForge canonical 资产并安全投影到目标工具；用于用户要求新增、修改、启停或安装项目 Agent 能力时。
-tools: [read, search, write, test]
+allowed-tools: Read Grep Glob Write Edit Bash(npx:*)
 ---
 
 # 不变量

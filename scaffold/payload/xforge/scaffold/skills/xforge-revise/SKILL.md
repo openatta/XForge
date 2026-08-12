@@ -1,7 +1,7 @@
 ---
 name: xforge-revise
 description: Revise existing Change planning Artifacts consistently and invalidate affected downstream state and evidence; use when requirements, scope, or decisions change, or Check/Apply discovers an invalid upstream assumption.
-tools: [read, search, write, test]
+allowed-tools: Read Grep Glob Write Edit Bash(npx:*)
 ---
 
 # Invariants

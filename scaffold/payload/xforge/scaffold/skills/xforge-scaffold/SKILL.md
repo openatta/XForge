@@ -1,7 +1,7 @@
 ---
 name: xforge-scaffold
 description: Customize project-canonical XForge agents, skills, rules, permission policies, hooks, and gates and project them safely into target tools; use when the user asks to add, change, enable, disable, or install project Agent capabilities.
-tools: [read, search, write, test]
+allowed-tools: Read Grep Glob Write Edit Bash(npx:*)
 ---
 
 # Invariants

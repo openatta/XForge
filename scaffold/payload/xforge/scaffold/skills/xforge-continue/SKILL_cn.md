@@ -1,7 +1,7 @@
 ---
 name: xforge-continue
 description: 从当前机器状态恢复 Change，并执行与用户授权一致的下一合法 Action；用于用户说继续、恢复、执行下一步，或新会话需要从中断点推进时。
-tools: [read, search, test]
+allowed-tools: Read Grep Glob Bash
 ---
 
 # 不变量
