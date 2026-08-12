@@ -1,13 +1,4 @@
-import { spawnSync } from 'node:child_process';
-
-/**
- * The harness's external approval provider secret. Every CLI call that resolves the control plane
- * after an Approval receipt exists must verify that receipt's HMAC, so the secret has to be present
- * for `transition`, `state`, `check`, `audit`, and `archive` alike — not only for the approval step
- * that signs it. Passing it as spawn env keeps it out of the isolated project, which is the actual
- * rule; omitting it just made the CLI report XFORGE_APPROVAL_PROVIDER_UNAVAILABLE.
- */
-export const APPROVAL_SECRET = 'xforge-live-e2e-external-provider-secret';
+import { spawn, spawnSync } from 'node:child_process';
 
 /**
  * Invokes the project-locally installed CLI the same way a real user or Agent does:
@@ -19,7 +10,7 @@ export const APPROVAL_SECRET = 'xforge-live-e2e-external-provider-secret';
 export function spawnXforge(projectRoot, args, { env = {}, stdio = ['ignore', 'pipe', 'pipe'] } = {}) {
   return spawnSync('npx', ['--no-install', 'xforge', ...args], {
     cwd: projectRoot,
-    env: { ...process.env, XFORGE_APPROVAL_HMAC_SECRET: APPROVAL_SECRET, ...env },
+    env: { ...process.env, ...env },
     encoding: 'utf8',
     stdio,
   });
@@ -31,4 +22,63 @@ export function runXforgeJson(projectRoot, args, env = {}) {
   try { json = JSON.parse(result.stdout); } catch {}
   if (result.status !== 0 || !json) throw new Error(`xforge ${args.join(' ')} failed: ${result.stdout || result.stderr}`);
   return json;
+}
+
+/**
+ * Drives an interactive `xforge` command (currently only local Approval's terminal dialogue) by
+ * waiting for each expected prompt to actually appear on stderr before answering it.
+ *
+ * A fixed delay between writes is not reliable here: `node:readline/promises`'s `question()`
+ * resolves the *first* pending question fine against piped (non-TTY) stdin, but if a later
+ * answer is already sitting in the OS pipe buffer by the time the next `question()` call attaches
+ * its 'line' listener, Node can deliver it in a burst before that listener exists — the answer is
+ * lost, the promise never resolves, and the CLI's own `Promise.race` against the stream's 'close'
+ * event turns the hang into XFORGE_APPROVAL_INTERACTIVE_REQUIRED once stdin closes. `question()`
+ * always writes the prompt to `output` (stderr here) before awaiting input, so waiting for that
+ * exact text is a real signal instead of a timing guess — confirmed against a plain `npx` spawn,
+ * where a fixed ~250ms delay was not always enough margin.
+ *
+ * `exchanges` is an ordered list of `{ waitFor, send }`: `waitFor` is matched against stderr
+ * accumulated since the previous exchange (substring match), `send` is written as that line's
+ * answer (`''` accepts a flag-provided suggestion).
+ */
+export function runXforgeInteractive(projectRoot, args, { env = {}, exchanges = [], timeoutMs = 30_000 } = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn('npx', ['--no-install', 'xforge', ...args], {
+      cwd: projectRoot,
+      env: { ...process.env, ...env },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderrSinceLastMatch = '';
+    let stderrAll = '';
+    let settled = false;
+    const remaining = [...exchanges];
+
+    const finish = (fn, value) => { if (!settled) { settled = true; clearTimeout(timer); fn(value); } };
+    const timer = setTimeout(() => {
+      child.kill();
+      finish(reject, new Error(`xforge ${args.join(' ')} timed out waiting for prompt(s): ${remaining.map((e) => e.waitFor).join(', ')}. stderr so far: ${stderrAll}`));
+    }, timeoutMs);
+
+    child.stdout.on('data', (chunk) => { stdout += chunk; });
+    child.stderr.on('data', (chunk) => {
+      const text = chunk.toString();
+      stderrAll += text;
+      stderrSinceLastMatch += text;
+      while (remaining.length > 0 && stderrSinceLastMatch.includes(remaining[0].waitFor)) {
+        const { send } = remaining.shift();
+        stderrSinceLastMatch = '';
+        child.stdin.write(`${send}\n`);
+        if (remaining.length === 0) child.stdin.end();
+      }
+    });
+    child.on('error', (error) => finish(reject, error));
+    child.on('close', (code) => {
+      let json = null;
+      try { json = JSON.parse(stdout); } catch {}
+      if (code !== 0 || !json) finish(reject, new Error(`xforge ${args.join(' ')} failed: ${stdout || stderrAll}`));
+      else finish(resolve, json);
+    });
+  });
 }

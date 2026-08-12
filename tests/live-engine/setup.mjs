@@ -2,6 +2,7 @@ import { access, cp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/pro
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { installCli, writeMinimalPackageJson } from './cli-source.mjs';
+import { parse as parseYaml, stringify as stringifyYaml } from '../../xforge/node_modules/yaml/dist/index.js';
 
 const repositoryRoot = path.resolve(new URL('../..', import.meta.url).pathname);
 const temporaryRoot = path.join(repositoryRoot, 'tests', '.tmp');
@@ -57,6 +58,36 @@ async function mergeGitignore(projectRoot, seedGitignorePath) {
   await writeFile(currentPath, `${[...lines].join('\n')}\n`);
 }
 
+/**
+ * Wires the shipped scaffold's approval mechanisms to something the harness can actually decide
+ * against, without touching any Flow's policy definitions (`major.yaml` etc. are exercised exactly
+ * as shipped):
+ *  - `approvals.local.requireTty: false` lets `approval-provider.mjs` drive a local approval by
+ *    spawning `xforge approve` with piped stdin instead of a real controlling terminal — the CLI
+ *    still requires the decision to be typed into that stream, it just accepts a piped one here.
+ *  - The scaffold ships `enterprise-approvals` as a deliberately-broken placeholder McpServer
+ *    (`command` points at a binary that does not exist) so a real deployment fails loudly instead
+ *    of silently working. The harness is exactly the "real approval system" an adopting org is
+ *    meant to point that placeholder at, so it overwrites `command` to the MCP test fixture already
+ *    used by the internal test suite (`xforge/test/fixtures/mcp-approval-server.mjs`) — needed for
+ *    Major, whose implementation-major/closing-major policies do not allow `local` at all.
+ */
+async function enableApprovalHarness(projectRoot) {
+  const manifestPath = path.join(projectRoot, 'xforge', 'manifest.yaml');
+  const manifest = parseYaml(await readFile(manifestPath, 'utf8'));
+  manifest.approvals ??= { providers: [] };
+  manifest.approvals.local = { ...manifest.approvals.local, requireTty: false };
+  await writeFile(manifestPath, stringifyYaml(manifest));
+
+  const mcpServerPath = path.join(projectRoot, 'xforge', 'scaffold', 'mcp-servers', 'enterprise-approvals.yaml');
+  if (await exists(mcpServerPath)) {
+    const server = parseYaml(await readFile(mcpServerPath, 'utf8'));
+    const fixture = path.join(repositoryRoot, 'xforge', 'test', 'fixtures', 'mcp-approval-server.mjs');
+    server.spec.command = [process.execPath, fixture];
+    await writeFile(mcpServerPath, stringifyYaml(server));
+  }
+}
+
 async function overlaySeed(projectRoot, seedRoot) {
   if (!await exists(seedRoot)) return;
   const packageJsonSeed = path.join(seedRoot, 'package.json');
@@ -89,6 +120,7 @@ const cli = await installCli({
 });
 
 run('npx', ['--no-install', 'xforge', '--root', projectRoot, 'init', '--language', 'en', '--target', 'claude'], projectRoot);
+await enableApprovalHarness(projectRoot);
 
 await overlaySeed(projectRoot, path.join(scenarioRoot, 'project-seed'));
 
