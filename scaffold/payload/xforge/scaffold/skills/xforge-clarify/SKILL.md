@@ -1,11 +1,7 @@
 ---
 name: xforge-clarify
 description: Resolve material ambiguity in a Major Change that affects scope, design, compatibility, risk, or acceptance, and atomically update authorized upstream specifications; use for a ready Clarify Action or formal planning rework.
-license: MIT
-metadata:
-  author: xforge (adapted from the OpenSpec workflow)
-  version: "3.0"
-  source: OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab
+tools: [read, search, write, test]
 ---
 
 # Invariants
@@ -35,3 +31,8 @@ metadata:
 
 - Stop with `request-decision` when the user has not decided, inputs conflict, scope expands, revision changes, or more authority is required.
 - If later work reveals a new material ambiguity, invalidate downstream work and return through `xforge-revise` to Clarify.
+
+# Judgment calls
+
+- Not every open question is material. A question that would change the Design's approach or an acceptance boundary is material; a question whose answer only changes an implementation detail belongs in Apply, not here — escalating the latter delays planning without improving it.
+- The absence of a stated question is not evidence the project already agreed on the answer. Silence usually means nobody decided, not that the obvious choice was chosen — treat an unstated but consequential default the same as an open question.

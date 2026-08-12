@@ -1,11 +1,7 @@
 ---
 name: xforge-continue
 description: Resume a Change from current machine state and execute the next legal Action consistent with user authority; use when the user says continue, resume, do the next step, or a new session must recover from an interruption.
-license: MIT
-metadata:
-  author: xforge (adapted from the OpenSpec workflow)
-  version: "3.0"
-  source: OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab
+tools: [read, search, test]
 ---
 
 # Invariants

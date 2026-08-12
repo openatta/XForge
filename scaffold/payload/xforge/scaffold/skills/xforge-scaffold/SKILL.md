@@ -1,11 +1,7 @@
 ---
 name: xforge-scaffold
 description: Customize project-canonical XForge agents, skills, rules, permission policies, hooks, and gates and project them safely into target tools; use when the user asks to add, change, enable, disable, or install project Agent capabilities.
-license: MIT
-metadata:
-  author: xforge (inspired by OpenSpec dynamic workflows and implemented with the XForge resource protocol)
-  version: "3.0"
-  source: OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab
+tools: [read, search, write, test]
 ---
 
 # Invariants

@@ -1,11 +1,7 @@
 ---
 name: xforge-verify
 description: 用当前证据核验 Change 的完整性、正确性、一致性与 Gates，并在用户明确授权时预览后归档；用于验收 readiness、验证并关闭 Change，或归档一个已有当前验证回执的 Change。
-license: MIT
-metadata:
-  author: xforge（基于 OpenSpec 工作流适配）
-  version: "3.0"
-  source: OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab
+tools: [read, search, write, test]
 ---
 
 # 不变量

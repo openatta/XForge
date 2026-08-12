@@ -1,11 +1,7 @@
 ---
 name: xforge-explore
 description: Investigate code, specifications, constraints, defects, or solution options without writing, and narrow an ambiguous idea into a proposal-ready scope; use when the user asks for analysis, diagnosis, comparison, or Flow selection but has not authorized project changes.
-license: MIT
-metadata:
-  author: xforge (adapted from the OpenSpec workflow)
-  version: "3.0"
-  source: OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab
+tools: [read, search, test]
 ---
 
 # Invariants
@@ -37,3 +33,8 @@ metadata:
 
 - Stop and request authority before any write, permission expansion, sensitive external-state access, or material decision on the user's behalf.
 - In Portable mode, state that the CLI did not enforce governance constraints.
+
+# Judgment calls
+
+- Users describe an already-decided implementation, not the underlying problem. "Add a caching layer" may really be "the search endpoint times out under load" — recommending scope or a Flow on the stated solution instead of the underlying problem locks the eventual Change into an approach nobody has actually evaluated.
+- "Sufficiently clear" is a judgment call, not a checklist. A scope that reads clean in isolation can still hide an unstated assumption (who owns the migrated data, what happens to existing callers) that only surfaces once Design starts — when in doubt, surface the assumption now instead of letting Propose inherit it silently.

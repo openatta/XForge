@@ -1,11 +1,7 @@
 ---
 name: xforge-revise
 description: Revise existing Change planning Artifacts consistently and invalidate affected downstream state and evidence; use when requirements, scope, or decisions change, or Check/Apply discovers an invalid upstream assumption.
-license: MIT
-metadata:
-  author: xforge (adapted from the OpenSpec workflow)
-  version: "3.0"
-  source: OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab
+tools: [read, search, write, test]
 ---
 
 # Invariants

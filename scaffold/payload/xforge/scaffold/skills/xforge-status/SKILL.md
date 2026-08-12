@@ -1,11 +1,7 @@
 ---
 name: xforge-status
 description: Explain xforge state as readable progress for a Change or Requirement; use when the user asks what is done, why work is blocked, which packages remain, whether Evidence is current, or whether Verify/Archive is ready.
-license: MIT
-metadata:
-  author: xforge (adapted from the OpenSpec workflow)
-  version: "3.0"
-  source: OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab
+tools: [read, search, test]
 ---
 
 # Invariants

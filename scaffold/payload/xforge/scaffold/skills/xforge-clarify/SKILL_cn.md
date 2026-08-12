@@ -1,11 +1,7 @@
 ---
 name: xforge-clarify
 description: 消除 Major Change 中会改变范围、设计、兼容性、风险或验收的关键歧义，并原子回写上游规格；用于 State 返回 ready Clarify Action 或规划审查要求澄清时。
-license: MIT
-metadata:
-  author: xforge（基于 OpenSpec 工作流适配）
-  version: "3.0"
-  source: OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab
+tools: [read, search, write, test]
 ---
 
 # 不变量
@@ -35,3 +31,8 @@ metadata:
 
 - 用户未决定、输入冲突、范围扩大、revision 变化或需要额外权限时停止并返回 `request-decision`。
 - 后续发现新的材料性歧义时使下游失效，并通过 `xforge-revise` 返回 Clarify。
+
+# 判断要点
+
+- 不是所有开放问题都是材料性的。会改变 Design 方案或验收边界的问题才算材料性；答案只影响实现细节的问题应该留给 Apply，不属于这里——把后者也升级为开放问题只会拖慢规划，不会让规划更好。
+- 没有人提出某个问题，不代表项目已经就它的答案达成了共识。沉默通常意味着没人做过这个决定，而不是"显而易见的选项已经被采纳"——一个没被说出口、但影响重大的默认假设，要按开放问题同等对待。

@@ -1,11 +1,7 @@
 ---
 name: xforge-verify
 description: Verify Change completeness, correctness, consistency, and Gates from current evidence, and preview then archive only with explicit user authority; use for acceptance readiness, closure, or archiving a Change with a current verification receipt.
-license: MIT
-metadata:
-  author: xforge (adapted from the OpenSpec workflow)
-  version: "3.0"
-  source: OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab
+tools: [read, search, write, test]
 ---
 
 # Invariants

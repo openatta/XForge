@@ -1,11 +1,7 @@
 ---
 name: xforge-apply
 description: Decompose and implement the smallest delivery units for an Apply-ready Change, using a work-package DAG and parallel sub-Agents when safe; use when the user explicitly asks to start, continue, or rework implementation and State allows implementation-write.
-license: MIT
-metadata:
-  author: xforge (adapted from the OpenSpec workflow)
-  version: "3.0"
-  source: OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab
+tools: [read, search, write, test]
 ---
 
 # Invariants

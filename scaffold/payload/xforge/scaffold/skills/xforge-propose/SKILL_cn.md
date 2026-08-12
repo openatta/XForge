@@ -1,11 +1,7 @@
 ---
 name: xforge-propose
 description: 创建受治理的 Change，并仅生成 Propose Stage 允许的 change.yaml、proposal 与 delta Specs；用于用户要求把已足够明确的想法、缺陷或功能正式规格化，但尚未授权实现时。
-license: MIT
-metadata:
-  author: xforge（基于 OpenSpec 工作流适配）
-  version: "3.0"
-  source: OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab
+tools: [read, search, write, test]
 ---
 
 # 不变量
@@ -54,3 +50,8 @@ metadata:
 
 - 在未知模块、路径/身份/协议诊断、材料性歧义、Flow policy 不满足或权限边界处停止。
 - 上游事实改变时交给 `xforge-revise`；不要在本 Skill 中顺便实现。
+
+# 判断要点
+
+- Flow 默认值存在的意义就是让常见情况不需要专门做风险分类推理；覆盖默认值才是例外路径，覆盖了却不在 Proposal 里说明，在后来者看来会像是疏漏，而不是一次深思熟虑的决定。
+- 一条需求对作者本人读起来很清楚，但只有掌握了未写明的实现细节才能理解，对别人来说就不算可测试。要写出一个完全不了解这个 Change 背景的评审者，仍能对照实际运行系统去验证的场景。

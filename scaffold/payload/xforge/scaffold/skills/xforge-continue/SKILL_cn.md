@@ -1,11 +1,7 @@
 ---
 name: xforge-continue
 description: 从当前机器状态恢复 Change，并执行与用户授权一致的下一合法 Action；用于用户说继续、恢复、执行下一步，或新会话需要从中断点推进时。
-license: MIT
-metadata:
-  author: xforge（基于 OpenSpec 工作流适配）
-  version: "3.0"
-  source: OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab
+tools: [read, search, test]
 ---
 
 # 不变量

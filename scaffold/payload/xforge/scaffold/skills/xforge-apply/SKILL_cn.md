@@ -1,11 +1,7 @@
 ---
 name: xforge-apply
 description: 对 Apply ready 的 Change 即时拆分并实现最小交付单元，必要时通过工作包 DAG 激活并行子 Agent；用于用户明确要求开始、继续或返工实现，并且 State 已允许 implementation-write 时。
-license: MIT
-metadata:
-  author: xforge（基于 OpenSpec 工作流适配）
-  version: "3.0"
-  source: OpenSpec e50bd0983dc8dc48250e3181f36e28450542f2ab
+tools: [read, search, write, test]
 ---
 
 # 不变量
