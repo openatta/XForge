@@ -25,8 +25,9 @@ Also create `work-packages.yaml` **inside the Change directory** that
 wrapper). The package has the eight canonical fields: `id`, `goal`,
 `depends_on`, `inputs`, `write_paths`, `skills`, `verify`, and `done_when`.
 Its ID is `T001`, write path is `src/**`, inputs include the delta Spec,
-Clarifications, and Design, skill is `xforge-apply`, and verify is
-`npm test`.
+Clarifications, and Design, skill is `xforge-apply`, and verify is the
+one-element array `[npm test]` (`verify` is a list of commands, not a
+single string).
 
 Run `xforge state --change credential-store` at the end. Major has no
 Approval gate at Design itself — once ready, transition into Check. Confirm
