@@ -69,8 +69,10 @@ async function mergeGitignore(projectRoot, seedGitignorePath) {
  *    (`command` points at a binary that does not exist) so a real deployment fails loudly instead
  *    of silently working. The harness is exactly the "real approval system" an adopting org is
  *    meant to point that placeholder at, so it overwrites `command` to the MCP test fixture already
- *    used by the internal test suite (`xforge/test/fixtures/mcp-approval-server.mjs`) — needed for
- *    Major, whose implementation-major/closing-major policies do not allow `local` at all.
+ *    used by the internal test suite (`xforge/test/fixtures/mcp-approval-server.mjs`).
+ *    `approval-provider.mjs` routes to this fixture only when a policy does not list `local`; the
+ *    shipped Major policies (`implementation-major`/`closing-major`) currently list `local` first,
+ *    so in the shipped scaffolds they are driven through the piped-stdin dialogue instead.
  */
 async function enableApprovalHarness(projectRoot) {
   const manifestPath = path.join(projectRoot, 'xforge', 'manifest.yaml');

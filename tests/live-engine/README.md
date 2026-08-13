@@ -92,13 +92,21 @@ the question "did the pass-through governance chain work?" this way, not by
 
 1. propose → clarify → design → check all completed and produced their
    required Artifacts and evidence ledgers.
-2. `implementation-major`'s mcp approval round-trip succeeded with two
+2. `implementation-major`'s approval round-trip succeeded with two
    distinct-role receipts (`owner` + `maintainer`) — see
    `xforge/changes/<id>/approvals/implementation-major/*.json` in the
-   project root reported by `setup.mjs`.
+   project root reported by `setup.mjs`. (The harness drives whichever
+   mechanism the shipped policy lists — local or mcp — never a third path.)
 3. `check-findings` and `constitution-check` ran and either passed cleanly
    or blocked with a finding that cites real Artifact/test evidence — not
    prose the model could have fabricated.
+
+`run-matrix.mjs` classifies this stop as `expected-check-stop` (exit 0)
+only after re-validating that evidence deterministically: the blocking gate
+must be `check-findings`, the ledger must hold an open blocker naming a
+`reworkTo` Stage whose refs all resolve to real files, and the exit policy
+must have its signed receipts. A blocked transition failing any of those
+checks is reported as a real failure instead.
 
 If a future run needs major to reach `apply`/`verify`/archive specifically
 (e.g. to test *those* stages, which quick/solid's own successful runs

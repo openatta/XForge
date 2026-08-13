@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { parse } from '../../xforge/node_modules/yaml/dist/index.js';
@@ -47,6 +47,9 @@ const SCENARIOS = {
   major: {
     changeId: 'credential-store',
     inject: { afterStage: 'check', prompt: 'standalone/continue.md', stageLabel: 'standalone-continue' },
+    /* A Check stop with a real, evidence-backed blocker is Major's documented expected outcome
+       (README.md: "Major's expected outcome"), not a failure; the loop classifies it below. */
+    expectedCheckStop: { stage: 'check' },
   },
 };
 
@@ -100,6 +103,34 @@ async function runEngine({ projectRoot, scenario, stageId, promptRelative, polic
   if (result.status !== 0) throw new Error(`Live engine call failed for ${scenario}:${stageId}. See ${outputPath}.`);
 }
 
+/**
+ * The budget policy allows `max-attempts` tries per Stage (TEST_DESIGN.md: "每 stage 最多两次
+ * 尝试"), but nothing used to drive them — the first engine failure aborted the whole Flow, which
+ * is why a transient provider drop used to sink Quick and a machine-sleep timeout used to sink
+ * Major. This consumes that allowance. Before spending a paid retry it first asks `recovery`
+ * whether the Stage's work actually landed anyway: a run killed by its wall-clock timeout just
+ * after finishing (its artifacts and self-transition already on disk) should advance, not re-burn
+ * budget re-running a Stage that already delivered.
+ */
+async function runEngineResilient({ projectRoot, scenario, stageId, promptRelative, policyPath, options: cliOptions, recovery }) {
+  const maxAttempts = Number(cliOptions['max-attempts']);
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      await runEngine({ projectRoot, scenario, stageId, promptRelative, policyPath, options: cliOptions });
+      return;
+    } catch (error) {
+      if (recovery && await recovery()) {
+        process.stdout.write(`${JSON.stringify({ recovered: scenario, stage: stageId, because: error.message })}\n`);
+        return;
+      }
+      const policy = JSON.parse(await readFile(policyPath, 'utf8'));
+      const attemptsUsed = policy.stages?.[stageId]?.attempts ?? 0;
+      if (attempt >= maxAttempts || attemptsUsed >= maxAttempts) throw error;
+      process.stdout.write(`${JSON.stringify({ retry: scenario, stage: stageId, attempt: attemptsUsed + 1, because: error.message })}\n`);
+    }
+  }
+}
+
 function assertArtifactOutline({ projectRoot, flowName, artifactId, file, mode }) {
   const args = ['--root', projectRoot, '--flow', flowName, '--artifact', artifactId, '--file', file];
   if (mode) args.push('--mode', mode);
@@ -133,6 +164,63 @@ async function runApprovals({ projectRoot, policyIds, transition, changeId, simu
     });
     if (result.status !== 0) throw new Error(`Approval provider failed for policy ${policyId}: ${result.stderr || result.stdout}`);
   }
+}
+
+async function pathExists(target) {
+  try { await access(target); return true; } catch { return false; }
+}
+
+function gateFromBlockedTransition(envelope) {
+  const message = (envelope?.diagnostics ?? [])
+    .find((entry) => entry.code === 'XFORGE_TRANSITION_BLOCKED')?.message ?? '';
+  const match = /gate:([a-z0-9-]+):failed/.exec(message);
+  return match ? match[1] : null;
+}
+
+/**
+ * Validates the deterministic evidence README.md's "Major's expected outcome" demands before a
+ * gate-blocked Check exit is classified as a pass instead of a failure:
+ *   1. the blocking gate is check-findings;
+ *   2. the findings ledger holds at least one open blocker naming a reworkTo Stage, and every
+ *      blocker ref resolves to a file that actually exists (line-number suffixes stripped, tried
+ *      both change-relative and project-relative) — prose the model wrote alone cannot satisfy
+ *      this, a fabricated blocker cites files that are not there;
+ *   3. the Stage's exit Approval policy has collected at least `minApprovers` signed receipts.
+ * Anything less means the stop is not the designed outcome and the run must fail.
+ */
+async function validateExpectedCheckStop({ projectRoot, flow, changeId, stage, gate }) {
+  const reasons = [];
+  const state = runXforgeJson(projectRoot, ['state', '--change', changeId]);
+  const changeRoot = path.join(projectRoot, state.data.change.path);
+  const ledgerPath = path.join(changeRoot, 'evidence', 'check-findings.yaml');
+  if (gate !== 'check-findings') reasons.push(`blocked by unexpected gate ${gate}`);
+  if (!await pathExists(ledgerPath)) {
+    reasons.push(`no findings ledger at ${ledgerPath}`);
+    return { ok: false, reasons, blockers: [], approvals: 0 };
+  }
+  const ledger = parse(await readFile(ledgerPath, 'utf8'));
+  const blockers = (ledger.findings ?? []).filter(
+    (entry) => entry.severity === 'blocker' && entry.status === 'open' && entry.reworkTo,
+  );
+  if (blockers.length === 0) reasons.push('ledger has no open blocker naming a reworkTo Stage');
+  for (const blocker of blockers) {
+    for (const ref of blocker.refs ?? []) {
+      const stripped = ref.replace(/:\d+$/, '');
+      const resolved = await pathExists(path.join(changeRoot, stripped))
+        || await pathExists(path.join(projectRoot, stripped));
+      if (!resolved) reasons.push(`${blocker.id} cites missing file ${ref}`);
+    }
+  }
+  const policyId = (stage.exit?.approvals ?? [])[0];
+  const definition = (flow.governance?.approvalPolicies ?? []).find((entry) => entry.id === policyId);
+  const approvalsDir = path.join(changeRoot, 'approvals', policyId);
+  const receipts = await pathExists(approvalsDir)
+    ? (await readdir(approvalsDir)).filter((name) => name.endsWith('.json'))
+    : [];
+  if (!definition || receipts.length < definition.minApprovers) {
+    reasons.push(`approval ${policyId} has ${receipts.length} receipts (minApprovers ${definition?.minApprovers ?? 'unknown'})`);
+  }
+  return { ok: reasons.length === 0, reasons, blockers, approvals: receipts.length };
 }
 
 const selected = options(process.argv.slice(2));
@@ -173,6 +261,21 @@ const stepBudget = stages.length + maxReworks * stages.length + 4;
 let reworks = 0;
 let steps = 0;
 let injected = false;
+let checkStop = null;
+
+/* Recovery predicate for a failed engine call on a real Stage: if the Change already moved past
+   this Stage (a timeout can fire just as the Agent finishes, and its self-transition may be on
+   disk), the Stage delivered — advance instead of re-running it. */
+function stageAdvancedPast(fromIndex) {
+  try {
+    const current = runXforgeJson(projectRoot, ['state', '--change', scenarioConfig.changeId])
+      .data.change.governance.currentStage;
+    if (current === 'ready-to-archive' || current === 'archive') return true;
+    return stages.findIndex((candidate) => candidate.id === current) > fromIndex;
+  } catch {
+    return false;
+  }
+}
 
 for (let index = 0; index < stages.length; ) {
   if (++steps > stepBudget) {
@@ -182,9 +285,10 @@ for (let index = 0; index < stages.length; ) {
   const nextStage = stages[index + 1];
   let advanced = true;
 
-  await runEngine({
+  await runEngineResilient({
     projectRoot, scenario: selected.flow, stageId: stage.id,
     promptRelative: path.posix.join(selected.flow, `${stage.id}.md`), policyPath, options: selected,
+    recovery: () => stageAdvancedPast(index),
   });
 
   for (const artifactId of stage.produces ?? []) {
@@ -225,7 +329,7 @@ for (let index = 0; index < stages.length; ) {
      * see, and performs the transition itself. Transitioning on its behalf would test the CLI and
      * quietly stop testing whether an Agent can drive the Flow, which is the whole point.
      */
-    await runEngine({
+    await runEngineResilient({
       projectRoot, scenario: selected.flow, stageId: `${stage.id}-delivered`,
       promptRelative: 'standalone/delivered.md', policyPath, options: selected,
     });
@@ -235,7 +339,7 @@ for (let index = 0; index < stages.length; ) {
   if (scenarioConfig.inject?.afterStage === stage.id && !injected) {
     injected = true;
     if (scenarioConfig.inject.beforeInject) await scenarioConfig.inject.beforeInject(projectRoot);
-    await runEngine({
+    await runEngineResilient({
       projectRoot, scenario: selected.flow, stageId: scenarioConfig.inject.stageLabel,
       promptRelative: scenarioConfig.inject.prompt, policyPath, options: selected,
     });
@@ -246,7 +350,34 @@ for (let index = 0; index < stages.length; ) {
     await runApprovals({
       projectRoot, policyIds: stage.exit.approvals, transition: nextStage?.id ?? 'verify', changeId: scenarioConfig.changeId,
     });
-    runXforgeJson(projectRoot, ['transition', '--change', scenarioConfig.changeId, '--to', nextStage.id]);
+    /*
+     * The forced transition here is the one moment the Flow yaml cannot fully encode: a Stage
+     * whose exit is gated can be *legitimately blocked* — Major's documented expected outcome is
+     * Check stopping with a real, evidence-backed blocker (README.md: "Major's expected
+     * outcome"). Classify that shape instead of throwing, and only when its deterministic
+     * evidence validates; any other block (wrong gate, fabricated refs, unsigned exit) is a real
+     * failure and reported as one.
+     */
+    const transitionResult = spawnXforge(projectRoot, ['transition', '--change', scenarioConfig.changeId, '--to', nextStage.id]);
+    let transitionEnvelope = null;
+    try { transitionEnvelope = JSON.parse(transitionResult.stdout); } catch {}
+    if (transitionResult.status !== 0 || !transitionEnvelope?.ok) {
+      const gate = gateFromBlockedTransition(transitionEnvelope);
+      let verdict = null;
+      if (gate && scenarioConfig.expectedCheckStop?.stage === stage.id) {
+        verdict = await validateExpectedCheckStop({ projectRoot, flow, changeId: scenarioConfig.changeId, stage, gate });
+        if (verdict.ok) {
+          checkStop = {
+            stage: stage.id, gate,
+            blockers: verdict.blockers.map((blocker) => ({ id: blocker.id, reworkTo: blocker.reworkTo, refs: blocker.refs })),
+            approvals: verdict.approvals,
+          };
+          process.stdout.write(`${JSON.stringify({ expectedCheckStop: checkStop })}\n`);
+          break;
+        }
+      }
+      throw new Error(`Transition ${stage.id} -> ${nextStage.id} was blocked${gate ? ` (gate:${gate}:failed)` : ''} and is not a valid expected Check stop: ${JSON.stringify(transitionEnvelope?.diagnostics ?? transitionResult.stdout)}${verdict ? ` Evidence gaps: ${verdict.reasons.join('; ')}.` : ''}`);
+    }
     commit(projectRoot, `Approved and transitioned into ${nextStage.id}`);
   } else if (nextStage) {
     const current = runXforgeJson(projectRoot, ['state', '--change', scenarioConfig.changeId])
@@ -295,6 +426,29 @@ for (let index = 0; index < stages.length; ) {
   if (advanced) index += 1;
 }
 
+let finalPolicy;
+if (checkStop) {
+  /* Major's documented expected outcome: the governance chain ran to completion and Check
+     stopped implementation with a real, evidence-backed blocker. No archive, no acceptance run —
+     the Change is still active by design — so pass/fail rests on the budget accounting alone. */
+  finalPolicy = assertLiveEnginePolicy(JSON.parse(await readFile(policyPath, 'utf8')));
+  const passed = finalPolicy.budgetAccountingComplete && finalPolicy.spentUsd <= finalPolicy.suiteBudgetUsd;
+  process.stdout.write(`${JSON.stringify({
+    ok: passed,
+    flow: selected.flow,
+    project: projectRoot,
+    outcome: 'expected-check-stop',
+    stage: checkStop.stage,
+    gate: checkStop.gate,
+    blockers: checkStop.blockers,
+    approvalReceipts: checkStop.approvals,
+    suiteSpentUsd: finalPolicy.spentUsd,
+    suiteBudgetUsd: finalPolicy.suiteBudgetUsd,
+    budgetAccountingComplete: finalPolicy.budgetAccountingComplete,
+    policyPath,
+  }, null, 2)}\n`);
+  process.exitCode = passed ? 0 : 1;
+} else {
 runXforgeJson(projectRoot, ['check', '--change', scenarioConfig.changeId]);
 const readyState = runXforgeJson(projectRoot, ['state', '--change', scenarioConfig.changeId]);
 if (readyState.data.change.governance.currentStage !== 'ready-to-archive') {
@@ -309,7 +463,7 @@ runXforgeJson(projectRoot, ['audit', 'verify', '--change', scenarioConfig.change
 runXforgeJson(projectRoot, ['archive', '--change', scenarioConfig.changeId, '--dry-run']);
 
 if (scenarioConfig.archiveVia) {
-  await runEngine({
+  await runEngineResilient({
     projectRoot, scenario: selected.flow, stageId: 'archive', promptRelative: scenarioConfig.archiveVia, policyPath, options: selected,
   });
 }
@@ -336,7 +490,7 @@ if (stillActive || canonicalSpecs === 0) {
 }
 
 const acceptance = spawnSync('npm', ['test'], { cwd: projectRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-const finalPolicy = assertLiveEnginePolicy(JSON.parse(await readFile(policyPath, 'utf8')));
+finalPolicy = assertLiveEnginePolicy(JSON.parse(await readFile(policyPath, 'utf8')));
 const passed = acceptance.status === 0
   && finalPolicy.budgetAccountingComplete
   && finalPolicy.spentUsd <= finalPolicy.suiteBudgetUsd;
@@ -352,3 +506,4 @@ process.stdout.write(`${JSON.stringify({
   policyPath,
 }, null, 2)}\n`);
 process.exitCode = passed ? 0 : 1;
+}

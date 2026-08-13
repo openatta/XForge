@@ -8,11 +8,11 @@ import { runXforgeInteractive, runXforgeJson } from './xforge-cli.mjs';
  * either would normally require, deterministically and without spending a model turn on it (see
  * ../../docs/internal, or `core/control-plane.ts`: "Agents cannot self-approve").
  *
- * A Change's own Flow decides which mechanism a given policy takes: Quick/Solid allow `local`,
- * Major's `implementation-major`/`closing-major` allow only `enterprise-approvals` (mcp) — by
- * design, so a single machine's local terminal can never unilaterally clear a Major approval. This
- * script reads the policy definition and picks whichever mechanism it actually allows, rather than
- * assuming one.
+ * A Change's own Flow decides which mechanism a given policy takes through its `providers` list:
+ * `mechanismFor` below prefers `local` whenever it is listed (Major's `implementation-major`/
+ * `closing-major` currently do list it, so they are driven through the piped-stdin dialogue), and
+ * falls back to an mcp provider otherwise. This script reads the policy definition and picks
+ * whichever mechanism it actually allows, rather than assuming one.
  */
 
 const MCP_TOKEN = 'xforge-live-e2e-mcp-token';

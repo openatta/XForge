@@ -167,13 +167,23 @@ if (child) {
   child.stderr.on('data', (chunk) => stderr.push(chunk));
   code = await new Promise((resolve) => {
     let forceTimer;
+    const stillAlive = () => child.exitCode === null && child.signalCode === null;
     const timeout = setTimeout(() => {
+      /*
+       * A timer that only gets serviced after the child already exited (observed: the whole
+       * machine slept for part of the window and the timer fired once the OS woke up, a moment
+       * after the child finished on its own) must not stamp a completed run as timed out — the
+       * close handler below owns the verdict in that case.
+       */
+      if (!stillAlive()) return;
       timedOut = true;
       child.kill('SIGTERM');
-      forceTimer = setTimeout(() => child.kill('SIGKILL'), 5_000);
-      forceTimer.unref();
+      process.stderr.write(`[live-engine] ${stage} exceeded ${policy.timeoutSeconds}s; sent SIGTERM (pid ${child.pid}).\n`);
+      forceTimer = setTimeout(() => { if (stillAlive()) child.kill('SIGKILL'); }, 5_000);
     }, policy.timeoutSeconds * 1_000);
-    timeout.unref();
+    /* Deliberately ref'd: the timers must stay armed and fire on schedule even if the child dies
+       in a way that leaves the loop with no other ref'd handle. The close handler clears both, so
+       there is no leak. */
     child.on('error', (error) => { spawnError = error; clearTimeout(timeout); if (forceTimer) clearTimeout(forceTimer); resolve(1); });
     child.on('close', (status) => { clearTimeout(timeout); if (forceTimer) clearTimeout(forceTimer); resolve(status ?? 1); });
   });

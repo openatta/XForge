@@ -104,6 +104,11 @@ L5 失败需要区分 `product_failure`、`model_behavior_failure`、`provider_f
 - remote Audit 欠账存在时不得归档；
 - Reviewer/Worker 日志不冒充长期企业审计。
 
+major 场景的黑盒验收套件刻意保留缺口（见 tests/live-engine/README.md
+「Major's expected outcome」）：Check 停在引用真实 Artifact 的 blocker 上且
+全部签名到位时，Runner 判定为 `expected-check-stop`（退出码 0，Change 按设计
+保持 active）；只有证据不成立（refs 指向不存在的文件、签名不足）才记为失败。
+
 ### 6.4 Skill 触发评测
 
 以同一需求构造最小对照提示，覆盖 Explore/Status、Propose/Revise、Continue/Apply、Check/Verify、Verify-only/Verify-and-Archive。断言 Skill 不硬编码 Stage 序列、不直接写 Stage、不生成有效 Approval、不把 review 变成 Machine Evidence。
@@ -189,8 +194,10 @@ node tests/live-engine/run-matrix.mjs --flow major --cli-source npm
 `--cli-source local` 改用本地 `npm pack` 打包安装，不经过 registry，适合日常开发回归。
 Runner 默认执行 30 美元整场预算（覆盖一个 Flow 的全部 stage 加一次 standalone 检查点）、
 每 stage 最多两次尝试、单次 3 美元请求上限和 900 秒超时；单次上限会按整场剩余额度收紧。
-Provider 未返回费用时后续调用 fail-closed。无外部 sandbox launcher 时必须显式确认
-behavioral isolation；provider 不可用时保存分类后的失败原因，不得回退成伪造响应。
+一次 engine 调用失败后，Runner 先免费检查 Change 是否已越过该 stage（超时可能恰好在 Agent
+完成全部工作、包括自迁移之后才触发——已交付的 stage 直接前进，不重跑），未越过才消耗
+第二次尝试。Provider 未返回费用时后续调用 fail-closed。无外部 sandbox launcher 时必须显式
+确认 behavioral isolation；provider 不可用时保存分类后的失败原因，不得回退成伪造响应。
 
 `run-matrix.mjs` 结束时直接输出通过/失败摘要（acceptance 退出码、整场花费、预算记账是否
 完整）；不需要单独再跑一次 `summarize.mjs`——按 stage 拆分的详细引擎输出仍落在
