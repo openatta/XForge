@@ -47,10 +47,28 @@ describe('project Script runner', () => {
     expect(JSON.parse(result.stdout)).toEqual({ runtime: 'python' });
   });
 
-  it('kills a script that outlives its timeout, even one that ignores SIGTERM, and reports timedOut', async () => {
+  /*
+   * "Ignores SIGTERM" is a POSIX signal-handling concept with no real Windows equivalent: Node
+   * emulates ChildProcess#kill('SIGTERM') on Windows as an unconditional forceful terminate that a
+   * child cannot intercept via process.on('SIGTERM', ...), so this exact scenario doesn't test a
+   * meaningful Windows behavior, and spawning a genuinely SIGTERM-immune Windows child would need a
+   * different mechanism entirely. Skipped only on win32; the SIGKILL-escalation path this exercises
+   * on POSIX is still covered there (ubuntu-latest, macos-latest).
+   */
+  it.skipIf(process.platform === 'win32')('kills a script that outlives its timeout, even one that ignores SIGTERM, and reports timedOut', async () => {
     const root = await fixture();
     await registerNodeScript(root, 'never-ending', "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000);", { timeoutSeconds: 1 });
     const result = await runProjectScript(await loadProject(root), 'never-ending');
+    expect(result.timedOut).toBe(true);
+    expect(result.exitCode).not.toBe(0);
+  }, 10_000);
+
+  /* Windows equivalent of the test above, without the POSIX-only "ignores SIGTERM" trick: still
+     verifies the basic timeout/kill mechanism actually terminates a runaway script there. */
+  it('kills a script that outlives its timeout and reports timedOut', async () => {
+    const root = await fixture();
+    await registerNodeScript(root, 'never-ending-plain', 'setInterval(() => {}, 1000);', { timeoutSeconds: 1 });
+    const result = await runProjectScript(await loadProject(root), 'never-ending-plain');
     expect(result.timedOut).toBe(true);
     expect(result.exitCode).not.toBe(0);
   }, 10_000);
