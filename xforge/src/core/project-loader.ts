@@ -209,12 +209,67 @@ export function assertManaged(project: ProjectContext, command: string): void {
     compatibilityErrors.length > 0 ? compatibilityErrors : diagnostic('XFORGE_MANAGED_REQUIRED', `${command} requires Managed mode.`),
     {
       root: project.root,
-      nextActions: [{ action: 'resolve-declared-xforge', reason: 'Install the exact @xforge/cli npm version declared by the project.' }],
+      nextActions: updateUpgradeAvailable(project)
+        ? [{ action: 'run-upgrade', reason: 'The running CLI is newer than the declared version; xforge update will lift this project to it.', command: ['xforge', 'update'] }]
+        : [{ action: 'resolve-declared-xforge', reason: 'Install the exact @xforge/cli npm version declared by the project.' }],
     },
   );
 }
 
+/**
+ * Dot-separated version comparison. Segments that both parse as numbers compare numerically
+ * (`9` < `10`); anything else compares lexically; a missing segment equals `''`. Returns -1/0/1.
+ */
+export function compareVersions(left: string, right: string): number {
+  const l = left.split('.');
+  const r = right.split('.');
+  for (let i = 0; i < Math.max(l.length, r.length); i += 1) {
+    const ls = l[i] ?? '';
+    const rs = r[i] ?? '';
+    const ln = Number(ls);
+    const rn = Number(rs);
+    if (!Number.isNaN(ln) && !Number.isNaN(rn) && ln !== rn) return ln < rn ? -1 : 1;
+    if (ls !== rs) return ls < rs ? -1 : 1;
+  }
+  return 0;
+}
+
+/**
+ * True when `xforge update` may lift this project to the running CLI's identity: the protocols
+ * match and the running CLI is strictly newer than the declared one. A newer declaration stays
+ * hard-blocked (downgrading must never happen silently).
+ */
+export function updateUpgradeAvailable(project: ProjectContext): boolean {
+  return project.compatibility.protocol.matches
+    && !project.compatibility.cli.matches
+    && compareVersions(CLI_VERSION, project.manifest.xforge.version) > 0;
+}
+
 export function assertUpdateCompatible(project: ProjectContext): void {
   if (project.compatibility.cli.matches && project.compatibility.protocol.matches) return;
+  if (updateUpgradeAvailable(project)) return;
   assertManaged(project, 'update');
+}
+
+/**
+ * The project as it will look once an upgrade rewrites the declared CLI identity to the running
+ * one. Used by `update` for planning (both dry-run and real) without mutating the caller's view.
+ * The bundled-Scaffold consistency precondition is enforced separately by `loadBundledScaffold`.
+ */
+export function upgradedProjectContext(project: ProjectContext): ProjectContext {
+  const manifest = {
+    ...project.manifest,
+    xforge: { source: 'npm' as const, package: CLI_NAME as '@xforge/cli', version: CLI_VERSION, protocol: PROTOCOL_VERSION as '1' | '2' },
+    scaffold: {
+      ...project.manifest.scaffold,
+      version: CLI_VERSION,
+      source: { ...project.manifest.scaffold.source, version: CLI_VERSION },
+    },
+  };
+  const compatibility = resolveCompatibility(manifest, project.lock);
+  const diagnostics = [
+    ...project.diagnostics.filter((item) => !['XFORGE_CLI_IDENTITY_MISMATCH', 'XFORGE_LOCK_CLI_MISMATCH'].includes(item.code)),
+    ...compatibility.diagnostics.filter((item) => !['XFORGE_LOCK_CLI_MISMATCH', 'XFORGE_LOCK_PROTOCOL_MISMATCH'].includes(item.code)),
+  ];
+  return { ...project, manifest, compatibility: compatibility.value, diagnostics };
 }

@@ -14,7 +14,7 @@ allowed-tools: Read Grep Glob Bash
 
 - Authority comes from the selected ready Action and its Skill; Continue never expands it.
 - Do not claim external, CLI, or user-decision Actions. Archive always needs explicit authority.
-- Approval Actions may only request or import human/external provider receipts; an Agent never self-approves.
+- Approval Actions may only request human/external provider receipts — there is no receipt-file import path; an Agent never self-approves.
 
 # Execution
 
@@ -22,7 +22,7 @@ allowed-tools: Read Grep Glob Bash
 2. Read ready Actions, blocking diagnostics, inputs, writes, doneWhen, requiredEvidence, and reworkTo.
 3. Choose an authorized Action, load and fully follow its Skill, then query State again.
 4. For continuous progress, repeat without skipping Clarify/Check, failed Gates, or revision checks.
-5. Stop at verified-active by default unless the user explicitly authorizes archive.
+5. Stop once the Change reaches `ready-to-archive` by default; do not archive unless the user explicitly authorizes it.
 
 # Evidence
 

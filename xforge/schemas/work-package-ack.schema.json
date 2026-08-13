@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xforge.dev/schemas/v1alpha2/work-package-ack.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "change", "packageId", "role", "status", "executionId", "auditCorrelationId", "deliveryDigest", "evidence", "stateRevision", "policySnapshotDigest", "gitBase", "gitHead", "acknowledgedAt", "digest"],
+  "properties": {
+    "apiVersion": { "const": "xforge.dev/v1alpha2" },
+    "kind": { "const": "WorkPackageAckReceipt" },
+    "change": { "type": "string", "minLength": 1 },
+    "packageId": { "type": "string", "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$" },
+    "role": { "enum": ["integrator", "reviewer"] },
+    "status": { "enum": ["integrated", "reviewed"] },
+    "executionId": { "type": "string", "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$" },
+    "auditCorrelationId": { "type": "string", "minLength": 1 },
+    "deliveryDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "evidence": { "type": "string", "minLength": 1 },
+    "stateRevision": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "policySnapshotDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "gitBase": { "type": "string", "minLength": 1 },
+    "gitHead": { "type": "string", "minLength": 1 },
+    "acknowledgedAt": { "type": "string", "format": "date-time" },
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

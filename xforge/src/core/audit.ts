@@ -686,6 +686,12 @@ export interface RecordAuditInput {
 }
 
 export async function recordAudit(project: ProjectContext, input: RecordAuditInput): Promise<AuditEvent> {
+  /*
+   * Test seams for fault-injection coverage of the write-then-audit compensation paths.
+   * XFORGE_FAULT_AUDIT_RECORD fails before anything is appended; XFORGE_FAULT_AUDIT_INDEX fails
+   * after the event is already on the chain, modelling an index-write failure.
+   */
+  if (process.env.XFORGE_FAULT_AUDIT_RECORD === '1') throw new Error('Injected audit record failure (XFORGE_FAULT_AUDIT_RECORD).');
   const plane = input.plane ?? 'workflow';
   const remoteConfigured = Boolean(project.manifest.audit?.remote);
   const spoolable = remoteConfigured && input.deliver !== false;
@@ -704,6 +710,7 @@ export async function recordAudit(project: ProjectContext, input: RecordAuditInp
     deliveryState: spoolable ? 'pending' : 'not-configured',
   });
   if (change) await recordIndexEvent(project, change, event);
+  if (process.env.XFORGE_FAULT_AUDIT_INDEX === '1') throw new Error('Injected audit index failure (XFORGE_FAULT_AUDIT_INDEX).');
   if (!spoolable || deliveryMode(project, plane) !== 'inline') return event;
 
   const delivery = await deliverRemote(project, event);

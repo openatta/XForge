@@ -1,3 +1,7 @@
+# Intentionally NOT selected by the default Manifest: the hook dispatcher records every tool
+# event into the WORM audit chain unconditionally, and the `builtin: audit` action has no
+# dispatch path. Keeping this file documents the builtin-action shape; enabling it changes
+# nothing until a builtin dispatcher branch exists.
 apiVersion: xforge.dev/v1alpha2
 kind: Hook
 metadata:

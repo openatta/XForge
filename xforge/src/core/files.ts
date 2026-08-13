@@ -33,3 +33,13 @@ export async function ensureDirectory(root: string, relative: string): Promise<s
   await safeResolve(root, relative);
   return destination;
 }
+
+/**
+ * Compensation for "write the receipt, then record the audit event" pairs: when the follow-up
+ * audit record throws, the just-written file is removed so the working tree does not carry a
+ * receipt no chain event attests. Best-effort — if the delete itself fails, the tree is left in
+ * the same state it would have been in before this fix existed.
+ */
+export async function rollbackWrittenFile(root: string, relative: string): Promise<void> {
+  await rm(await safeResolve(root, relative), { force: true }).catch(() => undefined);
+}

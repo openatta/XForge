@@ -55,6 +55,27 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 300
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Extra environment variables the stdio approval-server subprocess may inherit. Credential-looking names are always dropped; the token from authTokenEnv is always injected as XFORGE_MCP_TOKEN.",
+          "properties": {
+            "allow": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/envName"
+              }
+            },
+            "allowPrefixes": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/envName"
+              }
+            }
+          }
         }
       },
       "oneOf": [
@@ -87,6 +108,10 @@
       "pattern": "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$"
     },
     "env": {
+      "type": "string",
+      "pattern": "^[A-Z_][A-Z0-9_]*$"
+    },
+    "envName": {
       "type": "string",
       "pattern": "^[A-Z_][A-Z0-9_]*$"
     },

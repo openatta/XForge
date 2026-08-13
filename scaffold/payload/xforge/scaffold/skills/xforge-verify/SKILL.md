@@ -37,6 +37,7 @@ allowed-tools: Read Grep Glob Write Edit Bash(npx:*)
 # Stop and rework
 
 - Stop on incomplete implementation, failed Gate, invalid delivery, stale receipt, Spec conflict, path-safety issue, target collision, or unauthorized archive.
+- Stop on approval configuration failures (`XFORGE_APPROVAL_PROVIDER_FORBIDDEN`, `XFORGE_APPROVAL_MCP_SERVER_MISSING`, `XFORGE_APPROVAL_MCP_TOKEN_MISSING`, `XFORGE_APPROVAL_MCP_CONNECTION_FAILED`): the provider is not configured. Tell the user to configure the provider's McpServer and token (see `scaffold/mcp-servers/enterprise-approvals.yaml`) or approve locally in the terminal; never retry the same provider in a loop.
 - Return Verify failures to Apply; return contradictions in governing Artifacts to the earlier Stage named by `reworkTo`.
 
 # Judgment calls

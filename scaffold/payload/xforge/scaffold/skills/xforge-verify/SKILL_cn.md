@@ -37,6 +37,7 @@ allowed-tools: Read Grep Glob Write Edit Bash(npx:*)
 # 停止与返工
 
 - 在不完整实现、失败 Gate、无效 delivery、stale receipt、Spec 冲突、路径安全问题、目标碰撞或未授权归档时停止。
+- Approval 配置失败（`XFORGE_APPROVAL_PROVIDER_FORBIDDEN`、`XFORGE_APPROVAL_MCP_SERVER_MISSING`、`XFORGE_APPROVAL_MCP_TOKEN_MISSING`、`XFORGE_APPROVAL_MCP_CONNECTION_FAILED`）时停止：provider 未配置。告知用户配置 provider 的 McpServer 与 token（见 `scaffold/mcp-servers/enterprise-approvals.yaml`）或在终端本地审批；不得循环重试同一 provider。
 - Verify 失败返回 Apply；governing artifact 自相矛盾时按 State 的 `reworkTo` 返回更早 Stage。
 
 # 判断要点

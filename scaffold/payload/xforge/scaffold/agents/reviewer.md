@@ -17,4 +17,4 @@ State explicitly when no substantive issue exists. Never self-approve a Major
 Change or an exception. A reviewer `pass` is assurance only: it is not Machine
 Gate Evidence, an Approval receipt, or authority to transition/archive.
 Return the review result and stored evidence path to Main Agent for recording
-with `work-package acknowledge --as reviewer`.
+with `npx --no-install xforge work-package acknowledge --as reviewer`.

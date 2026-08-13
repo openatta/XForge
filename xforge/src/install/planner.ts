@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { TargetId } from '../constants.js';
 import { CLI_VERSION, PROTOCOL_VERSION } from '../constants.js';
 import { getAdapter } from '../adapters/index.js';
+import { PROJECTED_DIMENSIONS } from '../adapters/capabilities.js';
 import type {
   DesiredFile,
   Diagnostic,
@@ -154,6 +155,41 @@ export function capabilityGapDiagnostics(resources: SelectedResources, targets: 
   return result;
 }
 
+/**
+ * Reports a resource the Adapter declined to project. The decision between the two codes comes from
+ * `PROJECTED_DIMENSIONS`, not from guessing why the Adapter returned null: when the table says the
+ * target cannot express the dimension, the drop is a structural property of the target and worth an
+ * `info` note; when the table declares support yet the Adapter produced nothing, the table and the
+ * Adapter disagree and one of them must be fixed — that is a `warning`.
+ */
+function capabilityDropDiagnostic(
+  target: TargetId,
+  dimension: 'commands' | 'rules' | 'agents',
+  kind: string,
+  id: string,
+  resourcePath: string,
+): Diagnostic {
+  const declared = dimension === 'agents' ? true : PROJECTED_DIMENSIONS[target][dimension];
+  if (declared) {
+    return diagnostic(
+      'XFORGE_ADAPTER_PROJECTION_MISSING',
+      `Adapter for ${target} produced no ${dimension} output for ${kind} ${id}, although the capability table declares support; the resource is not projected.`,
+      resourcePath,
+      'warning',
+      { target, kind, id, dimension },
+    );
+  }
+  return diagnostic(
+    'XFORGE_CAPABILITY_UNSUPPORTED',
+    dimension === 'commands'
+      ? `Target ${target} does not project Skill command files; ${kind} ${id} installs without a command entry point.`
+      : `Target ${target} does not project rule files; ${kind} ${id} is not installed for that target.`,
+    resourcePath,
+    'info',
+    { target, kind, id, dimension },
+  );
+}
+
 async function buildDesired(
   project: ProjectContext,
   resources: SelectedResources,
@@ -176,6 +212,7 @@ async function buildDesired(
           ...adapter.trace('skill', id, [sourcePath]),
         });
       }
+      const skillDocPath = `xforge/scaffold/skills/${id}/${project.manifest.scaffold.language === 'zh-CN' ? localizedVariant('SKILL.md') : 'SKILL.md'}`;
       const commandPath = adapter.commandPath(id);
       const commandContent = adapter.renderCommand(id);
       if (commandPath && commandContent != null) addDesired(desired, {
@@ -183,8 +220,9 @@ async function buildDesired(
         content: Buffer.from(commandContent),
         source: `skill-command:${id}`,
         target,
-        ...adapter.trace('skill-command', id, [`xforge/scaffold/skills/${id}/${project.manifest.scaffold.language === 'zh-CN' ? localizedVariant('SKILL.md') : 'SKILL.md'}`]),
+        ...adapter.trace('skill-command', id, [skillDocPath]),
       });
+      else diagnostics.push(capabilityDropDiagnostic(target, 'commands', 'Skill', id, skillDocPath));
     }
 
     for (const [id, agent] of resources.agents) {
@@ -197,6 +235,7 @@ async function buildDesired(
         target,
         ...adapter.trace('agent', id, [agent.yamlPath, agent.instructionsPath]),
       });
+      else diagnostics.push(capabilityDropDiagnostic(target, 'agents', 'Agent', id, agent.yamlPath));
     }
 
     for (const [id, rule] of resources.rules) {
@@ -209,6 +248,7 @@ async function buildDesired(
         target,
         ...adapter.trace('rule', id, [rule.yamlPath]),
       });
+      else diagnostics.push(capabilityDropDiagnostic(target, 'rules', 'Rule', id, rule.yamlPath));
     }
     const governance = adapter.renderGovernance({
       policies: [...resources.policies].map(([id, item]) => ({ id, ...item })),

@@ -43,8 +43,9 @@ scaffold:
     - prefer-small-explicit-contracts
   policies:
     - protected-files
-  hooks:
-    - runtime-audit
+  # runtime-audit intentionally unselected: audit recording is unconditional, the builtin
+  # action has no dispatcher branch (see scaffold/hooks/runtime-audit.yaml).
+  hooks: []
   gates:
     - structure
     - check-findings
@@ -77,8 +78,10 @@ install:
 # matching McpServer resource (scaffold/mcp-servers/enterprise-approvals.yaml) is a placeholder — it
 # ships with a command that does not exist, on purpose. Replace it with the approval system your
 # organization actually runs before Major can produce a real decision; until then,
-# `xforge approve --provider enterprise-approvals` fails loudly with XFORGE_APPROVAL_MCP_CONNECTION_FAILED
-# instead of silently pretending to work.
+# `xforge approve --provider enterprise-approvals` fails loudly instead of silently pretending to
+# work: without `XFORGE_ENTERPRISE_APPROVALS_TOKEN` it reports XFORGE_APPROVAL_MCP_TOKEN_MISSING,
+# and with a token but no reachable server it reports XFORGE_APPROVAL_MCP_CONNECTION_FAILED after
+# retries. Configure the approval system, or use `local` terminal approval instead.
 approvals:
   providers:
     - id: enterprise-approvals

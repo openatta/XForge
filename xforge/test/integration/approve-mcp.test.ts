@@ -21,6 +21,10 @@ async function toDesignWithMcpProvider(root: string): Promise<void> {
     `  command: [${JSON.stringify(process.execPath)}, ${JSON.stringify(fixtureServer)}]`,
     '  authTokenEnv: XFORGE_TEST_MCP_TOKEN',
     '  timeoutSeconds: 10',
+    /* The server drives its behavior from these; the stdio subprocess gets only the built-in
+       allowlist plus what is declared here, so they must be opted in explicitly. */
+    '  env:',
+    '    allow: [XFORGE_TEST_MCP_DECISION, XFORGE_TEST_MCP_APPROVER_ID, XFORGE_TEST_MCP_APPROVER_ROLE]',
     '',
   ].join('\n'));
 
@@ -41,7 +45,7 @@ describe('mcp approval provider', () => {
     const root = await fixture();
     await toDesignWithMcpProvider(root);
     const result = await runCli(root, mcpApproveArgs, {
-      XFORGE_TEST_MCP_TOKEN: 'shared-secret', XFORGE_TEST_MCP_EXPECTED_TOKEN: 'shared-secret',
+      XFORGE_TEST_MCP_TOKEN: 'shared-secret',
       XFORGE_TEST_MCP_DECISION: 'approve', XFORGE_TEST_MCP_APPROVER_ID: 'alice@example.test', XFORGE_TEST_MCP_APPROVER_ROLE: 'owner',
     });
     expect(result.code).toBe(0);
@@ -58,7 +62,7 @@ describe('mcp approval provider', () => {
     const root = await fixture();
     await toDesignWithMcpProvider(root);
     const result = await runCli(root, mcpApproveArgs, {
-      XFORGE_TEST_MCP_TOKEN: 'shared-secret', XFORGE_TEST_MCP_EXPECTED_TOKEN: 'shared-secret', XFORGE_TEST_MCP_DECISION: 'pending',
+      XFORGE_TEST_MCP_TOKEN: 'shared-secret', XFORGE_TEST_MCP_DECISION: 'pending',
     });
     expect(result.code).toBe(0);
     expect(result.json.ok).toBe(true);
@@ -80,5 +84,37 @@ describe('mcp approval provider', () => {
     const result = await runCli(root, mcpApproveArgs, { XFORGE_TEST_MCP_TOKEN: 'shared-secret' });
     expect(result.code).toBe(1);
     expect(result.json.diagnostics.some((item: any) => item.code === 'XFORGE_APPROVAL_MCP_CONNECTION_FAILED')).toBe(true);
+  });
+
+  it('never passes ambient variables the server manifest does not declare', async () => {
+    const root = await fixture();
+    await toDesignWithMcpProvider(root);
+    /* The fixture server exits immediately if XFORGE_TEST_MCP_FORBIDDEN_LEAK reaches it, which
+       surfaces as a connection failure here. The approve succeeds only because the stdio subprocess
+       got the built-in allowlist plus the three declared vars — nothing else. */
+    const result = await runCli(root, mcpApproveArgs, {
+      XFORGE_TEST_MCP_TOKEN: 'shared-secret',
+      XFORGE_TEST_MCP_DECISION: 'approve', XFORGE_TEST_MCP_APPROVER_ID: 'alice@example.test', XFORGE_TEST_MCP_APPROVER_ROLE: 'owner',
+      XFORGE_TEST_MCP_FORBIDDEN_LEAK: 'ambient-secret-that-must-not-reach-the-server',
+    });
+    expect(result.code, JSON.stringify(result.json.diagnostics, null, 2)).toBe(0);
+    expect(result.json.data.receipt.approver.id).toBe('alice@example.test');
+  });
+
+  it('never passes credential-shaped variables even when the manifest declares them', async () => {
+    const root = await fixture();
+    await toDesignWithMcpProvider(root);
+    await updateYaml(root, 'xforge/scaffold/mcp-servers/review-bot.yaml', (server) => {
+      server.spec.env.allow.push('XFORGE_TEST_MCP_AUTH_BACKDOOR');
+    });
+    /* The deny filter drops credential-shaped names regardless of the allowlist; the fixture server
+       exits if the variable reaches it, so an approval that still succeeds proves the drop. */
+    const result = await runCli(root, mcpApproveArgs, {
+      XFORGE_TEST_MCP_TOKEN: 'shared-secret',
+      XFORGE_TEST_MCP_DECISION: 'approve', XFORGE_TEST_MCP_APPROVER_ID: 'alice@example.test', XFORGE_TEST_MCP_APPROVER_ROLE: 'owner',
+      XFORGE_TEST_MCP_AUTH_BACKDOOR: 'ambient-auth-shaped-secret',
+    });
+    expect(result.code, JSON.stringify(result.json.diagnostics, null, 2)).toBe(0);
+    expect(result.json.data.receipt.approver.id).toBe('alice@example.test');
   });
 });

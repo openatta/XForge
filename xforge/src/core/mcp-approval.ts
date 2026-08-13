@@ -5,6 +5,7 @@ import { CLI_NAME, CLI_VERSION } from '../constants.js';
 import type { GovernanceRevision, McpServerResource, ProjectContext } from '../types.js';
 import { XForgeError, diagnostic } from './errors.js';
 import { safeResolve } from './path-safety.js';
+import { buildSubprocessEnvironment } from './subprocess-env.js';
 
 const CONNECT_ATTEMPTS = 3;
 const CONNECT_BACKOFF_MS = 1000;
@@ -33,7 +34,15 @@ async function buildTransport(project: ProjectContext, server: McpServerResource
   if (server.spec.transport === 'stdio') {
     const [command, ...args] = server.spec.command!;
     const cwd = server.spec.cwd ? await safeResolve(project.root, server.spec.cwd) : project.root;
-    return new StdioClientTransport({ command: command!, args, cwd, env: { ...(process.env as Record<string, string>), XFORGE_MCP_TOKEN: token } });
+    /* The approval server is an external process; it must not inherit the ambient environment any
+       more than a Gate does. `env.allow` / `env.allowPrefixes` opt extra variables in — the token
+       itself is always injected under XFORGE_MCP_TOKEN, bypassing the credential-shaped-name deny. */
+    const env = buildSubprocessEnvironment({
+      allow: server.spec.env?.allow,
+      allowPrefixes: server.spec.env?.allowPrefixes,
+      force: { XFORGE_MCP_TOKEN: token },
+    });
+    return new StdioClientTransport({ command: command!, args, cwd, env });
   }
   return new StreamableHTTPClientTransport(new URL(server.spec.url!), { requestInit: { headers: { authorization: `Bearer ${token}` } } });
 }
@@ -59,7 +68,12 @@ export async function withMcpApprovalSession<T>(
   fn: (client: Client, timeoutMs: number) => Promise<T>,
 ): Promise<T> {
   const token = process.env[server.spec.authTokenEnv];
-  if (!token) throw new XForgeError(diagnostic('XFORGE_APPROVAL_MCP_TOKEN_MISSING', `MCP auth token environment is unavailable: ${server.spec.authTokenEnv}.`));
+  if (!token) {
+    throw new XForgeError(
+      diagnostic('XFORGE_APPROVAL_MCP_TOKEN_MISSING', `MCP auth token environment is unavailable: ${server.spec.authTokenEnv}.`),
+      { nextActions: [{ action: 'configure-approval-token', type: 'approval', actor: 'human', reason: `Set the ${server.spec.authTokenEnv} environment variable with the approval system's token (see scaffold/mcp-servers/enterprise-approvals.yaml), or approve locally on the terminal.` }] },
+    );
+  }
   const timeoutMs = server.spec.timeoutSeconds * 1000;
   let lastError: unknown;
   for (let attempt = 1; attempt <= CONNECT_ATTEMPTS; attempt += 1) {
@@ -78,10 +92,13 @@ export async function withMcpApprovalSession<T>(
       if (attempt < CONNECT_ATTEMPTS) await sleep(CONNECT_BACKOFF_MS * attempt);
     }
   }
-  throw new XForgeError(diagnostic(
-    'XFORGE_APPROVAL_MCP_CONNECTION_FAILED',
-    `Could not complete the request against MCP provider ${providerId} after ${CONNECT_ATTEMPTS} attempts: ${(lastError as Error)?.message ?? 'unknown error'}.`,
-  ));
+  throw new XForgeError(
+    diagnostic(
+      'XFORGE_APPROVAL_MCP_CONNECTION_FAILED',
+      `Could not complete the request against MCP provider ${providerId} after ${CONNECT_ATTEMPTS} attempts: ${(lastError as Error)?.message ?? 'unknown error'}.`,
+    ),
+    { nextActions: [{ action: 'verify-approval-server', type: 'approval', actor: 'human', reason: `The MCP provider ${providerId} is unreachable. Configure or replace the approval system's server command or URL and make sure ${server.spec.authTokenEnv} is set (see scaffold/mcp-servers/enterprise-approvals.yaml), or approve locally on the terminal.` }] },
+  );
 }
 
 export async function submitApprovalRequest(client: Client, timeoutMs: number, input: McpApprovalSubmission): Promise<void> {

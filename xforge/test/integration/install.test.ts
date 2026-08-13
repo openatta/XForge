@@ -102,6 +102,34 @@ describe('install lifecycle', () => {
       expect(forTarget.message).toContain('no static permission-policy projection');
     }
   });
+
+  // Codex has no command files and no rule files; OpenCode has no rule files. Those are structural
+  // properties of the targets, declared in PROJECTED_DIMENSIONS. Every affected resource must be
+  // reported as XFORGE_CAPABILITY_UNSUPPORTED (info) instead of being dropped by a bare `continue`;
+  // a drop the table did not declare would be XFORGE_ADAPTER_PROJECTION_MISSING (warning, drift).
+  it('reports per-resource diagnostics for targets that structurally cannot project commands or rules', async () => {
+    const root = await fixture();
+    const result = await runCli(root, ['install']);
+    expect(result.code, JSON.stringify(result.json.diagnostics, null, 2)).toBe(0);
+    const gaps = result.json.diagnostics.filter((item: any) => item.code === 'XFORGE_CAPABILITY_UNSUPPORTED');
+    const byTarget = (target: string, dimension: string) =>
+      gaps.filter((item: any) => item.details?.target === target && item.details?.dimension === dimension);
+    // 13 shipped Skills, 4 shipped Rules (see scaffold payload).
+    expect(byTarget('codex', 'commands')).toHaveLength(13);
+    expect(byTarget('codex', 'rules')).toHaveLength(4);
+    expect(byTarget('opencode', 'rules')).toHaveLength(4);
+    // claude, cursor and github-copilot project both dimensions; opencode projects commands.
+    expect(gaps.filter((item: any) => ['claude', 'cursor', 'github-copilot'].includes(item.details?.target))).toEqual([]);
+    expect(byTarget('opencode', 'commands')).toEqual([]);
+    for (const item of gaps) expect(item.severity).toBe('info');
+    // No agent drop is expected on any target, so the drift warning must not appear either.
+    expect(result.json.diagnostics.map((item: any) => item.code)).not.toContain('XFORGE_ADAPTER_PROJECTION_MISSING');
+    const command = byTarget('codex', 'commands').find((item: any) => item.details?.kind === 'Skill' && item.details?.id === 'xforge-apply');
+    expect(command, JSON.stringify(gaps, null, 2)).toBeDefined();
+    expect(command.message).toContain('installs without a command entry point');
+    // The command wrapper is missing, but the Skill content itself still installs for Codex.
+    expect(await exists(path.join(root, '.agents', 'skills', 'xforge-apply', 'SKILL.md'))).toBe(true);
+  });
 });
 
 // P0-2: `.claude/settings.json` is the normal home for a team's own Claude Code settings. Taking

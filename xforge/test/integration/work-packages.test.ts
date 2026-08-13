@@ -1,9 +1,10 @@
-import { access, readFile } from 'node:fs/promises';
+import { access, readFile, rm } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { stringify } from 'yaml';
 import { describe, expect, it } from 'vitest';
 import { advanceSolidToApply, approvalTestEnv, createCompleteSolidChange, fixture, runCli, updateYaml, write } from '../helpers.js';
+import { sha256, stableStringify } from '../../src/core/hash.js';
 
 async function command(root: string, args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
@@ -237,6 +238,48 @@ describe('work-package protocol', () => {
     expect(reviewedState.json.data.change.workPackages.packages[0].status).toBe('reviewed');
   });
 
+  it('skips a current verify pass and re-runs it under --force', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const verify = `${process.execPath} -e "process.exit(0)"`;
+    await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([
+      workPackage('T001', { write_paths: ['src/order/**'], verify: [verify] }),
+    ]));
+    const { binding } = await dispatchWithCommittedReceipt(root);
+    const base = await git(root, ['rev-parse', 'HEAD']);
+    await write(root, 'src/order/refund.ts', 'export const refund = true;\n');
+    await git(root, ['add', 'src/order/refund.ts']);
+    await git(root, ['commit', '-qm', 'worker T001']);
+    const head = await git(root, ['rev-parse', 'HEAD']);
+    await write(root, `xforge/changes/add-feature/evidence/agents/T001/${binding.executionId}.yaml`, delivery(binding, {
+      base_commit: base,
+      head_commit: head,
+      changed_paths: ['src/order/refund.ts'],
+      validation: [{ command: verify, exit_code: 0 }],
+      done_when_evidence: [{ criterion: 'T001 is covered by an automated check', evidence: [`verify:${verify}`, 'src/order/refund.ts'] }],
+    }));
+
+    const evidencePath = 'xforge/changes/add-feature/evidence/agents/T001/verify-1.json';
+    const first = await runCli(root, ['check', '--change', 'add-feature'], approvalTestEnv);
+    expect(first.code, JSON.stringify(first.json.diagnostics, null, 2)).toBe(0);
+    expect(first.json.changes).toContainEqual(expect.objectContaining({ action: 'create', path: evidencePath }));
+
+    /* Same HEAD, same Gate definition, same structure: the recorded pass is still current, so a
+       plain check reuses it instead of paying for another command run. */
+    const second = await runCli(root, ['check', '--change', 'add-feature'], approvalTestEnv);
+    expect(second.code, JSON.stringify(second.json.diagnostics, null, 2)).toBe(0);
+    expect(second.json.changes).toContainEqual(expect.objectContaining({ action: 'skip', path: evidencePath, reason: 'Already current.' }));
+    expect(second.json.changes).not.toContainEqual(expect.objectContaining({ action: 'modify', path: evidencePath }));
+    expect(second.json.data.workPackages).toEqual([
+      expect.objectContaining({ packageId: 'T001', command: verify, status: 'passed' }),
+    ]);
+
+    /* --force bypasses the reuse path and executes the verify command again. */
+    const forced = await runCli(root, ['check', '--change', 'add-feature', '--force'], approvalTestEnv);
+    expect(forced.code, JSON.stringify(forced.json.diagnostics, null, 2)).toBe(0);
+    expect(forced.json.changes).toContainEqual(expect.objectContaining({ action: 'modify', path: evidencePath }));
+  });
+
   it('rejects a succeeded delivery without an exact done_when evidence mapping', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
@@ -322,7 +365,10 @@ describe('work-package protocol', () => {
     await initializeGit(root);
     await advanceSolidToApply(root);
     /* Commit everything the planning Stages produced first, so the dispatch commit below contains
-       the receipt and nothing else — which is what makes `base` a meaningful start for a worker. */
+       the receipt and nothing else. `base` is the pre-dispatch commit on purpose: tests that record
+       a valid delivery re-derive it from HEAD after this returns (a Worker must start from the
+       commit that contains the dispatch receipt), while the base-precedes-dispatch validations use
+       the pre-dispatch commit as their trigger. */
     await git(root, ['add', '-A']);
     await git(root, ['commit', '-qm', 'advanced to apply']);
     const base = await git(root, ['rev-parse', 'HEAD']);
@@ -572,5 +618,118 @@ describe('work-package protocol', () => {
     expect(result.code).toBe(1);
     expect(result.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_WORK_PACKAGE_VERIFY_FAILED');
     expect(result.json.data.workPackages[0].status).toBe('failed');
+  });
+
+  it('writes Git-visible acknowledgement receipts that keep reviewed status through a lost local chain', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const verify = `${process.execPath} -e "process.exit(0)"`;
+    await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([
+      workPackage('T001', { write_paths: ['src/order/**'], verify: [verify] }),
+    ]));
+    const { binding } = await dispatchWithCommittedReceipt(root);
+    const base = await git(root, ['rev-parse', 'HEAD']);
+    await write(root, 'src/order/refund.ts', 'export const refund = true;\n');
+    await git(root, ['add', 'src/order/refund.ts']);
+    await git(root, ['commit', '-qm', 'worker T001']);
+    const head = await git(root, ['rev-parse', 'HEAD']);
+    const deliveryYaml = delivery(binding, {
+      base_commit: base,
+      head_commit: head,
+      changed_paths: ['src/order/refund.ts'],
+      validation: [{ command: verify, exit_code: 0 }],
+      done_when_evidence: [{ criterion: 'T001 is covered by an automated check', evidence: [`verify:${verify}`, 'src/order/refund.ts'] }],
+    });
+    const deliveryPath = `xforge/changes/add-feature/evidence/agents/T001/${binding.executionId}.yaml`;
+    await write(root, deliveryPath, deliveryYaml);
+
+    const checked = await runCli(root, ['check', '--change', 'add-feature'], approvalTestEnv);
+    expect(checked.code, JSON.stringify(checked.json?.diagnostics ?? checked.stderr, null, 2)).toBe(0);
+
+    const integrationEvidence = 'xforge/changes/add-feature/evidence/agents/T001/integration.md';
+    await write(root, integrationEvidence, 'Integrated T001 and reran contract verification.\n');
+    const integrated = await runCli(root, ['work-package', 'acknowledge', '--change', 'add-feature', '--package', 'T001', '--as', 'integrator', '--evidence', integrationEvidence], approvalTestEnv);
+    expect(integrated.code, JSON.stringify(integrated.json.diagnostics, null, 2)).toBe(0);
+    const integratorReceiptPath = `xforge/changes/add-feature/evidence/agents/T001/acknowledgements/${binding.executionId}-integrator.json`;
+    expect(integrated.json.changes).toContainEqual(expect.objectContaining({ action: 'create', path: integratorReceiptPath }));
+    const integratorReceipt = JSON.parse(await readFile(path.join(root, ...integratorReceiptPath.split('/')), 'utf8'));
+    expect(integratorReceipt).toMatchObject({
+      kind: 'WorkPackageAckReceipt', change: 'add-feature', packageId: 'T001', role: 'integrator', status: 'integrated',
+      executionId: binding.executionId, auditCorrelationId: binding.auditCorrelationId, evidence: integrationEvidence,
+    });
+    /* The receipt must be bound to the delivery's bytes, not just its ids. */
+    expect(integratorReceipt.deliveryDigest).toBe(sha256(Buffer.from(deliveryYaml)));
+
+    const reviewEvidence = 'xforge/changes/add-feature/evidence/agents/T001/review.md';
+    await write(root, reviewEvidence, 'Independent review passed.\n');
+    const reviewed = await runCli(root, ['work-package', 'acknowledge', '--change', 'add-feature', '--package', 'T001', '--as', 'reviewer', '--evidence', reviewEvidence], approvalTestEnv);
+    expect(reviewed.code).toBe(0);
+    const reviewerReceiptPath = `xforge/changes/add-feature/evidence/agents/T001/acknowledgements/${binding.executionId}-reviewer.json`;
+    expect(await exists(path.join(root, ...reviewerReceiptPath.split('/')))).toBe(true);
+
+    /* Simulate a lost local chain (pruned or hand-deleted): the committed audit index attests both
+       receipts, so status derivation must still read reviewed from the Git-visible files. */
+    await rm(path.join(root, 'xforge', '.audit'), { recursive: true, force: true });
+    const cloned = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
+    expect(cloned.code, JSON.stringify(cloned.json.diagnostics, null, 2)).toBe(0);
+    expect(cloned.json.data.change.workPackages.packages[0].status).toBe('reviewed');
+    expect(cloned.json.data.change.workPackages.packages[0].acknowledgements).toHaveLength(2);
+  });
+
+  it('ignores an acknowledgement receipt the audit chain never attested', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const verify = `${process.execPath} -e "process.exit(0)"`;
+    await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([
+      workPackage('T001', { write_paths: ['src/order/**'], verify: [verify] }),
+    ]));
+    const { binding } = await dispatchWithCommittedReceipt(root);
+    const base = await git(root, ['rev-parse', 'HEAD']);
+    await write(root, 'src/order/refund.ts', 'export const refund = true;\n');
+    await git(root, ['add', 'src/order/refund.ts']);
+    await git(root, ['commit', '-qm', 'worker T001']);
+    const head = await git(root, ['rev-parse', 'HEAD']);
+    const deliveryYaml = delivery(binding, {
+      base_commit: base,
+      head_commit: head,
+      changed_paths: ['src/order/refund.ts'],
+      validation: [{ command: verify, exit_code: 0 }],
+      done_when_evidence: [{ criterion: 'T001 is covered by an automated check', evidence: [`verify:${verify}`, 'src/order/refund.ts'] }],
+    });
+    await write(root, `xforge/changes/add-feature/evidence/agents/T001/${binding.executionId}.yaml`, deliveryYaml);
+    const checked = await runCli(root, ['check', '--change', 'add-feature'], approvalTestEnv);
+    expect(checked.code, JSON.stringify(checked.json?.diagnostics ?? checked.stderr, null, 2)).toBe(0);
+
+    /* Hand-place a well-formed receipt (valid digest, valid binding) that never went through
+       `work-package acknowledge`: no chain event attests it, so it must not drive status. */
+    const unsigned = {
+      apiVersion: 'xforge.dev/v1alpha2',
+      kind: 'WorkPackageAckReceipt',
+      change: 'add-feature',
+      packageId: 'T001',
+      role: 'reviewer',
+      status: 'reviewed',
+      executionId: binding.executionId,
+      auditCorrelationId: binding.auditCorrelationId,
+      deliveryDigest: sha256(Buffer.from(deliveryYaml)),
+      evidence: 'xforge/changes/add-feature/evidence/agents/T001/review.md',
+      stateRevision: binding.stateRevision,
+      policySnapshotDigest: binding.policySnapshotDigest,
+      gitBase: binding.gitBase,
+      gitHead: binding.gitHead,
+      acknowledgedAt: '2026-08-13T00:00:00.000Z',
+    };
+    const forged = { ...unsigned, digest: sha256(stableStringify(unsigned)) };
+    await write(
+      root,
+      `xforge/changes/add-feature/evidence/agents/T001/acknowledgements/${binding.executionId}-reviewer.json`,
+      `${JSON.stringify(forged, null, 2)}\n`,
+    );
+
+    const result = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
+    expect(result.code).toBe(0);
+    expect(result.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_WORK_PACKAGE_ACK_UNATTESTED');
+    expect(result.json.data.change.workPackages.packages[0].status).toBe('succeeded');
+    expect(result.json.data.change.workPackages.packages[0].acknowledgements).toEqual([]);
   });
 });

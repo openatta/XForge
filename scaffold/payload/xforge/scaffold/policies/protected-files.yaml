@@ -12,5 +12,10 @@ spec:
       - xforge/specs/**
       - xforge/manifest.yaml
       - xforge/lock.yaml
+      - xforge/flows/**
+      - xforge/.audit/**
   exceptActors: [integrator]
-  reason: Shared governance files may be written only by the Integrator or an explicit XForge transaction.
+  reason: >-
+    Shared governance files may be written only by the Integrator, an explicit
+    XForge transaction, or the CLI itself. xforge/scaffold/** is intentionally
+    not denied — the xforge-scaffold Skill legitimately edits it.

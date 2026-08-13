@@ -313,10 +313,35 @@ export interface WorkPackageDispatchReceipt {
   digest: string;
 }
 
+export interface WorkPackageAckReceipt {
+  apiVersion: 'xforge.dev/v1alpha2';
+  kind: 'WorkPackageAckReceipt';
+  change: string;
+  packageId: string;
+  /** Who acknowledged; `status` is the consequence of that role acknowledging. */
+  role: 'integrator' | 'reviewer';
+  status: 'integrated' | 'reviewed';
+  /** Delivery execution being acknowledged. */
+  executionId: string;
+  /** The delivery's audit correlation, so the receipt is bound to a specific dispatch. */
+  auditCorrelationId: string;
+  /** sha256 of the delivery evidence file bytes, so the receipt is bound to its content. */
+  deliveryDigest: string;
+  evidence: string;
+  stateRevision: string;
+  policySnapshotDigest: string;
+  gitBase: string;
+  gitHead: string;
+  acknowledgedAt: string;
+  digest: string;
+}
+
 export interface WorkPackageState extends WorkPackage {
   status: 'ready' | 'blocked' | 'running' | 'succeeded' | 'failed' | 'integrated' | 'reviewed';
   missingDependencies: string[];
   delivery: WorkPackageDelivery | null;
+  /** Ack receipts bound to `delivery.execution_id`, so `status` survives fresh clones and audit pruning. */
+  acknowledgements: WorkPackageAckReceipt[];
 }
 
 export interface WorkPackagePlanState {
@@ -485,6 +510,12 @@ export interface McpServerResource {
     url?: string;
     authTokenEnv: string;
     timeoutSeconds: number;
+    /**
+     * Extra environment variable names the stdio server process may inherit, on top of the built-in
+     * allowlist. Names that look like credentials are always dropped. `authTokenEnv` itself is
+     * always injected as XFORGE_MCP_TOKEN regardless.
+     */
+    env?: { allow?: string[]; allowPrefixes?: string[] };
   };
 }
 

@@ -55,22 +55,18 @@ export async function write(root: string, relative: string, content: string): Pr
   await writeFile(absolute, content);
 }
 
-export async function runCli(root: string, args: string[], env: NodeJS.ProcessEnv = {}): Promise<{
-  code: number;
-  stdout: string;
-  stderr: string;
-  json: any;
-}> {
+async function runCliCore(root: string, args: string[], env: NodeJS.ProcessEnv, stdin?: string): Promise<{ code: number; stdout: string; stderr: string }> {
   const coverageEnvironment = process.env.XFORGE_TEST_NODE_V8_COVERAGE
     ? { NODE_V8_COVERAGE: process.env.XFORGE_TEST_NODE_V8_COVERAGE }
     : {};
-  const result = await new Promise<{ code: number; stdout: string; stderr: string }>((resolve, reject) => {
+  return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [cliPath, ...args], {
       cwd: root,
       env: { ...process.env, ...coverageEnvironment, ...env },
       shell: false,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: [stdin === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
     });
+    if (stdin !== undefined) child.stdin!.end(stdin);
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
     child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk));
@@ -78,6 +74,28 @@ export async function runCli(root: string, args: string[], env: NodeJS.ProcessEn
     child.on('error', reject);
     child.on('close', (code) => resolve({ code: code ?? 1, stdout: Buffer.concat(stdout).toString(), stderr: Buffer.concat(stderr).toString() }));
   });
+}
+
+export async function runCli(root: string, args: string[], env: NodeJS.ProcessEnv = {}): Promise<{
+  code: number;
+  stdout: string;
+  stderr: string;
+  json: any;
+}> {
+  const result = await runCliCore(root, args, env);
+  let json: any = null;
+  try { json = JSON.parse(result.stdout); } catch {}
+  return { ...result, json };
+}
+
+/** Like `runCli`, but feeds `stdin` to the child — the Hook dispatcher and the approval dialogue read it. */
+export async function runCliWithInput(root: string, args: string[], stdin: string, env: NodeJS.ProcessEnv = {}): Promise<{
+  code: number;
+  stdout: string;
+  stderr: string;
+  json: any;
+}> {
+  const result = await runCliCore(root, args, env, stdin);
   let json: any = null;
   try { json = JSON.parse(result.stdout); } catch {}
   return { ...result, json };

@@ -125,12 +125,12 @@ governance:
       minApprovers: 2
       roles: [owner, maintainer, security]
       separationOfDuties: true
-      providers: [enterprise-approvals]
+      providers: [local, enterprise-approvals]
     - id: closing-major
       minApprovers: 2
       roles: [owner, maintainer, security]
       separationOfDuties: true
-      providers: [enterprise-approvals]
+      providers: [local, enterprise-approvals]
   audit:
     requiredEventTypes: [gate.after, stage.entered, approval.decided]
     runtimeCoverage: optional

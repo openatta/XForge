@@ -9,6 +9,7 @@ import type {
   GateResource,
   ProjectContext,
   WorkPackage,
+  WorkPackageAckReceipt,
   WorkPackageDelivery,
   WorkPackageDispatchReceipt,
   WorkPackagePlan,
@@ -22,7 +23,7 @@ import { validateSchema } from './validator.js';
 import { loadYaml } from './yaml.js';
 import { normalizeRule } from './governance.js';
 import { sha256, stableStringify } from './hash.js';
-import { readAuditEvents } from './audit.js';
+import { readAuditEvents, readChangeAuditIndex, readChangeLogEvents } from './audit.js';
 
 const GLOB_MAGIC = /[*?{}[\]]/;
 const UNSUPPORTED_GLOB_MAGIC = /[?{}[\]]/;
@@ -169,7 +170,8 @@ async function git(root: string, args: string[]): Promise<GitResult> {
 }
 
 /**
- * Paths the control plane writes on its own behalf: dispatch receipts and the audit index.
+ * Paths the control plane writes on its own behalf: dispatch receipts, acknowledgement receipts,
+ * and the audit index.
  *
  * These can never count as a worker's output. Citing `evidence/audit/index.json` as proof that a
  * verify command passed is circular — the file exists because XForge dispatched the package, not
@@ -178,7 +180,7 @@ async function git(root: string, args: string[]): Promise<GitResult> {
 function isControlPlaneBookkeeping(filePath: string, changeRoot: string): boolean {
   if (!filePath.startsWith(`${changeRoot}/evidence/`)) return false;
   const tail = filePath.slice(`${changeRoot}/evidence/`.length);
-  return tail.startsWith('audit/') || /^agents\/[^/]+\/dispatch\//.test(tail);
+  return tail.startsWith('audit/') || /^agents\/[^/]+\/(?:dispatch|acknowledgements)\//.test(tail);
 }
 
 function protectedWritePaths(project: ProjectContext, changeId: string, config: ChangeConfig, resources: SelectedResources): string[] {
@@ -321,6 +323,89 @@ function latestDispatch(dispatches: WorkPackageDispatchReceipt[] | undefined): W
     const byTime = Date.parse(left.issuedAt) - Date.parse(right.issuedAt);
     return byTime === 0 ? left.executionId.localeCompare(right.executionId) : byTime;
   }).at(-1) ?? null;
+}
+
+/** Input digest of the audit event that must attest an ack receipt of this digest. */
+export function ackAttestationDigest(digest: string): string {
+  return sha256(stableStringify({ ackReceipt: digest }));
+}
+
+export interface LoadedAckReceipt {
+  receipt: WorkPackageAckReceipt;
+  path: string;
+}
+
+/**
+ * Reads the Git-visible acknowledgement receipts written by `xforge work-package acknowledge`.
+ * Each receipt is bound to one delivery by `executionId`, `auditCorrelationId`, and the delivery
+ * file's sha256; a receipt that fails any binding check is dropped with a warning diagnostic
+ * instead of silently participating in status derivation.
+ */
+async function loadAcknowledgements(
+  project: ProjectContext,
+  changeId: string,
+  knownPackages: Set<string>,
+): Promise<{ acknowledgements: Map<string, LoadedAckReceipt[]>; diagnostics: Diagnostic[] }> {
+  const diagnostics: Diagnostic[] = [];
+  const acknowledgements = new Map<string, LoadedAckReceipt[]>();
+  const changeRoot = `${project.changesPath}/${changeId}`;
+  const changeDirectory = await safeResolve(project.root, changeRoot);
+  const names = (await fg('evidence/agents/*/acknowledgements/*.json', {
+    cwd: changeDirectory,
+    onlyFiles: true,
+    followSymbolicLinks: false,
+    unique: true,
+  })).sort();
+  for (const name of names) {
+    const projectPath = `${changeRoot}/${name}`;
+    let receipt: WorkPackageAckReceipt;
+    try {
+      receipt = JSON.parse(await readFile(await safeResolve(project.root, projectPath), 'utf8')) as WorkPackageAckReceipt;
+    } catch (error) {
+      diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_ACK_INVALID', `Acknowledgement receipt is invalid: ${(error as Error).message}`, projectPath, 'warning'));
+      continue;
+    }
+    const schemaDiagnostics = await validateSchema('work-package-ack', receipt, projectPath);
+    diagnostics.push(...schemaDiagnostics);
+    if (schemaDiagnostics.some((item) => item.severity === 'error')) continue;
+    const parts = name.split('/');
+    const directoryId = parts[2]!;
+    const base = path.posix.basename(name, '.json');
+    const match = /^(.*)-(integrator|reviewer)$/.exec(base);
+    const executionId = match?.[1] ?? '';
+    const role = match?.[2] as WorkPackageAckReceipt['role'] | undefined;
+    const { digest, ...unsigned } = receipt;
+    if (!match || receipt.change !== changeId || receipt.packageId !== directoryId || receipt.executionId !== executionId || receipt.role !== role) {
+      diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_ACK_PATH_MISMATCH', 'Acknowledgement identifiers must match their Change, package, execution, and role path.', projectPath, 'warning'));
+      continue;
+    }
+    if (receipt.status !== (receipt.role === 'integrator' ? 'integrated' : 'reviewed')) {
+      diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_ACK_ROLE_MISMATCH', 'Acknowledgement status must match its role.', projectPath, 'warning'));
+      continue;
+    }
+    if (digest !== sha256(stableStringify(unsigned))) {
+      diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_ACK_DIGEST_INVALID', 'Work package acknowledgement receipt digest is invalid.', projectPath, 'warning'));
+      continue;
+    }
+    if (!knownPackages.has(receipt.packageId)) {
+      diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_ACK_UNKNOWN', `Acknowledgement references unknown work package ${receipt.packageId}.`, projectPath, 'warning'));
+      continue;
+    }
+    const deliveryPath = `${changeRoot}/evidence/agents/${directoryId}/${executionId}.yaml`;
+    try {
+      if (sha256(await readFile(await safeResolve(project.root, deliveryPath))) !== receipt.deliveryDigest) {
+        diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_ACK_DELIVERY_MISMATCH', 'Acknowledgement deliveryDigest does not match the delivery evidence file.', projectPath, 'warning'));
+        continue;
+      }
+    } catch {
+      diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_ACK_DELIVERY_MISSING', 'Acknowledgement references a delivery evidence file that does not exist.', projectPath, 'warning'));
+      continue;
+    }
+    const list = acknowledgements.get(receipt.packageId) ?? [];
+    list.push({ receipt, path: projectPath });
+    acknowledgements.set(receipt.packageId, list);
+  }
+  return { acknowledgements, diagnostics };
 }
 
 async function validateSuccessfulDelivery(
@@ -621,7 +706,28 @@ export async function resolveWorkPackages(
   diagnostics.push(...loadedDeliveries.diagnostics);
   const loadedDispatches = await loadDispatches(project, changeId, uniqueIds);
   diagnostics.push(...loadedDispatches.diagnostics);
+  const loadedAcknowledgements = await loadAcknowledgements(project, changeId, uniqueIds);
+  diagnostics.push(...loadedAcknowledgements.diagnostics);
   const auditEvents = (await readAuditEvents(project)).filter((event) => event.change === changeId && event.outcome === 'succeeded');
+  /*
+   * Attestation sets for ack receipts: an ack receipt is real only when the audit chain carries an
+   * event whose input is exactly `{ ackReceipt: <digest> }`. Both the local chain and the committed
+   * per-Change index are checked, mirroring the transition orphan scan; with no audit data at all
+   * (fresh clone of a repo that never committed its chain) the receipt is the only Git-committed
+   * truth and is accepted as-is.
+   */
+  const changeLogEvents = await readChangeLogEvents(project, changeId);
+  const committedIndex = await readChangeAuditIndex(project, changeId);
+  const ackEventTypes = new Set(['work-package.integrated', 'work-package.reviewed']);
+  const localAckDigests = new Set(changeLogEvents.filter((event) => ackEventTypes.has(event.eventType)).map((event) => event.inputDigest));
+  const committedAckDigests = new Set((committedIndex?.digestValid ? committedIndex.document.events : [])
+    .filter((event) => ackEventTypes.has(event.eventType))
+    .map((event) => event.inputDigest));
+  const noAuditData = changeLogEvents.length === 0 && !committedIndex;
+  const ackAttested = (receipt: WorkPackageAckReceipt): boolean => {
+    const expected = ackAttestationDigest(receipt.digest);
+    return noAuditData || localAckDigests.has(expected) || committedAckDigests.has(expected);
+  };
   const latestByPackage = new Map<string, WorkPackageDelivery | null>();
   const invalidDeliveries = new Set<string>();
   for (const workPackage of plan.packages) {
@@ -660,11 +766,30 @@ export async function resolveWorkPackages(
       const dependencyDelivery = latestByPackage.get(dependency);
       return !dependencyDelivery || dependencyDelivery.status !== 'succeeded' || invalidDeliveries.has(dependency);
     });
+    const acknowledgements = delivery
+      ? (loadedAcknowledgements.acknowledgements.get(workPackage.id) ?? [])
+        .filter((item) => item.receipt.executionId === delivery.execution_id)
+      : [];
+    for (const item of acknowledgements) {
+      if (ackAttested(item.receipt)) continue;
+      /* A receipt the chain never attested reads as a forgery and must not drive status. */
+      diagnostics.push(diagnostic(
+        'XFORGE_WORK_PACKAGE_ACK_UNATTESTED',
+        `Acknowledgement receipt for ${workPackage.id} (${item.receipt.role}) is not attested by the audit chain and is ignored for status derivation.`,
+        item.path,
+        'warning',
+        { packageId: workPackage.id, role: item.receipt.role },
+      ));
+    }
+    const attestedAcks = acknowledgements.filter((item) => ackAttested(item.receipt));
     let status: WorkPackageState['status'];
     if (delivery?.status === 'succeeded' && !invalidDeliveries.has(workPackage.id)) {
       const lifecycle = auditEvents.filter((event) => event.workPackage === workPackage.id
         && (!delivery.audit_correlation_id || event.correlationId === delivery.audit_correlation_id));
-      if (lifecycle.some((event) => event.eventType === 'work-package.reviewed')) status = 'reviewed';
+      /* Receipt files first: they are Git-committed truth that survives fresh clones and pruning. */
+      if (attestedAcks.some((item) => item.receipt.status === 'reviewed')) status = 'reviewed';
+      else if (attestedAcks.some((item) => item.receipt.status === 'integrated')) status = 'integrated';
+      else if (lifecycle.some((event) => event.eventType === 'work-package.reviewed')) status = 'reviewed';
       else if (lifecycle.some((event) => event.eventType === 'work-package.integrated')) status = 'integrated';
       else status = 'succeeded';
     }
@@ -672,7 +797,7 @@ export async function resolveWorkPackages(
     else if (delivery?.status === 'blocked') status = 'blocked';
     else if (dispatch) status = 'running';
     else status = missingDependencies.length === 0 ? 'ready' : 'blocked';
-    return { ...workPackage, status, missingDependencies, delivery };
+    return { ...workPackage, status, missingDependencies, delivery, acknowledgements: attestedAcks.map((item) => item.receipt) };
   });
 
   if (options.requireDeliveries) {

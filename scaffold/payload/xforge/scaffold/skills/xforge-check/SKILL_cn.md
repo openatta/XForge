@@ -24,7 +24,7 @@ allowed-tools: Read Grep Glob Write Edit Bash(npx:*)
 3. 核对测试、rollout、monitoring、stop signals、owner、path scope、依赖与并行边界是否匹配重大影响。
 4. 运行 `npx --no-install xforge check --change <id>`，把确定性诊断作为证据输入。
 5. 按 blocker、warning、suggestion 写报告；每项指出 Artifact/Requirement 位置、原因和 `reworkTo` Stage。
-6. 在 `check-report.md` 与所有 Evidence 台账都写完之后，再运行一次 `npx --no-install xforge check --change <id>`，它会对最终内容运行整个 Stage 的 Gate 集合；需要同时刷新更早 Stage 的 Evidence 时加 `--all-gates`。
+6. 在 `check-report.md` 与所有 Evidence 台账都写完之后，再运行一次 `npx --no-install xforge check --change <id>`，它会对最终内容运行整个 Stage 的 Gate 集合。不要用 `--all-gates` 刷新陈旧 Evidence——它会连 Change 尚未到达的 Stage 的 Gate 也一起跑，而那些 Gate 现在还不可能通过；正确做法是在最后一次写入后重跑不带该 flag 的 `npx --no-install xforge check --change <id>`（Gate Evidence 绑定 Gate 运行当刻的 content revision）。
 7. 刷新 State；有 blocker 时请求 State 指定的 rework Transition；无 blocker 时仍由 CLI Gate 与 Approval 决定是否可运行 `npx --no-install xforge transition --change <id> --to apply`。
 
 # 证据

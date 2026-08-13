@@ -13,3 +13,11 @@ spec:
   command: ["xforge-enterprise-approvals-server-not-configured"]
   authTokenEnv: XFORGE_ENTERPRISE_APPROVALS_TOKEN
   timeoutSeconds: 30
+  # The server subprocess does NOT inherit your shell environment. It receives only the built-in
+  # allowlist (PATH, HOME, proxies, CA bundle, npm config, ...) plus the variables declared here;
+  # the token from authTokenEnv is always injected as XFORGE_MCP_TOKEN. Credential-looking names
+  # (e.g. *TOKEN*, *SECRET*) are never inherited even when listed.
+  env:
+    allow: []            # e.g. [CORP_APPROVALS_REGION, CORP_APPROVALS_ENDPOINT]
+    allowPrefixes: []    # e.g. [CORP_APPROVALS_]
+

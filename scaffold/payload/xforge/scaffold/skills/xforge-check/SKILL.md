@@ -24,7 +24,7 @@ allowed-tools: Read Grep Glob Write Edit Bash(npx:*)
 3. Verify that tests, rollout, monitoring, stop signals, owners, path scope, dependencies, and parallel boundaries match the critical impact.
 4. Run `npx --no-install xforge check --change <id>` and use deterministic diagnostics as evidence input.
 5. Write blocker, warning, and suggestion findings with Artifact/Requirement location, reason, and `reworkTo` Stage.
-6. With `check-report.md` and every Evidence ledger written, run `npx --no-install xforge check --change <id>` once more; it runs the whole Stage Gate set against the final content. Use `--all-gates` when Evidence from earlier Stages must be refreshed too.
+6. With `check-report.md` and every Evidence ledger written, run `npx --no-install xforge check --change <id>` once more; it runs the whole Stage Gate set against the final content. Do not use `--all-gates` to refresh stale Evidence — it would also run Gates belonging to Stages the Change has not reached, which cannot pass yet. Instead re-run plain `npx --no-install xforge check --change <id>` after your last write: Gate Evidence binds to the content revision at the moment the Gate runs.
 7. Refresh State. Request the State-specified rework transition for blockers; without blockers, let CLI Gates and Approval determine whether transition to Apply is ready.
 
 # Evidence

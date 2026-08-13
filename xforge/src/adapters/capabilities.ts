@@ -50,3 +50,19 @@ export const PERMISSION_POLICY_SCOPES: Record<TargetId, NonNullable<AdapterCapab
   opencode: { capabilities: ['fs.read', 'fs.write', 'shell', 'network', 'subagent', 'external.write'], actorScoped: false, stageScoped: false },
   'github-copilot': { capabilities: [], actorScoped: false, stageScoped: false },
 };
+
+/**
+ * Which per-resource projection families each target actually emits. A `false` entry is a
+ * structural, unchanging property of the target (Codex has no command files and no rule files —
+ * it loads Skills, Agents, and AGENTS.md only), so `planProjection` reports the resources that
+ * target cannot express instead of dropping them silently. `guidance` is `true` for every target:
+ * the repo-root AGENTS.md is projected regardless of selected targets, and the capability level
+ * only describes how faithfully the host honours it, so no per-resource guidance gap can occur.
+ */
+export const PROJECTED_DIMENSIONS: Record<TargetId, { commands: boolean; rules: boolean; guidance: boolean }> = {
+  claude: { commands: true, rules: true, guidance: true },
+  codex: { commands: false, rules: false, guidance: true },
+  cursor: { commands: true, rules: true, guidance: true },
+  opencode: { commands: true, rules: false, guidance: true },
+  'github-copilot': { commands: true, rules: true, guidance: true },
+};

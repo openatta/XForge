@@ -14,7 +14,7 @@ allowed-tools: Read Grep Glob Bash
 
 - 权限来自被选择的 ready Action 与对应 Skill；Continue 本身不扩大写权限。
 - external/CLI/用户决定 Action 不得由 Agent 冒领；Archive 永远需要明确授权。
-- Approval Action 只能请求或导入人类/外部 provider receipt，Agent 永远不能自行批准。
+- Approval Action 只能请求人类/外部 provider receipt（不存在 receipt 文件导入路径），Agent 永远不能自行批准。
 
 # 执行
 
@@ -22,7 +22,7 @@ allowed-tools: Read Grep Glob Bash
 2. 读取 ready Actions、blocking diagnostics、inputs、writes、doneWhen、requiredEvidence 和 reworkTo。
 3. 选择与授权一致的 Action，加载并完整遵守对应 Skill，完成后重新查询 State。
 4. 连续推进时重复上述循环，但不得跳过 Clarify/Check、失败 Gate 或 revision 检查。
-5. 默认最多推进到 Verify satisfied；用户未明确授权时停在 verified-active。
+5. 默认最多推进到 Verify satisfied（Stage 到达 `ready-to-archive`）；用户未明确授权时不执行归档。
 
 # 证据
 

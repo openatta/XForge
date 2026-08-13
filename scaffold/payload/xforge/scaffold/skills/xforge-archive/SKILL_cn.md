@@ -1,13 +1,13 @@
 ---
 name: xforge-archive
-description: 兼容旧入口，把明确的归档请求转交 xforge-verify 的 archive-current 模式；仅用于迁移期用户仍调用旧 Archive Skill 时，不再直接同步 Specs 或移动 Change。
+description: 兼容旧入口，把明确的归档请求转交 xforge-verify 的 archive-current 流程，由该流程驱动 `xforge archive` CLI（同步 Specs、终局治理复查、原子移动 Change）；仅用于仍以旧 Archive Skill 名称发起明确归档请求时。
 allowed-tools: Read Grep Glob Bash(npx:*)
 ---
 
 # 不变量
 
 - 运行 `npx --no-install xforge state --change <id>`，解析唯一 active Change，不猜测 readiness 或 Evidence freshness。
-- 本 Skill 仅是迁移 shim；归档语义、验证与权限全部由 `xforge-verify` 的 `archive-current` 模式承担。
+- 本 Skill 仅是委托入口；归档语义、验证与权限由 `xforge-verify` 的 `archive-current` 模式承担，实际同步 Specs 与原子移动 Change 由该流程驱动的 `xforge archive` CLI 完成。
 
 # 权限
 

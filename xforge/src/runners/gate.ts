@@ -1,9 +1,9 @@
 import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { Diagnostic, FileChange, GateEvidence, GateResource, ProjectContext } from '../types.js';
+import type { ApprovalReceipt, Diagnostic, FileChange, GateEvidence, GateResource, ProjectContext } from '../types.js';
 import { CLI_NAME, CLI_VERSION, MAX_GATE_OUTPUT_BYTES, PROTOCOL_VERSION } from '../constants.js';
-import { atomicWrite } from '../core/files.js';
+import { atomicWrite, rollbackWrittenFile } from '../core/files.js';
 import { sha256, stableStringify } from '../core/hash.js';
 import { normalizeRelative, safeResolve } from '../core/path-safety.js';
 import { XForgeError, diagnostic } from '../core/errors.js';
@@ -12,43 +12,17 @@ import { loadSelectedResources } from '../core/resource-loader.js';
 import { resolveControlPlane } from '../core/control-plane.js';
 import { runtimeCliIntegrity } from '../core/identity.js';
 import { recordAudit } from '../core/audit.js';
+import { buildSubprocessEnvironment } from '../core/subprocess-env.js';
 import { evaluateCheckFindings } from '../core/check-findings.js';
 import { evaluateConstitutionCheck } from '../core/constitution-check.js';
 import { knownIdentities } from '../core/ledger-identity.js';
 
-/**
- * Gate subprocesses never inherit the ambient environment. This is the built-in allowlist: enough
- * for the shipped `npm test` / `npm audit` Gates to work on a developer machine, in CI, and behind
- * a corporate proxy, without becoming a blanket passthrough.
- */
-const DEFAULT_GATE_ENV_ALLOW = [
-  'PATH', 'HOME', 'SHELL', 'USER', 'LOGNAME', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TZ', 'TERM',
-  'TMPDIR', 'TEMP', 'TMP',
-  'SystemRoot', 'COMSPEC', 'PATHEXT', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'ProgramData',
-  'ProgramFiles', 'ProgramFiles(x86)', 'NUMBER_OF_PROCESSORS', 'OS',
-  'CI', 'NODE_ENV', 'FORCE_COLOR', 'NO_COLOR',
-  'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'no_proxy',
-  'NODE_EXTRA_CA_CERTS', 'SSL_CERT_FILE', 'SSL_CERT_DIR',
-];
-
-/** `npm_config_*` carries registry/cache/proxy settings; credential-shaped names are filtered below. */
-const DEFAULT_GATE_ENV_PREFIXES = ['npm_config_', 'NPM_CONFIG_'];
-
-/** Never inherited, from any source: the manifest cannot opt a credential back in. */
-const GATE_ENV_DENY = /(?:password|passwd|secret|token|api[_-]?key|auth|credential|cookie|session|private[_-]?key)/i;
-
 function gateEnvironment(project: ProjectContext, gate: GateResource): NodeJS.ProcessEnv {
   const manifest = project.manifest.gates?.env;
-  const allow = new Set([...DEFAULT_GATE_ENV_ALLOW, ...(manifest?.allow ?? []), ...(gate.spec.env?.allow ?? [])]);
-  const prefixes = [...DEFAULT_GATE_ENV_PREFIXES, ...(manifest?.allowPrefixes ?? []), ...(gate.spec.env?.allowPrefixes ?? [])];
-  const environment: NodeJS.ProcessEnv = {};
-  for (const [name, value] of Object.entries(process.env)) {
-    if (value === undefined || value === '') continue;
-    if (GATE_ENV_DENY.test(name)) continue;
-    if (!allow.has(name) && !prefixes.some((prefix) => prefix.length > 0 && name.startsWith(prefix))) continue;
-    environment[name] = value;
-  }
-  return environment;
+  return buildSubprocessEnvironment({
+    allow: [...(manifest?.allow ?? []), ...(gate.spec.env?.allow ?? [])],
+    allowPrefixes: [...(manifest?.allowPrefixes ?? []), ...(gate.spec.env?.allowPrefixes ?? [])],
+  });
 }
 
 function redact(input: string): string {
@@ -132,24 +106,82 @@ export interface GateRunResult {
   change: FileChange;
 }
 
+interface GateContext {
+  flow: string;
+  revision: {
+    contentRevision: string;
+    stateRevision: string;
+    policySnapshotDigest: string;
+    gitBase: string;
+    gitHead: string;
+  };
+  stage: string;
+  approvals: ApprovalReceipt[];
+}
+
+async function resolveGateContext(project: ProjectContext, changeId: string, gate: GateResource): Promise<GateContext> {
+  const resolved = await resolveChangeState(project, changeId);
+  const resources = await loadSelectedResources(project);
+  const control = isStageFlow(resolved.flow) && resolved.flow.governance
+    ? await resolveControlPlane(project, changeId, resolved.flow, resolved.state, resources, resolved.config)
+    : null;
+  const flow = resolved.flow.metadata.name;
+  const revision = control?.governance.revision ?? {
+    contentRevision: sha256(stableStringify({ changeId, flow })),
+    stateRevision: sha256(stableStringify({ changeId, flow, stage: 'legacy' })),
+    policySnapshotDigest: sha256(stableStringify({ legacy: true })), gitBase: 'unknown', gitHead: 'unknown',
+  };
+  return { flow, revision, stage: control?.governance.currentStage ?? 'legacy', approvals: control?.governance.approvals ?? [] };
+}
+
+/**
+ * The input digest a Gate run for this Change would produce. It covers the Gate definition, the
+ * governance revision (including git head), and the structural pre-check — so an existing passed
+ * Evidence with a matching digest proves "this exact Gate was run against this exact state".
+ */
+export async function gateInputDigest(
+  project: ProjectContext,
+  changeId: string,
+  gate: GateResource,
+  structurePassed: boolean,
+): Promise<string> {
+  const { revision } = await resolveGateContext(project, changeId, gate);
+  return sha256(stableStringify({ gate, revision, structurePassed }));
+}
+
+/**
+ * An existing passed Evidence that a re-run may reuse instead of executing the Gate again. Returns
+ * null when the file is absent, malformed, belongs to another Gate/Change, is not a passed result,
+ * fails its own digest check, or was produced for different inputs — any of those means the Gate
+ * must run.
+ */
+export async function reusablePassedEvidence(
+  project: ProjectContext,
+  changeId: string,
+  gate: GateResource,
+  structurePassed: boolean,
+  evidencePath: string,
+): Promise<{ evidence: GateEvidence; digest: string } | null> {
+  let source: string;
+  try { source = await readFile(await safeResolve(project.root, evidencePath), 'utf8'); } catch { return null; }
+  let existing: GateEvidence;
+  try { existing = JSON.parse(source) as GateEvidence; } catch { return null; }
+  const { digest: existingDigest, ...existingUnsigned } = existing;
+  if (existing.gate !== gate.metadata.name || existing.change !== changeId) return null;
+  if (existing.status !== 'passed') return null;
+  if (existingDigest !== sha256(stableStringify(existingUnsigned))) return null;
+  if (existing.inputDigest !== await gateInputDigest(project, changeId, gate, structurePassed)) return null;
+  return { evidence: existing, digest: sha256(source) };
+}
+
 export async function runGate(
   project: ProjectContext,
   changeId: string,
   gate: GateResource,
   structurePassed: boolean,
 ): Promise<GateRunResult> {
-  const resolved = await resolveChangeState(project, changeId);
-  const resources = await loadSelectedResources(project);
-  const control = isStageFlow(resolved.flow) && resolved.flow.governance
-    ? await resolveControlPlane(project, changeId, resolved.flow, resolved.state, resources, resolved.config)
-    : null;
-  const revision = control?.governance.revision ?? {
-    contentRevision: sha256(stableStringify({ changeId, flow: resolved.flow.metadata.name })),
-    stateRevision: sha256(stableStringify({ changeId, flow: resolved.flow.metadata.name, stage: 'legacy' })),
-    policySnapshotDigest: sha256(stableStringify({ legacy: true })), gitBase: 'unknown', gitHead: 'unknown',
-  };
-  const stage = control?.governance.currentStage ?? 'legacy';
-  await recordAudit(project, { eventType: 'gate.before', change: changeId, flow: resolved.flow.metadata.name, stage, revision, refs: { gates: [gate.metadata.name] }, input: { gate: gate.metadata.name }, outcome: 'succeeded' });
+  const { flow, revision, stage, approvals } = await resolveGateContext(project, changeId, gate);
+  await recordAudit(project, { eventType: 'gate.before', change: changeId, flow, stage, revision, refs: { gates: [gate.metadata.name] }, input: { gate: gate.metadata.name }, outcome: 'succeeded' });
   const startedAt = new Date();
   let result: GateProcessResult;
   if (gate.spec.builtin === 'structure') {
@@ -180,7 +212,7 @@ export async function runGate(
     };
   } else if (gate.spec.builtin === 'constitution-check') {
     /* The Constitution is documented as the first governance layer; this is what makes it one. */
-    const known = await knownIdentities(project, changeId, control?.governance.approvals ?? []);
+    const known = await knownIdentities(project, changeId, approvals);
     const constitution = await evaluateConstitutionCheck(project, changeId, known);
     result = {
       command: ['builtin:constitution-check'],
@@ -212,7 +244,7 @@ export async function runGate(
     schemaVersion: '1' as const,
     gate: gate.metadata.name,
     change: changeId,
-    flow: resolved.flow.metadata.name,
+    flow,
     stage,
     stateRevision: revision.stateRevision,
     contentRevision: revision.contentRevision,
@@ -247,7 +279,14 @@ export async function runGate(
     }
   }
   await atomicWrite(project.root, evidencePath, `${JSON.stringify(evidence, null, 2)}\n`);
-  await recordAudit(project, { eventType: 'gate.after', change: changeId, flow: resolved.flow.metadata.name, stage, revision, refs: { gates: [gate.metadata.name] }, outcome: status === 'passed' ? 'succeeded' : 'failed', durationMs: evidence.durationMs, input: { gate: gate.metadata.name }, output: { evidence: evidence.digest, status } });
+  try {
+    await recordAudit(project, { eventType: 'gate.after', change: changeId, flow, stage, revision, refs: { gates: [gate.metadata.name] }, outcome: status === 'passed' ? 'succeeded' : 'failed', durationMs: evidence.durationMs, input: { gate: gate.metadata.name }, output: { evidence: evidence.digest, status } });
+  } catch (error) {
+    /* Evidence the chain never attests must not stay: it would read as a passing Gate that never
+       actually closed its audit loop. A re-run of `xforge check` recreates it. */
+    await rollbackWrittenFile(project.root, evidencePath);
+    throw error;
+  }
   return {
     evidence,
     diagnostic: status === 'failed'

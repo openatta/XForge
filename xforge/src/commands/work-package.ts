@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { stat } from 'node:fs/promises';
-import type { Diagnostic, FileChange, ProjectContext, WorkPackageDispatchReceipt } from '../types.js';
+import { readFile, stat } from 'node:fs/promises';
+import type { Diagnostic, FileChange, ProjectContext, WorkPackageAckReceipt, WorkPackageDispatchReceipt } from '../types.js';
 import { recordAudit } from '../core/audit.js';
 import { resolveControlPlane } from '../core/control-plane.js';
 import { XForgeError, diagnostic } from '../core/errors.js';
-import { atomicWrite } from '../core/files.js';
+import { atomicWrite, rollbackWrittenFile } from '../core/files.js';
 import { isStageFlow, resolveChangeState } from '../core/flow-resolver.js';
 import { sha256, stableStringify } from '../core/hash.js';
 import { assertManaged } from '../core/project-loader.js';
@@ -55,12 +55,18 @@ export async function executeWorkPackageDispatch(project: ProjectContext, option
   const changes: FileChange[] = [{ action: 'create', path: target, digest: sha256(content), source: `work-package:${options.packageId}:dispatch` }];
   if (!options.dryRun) {
     await atomicWrite(project.root, target, content);
-    await recordAudit(project, {
-      eventType: 'work-package.dispatched', change: options.change, flow: resolved.flow.metadata.name, stage: control.governance.currentStage,
-      workPackage: options.packageId, correlationId: auditCorrelationId, revision: control.governance.revision,
-      actor: { id: process.env.USER ?? 'unknown', provider: 'local-os', role: 'coordinator', type: 'human' },
-      outcome: 'succeeded', input: { packageId: options.packageId, executionId, dispatchDigest: receipt.digest },
-    });
+    try {
+      await recordAudit(project, {
+        eventType: 'work-package.dispatched', change: options.change, flow: resolved.flow.metadata.name, stage: control.governance.currentStage,
+        workPackage: options.packageId, correlationId: auditCorrelationId, revision: control.governance.revision,
+        actor: { id: process.env.USER ?? 'unknown', provider: 'local-os', role: 'coordinator', type: 'human' },
+        outcome: 'succeeded', input: { packageId: options.packageId, executionId, dispatchDigest: receipt.digest },
+      });
+    } catch (error) {
+      /* A dispatch receipt the chain never attests must not stay on disk. */
+      await rollbackWrittenFile(project.root, target);
+      throw error;
+    }
   }
   return { data: { change: options.change, packageId: options.packageId, receipt, dryRun: options.dryRun }, diagnostics, changes };
 }
@@ -108,20 +114,72 @@ export async function executeWorkPackageAcknowledge(project: ProjectContext, opt
       `${options.role} acknowledgement requires ${options.role === 'integrator' ? 'a succeeded delivery' : 'an integrated delivery'}; current status is ${selected.status}.`,
     ));
   }
-  const status = options.role === 'integrator' ? 'integrated' : 'reviewed';
-  if (!options.dryRun && selected.status !== status && selected.status !== 'reviewed') {
+  const status: WorkPackageAckReceipt['status'] = options.role === 'integrator' ? 'integrated' : 'reviewed';
+  const delivery = selected.delivery;
+  const changes: FileChange[] = [];
+  /*
+   * Protocol 2 deliveries carry an audit correlation, and those acknowledgements get a Git-visible
+   * receipt file (like dispatch receipts) so `integrated`/`reviewed` survive fresh clones and audit
+   * pruning. The status derivation reads the receipt file first and cross-checks it against the
+   * audit chain; a receipt the chain never attested is ignored with a warning. Pre-binding
+   * deliveries keep the legacy chain-only acknowledgement.
+   */
+  if (delivery?.execution_id && delivery.audit_correlation_id) {
+    const target = `${project.changesPath}/${options.change}/evidence/agents/${options.packageId}/acknowledgements/${delivery.execution_id}-${options.role}.json`;
+    const unsigned = {
+      apiVersion: 'xforge.dev/v1alpha2' as const,
+      kind: 'WorkPackageAckReceipt' as const,
+      change: options.change,
+      packageId: options.packageId,
+      role: options.role,
+      status,
+      executionId: delivery.execution_id,
+      auditCorrelationId: delivery.audit_correlation_id,
+      deliveryDigest: sha256(await readFile(await safeResolve(project.root, `${project.changesPath}/${options.change}/evidence/agents/${options.packageId}/${delivery.execution_id}.yaml`))),
+      evidence,
+      stateRevision: control.governance.revision.stateRevision,
+      policySnapshotDigest: control.governance.revision.policySnapshotDigest,
+      gitBase: control.governance.revision.gitBase,
+      gitHead: control.governance.revision.gitHead,
+      acknowledgedAt: new Date().toISOString(),
+    };
+    const receipt: WorkPackageAckReceipt = { ...unsigned, digest: sha256(stableStringify(unsigned)) };
+    const content = `${JSON.stringify(receipt, null, 2)}\n`;
+    changes.push({ action: 'create', path: target, digest: sha256(content), source: `work-package:${options.packageId}:ack:${options.role}` });
+    if (!options.dryRun && selected.status !== status && selected.status !== 'reviewed') {
+      await atomicWrite(project.root, target, content);
+      try {
+        await recordAudit(project, {
+          eventType: `work-package.${status}`,
+          change: options.change,
+          flow: resolved.flow.metadata.name,
+          stage: control.governance.currentStage,
+          workPackage: options.packageId,
+          correlationId: delivery.audit_correlation_id,
+          revision: control.governance.revision,
+          actor: { id: process.env.USER ?? 'unknown', provider: 'local-os', role: options.role, type: 'agent' },
+          outcome: 'succeeded',
+          input: { ackReceipt: receipt.digest },
+        });
+      } catch (error) {
+        /* An ack receipt the chain never attests must not stay on disk. */
+        await rollbackWrittenFile(project.root, target);
+        throw error;
+      }
+    }
+  } else if (!options.dryRun && selected.status !== status && selected.status !== 'reviewed') {
     await recordAudit(project, {
       eventType: `work-package.${status}`,
       change: options.change,
       flow: resolved.flow.metadata.name,
       stage: control.governance.currentStage,
       workPackage: options.packageId,
-      correlationId: selected.delivery?.audit_correlation_id,
+      correlationId: delivery?.audit_correlation_id,
       revision: control.governance.revision,
       actor: { id: process.env.USER ?? 'unknown', provider: 'local-os', role: options.role, type: 'agent' },
       outcome: 'succeeded',
-      input: { packageId: options.packageId, deliveryExecutionId: selected.delivery?.execution_id, evidence },
+      input: { packageId: options.packageId, deliveryExecutionId: delivery?.execution_id, evidence },
     });
   }
-  return { data: { change: options.change, packageId: options.packageId, role: options.role, evidence, status, dryRun: options.dryRun }, diagnostics, changes: [] };
+  return { data: { change: options.change, packageId: options.packageId, role: options.role, evidence, status, dryRun: options.dryRun }, diagnostics, changes };
 }

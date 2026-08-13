@@ -5,7 +5,7 @@ import addFormatsModule from 'ajv-formats';
 import type { Diagnostic } from '../types.js';
 import { diagnostic } from './errors.js';
 
-export type SchemaName = 'manifest' | 'lock' | 'flow' | 'change' | 'agent' | 'gate' | 'rule' | 'permission-policy' | 'hook' | 'approval-receipt' | 'transition-receipt' | 'audit-event' | 'script' | 'scaffold' | 'work-package' | 'work-package-delivery' | 'work-package-dispatch' | 'mcp-server';
+export type SchemaName = 'manifest' | 'lock' | 'flow' | 'change' | 'agent' | 'gate' | 'rule' | 'permission-policy' | 'hook' | 'approval-receipt' | 'transition-receipt' | 'audit-event' | 'script' | 'scaffold' | 'work-package' | 'work-package-delivery' | 'work-package-dispatch' | 'work-package-ack' | 'mcp-server';
 
 const schemaRoot = path.resolve(new URL('../../schemas', import.meta.url).pathname);
 let validatorsPromise: Promise<Map<SchemaName, ValidateFunction>> | null = null;
@@ -24,7 +24,7 @@ async function buildValidators(): Promise<Map<SchemaName, ValidateFunction>> {
   const ajv = new Ajv2020({ allErrors: true, strict: false });
   const addFormats = addFormatsModule as unknown as (instance: Ajv2020) => Ajv2020;
   addFormats(ajv);
-  const names: SchemaName[] = ['manifest', 'lock', 'flow', 'change', 'agent', 'gate', 'rule', 'permission-policy', 'hook', 'approval-receipt', 'transition-receipt', 'audit-event', 'script', 'scaffold', 'work-package', 'work-package-delivery', 'work-package-dispatch', 'mcp-server'];
+  const names: SchemaName[] = ['manifest', 'lock', 'flow', 'change', 'agent', 'gate', 'rule', 'permission-policy', 'hook', 'approval-receipt', 'transition-receipt', 'audit-event', 'script', 'scaffold', 'work-package', 'work-package-delivery', 'work-package-dispatch', 'work-package-ack', 'mcp-server'];
   const result = new Map<SchemaName, ValidateFunction>();
   for (const name of names) {
     const schema = JSON.parse(await readFile(path.join(schemaRoot, `${name}.schema.json`), 'utf8')) as object;

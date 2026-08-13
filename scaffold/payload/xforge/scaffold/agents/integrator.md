@@ -19,4 +19,4 @@ the stored integration-evidence path.
 Never approve a Major exception or archive the Change.
 Never issue an Approval, transition the Stage, or hand-write Gate/Audit evidence;
 return the integration correlation and evidence to Main Agent for recording with
-`work-package acknowledge --as integrator`.
+`npx --no-install xforge work-package acknowledge --as integrator`.

@@ -1,11 +1,14 @@
 import { randomUUID } from 'node:crypto';
+import { readdir } from 'node:fs/promises';
+import path from 'node:path';
 import type { ApprovalPolicy, ApprovalReceipt, Diagnostic, FileChange, NextAction, ProjectContext } from '../types.js';
-import { recordAudit } from '../core/audit.js';
+import { approvalVerifiedInChain, recordAudit } from '../core/audit.js';
 import { resolveControlPlane } from '../core/control-plane.js';
 import { XForgeError, diagnostic } from '../core/errors.js';
-import { atomicWrite } from '../core/files.js';
+import { atomicWrite, readJsonIfExists, rollbackWrittenFile } from '../core/files.js';
 import { isStageFlow, resolveChangeState } from '../core/flow-resolver.js';
 import { sha256, stableStringify } from '../core/hash.js';
+import { safeResolve } from '../core/path-safety.js';
 import { assertManaged } from '../core/project-loader.js';
 import { loadSelectedResources } from '../core/resource-loader.js';
 import { approvalReceiptDigest } from '../core/approval-receipt.js';
@@ -143,10 +146,25 @@ export async function executeApprove(project: ProjectContext, options: ApproveOp
 
   if (options.provider) {
     const provider = project.manifest.approvals?.providers.find((item) => item.id === options.provider);
-    if (!provider) throw new XForgeError(diagnostic('XFORGE_APPROVAL_PROVIDER_FORBIDDEN', `Approval provider is not authorized: ${options.provider}.`));
-    if (!policy.providers.includes(provider.id)) throw new XForgeError(diagnostic('XFORGE_APPROVAL_PROVIDER_FORBIDDEN', `Policy ${policy.id} does not allow provider ${provider.id}.`));
+    if (!provider) {
+      throw new XForgeError(
+        diagnostic('XFORGE_APPROVAL_PROVIDER_FORBIDDEN', `Approval provider is not authorized: ${options.provider}.`),
+        { nextActions: [{ action: 'declare-approval-provider', type: 'approval', actor: 'human', reason: `Declare provider ${options.provider} under approvals.providers in xforge/manifest.yaml (mcpServer, roles), or re-run without --provider to select from the policy's own list.` }] },
+      );
+    }
+    if (!policy.providers.includes(provider.id)) {
+      throw new XForgeError(
+        diagnostic('XFORGE_APPROVAL_PROVIDER_FORBIDDEN', `Policy ${policy.id} does not allow provider ${provider.id}.`),
+        { nextActions: [{ action: 'select-allowed-provider', type: 'approval', actor: 'human', reason: `Policy ${policy.id} allows: ${policy.providers.join(', ') || '(none)'}. Pick one of these, or add the provider to the policy in the Flow definition and re-check the Change.` }] },
+      );
+    }
     const server = resources.mcpServers.get(provider.mcpServer);
-    if (!server) throw new XForgeError(diagnostic('XFORGE_APPROVAL_MCP_SERVER_MISSING', `McpServer resource is missing or not enabled: ${provider.mcpServer}.`));
+    if (!server) {
+      throw new XForgeError(
+        diagnostic('XFORGE_APPROVAL_MCP_SERVER_MISSING', `McpServer resource is missing or not enabled: ${provider.mcpServer}.`),
+        { nextActions: [{ action: 'configure-mcp-server', type: 'approval', actor: 'human', reason: `Enable the ${provider.mcpServer} McpServer resource in xforge/manifest.yaml (see scaffold/mcp-servers/enterprise-approvals.yaml) and run xforge install, or approve locally on the terminal.` }] },
+      );
+    }
     const governingDigest = sha256(stableStringify({ change: options.change, flow: resolved.flow.metadata.name, policy: policy.id, revision }));
     const resumeCommand = ['xforge', 'approve', '--change', options.change, '--for', options.transition, '--policy', policy.id, '--provider', provider.id];
     const poll = await withMcpApprovalSession(project, server.value, provider.id, async (client, timeoutMs) => {
@@ -195,7 +213,12 @@ export async function executeApprove(project: ProjectContext, options: ApproveOp
      * what makes it trustworthy later is that this same run also appends a matching `approval.decided`
      * event to the Change's audit hash chain (see `approvalVerifiedInChain`).
      */
-    if (!policy.providers.includes('local')) throw new XForgeError(diagnostic('XFORGE_APPROVAL_PROVIDER_FORBIDDEN', `Policy ${policy.id} does not allow local approvals.`));
+    if (!policy.providers.includes('local')) {
+      throw new XForgeError(
+        diagnostic('XFORGE_APPROVAL_PROVIDER_FORBIDDEN', `Policy ${policy.id} does not allow local approvals.`),
+        { nextActions: [{ action: 'select-allowed-provider', type: 'approval', actor: 'human', reason: `Policy ${policy.id} allows: ${policy.providers.join(', ') || '(none)'}. Re-run with --provider <id> for an allowed provider.` }] },
+      );
+    }
     if (!options.interactive || !options.terminal) {
       throw new XForgeError(diagnostic(
         'XFORGE_APPROVAL_INTERACTIVE_REQUIRED',
@@ -222,6 +245,32 @@ export async function executeApprove(project: ProjectContext, options: ApproveOp
   }
 
   /*
+   * Idempotency: the same approver re-approving the same policy revision returns the already
+   * recorded receipt instead of writing a duplicate (minApprovers counts distinct humans, so the
+   * match is per approver, never per policy alone). A matched receipt the chain does not attest is
+   * a crash remnant — the write succeeded but the audit record did not — and is removed so the
+   * fresh decision replaces it cleanly.
+   */
+  if (!options.dryRun) {
+    const approvalsDir = await safeResolve(project.root, `${project.changesPath}/${options.change}/approvals/${policy.id}`);
+    for (const name of await readdir(approvalsDir).catch(() => [] as string[])) {
+      if (!name.endsWith('.json')) continue;
+      const relative = `${project.changesPath}/${options.change}/approvals/${policy.id}/${name}`;
+      const existing = await readJsonIfExists<ApprovalReceipt>(path.join(approvalsDir, name));
+      if (!existing || existing.governingDigest !== receipt.governingDigest) continue;
+      if (existing.approver.id !== receipt.approver.id || existing.approver.provider !== receipt.approver.provider) continue;
+      if (await approvalVerifiedInChain(project, options.change, policy.id, existing.digest)) {
+        return {
+          data: { change: options.change, policy: policy.id, transition: options.transition, receipt: existing, dryRun: false, status: 'recorded' },
+          diagnostics: [...resources.diagnostics, ...control.diagnostics],
+          changes: [],
+        };
+      }
+      await rollbackWrittenFile(project.root, relative);
+    }
+  }
+
+  /*
    * Ingestion binding. New receipts are bound by governing revision, so a commit or a later Stage's
    * Evidence between the decision and its import does not reject the human decision. Receipts from
    * providers that predate the governing revision keep the original exact-state binding.
@@ -238,7 +287,14 @@ export async function executeApprove(project: ProjectContext, options: ApproveOp
   const changes: FileChange[] = [{ action: 'create', path: target, digest: sha256(content), source: `approval:${policy.id}` }];
   if (!options.dryRun) {
     await atomicWrite(project.root, target, content);
-    await recordAudit(project, { eventType: 'approval.decided', change: options.change, flow: resolved.flow.metadata.name, stage: control.governance.currentStage, revision, decision: receipt.decision, reason: receipt.reason, outcome: receipt.decision === 'approve' ? 'succeeded' : 'denied', input: { policy: policy.id, receipt: receipt.digest } });
+    try {
+      await recordAudit(project, { eventType: 'approval.decided', change: options.change, flow: resolved.flow.metadata.name, stage: control.governance.currentStage, revision, decision: receipt.decision, reason: receipt.reason, outcome: receipt.decision === 'approve' ? 'succeeded' : 'denied', input: { policy: policy.id, receipt: receipt.digest } });
+    } catch (error) {
+      /* A receipt the chain never attests must not stay: control-plane refuses it anyway, and its
+         presence would mislead `xforge state` into reporting an approval that does not count. */
+      await rollbackWrittenFile(project.root, target);
+      throw error;
+    }
   }
   return {
     data: { change: options.change, policy: policy.id, transition: options.transition, receipt: options.dryRun ? null : receipt, dryRun: options.dryRun, status: 'recorded' },

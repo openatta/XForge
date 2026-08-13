@@ -44,8 +44,8 @@
     "gates": ["structure", "unit-tests", "security-scan"],
     "archiveHandler": "xforge-verify",
     "approvals": [
-      ["implementation-major", 2, true, ["enterprise-approvals"]],
-      ["closing-major", 2, true, ["enterprise-approvals"]]
+      ["implementation-major", 2, true, ["local", "enterprise-approvals"]],
+      ["closing-major", 2, true, ["local", "enterprise-approvals"]]
     ],
     "audit": { "requiredEventTypes": ["gate.after", "stage.entered", "approval.decided"], "runtimeCoverage": "optional", "remoteDelivery": "required" }
   }

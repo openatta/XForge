@@ -3,7 +3,7 @@ import { checkStructure } from '../core/checker.js';
 import { diagnostic } from '../core/errors.js';
 import { assertManaged } from '../core/project-loader.js';
 import { workPackageVerificationGates } from '../core/work-packages.js';
-import { runGate } from '../runners/gate.js';
+import { reusablePassedEvidence, runGate } from '../runners/gate.js';
 import { readAuditEvents, recordAudit } from '../core/audit.js';
 import { isStageFlow, resolveChangeState } from '../core/flow-resolver.js';
 import { loadTransitionReceipts, resolveControlPlane } from '../core/control-plane.js';
@@ -23,6 +23,8 @@ export interface CheckOptions {
   allGates?: boolean;
   /** Resolve Gates for this Stage instead of the Change's current Stage. */
   stage?: string;
+  /** Re-run work-package verifications even when a current passed Evidence exists. */
+  force?: boolean;
 }
 
 export type GateSelection = 'none' | 'explicit' | 'stage' | 'all' | 'archive';
@@ -133,7 +135,27 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
   const workPackagesInScope = selectedStage === null || !PRE_APPLY_STAGES.has(selectedStage);
   if (!hasStructureErrors && !options.gate && options.change && workPackagesInScope && structure.change?.workPackages) {
     for (const verification of workPackageVerificationGates(structure.change.workPackages)) {
-      const result = await runGate(project, options.change, verification.gate, true);
+      const gate = verification.gate;
+      const evidencePath = `${project.changesPath}/${options.change}/evidence/${gate.spec.evidence}`;
+      /*
+       * Incremental verification: an existing passed Evidence whose inputDigest matches the run we
+       * are about to make (same Gate definition, same governance revision including git head, same
+       * structural pre-check) proves this exact verify already passed against this exact state —
+       * re-running it would change nothing. `--force` overrides; anything else (new commit, edited
+       * plan, failed previous run, tampered evidence) re-runs the command.
+       */
+      const reusable = options.force ? null : await reusablePassedEvidence(project, options.change, gate, true, evidencePath);
+      if (reusable) {
+        changes.push({ action: 'skip', path: evidencePath, digest: reusable.digest, source: `gate:${gate.metadata.name}`, reason: 'Already current.' });
+        workPackageResults.push({
+          packageId: verification.packageId,
+          command: verification.command,
+          status: 'passed',
+          evidence: reusable.evidence,
+        });
+        continue;
+      }
+      const result = await runGate(project, options.change, gate, true);
       changes.push(result.change);
       if (result.evidence.status === 'failed') diagnostics.push(diagnostic(
         'XFORGE_WORK_PACKAGE_VERIFY_FAILED',
