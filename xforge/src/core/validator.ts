@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Ajv2020, type ErrorObject, type ValidateFunction } from 'ajv/dist/2020.js';
 import addFormatsModule from 'ajv-formats';
 import type { Diagnostic } from '../types.js';
@@ -7,7 +8,8 @@ import { diagnostic } from './errors.js';
 
 export type SchemaName = 'manifest' | 'lock' | 'flow' | 'change' | 'agent' | 'gate' | 'rule' | 'permission-policy' | 'hook' | 'approval-receipt' | 'transition-receipt' | 'audit-event' | 'script' | 'scaffold' | 'work-package' | 'work-package-delivery' | 'work-package-dispatch' | 'work-package-ack-receipt' | 'mcp-server';
 
-const schemaRoot = path.resolve(new URL('../../schemas', import.meta.url).pathname);
+/* See identity.ts's packageRoot comment: fileURLToPath, not .pathname + path.resolve, for Windows. */
+const schemaRoot = path.resolve(fileURLToPath(new URL('../../schemas', import.meta.url)));
 let validatorsPromise: Promise<Map<SchemaName, ValidateFunction>> | null = null;
 
 function formatErrors(errors: ErrorObject[] | null | undefined, filePath: string): Diagnostic[] {

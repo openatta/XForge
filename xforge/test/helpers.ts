@@ -1,6 +1,7 @@
 import { cp, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import { parse, stringify } from 'yaml';
 import { afterAll } from 'vitest';
@@ -9,7 +10,9 @@ import { CONSTITUTION_CHECK_PATH, constitutionPrinciples } from '../src/core/con
 import { executeApprove, type ApprovalTerminal } from '../src/commands/approve.js';
 import { loadProject } from '../src/core/project-loader.js';
 
-export const xforgeRoot = path.resolve(new URL('..', import.meta.url).pathname);
+/* fileURLToPath, not .pathname + path.resolve: see xforge/src/core/identity.ts's comment on why
+   the latter produces a broken doubled-drive-letter path (D:\D:\...) on Windows. */
+export const xforgeRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 export const repositoryRoot = path.resolve(xforgeRoot, '..');
 export const scaffoldPayload = path.join(repositoryRoot, 'scaffold', 'payload');
 export const cliPath = path.join(xforgeRoot, 'dist', 'cli.js');
