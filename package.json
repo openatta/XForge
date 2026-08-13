@@ -9,6 +9,7 @@
     "privacy:install-hook": "node scripts/install-git-hooks.mjs",
     "release:check": "node scripts/release-check.mjs",
     "release:prepare": "node scripts/prepare-release.mjs",
+    "relock": "node xforge/scripts/scaffold-integrity.mjs scaffold --write && npm run build && node xforge/scripts/dev-relock.mjs",
     "test": "npm --prefix xforge test",
     "test:coverage": "npm --prefix xforge run test:coverage",
     "test:package": "npm run build && node scripts/package-smoke.mjs",

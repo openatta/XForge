@@ -1,8 +1,10 @@
 import { access, readFile, rm } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
-import { stringify } from 'yaml';
+import { parse, stringify } from 'yaml';
 import { describe, expect, it } from 'vitest';
+import { sha256, stableStringify } from '../../src/core/hash.js';
 import { advanceSolidToApply, approvalTestEnv, createCompleteSolidChange, fixture, runCli, updateYaml, write } from '../helpers.js';
 
 async function command(root: string, args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
@@ -255,6 +257,39 @@ describe('work-package protocol', () => {
     const clonedState = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
     expect(clonedState.code).toBe(0);
     expect(clonedState.json.data.change.workPackages.packages[0].status).toBe('reviewed');
+    /* Carried by the committed `evidence/audit/index.json`, which attests both receipts — not by the
+       no-audit-data escape, which the next step proves is inactive here. */
+    expect(clonedState.json.diagnostics.map((item: any) => item.code)).not.toContain('XFORGE_WORK_PACKAGE_ACK_UNATTESTED');
+
+    /*
+     * Same tree, same clone, one receipt replaced by a hand-written one with a correct self-digest
+     * and a correct delivery binding. The committed index attests the integrator receipt and not the
+     * substitute, so the package drops back to `integrated` — which is only possible if attestation
+     * is being consulted per receipt rather than the whole set being taken on faith.
+     */
+    const genuineReviewerReceipt = await readFile(reviewedReceiptPath, 'utf8');
+    const { digest: _replaced, ...forgedReviewer } = JSON.parse(genuineReviewerReceipt);
+    forgedReviewer.receiptId = randomUUID();
+    forgedReviewer.actor = { ...forgedReviewer.actor, id: 'never-reviewed-anything' };
+    await write(root, `xforge/changes/add-feature/evidence/agents/T001/ack/${binding.executionId}-reviewer.json`,
+      `${JSON.stringify({ ...forgedReviewer, digest: sha256(stableStringify(forgedReviewer)) }, null, 2)}\n`);
+    const substituted = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
+    expect(substituted.code).toBe(0);
+    expect(substituted.json.data.change.workPackages.packages[0].status).toBe('integrated');
+    expect(substituted.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_WORK_PACKAGE_ACK_UNATTESTED');
+    expect(JSON.stringify(substituted.json.data)).not.toContain('never-reviewed-anything');
+
+    /*
+     * The genuine no-audit-data case: a clone of a project that never committed its audit index
+     * either. Nothing but the receipts survives, so they are the only truth there is and must still
+     * be believed — refusing them here would resurrect the loss the receipts exist to prevent.
+     */
+    await write(root, `xforge/changes/add-feature/evidence/agents/T001/ack/${binding.executionId}-reviewer.json`, genuineReviewerReceipt);
+    await rm(path.join(root, 'xforge', 'changes', 'add-feature', 'evidence', 'audit'), { recursive: true, force: true });
+    const noAuditData = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
+    expect(noAuditData.code, JSON.stringify(noAuditData.json.diagnostics, null, 2)).toBe(0);
+    expect(noAuditData.json.data.change.workPackages.packages[0].status).toBe('reviewed');
+    expect(noAuditData.json.diagnostics.map((item: any) => item.code)).not.toContain('XFORGE_WORK_PACKAGE_ACK_UNATTESTED');
   });
 
   it('rejects a succeeded delivery without an exact done_when evidence mapping', async () => {
@@ -368,6 +403,171 @@ describe('work-package protocol', () => {
       ...overrides,
     });
   }
+
+  /** A succeeded T001 delivery based on the dispatch commit — the state an acknowledgement acts on. */
+  async function succeededDelivery(root: string): Promise<{ binding: any; deliveryPath: string; verify: string }> {
+    const verify = `${process.execPath} -e "process.exit(0)"`;
+    await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([
+      workPackage('T001', { write_paths: ['src/order/**'], verify: [verify] }),
+    ]));
+    const { binding } = await dispatchWithCommittedReceipt(root);
+    const base = await git(root, ['rev-parse', 'HEAD']);
+    await write(root, 'src/order/refund.ts', 'export const refund = true;\n');
+    await git(root, ['add', 'src/order/refund.ts']);
+    await git(root, ['commit', '-qm', 'worker T001']);
+    const head = await git(root, ['rev-parse', 'HEAD']);
+    const deliveryPath = `xforge/changes/add-feature/evidence/agents/T001/${binding.executionId}.yaml`;
+    await write(root, deliveryPath, delivery(binding, {
+      base_commit: base,
+      head_commit: head,
+      changed_paths: ['src/order/refund.ts'],
+      validation: [{ command: verify, exit_code: 0 }],
+      done_when_evidence: [{ criterion: 'T001 is covered by an automated check', evidence: [verify, 'src/order/refund.ts'] }],
+    }));
+    return { binding, deliveryPath, verify };
+  }
+
+  /**
+   * An acknowledgement receipt written by hand rather than by `work-package acknowledge`: correct
+   * self-digest, correct delivery binding, correct path. Every one of those is computable offline
+   * from files already in the repository, which is exactly why none of them proves anything.
+   */
+  async function forgeAckReceipt(root: string, deliveryPath: string, overrides: Record<string, unknown> = {}): Promise<any> {
+    const delivered = parse(await readFile(path.join(root, ...deliveryPath.split('/')), 'utf8'));
+    const unsigned = {
+      apiVersion: 'xforge.dev/v1alpha2',
+      kind: 'WorkPackageAckReceipt',
+      receiptId: randomUUID(),
+      change: 'add-feature',
+      packageId: 'T001',
+      executionId: delivered.execution_id,
+      as: 'reviewer',
+      status: 'reviewed',
+      deliveryDigest: sha256(stableStringify(delivered)),
+      actor: { id: 'never-reviewed-anything', provider: 'local-os', role: 'reviewer', type: 'agent' },
+      acknowledgedAt: '2026-08-12T00:00:00.000Z',
+      ...overrides,
+    };
+    const receipt = { ...unsigned, digest: sha256(stableStringify(unsigned)) };
+    await write(root, `xforge/changes/add-feature/evidence/agents/${receipt.packageId}/ack/${receipt.executionId}-${receipt.as}.json`,
+      `${JSON.stringify(receipt, null, 2)}\n`);
+    return receipt;
+  }
+
+  /*
+   * The whole point of an acknowledgement is the named actor it records. Every property the receipt
+   * commits to is computable offline by whoever wrote the file, so taken at face value a receipt
+   * lets anyone with commit access mint a `reviewed` record attributed to a reviewer who never saw
+   * the work. Only the audit chain can distinguish a receipt an `acknowledge` run produced.
+   */
+  it('ignores a hand-written acknowledgement receipt the audit chain never attested', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const { deliveryPath } = await succeededDelivery(root);
+    const forged = await forgeAckReceipt(root, deliveryPath);
+
+    const result = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
+    /* A forgery degrades the record; it does not break the run. */
+    expect(result.code, JSON.stringify(result.json.diagnostics, null, 2)).toBe(0);
+    const unattested = result.json.diagnostics.filter((item: any) => item.code === 'XFORGE_WORK_PACKAGE_ACK_UNATTESTED');
+    expect(unattested).toHaveLength(1);
+    expect(unattested[0].severity).toBe('warning');
+    expect(unattested[0].path).toContain(`ack/${forged.executionId}-reviewer.json`);
+    /* The status falls back to what the delivery alone supports. */
+    expect(result.json.data.change.workPackages.packages[0].status).toBe('succeeded');
+    /* And the fabricated actor never reaches the exposed state. */
+    expect(JSON.stringify(result.json.data)).not.toContain('never-reviewed-anything');
+  });
+
+  /*
+   * The filename binds a receipt to its role, but nothing bound the role to the status it claims —
+   * so an integrator's own receipt could record `reviewed` and skip the independent review the
+   * reviewer role exists to record.
+   */
+  it('rejects an acknowledgement receipt whose status does not match its role', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const { deliveryPath } = await succeededDelivery(root);
+    await forgeAckReceipt(root, deliveryPath, { as: 'integrator', status: 'reviewed' });
+
+    const result = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
+    expect(result.code, JSON.stringify(result.json.diagnostics, null, 2)).toBe(0);
+    const mismatch = result.json.diagnostics.filter((item: any) => item.code === 'XFORGE_WORK_PACKAGE_ACK_RECEIPT_ROLE_MISMATCH');
+    expect(mismatch).toHaveLength(1);
+    expect(mismatch[0].severity).toBe('warning');
+    expect(result.json.data.change.workPackages.packages[0].status).toBe('succeeded');
+  });
+
+  /*
+   * `evidence/agents/<id>/ack/` is written by the control plane, exactly like `dispatch/` and
+   * `audit/`. A delivery whose diff sweeps one in is not the Worker escaping write_paths — and a
+   * Worker that maps a done_when criterion to its own acknowledgement receipt is citing the record
+   * of somebody accepting the work as proof that the work was done.
+   */
+  it('treats an acknowledgement receipt path as control-plane bookkeeping, not Worker output', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const verify = `${process.execPath} -e "process.exit(0)"`;
+    await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([
+      workPackage('T001', { write_paths: ['src/order/**'], verify: [verify] }),
+    ]));
+    const { binding } = await dispatchWithCommittedReceipt(root);
+    const base = await git(root, ['rev-parse', 'HEAD']);
+    await write(root, 'src/order/refund.ts', 'export const refund = true;\n');
+    await git(root, ['add', 'src/order/refund.ts']);
+    await git(root, ['commit', '-qm', 'worker T001']);
+    /* An acknowledgement committed while this delivery was still in flight, so it lands in the
+       range. It binds no delivery, which is a skipped receipt — never a failed run. */
+    const unsignedAck = {
+      apiVersion: 'xforge.dev/v1alpha2',
+      kind: 'WorkPackageAckReceipt',
+      receiptId: randomUUID(),
+      change: 'add-feature',
+      packageId: 'T001',
+      executionId: binding.executionId,
+      as: 'integrator',
+      status: 'integrated',
+      deliveryDigest: 'a'.repeat(64),
+      actor: { id: 'integrator', provider: 'local-os', role: 'integrator', type: 'agent' },
+      acknowledgedAt: '2026-08-12T00:00:00.000Z',
+    };
+    const ackPath = `xforge/changes/add-feature/evidence/agents/T001/ack/${binding.executionId}-integrator.json`;
+    await write(root, ackPath, `${JSON.stringify({ ...unsignedAck, digest: sha256(stableStringify(unsignedAck)) }, null, 2)}\n`);
+    await git(root, ['add', ackPath]);
+    await git(root, ['commit', '-qm', 'acknowledgement receipt']);
+    const head = await git(root, ['rev-parse', 'HEAD']);
+    const deliveryPath = `xforge/changes/add-feature/evidence/agents/T001/${binding.executionId}.yaml`;
+    await write(root, deliveryPath, delivery(binding, {
+      base_commit: base,
+      head_commit: head,
+      changed_paths: ['src/order/refund.ts', ackPath],
+      validation: [{ command: verify, exit_code: 0 }],
+      done_when_evidence: [{ criterion: 'T001 is covered by an automated check', evidence: ['src/order/refund.ts'] }],
+    }));
+
+    const exempt = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
+    expect(exempt.code, JSON.stringify(exempt.json.diagnostics, null, 2)).toBe(0);
+    const exemptCodes = exempt.json.diagnostics.map((item: any) => item.code);
+    expect(exemptCodes).not.toContain('XFORGE_WORK_PACKAGE_WRITE_ESCAPE');
+    expect(exemptCodes).not.toContain('XFORGE_WORK_PACKAGE_NO_WORK_DELIVERED');
+    expect(exempt.json.data.change.workPackages.packages[0].status).toBe('succeeded');
+    /* An unbindable receipt is skipped at `warning`, so ordinary rework never fails the run. */
+    expect(exempt.json.diagnostics.find((item: any) => item.code === 'XFORGE_WORK_PACKAGE_ACK_RECEIPT_DELIVERY_MISMATCH'))
+      .toMatchObject({ severity: 'warning' });
+
+    /* Same delivery, but now the acknowledgement receipt is the only thing cited as done_when
+       evidence — the circular claim the bookkeeping rule exists to reject. */
+    await write(root, deliveryPath, delivery(binding, {
+      base_commit: base,
+      head_commit: head,
+      changed_paths: ['src/order/refund.ts', ackPath],
+      validation: [{ command: verify, exit_code: 0 }],
+      done_when_evidence: [{ criterion: 'T001 is covered by an automated check', evidence: [ackPath] }],
+    }));
+    const circular = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
+    expect(circular.code).toBe(1);
+    expect(circular.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_WORK_PACKAGE_DONE_WHEN_EVIDENCE_IRRELEVANT');
+  });
 
   it('rejects a base_commit that predates the commit introducing the dispatch receipt', async () => {
     const root = await fixture();

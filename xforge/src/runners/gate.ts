@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
-import type { Diagnostic, FileChange, GateEvidence, GateResource, ProjectContext } from '../types.js';
+import type { ApprovalReceipt, Diagnostic, FileChange, GateEvidence, GateResource, GovernanceRevision, ProjectContext } from '../types.js';
 import { CLI_NAME, CLI_VERSION, MAX_GATE_OUTPUT_BYTES, PROTOCOL_VERSION } from '../constants.js';
 import { atomicWrite } from '../core/files.js';
 import { sha256, stableStringify } from '../core/hash.js';
@@ -113,24 +113,61 @@ export interface GateRunResult {
   change: FileChange;
 }
 
+interface GateContext {
+  flow: string;
+  revision: GovernanceRevision;
+  stage: string;
+  approvals: ApprovalReceipt[];
+}
+
+/**
+ * The Flow, governance revision, Stage, and Approvals a Gate run for this Change is bound to.
+ *
+ * Single source of truth on purpose: `inputDigest` is derived from `revision`, and `check` predicts
+ * that digest to decide whether it may reuse Evidence instead of re-running the Gate. A second,
+ * hand-copied derivation would silently drift the moment this one changes.
+ */
+async function resolveGateContext(project: ProjectContext, changeId: string): Promise<GateContext> {
+  const resolved = await resolveChangeState(project, changeId);
+  const resources = await loadSelectedResources(project);
+  const control = isStageFlow(resolved.flow) && resolved.flow.governance
+    ? await resolveControlPlane(project, changeId, resolved.flow, resolved.state, resources, resolved.config)
+    : null;
+  const flow = resolved.flow.metadata.name;
+  const revision = control?.governance.revision ?? {
+    contentRevision: sha256(stableStringify({ changeId, flow })),
+    stateRevision: sha256(stableStringify({ changeId, flow, stage: 'legacy' })),
+    policySnapshotDigest: sha256(stableStringify({ legacy: true })), gitBase: 'unknown', gitHead: 'unknown',
+  };
+  return { flow, revision, stage: control?.governance.currentStage ?? 'legacy', approvals: control?.governance.approvals ?? [] };
+}
+
+/**
+ * The `inputDigest` a Gate run for this Change would record right now, without running the Gate.
+ *
+ * It covers the Gate definition, the governance revision (Change content, policy snapshot, and the
+ * committed Git base/head), and the structural pre-check. It says nothing about uncommitted files:
+ * every input is either a governance Artifact or a commit id, so a caller reusing Evidence on the
+ * strength of a matching digest must establish working-tree equality separately.
+ */
+export async function gateInputDigest(
+  project: ProjectContext,
+  changeId: string,
+  gate: GateResource,
+  structurePassed: boolean,
+): Promise<string> {
+  const { revision } = await resolveGateContext(project, changeId);
+  return sha256(stableStringify({ gate, revision, structurePassed }));
+}
+
 export async function runGate(
   project: ProjectContext,
   changeId: string,
   gate: GateResource,
   structurePassed: boolean,
 ): Promise<GateRunResult> {
-  const resolved = await resolveChangeState(project, changeId);
-  const resources = await loadSelectedResources(project);
-  const control = isStageFlow(resolved.flow) && resolved.flow.governance
-    ? await resolveControlPlane(project, changeId, resolved.flow, resolved.state, resources, resolved.config)
-    : null;
-  const revision = control?.governance.revision ?? {
-    contentRevision: sha256(stableStringify({ changeId, flow: resolved.flow.metadata.name })),
-    stateRevision: sha256(stableStringify({ changeId, flow: resolved.flow.metadata.name, stage: 'legacy' })),
-    policySnapshotDigest: sha256(stableStringify({ legacy: true })), gitBase: 'unknown', gitHead: 'unknown',
-  };
-  const stage = control?.governance.currentStage ?? 'legacy';
-  await recordAudit(project, { eventType: 'gate.before', change: changeId, flow: resolved.flow.metadata.name, stage, revision, refs: { gates: [gate.metadata.name] }, input: { gate: gate.metadata.name }, outcome: 'succeeded' });
+  const { flow, revision, stage, approvals } = await resolveGateContext(project, changeId);
+  await recordAudit(project, { eventType: 'gate.before', change: changeId, flow, stage, revision, refs: { gates: [gate.metadata.name] }, input: { gate: gate.metadata.name }, outcome: 'succeeded' });
   const startedAt = new Date();
   let result: GateProcessResult;
   if (gate.spec.builtin === 'structure') {
@@ -161,7 +198,7 @@ export async function runGate(
     };
   } else if (gate.spec.builtin === 'constitution-check') {
     /* The Constitution is documented as the first governance layer; this is what makes it one. */
-    const known = await knownIdentities(project, changeId, control?.governance.approvals ?? []);
+    const known = await knownIdentities(project, changeId, approvals);
     const constitution = await evaluateConstitutionCheck(project, changeId, known);
     result = {
       command: ['builtin:constitution-check'],
@@ -193,7 +230,7 @@ export async function runGate(
     schemaVersion: '1' as const,
     gate: gate.metadata.name,
     change: changeId,
-    flow: resolved.flow.metadata.name,
+    flow,
     stage,
     stateRevision: revision.stateRevision,
     contentRevision: revision.contentRevision,
@@ -211,14 +248,17 @@ export async function runGate(
   const evidence: GateEvidence = { ...withoutDigest, digest: sha256(stableStringify(withoutDigest)) };
   const evidencePath = `${project.changesPath}/${changeId}/evidence/${gate.spec.evidence}`;
   let action: FileChange['action'] = 'create';
+  /* The bytes this run is about to overwrite, kept only when they passed the conflict check below. */
+  let priorEvidence: Buffer | null = null;
   try {
-    const existingSource = await readFile(await safeResolve(project.root, evidencePath), 'utf8');
-    const existing = JSON.parse(existingSource) as GateEvidence;
+    const existingBytes = await readFile(await safeResolve(project.root, evidencePath));
+    const existing = JSON.parse(existingBytes.toString('utf8')) as GateEvidence;
     const { digest: existingDigest, ...existingUnsigned } = existing;
     if (existing.gate !== gate.metadata.name || existing.change !== changeId || existingDigest !== sha256(stableStringify(existingUnsigned))) {
       throw new XForgeError(diagnostic('XFORGE_EVIDENCE_CONFLICT', 'Existing Evidence is not a valid prior XForge result for this Gate and Change.', evidencePath));
     }
     action = 'modify';
+    priorEvidence = existingBytes;
   } catch (error) {
     if (error instanceof XForgeError) throw error;
     const code = (error as NodeJS.ErrnoException).code;
@@ -228,7 +268,27 @@ export async function runGate(
     }
   }
   await atomicWrite(project.root, evidencePath, `${JSON.stringify(evidence, null, 2)}\n`);
-  await recordAudit(project, { eventType: 'gate.after', change: changeId, flow: resolved.flow.metadata.name, stage, revision, refs: { gates: [gate.metadata.name] }, outcome: status === 'passed' ? 'succeeded' : 'failed', durationMs: evidence.durationMs, input: { gate: gate.metadata.name }, output: { evidence: evidence.digest, status } });
+  try {
+    await recordAudit(project, { eventType: 'gate.after', change: changeId, flow, stage, revision, refs: { gates: [gate.metadata.name] }, outcome: status === 'passed' ? 'succeeded' : 'failed', durationMs: evidence.durationMs, input: { gate: gate.metadata.name }, output: { evidence: evidence.digest, status } });
+  } catch (error) {
+    /*
+     * Evidence with no attesting `gate.after` event is a transition-unblocking artifact:
+     * `gateBlockReason` (core/control-plane.ts) decides on the Evidence file alone and never
+     * cross-checks it against the audit chain. Leaving the file behind on the assumption that a
+     * retry self-heals is wrong — the retry may never come (CI aborts, the machine dies) and until
+     * it does, the unattested file counts as a pass.
+     *
+     * Unlike the create-only receipt sites (transition.ts, approve.ts, work-package.ts), an Evidence
+     * path is stable and this write is usually an *overwrite*: deleting it here would destroy the
+     * previous, properly attested Evidence over a transient audit failure. So restore the prior
+     * bytes when there were any, and only delete when this run created the file.
+     */
+    try {
+      if (priorEvidence) await atomicWrite(project.root, evidencePath, priorEvidence);
+      else await rm(await safeResolve(project.root, evidencePath), { force: true });
+    } catch { /* The audit failure below is the actionable one; report it, not a cleanup failure. */ }
+    throw error;
+  }
   return {
     evidence,
     diagnostic: status === 'failed'

@@ -23,7 +23,15 @@ const tests = spawnSync(process.execPath, [vitest, 'run', 'test'], {
 if (tests.status !== 0) {
   process.exitCode = tests.status ?? 1;
 } else {
+  /*
+   * `c8 report` merges every subprocess's raw V8 coverage into one in-memory model, so its peak
+   * heap scales with the suite, not with the source tree. It crossed the ~2 GB default old-space
+   * cap on the macOS runner once the suite reached ~270 tests (the tests themselves all passed;
+   * only the merge OOMed). Raising the cap for this one child keeps the reporter headroom
+   * independent of however Node sizes the default from the runner's RAM.
+   */
   const report = spawnSync(process.execPath, [
+    '--max-old-space-size=4096',
     c8,
     'report',
     `--temp-directory=${rawRoot}`,

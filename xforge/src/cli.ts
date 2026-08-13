@@ -64,6 +64,54 @@ const COMMANDS: CommandName[] = ['help', 'version', 'init', 'state', 'install', 
 const VALID_KINDS = ['skills', 'agents', 'rules', 'policies', 'hooks', 'gates', 'scripts', 'flows', 'approvals', 'mcp-servers'] as const;
 const VALUE_OPTIONS = ['--root', '--change', '--kind', '--target', '--gate', '--to', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--provider', '--output', '--event', '--package', '--language', '--as', '--evidence', '--stage'] as const;
 
+function isValueOption(token: string): boolean {
+  return VALUE_OPTIONS.includes(token as (typeof VALUE_OPTIONS)[number]);
+}
+
+/**
+ * The command word as `parseArguments` would resolve it, recoverable even when parsing threw.
+ * It mirrors that scan exactly — a VALUE_OPTIONS flag swallows the token after it — so the value
+ * of an option is never mistaken for the command: `xforge state --change hook` is `state`, not
+ * `hook`. A bare `argv.includes('hook')` test would get that wrong and route a plain `state`
+ * failure onto the Hook output channel.
+ */
+function commandPosition(argv: string[]): string | undefined {
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index]!;
+    if (!token.startsWith('--')) return token;
+    if (isValueOption(token)) index += 1;
+  }
+  return undefined;
+}
+
+/** Raw value of an option, without validating anything else about the command line. */
+function optionValue(argv: string[], option: string): string | undefined {
+  const index = argv.indexOf(option);
+  const value = index >= 0 ? argv[index + 1] : undefined;
+  return value && !value.startsWith('--') ? value : undefined;
+}
+
+/**
+ * `--target` for a hook invocation whose full parse threw. The fail-closed decision's shape is
+ * per-platform, so defaulting it outright would hand a cursor/opencode/github-copilot host a
+ * payload it does not recognise — fail-open again by another route — hence the raw recovery.
+ */
+function recoveredHookTarget(argv: string[]): TargetId {
+  const value = optionValue(argv, '--target');
+  /* Last resort only. codex and claude render an identical deny, so this single fallback covers
+     both; every other target is reached through the recovery above, since the installed hook
+     command always passes `--target` (see adapters/governance.ts). */
+  return TARGETS.includes(value as TargetId) ? value as TargetId : 'claude';
+}
+
+function recoveredHookEvent(argv: string[]): string {
+  const value = optionValue(argv, '--event');
+  /* Only an explicitly non-blocking `*.after` event is taken at face value. Anything else —
+     missing, misspelled, or truncated — is treated as blocking, so the failure denies rather than
+     silently downgrading to the exit-0 after-event path. */
+  return value?.includes('after') ? value : 'agent.tool.before';
+}
+
 const HELP: Record<CommandName, { usage: string; description: string; options: string[] }> = {
   help: { usage: 'xforge help [command] [--text]', description: 'Show general or command-specific help.', options: ['--text'] },
   version: { usage: 'xforge version [--text]', description: 'Show CLI, protocol, runtime, and build identity.', options: ['--text'] },
@@ -106,7 +154,7 @@ function parseArguments(argv: string[]): ParsedArguments {
     if (token === '--strict') { parsed.strict = true; continue; }
     if (token === '--all-gates') { parsed.allGates = true; continue; }
     if (token === '--force') { parsed.force = true; continue; }
-    if (!VALUE_OPTIONS.includes(token as (typeof VALUE_OPTIONS)[number])) {
+    if (!isValueOption(token)) {
       throw new XForgeError(diagnostic('XFORGE_OPTION_UNKNOWN', `Unknown option: ${token}`));
     }
     const value = argv[index + 1];
@@ -460,10 +508,22 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
     }
     result = envelope({ command, root, data: null, diagnostics, nextActions, ok: false });
   }
-  if (parsed?.command === 'hook') {
-    if (result.ok) process.stdout.write(`${JSON.stringify((result.data as any)?.platformOutput ?? {})}\n`);
-    else process.stdout.write(`${JSON.stringify(hookFailureOutput(parsed.target!, parsed.event!))}\n`);
-    return result.ok ? 0 : (parsed.event?.includes('after') ? 0 : 2);
+  /*
+   * The Hook contract: stdout is exactly one JSON line in the platform's own output shape, and a
+   * failed dispatch exits 2 (0 for `after` events, whose failure must not break the platform's own
+   * bookkeeping). This branch must also fire when argument parsing itself threw — a full Envelope
+   * on the platform output channel is read as a decision object with no opinion, i.e. a
+   * misconfigured hook command would silently permit every tool call.
+   */
+  if (parsed?.command === 'hook' || (parsed === null && commandPosition(argv) === 'hook')) {
+    if (result.ok) {
+      process.stdout.write(`${JSON.stringify((result.data as any)?.platformOutput ?? {})}\n`);
+      return 0;
+    }
+    const target = parsed?.target ?? recoveredHookTarget(argv);
+    const event = parsed?.event ?? recoveredHookEvent(argv);
+    process.stdout.write(`${JSON.stringify(hookFailureOutput(target, event))}\n`);
+    return event.includes('after') ? 0 : 2;
   }
   const textMode = parsed?.text ?? argv.some((item) => ['--text', '--help', '--version'].includes(item));
   process.stdout.write(present(result, textMode));
