@@ -185,6 +185,13 @@ async function buildDesired(
         target,
         ...adapter.trace('skill-command', id, [`xforge/scaffold/skills/${id}/${project.manifest.scaffold.language === 'zh-CN' ? localizedVariant('SKILL.md') : 'SKILL.md'}`]),
       });
+      else diagnostics.push(diagnostic(
+        'XFORGE_CAPABILITY_CONTENT_UNSUPPORTED',
+        `Target ${target} cannot express Command ${id} in its own format; Command ${id} is not projected for that target.`,
+        `xforge/scaffold/skills/${id}/SKILL.md`,
+        'info',
+        { target, kind: 'command', resource: id },
+      ));
     }
 
     for (const [id, agent] of resources.agents) {
@@ -197,6 +204,13 @@ async function buildDesired(
         target,
         ...adapter.trace('agent', id, [agent.yamlPath, agent.instructionsPath]),
       });
+      else diagnostics.push(diagnostic(
+        'XFORGE_CAPABILITY_CONTENT_UNSUPPORTED',
+        `Target ${target} cannot express Agent ${id} in its own format; Agent ${id} is not projected for that target.`,
+        agent.yamlPath,
+        'info',
+        { target, kind: 'agent', resource: id },
+      ));
     }
 
     for (const [id, rule] of resources.rules) {
@@ -209,6 +223,13 @@ async function buildDesired(
         target,
         ...adapter.trace('rule', id, [rule.yamlPath]),
       });
+      else diagnostics.push(diagnostic(
+        'XFORGE_CAPABILITY_CONTENT_UNSUPPORTED',
+        `Target ${target} cannot express Rule ${id} in its own format; Rule ${id} is not projected for that target.`,
+        rule.yamlPath,
+        'info',
+        { target, kind: 'rule', resource: id },
+      ));
     }
     const governance = adapter.renderGovernance({
       policies: [...resources.policies].map(([id, item]) => ({ id, ...item })),

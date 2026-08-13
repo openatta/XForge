@@ -1,5 +1,6 @@
 import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parse } from '../../xforge/node_modules/yaml/dist/index.js';
 
 /**
@@ -9,7 +10,10 @@ import { parse } from '../../xforge/node_modules/yaml/dist/index.js';
  * loudly instead of silently shipping untested.
  */
 
-const repositoryRoot = path.resolve(new URL('../..', import.meta.url).pathname);
+/* fileURLToPath, not .pathname + path.resolve: a file:// URL's .pathname keeps a leading
+   slash before a Windows drive letter (/D:/...), which path.resolve does not strip -- it
+   prepends the cwd's own drive instead, producing a broken D:\D:\... path. */
+const repositoryRoot = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const scaffoldPayloadRoot = path.join(repositoryRoot, 'scaffold', 'payload', 'xforge');
 const matrixPath = path.join(repositoryRoot, 'tests', 'live-engine', 'coverage-matrix.yaml');
 

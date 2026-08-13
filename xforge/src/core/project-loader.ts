@@ -1,4 +1,4 @@
-import { access, realpath, stat } from 'node:fs/promises';
+import { access, readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import {
   CLI_NAME,
@@ -7,9 +7,11 @@ import {
   DEFAULT_SPECS_PATH,
   PROTOCOL_VERSION,
 } from '../constants.js';
-import type { Compatibility, Diagnostic, Lockfile, Manifest, ProjectContext } from '../types.js';
+import type { Compatibility, Diagnostic, FileChange, Lockfile, Manifest, ProjectContext } from '../types.js';
 import { readConstitution } from './constitution.js';
 import { XForgeError, diagnostic } from './errors.js';
+import { atomicWrite } from './files.js';
+import { sha256 } from './hash.js';
 import { assertLogicalPaths, normalizeRelative, safeResolve } from './path-safety.js';
 import { validateSchema } from './validator.js';
 import { loadYaml } from './yaml.js';
@@ -82,7 +84,7 @@ function lockCliMatches(manifest: Manifest, lock: Lockfile | null): boolean | nu
   return locked.source === 'npm' && locked.package === manifest.xforge.package && locked.version === manifest.xforge.version && locked.protocol === manifest.xforge.protocol;
 }
 
-function resolveCompatibility(manifest: Manifest, lock: Lockfile | null): { value: Compatibility; diagnostics: Diagnostic[] } {
+export function resolveCompatibility(manifest: Manifest, lock: Lockfile | null): { value: Compatibility; diagnostics: Diagnostic[] } {
   const diagnostics: Diagnostic[] = [];
   const protocolMatches = manifest.xforge.protocol === PROTOCOL_VERSION;
   let cliMatches = false;
@@ -197,6 +199,155 @@ export async function loadProject(start = process.cwd(), options: { exactRoot?: 
   };
 }
 
+/** Parses a `major.minor.patch[-prerelease]` string the same way `scripts/prepare-release.mjs` does. */
+function parseVersion(value: string): { core: number[]; prerelease: string } {
+  const [core, prerelease = ''] = value.split('-', 2) as [string, string?];
+  return { core: core!.split('.').map((part) => Number(part)), prerelease };
+}
+
+/**
+ * Three-way compare, `< 0` when `left` is older than `right`. A version without a prerelease
+ * outranks an otherwise-equal version with one, matching standard SemVer precedence; two
+ * differing prereleases compare lexicographically, which is not fully SemVer-spec-compliant but
+ * is directionally safe for this codebase's own release versions (see the note on
+ * `canUpgradeDeclaredCli` about why prerelease precision doesn't matter much here).
+ */
+function compareVersions(left: string, right: string): number {
+  const a = parseVersion(left);
+  const b = parseVersion(right);
+  for (let index = 0; index < Math.max(a.core.length, b.core.length); index += 1) {
+    const diff = (a.core[index] ?? 0) - (b.core[index] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  if (a.prerelease === b.prerelease) return 0;
+  if (a.prerelease === '') return 1;
+  if (b.prerelease === '') return -1;
+  return a.prerelease < b.prerelease ? -1 : 1;
+}
+
+/**
+ * Whether `xforge update` may reconcile the Manifest's declared CLI identity to the running CLI's
+ * identity, instead of hard-blocking with no resolution path.
+ *
+ * Deliberately narrow: this is an *upgrade* channel, not a general "make the mismatch go away"
+ * escape hatch. It refuses whenever the situation isn't a clean, safe upgrade:
+ * - the declared package must already be `@xforge/cli` from npm (not some other/legacy source);
+ * - the Protocol must already match (`XFORGE_PROTOCOL_MISMATCH` is a structural incompatibility,
+ *   not a version lag — reconciling the version number would not make the CLI actually understand
+ *   a different Protocol's on-disk shapes, so this stays a hard block, unresolved by this feature);
+ * - the declared version must be strictly older than the running CLI's version — never equal
+ *   (nothing to do) and never newer (that would silently declare a "downgrade" as resolved, which
+ *   is exactly the silent-state-corruption failure mode the exact-version lock exists to prevent);
+ * - `manifest.scaffold.version` and `manifest.scaffold.source.version` must already agree with
+ *   `manifest.xforge.version` — if a project's three version fields have already drifted from each
+ *   other (not something any XForge command produces today), that is an unexpected hand-edited or
+ *   corrupted state this feature does not attempt to guess how to reconcile.
+ */
+export function canUpgradeDeclaredCli(manifest: Manifest): boolean {
+  if (manifest.xforge.source !== 'npm' || manifest.xforge.package !== CLI_NAME) return false;
+  if (manifest.xforge.protocol !== PROTOCOL_VERSION) return false;
+  if (manifest.scaffold.version !== manifest.xforge.version) return false;
+  if (manifest.scaffold.source.type !== 'npm' || manifest.scaffold.source.package !== CLI_NAME) return false;
+  if (manifest.scaffold.source.version !== manifest.xforge.version) return false;
+  return compareVersions(manifest.xforge.version, CLI_VERSION) < 0;
+}
+
+/**
+ * Rewrites the three npm-version fields a Manifest uses to declare its pinned CLI/Scaffold
+ * identity (`xforge.version`, `scaffold.version`, `scaffold.source.version` — all required to
+ * already agree, see `canUpgradeDeclaredCli`) from the declared version to the running CLI's
+ * version, in place on disk, then mutates `project.manifest`/`project.compatibility` so the rest
+ * of this same command invocation sees a consistent, already-Managed project.
+ *
+ * Uses targeted, context-anchored text substitution rather than a full YAML parse-and-restringify
+ * round trip, so anything else in a hand-edited `manifest.yaml` — comments, key order, formatting
+ * — survives untouched. Mirrors `scripts/prepare-release.mjs`'s own approach to editing this
+ * repository's bundled manifest at release time. If the file's shape doesn't match what
+ * `canUpgradeDeclaredCli` already validated structurally (should not happen — defensive only),
+ * this fails loudly instead of silently leaving one of the three fields stale.
+ *
+ * A no-op (returns `[]`, touches nothing) when `canUpgradeDeclaredCli` is false — including the
+ * ordinary case where the project is already Managed and there is nothing to reconcile.
+ */
+/**
+ * Replaces a direct-child `fieldName: value` line inside the block that follows a `blockKey:`
+ * header line at `blockIndent`, without touching anything outside that block or any more-deeply-
+ * nested field of the same name (e.g. `scaffold.version` vs. `scaffold.source.version`). Key
+ * *order* inside the block does not matter — only its indentation depth — so this survives a
+ * round trip through a YAML formatter/library that reorders keys but preserves nesting depth
+ * (e.g. this codebase's own test helpers, or a user's editor). Returns `null`, changing nothing,
+ * if the block or the field within it isn't found in the expected shape.
+ */
+function replaceFieldInBlock(text: string, blockKey: string, blockIndent: number, fieldName: string, fieldIndent: number, value: string): string | null {
+  const blockPattern = new RegExp(`^${' '.repeat(blockIndent)}${blockKey}:\\n((?:${' '.repeat(fieldIndent)}[^\\n]*\\n?)*)`, 'm');
+  const blockMatch = blockPattern.exec(text);
+  if (!blockMatch) return null;
+  const fieldPattern = new RegExp(`^${' '.repeat(fieldIndent)}${fieldName}: [^\\n]+`, 'm');
+  if (!fieldPattern.test(blockMatch[1]!)) return null;
+  const newBody = blockMatch[1]!.replace(fieldPattern, `${' '.repeat(fieldIndent)}${fieldName}: ${value}`);
+  return text.slice(0, blockMatch.index) + `${' '.repeat(blockIndent)}${blockKey}:\n${newBody}` + text.slice(blockMatch.index + blockMatch[0].length);
+}
+
+export async function reconcileDeclaredCliVersion(project: ProjectContext, dryRun: boolean): Promise<FileChange[]> {
+  if (!canUpgradeDeclaredCli(project.manifest)) return [];
+  const from = project.manifest.xforge.version;
+  const to = CLI_VERSION;
+  const source = await readFile(project.manifestPath, 'utf8');
+  let next = source;
+  const scaffoldFixed = replaceFieldInBlock(next, 'scaffold', 0, 'version', 2, to);
+  if (scaffoldFixed === null) {
+    throw new XForgeError(diagnostic(
+      'XFORGE_MANIFEST_VERSION_FIELD_NOT_FOUND',
+      'Could not locate scaffold.version in xforge/manifest.yaml in the expected shape to reconcile the declared CLI version. Edit it by hand instead.',
+      'xforge/manifest.yaml',
+    ), { root: project.root });
+  }
+  next = scaffoldFixed;
+  const sourceFixed = replaceFieldInBlock(next, 'source', 2, 'version', 4, to);
+  if (sourceFixed === null) {
+    throw new XForgeError(diagnostic(
+      'XFORGE_MANIFEST_VERSION_FIELD_NOT_FOUND',
+      'Could not locate scaffold.source.version in xforge/manifest.yaml in the expected shape to reconcile the declared CLI version. Edit it by hand instead.',
+      'xforge/manifest.yaml',
+    ), { root: project.root });
+  }
+  next = sourceFixed;
+  const xforgeFixed = replaceFieldInBlock(next, 'xforge', 0, 'version', 2, to);
+  if (xforgeFixed === null) {
+    throw new XForgeError(diagnostic(
+      'XFORGE_MANIFEST_VERSION_FIELD_NOT_FOUND',
+      'Could not locate xforge.version in xforge/manifest.yaml in the expected shape to reconcile the declared CLI version. Edit it by hand instead.',
+      'xforge/manifest.yaml',
+    ), { root: project.root });
+  }
+  next = xforgeFixed;
+  if (!dryRun) await atomicWrite(project.root, 'xforge/manifest.yaml', next);
+  project.manifest.xforge.version = to;
+  project.manifest.scaffold.version = to;
+  project.manifest.scaffold.source.version = to;
+  const recomputed = resolveCompatibility(project.manifest, project.lock);
+  project.compatibility = recomputed.value;
+  /*
+   * `project.diagnostics` (unlike `project.compatibility`) is a plain snapshot computed once in
+   * `loadProject`, before this reconciliation ran — `checkStructure`/`state-reader` both start
+   * their own diagnostics from `[...project.diagnostics]` unconditionally, so a stale
+   * `XFORGE_CLI_IDENTITY_MISMATCH`/`XFORGE_LOCK_CLI_MISMATCH`/etc. from the pre-reconciliation
+   * Manifest would otherwise still fail the command even though the mismatch it names no longer
+   * exists. Splice in the freshly recomputed compatibility diagnostics in place of the stale ones.
+   */
+  const compatibilityCodes = new Set([
+    'XFORGE_PROTOCOL_MISMATCH', 'XFORGE_CLI_IDENTITY_MISMATCH', 'XFORGE_LOCK_CLI_MISMATCH',
+    'XFORGE_LOCK_PROTOCOL_MISMATCH', 'XFORGE_LOCK_SCAFFOLD_MISMATCH', 'XFORGE_LOCK_LANGUAGE_MISMATCH',
+  ]);
+  project.diagnostics = [...project.diagnostics.filter((item) => !compatibilityCodes.has(item.code)), ...recomputed.diagnostics];
+  return [{
+    action: 'modify',
+    path: 'xforge/manifest.yaml',
+    digest: sha256(next),
+    source: `xforge:declared-version-upgrade:${from}->${to}`,
+  }];
+}
+
 export function assertManaged(project: ProjectContext, command: string): void {
   if (project.compatibility.mode === 'managed') return;
   const compatibilityErrors = project.diagnostics.filter((item) => [
@@ -205,11 +356,14 @@ export function assertManaged(project: ProjectContext, command: string): void {
     'XFORGE_LOCK_CLI_MISMATCH',
     'XFORGE_LOCK_PROTOCOL_MISMATCH',
   ].includes(item.code));
+  const upgradable = canUpgradeDeclaredCli(project.manifest);
   throw new XForgeError(
     compatibilityErrors.length > 0 ? compatibilityErrors : diagnostic('XFORGE_MANAGED_REQUIRED', `${command} requires Managed mode.`),
     {
       root: project.root,
-      nextActions: [{ action: 'resolve-declared-xforge', reason: 'Install the exact @xforge/cli npm version declared by the project.' }],
+      nextActions: upgradable
+        ? [{ action: 'resolve-declared-xforge', reason: `The declared CLI version (${project.manifest.xforge.version}) is older than the running CLI (${CLI_VERSION}) and the Protocol matches — run xforge update to reconcile the declared version, rather than installing an older CLI.`, command: ['xforge', 'update'] }]
+        : [{ action: 'resolve-declared-xforge', reason: 'Install the exact @xforge/cli npm version declared by the project.' }],
     },
   );
 }

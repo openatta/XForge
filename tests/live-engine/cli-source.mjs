@@ -1,8 +1,12 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
-const repositoryRoot = path.resolve(new URL('../..', import.meta.url).pathname);
+/* fileURLToPath, not .pathname + path.resolve: a file:// URL's .pathname keeps a leading
+   slash before a Windows drive letter (/D:/...), which path.resolve does not strip -- it
+   prepends the cwd's own drive instead, producing a broken D:\D:\... path. */
+const repositoryRoot = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
 
 export const CLI_SOURCE_MODES = ['npm', 'local'];
 

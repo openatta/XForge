@@ -77,8 +77,9 @@ install:
 # matching McpServer resource (scaffold/mcp-servers/enterprise-approvals.yaml) is a placeholder — it
 # ships with a command that does not exist, on purpose. Replace it with the approval system your
 # organization actually runs before Major can produce a real decision; until then,
-# `xforge approve --provider enterprise-approvals` fails loudly with XFORGE_APPROVAL_MCP_CONNECTION_FAILED
-# instead of silently pretending to work.
+# `xforge approve --provider enterprise-approvals` fails loudly with XFORGE_APPROVAL_MCP_TOKEN_MISSING
+# (no token is configured by default; XFORGE_APPROVAL_MCP_CONNECTION_FAILED would only occur after a
+# token is set but the server is still unreachable) instead of silently pretending to work.
 approvals:
   providers:
     - id: enterprise-approvals

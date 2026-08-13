@@ -14,7 +14,7 @@ allowed-tools: Read Grep Glob Bash
 
 - 权限来自被选择的 ready Action 与对应 Skill；Continue 本身不扩大写权限。
 - external/CLI/用户决定 Action 不得由 Agent 冒领；Archive 永远需要明确授权。
-- Approval Action 只能请求或导入人类/外部 provider receipt，Agent 永远不能自行批准。
+- Approval Action 只能通过终端交互或 mcp provider 轮询请求（提交）人类/外部 provider 的决定，Agent 永远不能自行批准。
 
 # 执行
 
@@ -22,7 +22,7 @@ allowed-tools: Read Grep Glob Bash
 2. 读取 ready Actions、blocking diagnostics、inputs、writes、doneWhen、requiredEvidence 和 reworkTo。
 3. 选择与授权一致的 Action，加载并完整遵守对应 Skill，完成后重新查询 State。
 4. 连续推进时重复上述循环，但不得跳过 Clarify/Check、失败 Gate 或 revision 检查。
-5. 默认最多推进到 Verify satisfied；用户未明确授权时停在 verified-active。
+5. 默认最多推进到 Verify satisfied；用户未明确授权时停在 ready-to-archive。
 
 # 证据
 
@@ -32,3 +32,4 @@ allowed-tools: Read Grep Glob Bash
 
 - 在材料性歧义、范围扩大、失败 Gate、权限扩大、stale revision、外部副作用或无 ready Action 时停止。
 - State 返回 rework 时转到指定 Stage，不自行选择更晚阶段绕过问题。
+- 当 Approval Action 因所配置的 provider 缺失、不可达或策略不允许而失败或阻塞（例如 `XFORGE_APPROVAL_PROVIDER_FORBIDDEN`）——不同于 `status: pending` 这种真正等待人类决定的 Action——这属于配置缺口，不是普通的待审状态。此时应停止、不要重试，并明确告知用户需要配置 approval provider：指向 manifest.yaml 的 `approvals.providers` 与对应 Flow 的 `approvalPolicies`。

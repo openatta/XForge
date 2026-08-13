@@ -1,6 +1,7 @@
 import { cp, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import { parse, stringify } from 'yaml';
 import { afterAll } from 'vitest';
@@ -9,7 +10,9 @@ import { CONSTITUTION_CHECK_PATH, constitutionPrinciples } from '../src/core/con
 import { executeApprove, type ApprovalTerminal } from '../src/commands/approve.js';
 import { loadProject } from '../src/core/project-loader.js';
 
-export const xforgeRoot = path.resolve(new URL('..', import.meta.url).pathname);
+/* fileURLToPath, not .pathname + path.resolve: see xforge/src/core/identity.ts's comment on why
+   the latter produces a broken doubled-drive-letter path (D:\D:\...) on Windows. */
+export const xforgeRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 export const repositoryRoot = path.resolve(xforgeRoot, '..');
 export const scaffoldPayload = path.join(repositoryRoot, 'scaffold', 'payload');
 export const cliPath = path.join(xforgeRoot, 'dist', 'cli.js');
@@ -77,6 +80,41 @@ export async function runCli(root: string, args: string[], env: NodeJS.ProcessEn
     child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk));
     child.on('error', reject);
     child.on('close', (code) => resolve({ code: code ?? 1, stdout: Buffer.concat(stdout).toString(), stderr: Buffer.concat(stderr).toString() }));
+  });
+  let json: any = null;
+  try { json = JSON.parse(result.stdout); } catch {}
+  return { ...result, json };
+}
+
+/**
+ * Same conventions as `runCli` (cwd, env passthrough, coverage instrumentation, stdout/stderr/code
+ * capture), but with `stdio[0]` piped instead of `ignore` so callers can feed the child's stdin —
+ * needed to exercise `hook`'s `for await (const chunk of process.stdin)` parsing at the real CLI
+ * boundary, which `runCli` structurally cannot reach.
+ */
+export async function runCliWithStdin(
+  root: string,
+  args: string[],
+  stdinContent: string,
+  env: NodeJS.ProcessEnv = {},
+): Promise<{ code: number; stdout: string; stderr: string; json: any }> {
+  const coverageEnvironment = process.env.XFORGE_TEST_NODE_V8_COVERAGE
+    ? { NODE_V8_COVERAGE: process.env.XFORGE_TEST_NODE_V8_COVERAGE }
+    : {};
+  const result = await new Promise<{ code: number; stdout: string; stderr: string }>((resolve, reject) => {
+    const child = spawn(process.execPath, [cliPath, ...args], {
+      cwd: root,
+      env: { ...process.env, ...coverageEnvironment, ...env },
+      shell: false,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
+    child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk));
+    child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk));
+    child.on('error', reject);
+    child.on('close', (code) => resolve({ code: code ?? 1, stdout: Buffer.concat(stdout).toString(), stderr: Buffer.concat(stderr).toString() }));
+    child.stdin.end(stdinContent);
   });
   let json: any = null;
   try { json = JSON.parse(result.stdout); } catch {}

@@ -6,6 +6,7 @@ import { loadBundledScaffold } from '../core/bundled-scaffold.js';
 import { atomicWrite } from '../core/files.js';
 import { sha256 } from '../core/hash.js';
 import { localizedVariant } from '../core/language.js';
+import { reconcileDeclaredCliVersion } from '../core/project-loader.js';
 import { executeProjection } from './projection.js';
 
 async function exists(filePath: string): Promise<boolean> {
@@ -40,8 +41,15 @@ async function seedMissingConstitutionFiles(project: ProjectContext, dryRun: boo
 }
 
 export async function executeUpdate(project: ProjectContext, options: { target?: TargetId; dryRun: boolean }) {
+  /*
+   * Reconciling first (a no-op unless the declared CLI version is a clean, Protocol-compatible
+   * upgrade — see `canUpgradeDeclaredCli`) means `executeProjection`'s `assertUpdateCompatible`
+   * gate below sees an already-consistent Manifest instead of hard-blocking update itself from
+   * ever reaching the code that exists to resolve exactly this kind of staleness.
+   */
+  const versionChanges = await reconcileDeclaredCliVersion(project, options.dryRun);
   const result = await executeProjection(project, 'update', options);
-  if (result.diagnostics.some((item) => item.severity === 'error')) return result;
+  if (result.diagnostics.some((item) => item.severity === 'error')) return { ...result, changes: [...versionChanges, ...result.changes] };
   const seeded = await seedMissingConstitutionFiles(project, options.dryRun);
-  return { ...result, changes: [...seeded, ...result.changes] };
+  return { ...result, changes: [...versionChanges, ...seeded, ...result.changes] };
 }

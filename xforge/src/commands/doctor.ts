@@ -23,11 +23,12 @@ export interface DoctorFinding {
 
 export interface DoctorData {
   kind: DoctorKind | 'all';
-  summary: { dangling: number; deadCode: number; uncited: number; unusedFlows: number };
+  summary: { dangling: number; deadCode: number; uncited: number; unusedFlows: number; unusableApprovals: number };
   danglingReferences: DoctorFinding[];
   deadCode: DoctorFinding[];
   uncited: DoctorFinding[];
   unusedFlows: DoctorFinding[];
+  unusableApprovals: DoctorFinding[];
 }
 
 // Built-in Skills that are never invoked from a Flow Stage by design (chat-driven, standalone).
@@ -109,6 +110,25 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
   const referencedPolicies = new Set<string>();
   const deadCode: DoctorFinding[] = [];
   const unusedFlows: DoctorFinding[] = [];
+  const unusableApprovals: DoctorFinding[] = [];
+
+  /* Mirrors how `approve`/`control-plane` resolve a provider id at runtime: `local` is always
+     available for interactive approval, an `mcp` provider needs a manifest entry that points at an
+     enabled McpServer resource whose command is not an obvious placeholder. A policy backed by no
+     usable provider can never actually collect an approval — reported here as an advisory, the same
+     as every other doctor finding, so it only escalates when `--strict` is set. */
+  function providerUsability(providerId: string): { usable: boolean; reason: string } {
+    if (providerId === 'local') return { usable: true, reason: 'local is always usable' };
+    const provider = project.manifest.approvals?.providers.find((item) => item.id === providerId);
+    if (!provider) return { usable: false, reason: 'not declared under manifest approvals.providers' };
+    const server = structure.resources.mcpServers.get(provider.mcpServer);
+    if (!server) return { usable: false, reason: `references McpServer ${provider.mcpServer}, which is not an enabled resource` };
+    const { transport, command, url } = server.value.spec;
+    const commandText = transport === 'http' ? (url ?? '') : (command ?? []).join(' ');
+    const looksPlaceholder = !commandText.trim() || /not[-\s]?configured|placeholder/i.test(commandText);
+    if (looksPlaceholder) return { usable: false, reason: `McpServer ${provider.mcpServer} ${transport === 'http' ? 'url' : 'command'} looks like an unconfigured placeholder` };
+    return { usable: true, reason: 'McpServer resolves to a configured command' };
+  }
 
   for (const [name, flow] of flowResult.flows) {
     const filePath = `xforge/flows/${name}.yaml`;
@@ -128,6 +148,20 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
             path: filePath,
           });
         }
+      }
+      for (const policy of flow.governance?.approvalPolicies ?? []) {
+        const checks = policy.providers.map((providerId) => ({ providerId, ...providerUsability(providerId) }));
+        if (checks.some((check) => check.usable)) continue;
+        const detail = checks.length
+          ? checks.map((check) => `${check.providerId} (${check.reason})`).join('; ')
+          : 'the policy declares no providers at all';
+        unusableApprovals.push({
+          scope: 'approvals',
+          code: 'XFORGE_DOCTOR_APPROVAL_POLICY_UNUSABLE',
+          id: policy.id,
+          message: `Approval policy ${policy.id} in Flow ${name} has no usable provider: ${detail}.`,
+          path: filePath,
+        });
       }
     } else {
       for (const gate of flow.operations.archive.mandatoryGates) referencedGates.add(gate);
@@ -207,24 +241,26 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
   const matchesKind = (finding: DoctorFinding): boolean => !options.kind || finding.scope === options.kind;
   const filtered: DoctorData = {
     kind: options.kind ?? 'all',
-    summary: { dangling: 0, deadCode: 0, uncited: 0, unusedFlows: 0 },
+    summary: { dangling: 0, deadCode: 0, uncited: 0, unusedFlows: 0, unusableApprovals: 0 },
     danglingReferences: danglingReferences.filter(matchesKind),
     deadCode: deadCode.filter(matchesKind),
     uncited: uncited.filter(matchesKind),
     unusedFlows: unusedFlows.filter(matchesKind),
+    unusableApprovals: unusableApprovals.filter(matchesKind),
   };
   filtered.summary = {
     dangling: filtered.danglingReferences.length,
     deadCode: filtered.deadCode.length,
     uncited: filtered.uncited.length,
     unusedFlows: filtered.unusedFlows.length,
+    unusableApprovals: filtered.unusableApprovals.length,
   };
 
-  for (const finding of [...filtered.danglingReferences, ...filtered.deadCode, ...filtered.uncited, ...filtered.unusedFlows]) {
+  for (const finding of [...filtered.danglingReferences, ...filtered.deadCode, ...filtered.uncited, ...filtered.unusedFlows, ...filtered.unusableApprovals]) {
     diagnostics.push(diagnostic(finding.code, finding.message, finding.path, 'warning'));
   }
 
-  const hasFindings = filtered.summary.dangling + filtered.summary.deadCode + filtered.summary.uncited + filtered.summary.unusedFlows > 0;
+  const hasFindings = filtered.summary.dangling + filtered.summary.deadCode + filtered.summary.uncited + filtered.summary.unusedFlows + filtered.summary.unusableApprovals > 0;
   if (options.strict && hasFindings) {
     diagnostics.push(diagnostic('XFORGE_DOCTOR_STRICT', 'doctor found issues and --strict is set.', undefined, 'error'));
   }
