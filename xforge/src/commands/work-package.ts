@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { rm, stat } from 'node:fs/promises';
 import type { Diagnostic, FileChange, ProjectContext, WorkPackageAckReceipt, WorkPackageDispatchReceipt } from '../types.js';
-import { recordAudit } from '../core/audit.js';
+import { acknowledgementAttestationDigest, recordAudit } from '../core/audit.js';
 import { resolveControlPlane } from '../core/control-plane.js';
 import { XForgeError, diagnostic } from '../core/errors.js';
 import { atomicWrite } from '../core/files.js';
@@ -161,7 +161,16 @@ export async function executeWorkPackageAcknowledge(project: ProjectContext, opt
           revision: control.governance.revision,
           actor: { id: process.env.USER ?? 'unknown', provider: 'local-os', role: options.role, type: 'agent' },
           outcome: 'succeeded',
-          input: { packageId: options.packageId, deliveryExecutionId: selected.delivery?.execution_id, evidence, ackReceipt: receipt.digest },
+          /*
+           * This event *is* the attestation that makes the committed receipt believable, so its
+           * `inputDigest` has to be something the read side can recompute from the receipt alone on
+           * a machine that never ran this command. `acknowledgementAttestationDigest` is that shared
+           * definition; passing it explicitly (rather than letting `recordAudit` hash a richer
+           * `input`) is what keeps the two sides from ever drifting.
+           */
+          inputDigest: acknowledgementAttestationDigest(receipt.digest),
+          /* The surrounding context stays committed to, via the event's outputDigest. */
+          output: { packageId: options.packageId, deliveryExecutionId: executionId, evidence, ackReceipt: receipt.digest },
         });
       } catch (error) {
         /*

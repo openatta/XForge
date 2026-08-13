@@ -58,12 +58,20 @@ export async function write(root: string, relative: string, content: string): Pr
   await writeFile(absolute, content);
 }
 
-export async function runCli(root: string, args: string[], env: NodeJS.ProcessEnv = {}): Promise<{
+export interface CliResult {
   code: number;
   stdout: string;
   stderr: string;
   json: any;
-}> {
+}
+
+/**
+ * Spawns the real CLI binary in `root`. `stdin` decides `stdio[0]`: `undefined` leaves it `ignore`
+ * (the child sees a closed stream), a string pipes it and writes that content before closing.
+ * Everything else — cwd, env passthrough, coverage instrumentation, stdout/stderr/exit-code
+ * capture, best-effort stdout JSON parsing — is identical either way.
+ */
+async function runCliCore(root: string, args: string[], env: NodeJS.ProcessEnv, stdin?: string): Promise<CliResult> {
   const coverageEnvironment = process.env.XFORGE_TEST_NODE_V8_COVERAGE
     ? { NODE_V8_COVERAGE: process.env.XFORGE_TEST_NODE_V8_COVERAGE }
     : {};
@@ -72,7 +80,7 @@ export async function runCli(root: string, args: string[], env: NodeJS.ProcessEn
       cwd: root,
       env: { ...process.env, ...coverageEnvironment, ...env },
       shell: false,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: [stdin === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
     });
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
@@ -80,45 +88,29 @@ export async function runCli(root: string, args: string[], env: NodeJS.ProcessEn
     child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk));
     child.on('error', reject);
     child.on('close', (code) => resolve({ code: code ?? 1, stdout: Buffer.concat(stdout).toString(), stderr: Buffer.concat(stderr).toString() }));
+    if (stdin !== undefined) child.stdin.end(stdin);
   });
   let json: any = null;
   try { json = JSON.parse(result.stdout); } catch {}
   return { ...result, json };
 }
 
+export async function runCli(root: string, args: string[], env: NodeJS.ProcessEnv = {}): Promise<CliResult> {
+  return runCliCore(root, args, env);
+}
+
 /**
- * Same conventions as `runCli` (cwd, env passthrough, coverage instrumentation, stdout/stderr/code
- * capture), but with `stdio[0]` piped instead of `ignore` so callers can feed the child's stdin —
- * needed to exercise `hook`'s `for await (const chunk of process.stdin)` parsing at the real CLI
- * boundary, which `runCli` structurally cannot reach.
+ * Same conventions as `runCli`, but with `stdio[0]` piped instead of `ignore` so callers can feed
+ * the child's stdin — needed to exercise `hook`'s `for await (const chunk of process.stdin)`
+ * parsing at the real CLI boundary, which `runCli` structurally cannot reach.
  */
 export async function runCliWithStdin(
   root: string,
   args: string[],
   stdinContent: string,
   env: NodeJS.ProcessEnv = {},
-): Promise<{ code: number; stdout: string; stderr: string; json: any }> {
-  const coverageEnvironment = process.env.XFORGE_TEST_NODE_V8_COVERAGE
-    ? { NODE_V8_COVERAGE: process.env.XFORGE_TEST_NODE_V8_COVERAGE }
-    : {};
-  const result = await new Promise<{ code: number; stdout: string; stderr: string }>((resolve, reject) => {
-    const child = spawn(process.execPath, [cliPath, ...args], {
-      cwd: root,
-      env: { ...process.env, ...coverageEnvironment, ...env },
-      shell: false,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-    const stdout: Buffer[] = [];
-    const stderr: Buffer[] = [];
-    child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk));
-    child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk));
-    child.on('error', reject);
-    child.on('close', (code) => resolve({ code: code ?? 1, stdout: Buffer.concat(stdout).toString(), stderr: Buffer.concat(stderr).toString() }));
-    child.stdin.end(stdinContent);
-  });
-  let json: any = null;
-  try { json = JSON.parse(result.stdout); } catch {}
-  return { ...result, json };
+): Promise<CliResult> {
+  return runCliCore(root, args, env, stdinContent);
 }
 
 export function changeYaml(flow: 'quick' | 'solid' | 'major', overrides: Record<string, unknown> = {}): string {

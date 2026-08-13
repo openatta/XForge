@@ -18,10 +18,23 @@ spec:
   capability: fs.write
   effect: deny
   match:
+    # Kept in exact 1:1 alignment with the `scope.paths` of the
+    # `governance-assets-are-integrator-only` Rule, which declares this policy as its enforcement:
+    # a Rule that claims a path this policy does not cover misreports it as guarded.
+    #
+    # Deliberately NOT denied:
+    #   - xforge/scaffold/**  the xforge-scaffold Skill legitimately authors resources there.
+    #   - xforge/changes/**   xforge-propose/xforge-apply and the other lifecycle Skills write
+    #                         Change content there through normal governed Changes.
+    # Denying either would break those workflows, not harden them.
     paths:
       - xforge/constitution.md
       - xforge/specs/**
       - xforge/manifest.yaml
       - xforge/lock.yaml
+      - xforge/flows/**
+      - xforge/.audit/**
   exceptActors: [integrator]
-  reason: Shared governance files may be written only by the Integrator or an explicit XForge transaction.
+  reason: >-
+    Shared governance files may be written only by the Integrator, an explicit XForge transaction,
+    or the CLI itself. Flow definitions and the audit chain are CLI-owned; no Skill authors them.

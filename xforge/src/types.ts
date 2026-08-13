@@ -486,11 +486,12 @@ export interface McpServerResource {
     authTokenEnv: string;
     timeoutSeconds: number;
     /**
-     * Extra environment variable names this MCP provider's `stdio` subprocess may inherit, on top
-     * of the built-in allowlist (see core/env-safety.ts). Names that look like credentials are
-     * always dropped, even if listed here.
+     * Extra environment variable names (`allow`) and name prefixes (`allowPrefixes`, e.g.
+     * `CORP_APPROVALS_`) this MCP provider's `stdio` subprocess may inherit, on top of the built-in
+     * allowlist (see core/env-safety.ts). Names that look like credentials are always dropped, even
+     * if listed here or matched by a declared prefix.
      */
-    env?: { allow?: string[] };
+    env?: { allow?: string[]; allowPrefixes?: string[] };
   };
 }
 

@@ -4,7 +4,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { CLI_NAME, CLI_VERSION } from '../constants.js';
 import type { Diagnostic, GovernanceRevision, McpServerResource, ProjectContext } from '../types.js';
 import { XForgeError, diagnostic } from './errors.js';
-import { filterEnvironment } from './env-safety.js';
+import { filterEnvironment, type FilteredEnvironment } from './env-safety.js';
 import { safeResolve } from './path-safety.js';
 
 const CONNECT_ATTEMPTS = 3;
@@ -35,12 +35,43 @@ function sleep(ms: number): Promise<void> {
  * Scripts (core/env-safety.ts) — it never inherits the ambient environment wholesale: a
  * third-party approval provider is an external process, and a blanket `...process.env` passthrough
  * would hand it cloud credentials, tokens, and anything else sitting in the CLI's environment. Only
- * the built-in safe-default allowlist plus whatever this McpServer's `spec.env.allow` declares is
- * passed through; `XFORGE_MCP_TOKEN` is the deliberate credential handoff to the provider.
+ * the built-in safe-default allowlist plus whatever this McpServer's `spec.env.allow` /
+ * `spec.env.allowPrefixes` declares is passed through; `XFORGE_MCP_TOKEN` is the deliberate
+ * credential handoff to the provider (injected after filtering, so the deny pattern doesn't eat it).
  */
-function stdioEnvironment(server: McpServerResource, token: string): { env: Record<string, string>; filtered: string[] } {
-  const { env, filtered } = filterEnvironment({ allow: server.spec.env?.allow });
-  return { env: { ...env, XFORGE_MCP_TOKEN: token }, filtered };
+function stdioEnvironment(server: McpServerResource, token: string): FilteredEnvironment {
+  const { env, filtered, notAllowed } = filterEnvironment({
+    allow: server.spec.env?.allow,
+    allowPrefixes: server.spec.env?.allowPrefixes,
+  });
+  return { env: { ...env, XFORGE_MCP_TOKEN: token }, filtered, notAllowed };
+}
+
+/** How many excluded variable names the env-filter diagnostic spells out before summarising the rest. */
+const ENV_FILTERED_NAME_LIMIT = 10;
+
+/**
+ * The diagnostic exists so a human can debug a provider that broke once allowlisting landed, which
+ * only requires naming variables they could actually opt back in. Credential-shaped names are
+ * counted, never named: they can't be allowlisted anyway, and this text lands in agent context and
+ * CI logs, where "here are the 60 secret-ish variable names on this machine" is a disclosure with no
+ * matching benefit. The declarable list is capped too, so a busy CI environment can't flood it.
+ */
+function envFilteredDiagnostic(providerId: string, { filtered, notAllowed }: FilteredEnvironment): Diagnostic {
+  const named = notAllowed.slice(0, ENV_FILTERED_NAME_LIMIT);
+  const remaining = notAllowed.length - named.length;
+  const deniedCount = filtered.length - notAllowed.length;
+  const denied = deniedCount > 0 ? ` ${deniedCount} of them have credential-shaped names, which are always dropped and are not listed here.` : '';
+  /* Empty only when every exclusion was credential-shaped, which the clause above already states. */
+  const declarable = named.length === 0
+    ? ''
+    : ` Declarable: ${named.join(', ')}${remaining > 0 ? `, and ${remaining} more` : ''} — list any the provider actually needs under this McpServer's spec.env.allow or spec.env.allowPrefixes.`;
+  return diagnostic(
+    'XFORGE_APPROVAL_MCP_ENV_FILTERED',
+    `${filtered.length} ambient environment variable(s) were not passed through to MCP provider ${providerId}'s subprocess.${denied}${declarable}`,
+    undefined,
+    'info',
+  );
 }
 
 async function buildTransport(project: ProjectContext, server: McpServerResource, token: string, env: Record<string, string>) {
@@ -66,11 +97,12 @@ async function callToolJson<T>(client: Client, name: string, args: Record<string
  * safe because submit_approval_request is idempotent (keyed by governingDigest) and
  * poll_approval is a pure read.
  *
- * Alongside the caller's result, this returns `diagnostics`: an info-severity entry naming how
- * many ambient environment variables were filtered out of the provider subprocess's environment
- * (see `stdioEnvironment` above), so a human debugging a provider that misbehaves after this
- * allowlisting lands sees why, instead of a bare, unexplained connection failure. Empty when the
- * transport is `http` (no subprocess) or nothing was filtered.
+ * Alongside the caller's result, this returns `diagnostics`: an info-severity entry counting how
+ * many ambient environment variables were filtered out of the provider subprocess's environment and
+ * naming a bounded subset of the declarable ones (see `envFilteredDiagnostic` below), so a human
+ * debugging a provider that misbehaves after this allowlisting lands sees why, instead of a bare,
+ * unexplained connection failure. Empty when the transport is `http` (no subprocess) or nothing was
+ * filtered.
  */
 export async function withMcpApprovalSession<T>(
   project: ProjectContext,
@@ -90,14 +122,7 @@ export async function withMcpApprovalSession<T>(
   /* Deterministic for the lifetime of this call (process.env and the spec don't change between
    * retries), so it's computed once and reused across connection attempts below. */
   const stdio = server.spec.transport === 'stdio' ? stdioEnvironment(server, token) : null;
-  if (stdio && stdio.filtered.length > 0) {
-    diagnostics.push(diagnostic(
-      'XFORGE_APPROVAL_MCP_ENV_FILTERED',
-      `${stdio.filtered.length} ambient environment variable(s) were not passed through to MCP provider ${providerId}'s subprocess: ${stdio.filtered.join(', ')}. Declare any the provider actually needs under this McpServer's spec.env.allow.`,
-      undefined,
-      'info',
-    ));
-  }
+  if (stdio && stdio.filtered.length > 0) diagnostics.push(envFilteredDiagnostic(providerId, stdio));
   let lastError: unknown;
   for (let attempt = 1; attempt <= CONNECT_ATTEMPTS; attempt += 1) {
     const client = new Client({ name: CLI_NAME, version: CLI_VERSION }, { capabilities: {} });

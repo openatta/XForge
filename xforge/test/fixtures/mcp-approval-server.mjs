@@ -17,6 +17,26 @@ if (expectedToken && process.env.XFORGE_MCP_TOKEN !== expectedToken) {
   process.exit(1);
 }
 
+// The next two checks are the adversarial half of the env-allowlisting tests: this process must
+// never see a variable the McpServer did not declare, and must never see a credential-shaped one
+// even when the McpServer does declare it. Exiting non-zero here surfaces as a connection failure
+// in the surrounding test, so a leak can only ever fail a test, never silently pass one.
+
+// Set in the parent environment but never declared in spec.env.allow/allowPrefixes: if it arrives,
+// the subprocess inherited the ambient environment.
+if (process.env.XFORGE_TEST_MCP_FORBIDDEN_LEAK) {
+  process.stderr.write('environment leak detected: an undeclared variable reached the provider\n');
+  process.exit(1);
+}
+
+// Credential-shaped ("AUTH" matches core/env-safety.ts's deny pattern), and deliberately declared
+// in spec.env.allow / matched by an allowPrefixes entry by the tests: if it arrives, an explicit
+// allow (or prefix) beat the deny filter, which would let any manifest opt a secret back in.
+if (process.env.XFORGE_TEST_MCP_AUTH_BACKDOOR) {
+  process.stderr.write('credential-shaped variable leaked: deny did not beat allow\n');
+  process.exit(1);
+}
+
 const server = new Server({ name: 'xforge-test-mcp-approval', version: '1.0.0' }, { capabilities: { tools: {} } });
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({

@@ -1,16 +1,18 @@
-import { readFile } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
+import { readFile, realpath } from 'node:fs/promises';
+import path from 'node:path';
 import type { Diagnostic, FileChange, Flow, GateEvidence, GateResource, ProjectContext, StageFlow } from '../types.js';
 import { checkStructure } from '../core/checker.js';
 import { diagnostic } from '../core/errors.js';
+import { atomicWrite } from '../core/files.js';
 import { assertManaged } from '../core/project-loader.js';
 import { workPackageVerificationGates } from '../core/work-packages.js';
-import { runGate } from '../runners/gate.js';
+import { gateInputDigest, runGate } from '../runners/gate.js';
 import { readAuditEvents, recordAudit } from '../core/audit.js';
 import { isStageFlow, resolveChangeState } from '../core/flow-resolver.js';
 import { loadTransitionReceipts, resolveControlPlane } from '../core/control-plane.js';
 import { sha256, stableStringify } from '../core/hash.js';
 import { safeResolve } from '../core/path-safety.js';
-import type { SelectedResources } from '../core/resource-loader.js';
 
 /** Stages that run before any implementation exists, so no work-package verify can be meaningful. */
 const PRE_APPLY_STAGES = new Set(['propose', 'clarify', 'design', 'check']);
@@ -55,54 +57,135 @@ function stageGateIds(flow: StageFlow, stageId: string): string[] | null {
 }
 
 /**
- * Mirrors the `revision` derivation `runGate` performs internally (gate.ts, `export async function
- * runGate`) so `inputDigest` can be predicted here without running the Gate. Returns `null` on any
- * failure to resolve state/control-plane so the caller falls back to actually running the Gate.
+ * Local, machine-scoped reuse keys for work-package verify Evidence.
+ *
+ * Deliberately under the gitignored `xforge/.audit/` tree rather than beside the Evidence: a key
+ * records the state of *uncommitted* edits on one machine at one moment. It is a cache, never a
+ * governance artifact, so it must not be committed, reviewed, or trusted from another clone — a
+ * missing key simply means the Gate runs again.
  */
-async function computeGateInputDigest(
-  project: ProjectContext,
-  changeId: string,
-  gate: GateResource,
-  structurePassed: boolean,
-  resources: SelectedResources,
-): Promise<string | null> {
-  try {
-    const resolved = await resolveChangeState(project, changeId);
-    const control = isStageFlow(resolved.flow) && resolved.flow.governance
-      ? await resolveControlPlane(project, changeId, resolved.flow, resolved.state, resources, resolved.config)
-      : null;
-    const revision = control?.governance.revision ?? {
-      contentRevision: sha256(stableStringify({ changeId, flow: resolved.flow.metadata.name })),
-      stateRevision: sha256(stableStringify({ changeId, flow: resolved.flow.metadata.name, stage: 'legacy' })),
-      policySnapshotDigest: sha256(stableStringify({ legacy: true })), gitBase: 'unknown', gitHead: 'unknown',
-    };
-    return sha256(stableStringify({ gate, revision, structurePassed }));
-  } catch {
-    return null;
-  }
+const AUDIT_DIRECTORY = 'xforge/.audit';
+const GATE_REUSE_DIRECTORY = `${AUDIT_DIRECTORY}/gate-reuse`;
+/** Bounds on the uncommitted state a reuse key will hash; beyond them the Gate re-runs instead. */
+const MAX_DIRTY_ENTRIES = 5_000;
+const MAX_DIRTY_BYTES = 64 * 1024 * 1024;
+
+interface GateReuseRecord {
+  schemaVersion: '1';
+  change: string;
+  gate: string;
+  evidencePath: string;
+  /** The Evidence file these keys describe; a re-run under a different tree invalidates the pair. */
+  evidenceDigest: string;
+  worktreeDigest: string;
+}
+
+function gateReuseRecordPath(changeId: string, gate: GateResource): string {
+  return `${GATE_REUSE_DIRECTORY}/${changeId}/${gate.metadata.name.replace(/[^a-zA-Z0-9._-]+/g, '-')}.json`;
+}
+
+/** `git` stdout, or `null` on any failure — including output past the byte bound. */
+async function git(root: string, args: string[]): Promise<string | null> {
+  return new Promise((resolve) => {
+    const child = spawn('git', ['-c', 'core.quotepath=false', '-C', root, ...args], { shell: false, stdio: ['ignore', 'pipe', 'ignore'] });
+    const chunks: Buffer[] = [];
+    let bytes = 0;
+    child.stdout.on('data', (chunk: Buffer) => {
+      bytes += chunk.byteLength;
+      if (bytes <= MAX_DIRTY_BYTES) chunks.push(chunk);
+    });
+    child.on('error', () => resolve(null));
+    child.on('close', (code) => resolve(code === 0 && bytes <= MAX_DIRTY_BYTES ? Buffer.concat(chunks).toString('utf8') : null));
+  });
 }
 
 /**
- * Reuses passed Evidence already on disk for `gate` when its `inputDigest` matches what this run
- * would produce, so `check` does not re-run a Gate whose outcome could not have changed. Mirrors the
- * evidence self-consistency check in gate.ts's own evidence-conflict-detection code (`gate`/`change`
- * fields and digest recomputation), then additionally requires the `inputDigest` to match and the
- * cached `status` to be `'passed'`. Any mismatch, missing file, or parse failure returns `null` so
- * the caller falls back to running the Gate for real; a caching bug must never silently skip a Gate.
+ * A digest of everything the working tree holds that `HEAD` does not: every modified, staged,
+ * deleted, and untracked (but not ignored) path, with its current content.
  *
- * Reads the (cheap) evidence file *before* computing the (expensive — a full `resolveChangeState` +
- * `resolveControlPlane`) expected digest: the common case for a work package that has never been
- * verified yet is "no evidence file exists," and probing the control plane before even checking that
- * would otherwise double the control-plane resolution cost of every cache-miss `check` call (`runGate`
- * resolves it again internally) — on a CI runner with less headroom than a developer machine, that
- * regression is exactly what pushed several unrelated, pre-existing tests over their timeout.
+ * This is the half of "what could change a verify command's outcome" that `inputDigest` structurally
+ * cannot see. `inputDigest` binds the Gate definition, the governance Artifacts, the policy
+ * snapshot, and `gitBase`/`gitHead` — so a *commit* already invalidates it. Uncommitted edits move
+ * none of those inputs, which is precisely the state an Agent implementing a Change is in for most
+ * of its run. Pairing the two covers the whole tree: `HEAD` by commit id, the delta from `HEAD` by
+ * content.
+ *
+ * Two prefixes are excluded, both for the same reason — `check` writes them itself on every run, so
+ * including them would invalidate the key the moment it was created: the Change's own directory
+ * (Evidence and the audit index; the governance inputs that live there are already bound by
+ * `inputDigest` through the Change's content revision) and `xforge/.audit/` (the local audit chain
+ * and these reuse keys, which are normally gitignored but need not be in every project).
+ *
+ * Returns `null` — meaning "re-run the Gate" — whenever the tree cannot be established exactly:
+ * no Git, a failed `git` invocation, a project root that is not the worktree root (porcelain paths
+ * are relative to the repository root, so they would not resolve), an unreadable dirty path, or
+ * more dirty state than the bounds above allow. Reuse must never be the fallback for not knowing.
+ */
+async function workingTreeDigest(project: ProjectContext, changeId: string): Promise<string | null> {
+  const toplevel = await git(project.root, ['rev-parse', '--show-toplevel']);
+  if (toplevel === null) return null;
+  const [resolvedToplevel, resolvedRoot] = await Promise.all([
+    realpath(toplevel.trim()).catch(() => ''),
+    realpath(project.root).catch(() => path.resolve(project.root)),
+  ]);
+  if (!resolvedToplevel || resolvedToplevel !== resolvedRoot) return null;
+  const status = await git(project.root, ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--no-renames']);
+  if (status === null) return null;
+
+  const excluded = [`${project.changesPath}/${changeId}/`, `${AUDIT_DIRECTORY}/`];
+  const entries: Array<{ status: string; path: string; digest: string }> = [];
+  let bytes = 0;
+  for (const record of status.split('\0')) {
+    if (record.length < 4) continue;
+    const relative = record.slice(3);
+    if (excluded.some((prefix) => relative.startsWith(prefix))) continue;
+    if (entries.length >= MAX_DIRTY_ENTRIES) return null;
+    let digest = 'absent';
+    try {
+      const content = await readFile(await safeResolve(project.root, relative));
+      bytes += content.byteLength;
+      if (bytes > MAX_DIRTY_BYTES) return null;
+      digest = sha256(content);
+    } catch (error) {
+      /* A deleted path has nothing left to hash. Anything else unreadable is unknown state. */
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return null;
+    }
+    entries.push({ status: record.slice(0, 2), path: relative, digest });
+  }
+  entries.sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0));
+  return sha256(stableStringify(entries));
+}
+
+/**
+ * Passed Evidence on disk that this run may reuse instead of executing the Gate again.
+ *
+ * Reuse requires all of: the Evidence is self-consistent and belongs to this Gate and Change (the
+ * same check gate.ts performs before overwriting Evidence), its `status` is `passed`, its
+ * `inputDigest` matches what a run right now would record, and a reuse key written by the run that
+ * produced this exact Evidence still matches the current working tree.
+ *
+ * The last condition is not redundant. `inputDigest` proves only that the Gate definition, the
+ * governance Artifacts, the policy snapshot, and `HEAD` are unchanged — it says nothing about
+ * uncommitted edits, so on its own it would let an Agent edit source, re-run `check`, and be told
+ * its verify passed without the command ever executing.
+ *
+ * Any mismatch, missing file, or parse failure returns `null` and the Gate runs for real; a caching
+ * bug must never silently skip a Gate.
+ *
+ * Order matters: the two cheap file reads come before the expensive `gateInputDigest` (a full
+ * `resolveChangeState` + `resolveControlPlane`). The common case for a work package that has never
+ * been verified is "no Evidence file exists," and probing the control plane before establishing that
+ * would double the control-plane cost of every cache-miss `check` (`runGate` resolves it again
+ * internally) — on a CI runner with less headroom than a developer machine, that regression is
+ * exactly what pushed several unrelated, pre-existing tests over their timeout.
  */
 async function readReusableGateEvidence(
   project: ProjectContext,
   changeId: string,
   gate: GateResource,
-  resources: SelectedResources,
+  worktreeDigest: string | null,
 ): Promise<GateEvidence | null> {
+  if (!worktreeDigest) return null;
   const evidencePath = `${project.changesPath}/${changeId}/evidence/${gate.spec.evidence}`;
   let existing: GateEvidence;
   try {
@@ -112,11 +195,49 @@ async function readReusableGateEvidence(
     return null;
   }
   const { digest: existingDigest, ...existingUnsigned } = existing;
-  if (existing.gate !== gate.metadata.name || existing.change !== changeId || existingDigest !== sha256(stableStringify(existingUnsigned))) return null;
+  if (existing.gate !== gate.metadata.name || existing.change !== changeId) return null;
   if (existing.status !== 'passed') return null;
-  const expectedInputDigest = await computeGateInputDigest(project, changeId, gate, true, resources);
-  if (!expectedInputDigest || existing.inputDigest !== expectedInputDigest) return null;
-  return existing;
+  if (existingDigest !== sha256(stableStringify(existingUnsigned))) return null;
+  let record: GateReuseRecord;
+  try {
+    record = JSON.parse(await readFile(await safeResolve(project.root, gateReuseRecordPath(changeId, gate)), 'utf8')) as GateReuseRecord;
+  } catch {
+    return null;
+  }
+  if (record.change !== changeId || record.gate !== gate.metadata.name || record.evidencePath !== evidencePath) return null;
+  if (record.evidenceDigest !== existingDigest || record.worktreeDigest !== worktreeDigest) return null;
+  let expectedInputDigest: string;
+  try {
+    expectedInputDigest = await gateInputDigest(project, changeId, gate, true);
+  } catch {
+    return null;
+  }
+  return existing.inputDigest === expectedInputDigest ? existing : null;
+}
+
+/**
+ * Records the working tree the Gate just ran against, so a later `check` can tell "nothing moved"
+ * from "nothing I can see moved". Best effort: a failure here only costs the next run a re-run.
+ */
+async function writeGateReuseRecord(
+  project: ProjectContext,
+  changeId: string,
+  gate: GateResource,
+  evidence: GateEvidence,
+  worktreeDigest: string | null,
+): Promise<void> {
+  if (!worktreeDigest || evidence.status !== 'passed') return;
+  const record: GateReuseRecord = {
+    schemaVersion: '1',
+    change: changeId,
+    gate: gate.metadata.name,
+    evidencePath: `${project.changesPath}/${changeId}/evidence/${gate.spec.evidence}`,
+    evidenceDigest: evidence.digest,
+    worktreeDigest,
+  };
+  try {
+    await atomicWrite(project.root, gateReuseRecordPath(changeId, gate), `${JSON.stringify(record, null, 2)}\n`);
+  } catch { /* A missing reuse key is a cache miss, never a wrong result. */ }
 }
 
 export async function executeCheck(project: ProjectContext, options: CheckOptions): Promise<{
@@ -202,8 +323,12 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
      work it has not been asked to do yet. `null` covers legacy Flows and whole-Flow overrides. */
   const workPackagesInScope = selectedStage === null || !PRE_APPLY_STAGES.has(selectedStage);
   if (!hasStructureErrors && !options.gate && options.change && workPackagesInScope && structure.change?.workPackages) {
-    for (const verification of workPackageVerificationGates(structure.change.workPackages)) {
-      const reused = options.force ? null : await readReusableGateEvidence(project, options.change, verification.gate, structure.resources);
+    const verifications = workPackageVerificationGates(structure.change.workPackages);
+    /* One working-tree read for the whole run: the verify commands dominate `check`, and a verify
+       that mutates the tree only costs itself the next run's reuse, which is the safe direction. */
+    const worktreeDigest = verifications.length > 0 ? await workingTreeDigest(project, options.change) : null;
+    for (const verification of verifications) {
+      const reused = options.force ? null : await readReusableGateEvidence(project, options.change, verification.gate, worktreeDigest);
       if (reused) {
         workPackageResults.push({
           packageId: verification.packageId,
@@ -216,6 +341,7 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
       }
       const result = await runGate(project, options.change, verification.gate, true);
       changes.push(result.change);
+      await writeGateReuseRecord(project, options.change, verification.gate, result.evidence, worktreeDigest);
       if (result.evidence.status === 'failed') diagnostics.push(diagnostic(
         'XFORGE_WORK_PACKAGE_VERIFY_FAILED',
         `Work package ${verification.packageId} verification failed: ${verification.command}`,

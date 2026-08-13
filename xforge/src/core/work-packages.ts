@@ -23,7 +23,8 @@ import { validateSchema } from './validator.js';
 import { loadYaml } from './yaml.js';
 import { normalizeRule } from './governance.js';
 import { sha256, stableStringify } from './hash.js';
-import { readAuditEvents } from './audit.js';
+import { readAcknowledgementAttestations, readAuditEvents } from './audit.js';
+import type { AcknowledgementAttestations } from './audit.js';
 
 const GLOB_MAGIC = /[*?{}[\]]/;
 const UNSUPPORTED_GLOB_MAGIC = /[?{}[\]]/;
@@ -170,16 +171,19 @@ async function git(root: string, args: string[]): Promise<GitResult> {
 }
 
 /**
- * Paths the control plane writes on its own behalf: dispatch receipts and the audit index.
+ * Paths the control plane writes on its own behalf: dispatch receipts, acknowledgement receipts and
+ * the audit index.
  *
  * These can never count as a worker's output. Citing `evidence/audit/index.json` as proof that a
  * verify command passed is circular — the file exists because XForge dispatched the package, not
- * because anybody did the work.
+ * because anybody did the work. `agents/<id>/ack/` is the same shape of claim one step further on:
+ * a worker that maps a done_when criterion to its own acknowledgement receipt is citing the record
+ * of somebody accepting the work as proof that the work was done.
  */
 function isControlPlaneBookkeeping(filePath: string, changeRoot: string): boolean {
   if (!filePath.startsWith(`${changeRoot}/evidence/`)) return false;
   const tail = filePath.slice(`${changeRoot}/evidence/`.length);
-  return tail.startsWith('audit/') || /^agents\/[^/]+\/dispatch\//.test(tail);
+  return tail.startsWith('audit/') || /^agents\/[^/]+\/(?:dispatch|ack)\//.test(tail);
 }
 
 function protectedWritePaths(project: ProjectContext, changeId: string, config: ChangeConfig, resources: SelectedResources): string[] {
@@ -324,6 +328,12 @@ function latestDispatch(dispatches: WorkPackageDispatchReceipt[] | undefined): W
   }).at(-1) ?? null;
 }
 
+/** The lifecycle status an acknowledgement in each role is allowed to claim. */
+const ACK_ROLE_STATUS: Record<WorkPackageAckReceipt['as'], WorkPackageAckReceipt['status']> = {
+  integrator: 'integrated',
+  reviewer: 'reviewed',
+};
+
 /**
  * Loads `WorkPackageAckReceipt` files, the Git-tracked counterpart to the (gitignored) local audit
  * chain's `work-package.reviewed`/`work-package.integrated` events.
@@ -331,15 +341,35 @@ function latestDispatch(dispatches: WorkPackageDispatchReceipt[] | undefined): W
  * `.audit/` is gitignored project-wide (see `xforge/scaffold/payload/xforge/.audit/.gitignore`), so
  * a fresh `git clone` has no local audit history at all. Without a Git-tracked receipt, every
  * previously reviewed/integrated work package would silently read back as merely `succeeded` on a
- * clone — the review/integration record would be invisibly lost. A receipt here is only trusted once
- * cross-checked against a known delivery for the same package and execution (see `deliveryDigest`
- * below); an unmatched or tampered receipt is diagnosed and excluded, never silently accepted.
+ * clone — the review/integration record would be invisibly lost.
+ *
+ * Every property a receipt commits to is computable offline by whoever wrote the file, so none of
+ * them can establish that an acknowledgement actually happened. The audit chain does: a receipt
+ * counts only when `readAcknowledgementAttestations` finds the matching `work-package.reviewed`/
+ * `.integrated` event (see its doc comment for the fresh-clone escape). Everything else here is a
+ * consistency check that decides whether a file is worth considering at all.
+ *
+ * A receipt written before attestation shipped carries an audit event whose `inputDigest` covered
+ * the evidence path too, which no reader can recompute from the receipt, so it reads as unattested.
+ * That fails closed — the package reads back at its pre-receipt status with a warning naming the
+ * file — and re-running `acknowledge` re-establishes it. Widening the rule to "some acknowledgement
+ * event exists for this Change" would restore those receipts but accept forged ones alongside them,
+ * because the index event summary carries no package or role to bind a receipt to.
+ *
+ * Those checks all diagnose at `warning`, unlike the delivery and dispatch loaders above, and the
+ * asymmetry is deliberate. A delivery or a dispatch receipt is load-bearing: the gate result depends
+ * on it, so a broken one must stop the run. An ack receipt is a redundant mirror of the audit chain,
+ * so skipping a broken one degrades to the audit-event path instead of losing a safety property —
+ * whereas erroring means an ordinary rework (dropping a package from `work-packages.yaml` while its
+ * receipt file is still on disk, or a half-written JSON file under `ack/`) fails `xforge check` and
+ * blocks every transition for a file that can only ever *add* status, never remove a check.
  */
 async function loadAckReceipts(
   project: ProjectContext,
   changeId: string,
   knownPackages: Set<string>,
   deliveries: Map<string, WorkPackageDelivery[]>,
+  attestations: AcknowledgementAttestations,
 ): Promise<{ receipts: Map<string, WorkPackageAckReceipt[]>; diagnostics: Diagnostic[] }> {
   const diagnostics: Diagnostic[] = [];
   const receipts = new Map<string, WorkPackageAckReceipt[]>();
@@ -357,26 +387,43 @@ async function loadAckReceipts(
     try {
       receipt = JSON.parse(await readFile(await safeResolve(project.root, projectPath), 'utf8')) as WorkPackageAckReceipt;
     } catch (error) {
-      diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_ACK_RECEIPT_INVALID', `Acknowledgement receipt is not valid JSON: ${(error as Error).message}`, projectPath));
+      diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_ACK_RECEIPT_INVALID', `Acknowledgement receipt is not valid JSON: ${(error as Error).message}`, projectPath, 'warning'));
       continue;
     }
+    /* Downgraded for the same reason as the checks below: a malformed ack file is skipped, not fatal. */
     const schemaDiagnostics = await validateSchema('work-package-ack-receipt', receipt, projectPath);
-    diagnostics.push(...schemaDiagnostics);
-    if (schemaDiagnostics.some((item) => item.severity === 'error')) continue;
+    const schemaFailed = schemaDiagnostics.some((item) => item.severity === 'error');
+    diagnostics.push(...schemaDiagnostics.map((item) => ({ ...item, severity: 'warning' as const })));
+    if (schemaFailed) continue;
     const { digest, ...unsigned } = receipt;
     if (digest !== sha256(stableStringify(unsigned))) {
-      diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_ACK_RECEIPT_DIGEST_INVALID', 'Acknowledgement receipt digest is invalid.', projectPath));
+      diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_ACK_RECEIPT_DIGEST_INVALID', 'Acknowledgement receipt digest is invalid.', projectPath, 'warning'));
       continue;
     }
     const parts = name.split('/');
     const directoryId = parts[2]!;
     const fileName = path.posix.basename(name, '.json');
     if (receipt.change !== changeId || receipt.packageId !== directoryId || fileName !== `${receipt.executionId}-${receipt.as}`) {
-      diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_ACK_RECEIPT_PATH_MISMATCH', 'Acknowledgement receipt identifiers must match its Change and evidence path.', projectPath));
+      diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_ACK_RECEIPT_PATH_MISMATCH', 'Acknowledgement receipt identifiers must match its Change and evidence path.', projectPath, 'warning'));
+      continue;
+    }
+    /*
+     * The filename check above binds the file to `as`, but nothing bound `as` to `status` — so an
+     * `as: integrator` receipt could claim `status: reviewed` and skip the independent review step
+     * the reviewer role exists to record. `acknowledge` only ever writes the pairing below.
+     */
+    if (receipt.status !== ACK_ROLE_STATUS[receipt.as]) {
+      diagnostics.push(diagnostic(
+        'XFORGE_WORK_PACKAGE_ACK_RECEIPT_ROLE_MISMATCH',
+        `Acknowledgement receipt as "${receipt.as}" must record status "${ACK_ROLE_STATUS[receipt.as]}", not "${receipt.status}".`,
+        projectPath,
+        'warning',
+        { as: receipt.as, status: receipt.status },
+      ));
       continue;
     }
     if (!knownPackages.has(receipt.packageId)) {
-      diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_ACK_RECEIPT_UNKNOWN', `Acknowledgement receipt references unknown work package ${receipt.packageId}.`, projectPath));
+      diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_ACK_RECEIPT_UNKNOWN', `Acknowledgement receipt references unknown work package ${receipt.packageId}.`, projectPath, 'warning'));
       continue;
     }
     const matchingDelivery = deliveries.get(receipt.packageId)?.find((item) => item.execution_id === receipt.executionId);
@@ -385,6 +432,19 @@ async function loadAckReceipts(
         'XFORGE_WORK_PACKAGE_ACK_RECEIPT_DELIVERY_MISMATCH',
         `Acknowledgement receipt for ${receipt.packageId} does not match a known delivery for execution ${receipt.executionId}.`,
         projectPath,
+        'warning',
+      ));
+      continue;
+    }
+    if (!attestations.attests(receipt.digest)) {
+      /* A receipt the chain never attested reads as a forgery: it must not drive status, and it is
+         dropped here rather than filtered later so nothing downstream can expose it as real. */
+      diagnostics.push(diagnostic(
+        'XFORGE_WORK_PACKAGE_ACK_UNATTESTED',
+        `Acknowledgement receipt for ${receipt.packageId} (${receipt.as}) is not attested by the audit chain and is ignored.`,
+        projectPath,
+        'warning',
+        { packageId: receipt.packageId, as: receipt.as, actor: receipt.actor.id },
       ));
       continue;
     }
@@ -693,7 +753,8 @@ export async function resolveWorkPackages(
   diagnostics.push(...loadedDeliveries.diagnostics);
   const loadedDispatches = await loadDispatches(project, changeId, uniqueIds);
   diagnostics.push(...loadedDispatches.diagnostics);
-  const loadedAckReceipts = await loadAckReceipts(project, changeId, uniqueIds, loadedDeliveries.deliveries);
+  const ackAttestations = await readAcknowledgementAttestations(project, changeId);
+  const loadedAckReceipts = await loadAckReceipts(project, changeId, uniqueIds, loadedDeliveries.deliveries, ackAttestations);
   diagnostics.push(...loadedAckReceipts.diagnostics);
   const auditEvents = (await readAuditEvents(project)).filter((event) => event.change === changeId && event.outcome === 'succeeded');
   const latestByPackage = new Map<string, WorkPackageDelivery | null>();
@@ -739,12 +800,11 @@ export async function resolveWorkPackages(
       const lifecycle = auditEvents.filter((event) => event.workPackage === workPackage.id
         && (!delivery.audit_correlation_id || event.correlationId === delivery.audit_correlation_id));
       /*
-       * A Git-tracked ack receipt for the currently latest delivery is authoritative on its own — a
-       * fresh clone with no local `.audit/` history still shows the correct lifecycle status from the
-       * committed receipt. When both the receipt and a matching local audit event exist (the normal
-       * case for an ack recorded by this fix), they agree and either would do. When only the audit
-       * event exists (an ack recorded before this fix shipped, so no receipt file was ever written),
-       * this falls back to that event so pre-existing history is not broken.
+       * A Git-tracked ack receipt for the currently latest delivery carries the lifecycle status on
+       * a fresh clone, where no local `.audit/` history exists to carry it. Only attested receipts
+       * reach this point (`loadAckReceipts` drops the rest), so a hand-written receipt cannot mint a
+       * status here. When only the audit event exists — an ack recorded before receipts shipped, so
+       * no receipt file was ever written — this falls back to that event so history is not broken.
        */
       const receiptsForExecution = (loadedAckReceipts.receipts.get(workPackage.id) ?? [])
         .filter((receipt) => receipt.executionId === delivery.execution_id);

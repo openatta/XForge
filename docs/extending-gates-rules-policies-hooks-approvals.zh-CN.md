@@ -204,8 +204,9 @@ Agent 会话事件，`workflow` 对应治理生命周期事件）、一个 `fail
 实际情况是：`xforge hook` 的分发器在相关调用上**总是**会去解析匹配的
 PermissionPolicy，**总是**会记一条审计事件——一个 Hook 资源真正的作用是**声明
 某个平台事件应该触发 `xforge hook`，以及失败时用什么 `failurePolicy`**，而不
-是"选择每个 Hook 各自不同的运行时行为"。`runtime-audit.yaml`（默认打包但
-disabled）就是具体例子：
+是"选择每个 Hook 各自不同的运行时行为"。`runtime-audit.yaml`（作为未选择、
+disabled 的示例随包提供——目前没有任何 dispatcher 会执行它的 `builtin: audit`
+action）就是具体的形态示例：
 
 ```yaml
 apiVersion: xforge.dev/v1alpha2
@@ -377,7 +378,7 @@ approvals:
 能直接用的默认 `McpServer` 资源。不先按
 [用 MCP provider 扩展 Approvals](extending-approvals-with-mcp.zh-CN.md)
 登记一个真实的 `McpServer` 就直接用它，会以 `XFORGE_APPROVAL_MCP_SERVER_MISSING`
-失败关闭——跟 `runtime-audit` Hook 默认禁用出厂是同一个套路。
+失败关闭——跟 `runtime-audit` Hook 以未选择且 disabled 的状态出厂是同一个套路。
 
 ### 信任模型——为什么不需要签名
 

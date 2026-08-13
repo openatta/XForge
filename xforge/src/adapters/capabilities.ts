@@ -50,3 +50,37 @@ export const PERMISSION_POLICY_SCOPES: Record<TargetId, NonNullable<AdapterCapab
   opencode: { capabilities: ['fs.read', 'fs.write', 'shell', 'network', 'subagent', 'external.write'], actorScoped: false, stageScoped: false },
   'github-copilot': { capabilities: [], actorScoped: false, stageScoped: false },
 };
+
+/** The per-resource projection families `planProjection` can lose a resource in. */
+export type ProjectionDimension = 'commands' | 'rules' | 'agents';
+
+/**
+ * Which per-resource projection dimensions each target actually emits, declared once here instead
+ * of re-derived implicitly at each `planProjection` call site.
+ *
+ * A `false` entry is a structural, unchanging property of the target: Codex loads Skills, Agents
+ * and AGENTS.md only — it has neither a command-file format nor a rule-file format — and OpenCode
+ * has commands but no rule files. A resource of that kind therefore cannot be projected there, and
+ * `planProjection` reports the gap as `info` rather than dropping it silently.
+ *
+ * A `true` entry is an assertion about the Adapter: if `commandPath`/`renderCommand`,
+ * `rulePath`/`renderRule` or `agentPath`/`renderAgent` returns null anyway, this table and the
+ * Adapter disagree and one of them is wrong, so `planProjection` raises a drift `warning`. That
+ * branch is unreachable as of today's adapters and exists to catch a future edit to one side only.
+ *
+ * Guidance is deliberately not a dimension. The repo-root AGENTS.md is produced by
+ * `renderGovernance` for every target and never per resource, so no per-resource guidance drop can
+ * occur; how faithfully each host honours that file is already recorded by
+ * `AdapterCapability.guidance`. Nothing would read a `guidance` column here.
+ *
+ * This is not derivable from `AdapterCapability`: those levels describe how well a host honours a
+ * kind (Codex declares `rules: 'degraded'` because Rules reach it folded into AGENTS.md), whereas
+ * this table describes whether a dedicated per-resource artifact is written at all.
+ */
+export const PROJECTED_DIMENSIONS: Record<TargetId, Record<ProjectionDimension, boolean>> = {
+  claude: { commands: true, rules: true, agents: true },
+  codex: { commands: false, rules: false, agents: true },
+  cursor: { commands: true, rules: true, agents: true },
+  opencode: { commands: true, rules: false, agents: true },
+  'github-copilot': { commands: true, rules: true, agents: true },
+};

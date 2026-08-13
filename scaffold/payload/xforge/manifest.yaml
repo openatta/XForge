@@ -43,8 +43,11 @@ scaffold:
     - prefer-small-explicit-contracts
   policies:
     - protected-files
-  hooks:
-    - runtime-audit
+  # runtime-audit is intentionally unselected: audit recording is unconditional inside the CLI, and
+  # its `action.builtin: audit` has no dispatcher branch, so selecting it changes nothing (see
+  # scaffold/hooks/runtime-audit.yaml, which stays on disk as the example to re-select once a
+  # builtin dispatcher exists).
+  hooks: []
   gates:
     - structure
     - check-findings

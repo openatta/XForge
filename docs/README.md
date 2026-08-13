@@ -238,7 +238,8 @@ uninstall --target <target> --dry-run` 查看只针对受管文件的删除计�
 
 - Runtime Hook 和权限覆盖取决于平台，通常还需要用户在编程工具中显式信任项目
   配置。
-- 默认 `runtime-audit` Hook 已被选择但处于 disabled 状态，项目必须主动启用。
+- `runtime-audit` Hook 作为未选择的示例随包提供：目前没有任何 dispatcher 会执行它的
+  `builtin: audit` action，因此即使选择它也不会产生任何效果。
 - 生成的 Hook 从项目根目录调用 `npx --no-install xforge`，只解析项目本地的精确
   npm 包，缺包时不会在线下载替代版本。
 - Gate 成功只能证明指定命令在记录的 revision 上运行成功，不能自动证明所有语义

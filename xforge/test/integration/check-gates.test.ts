@@ -1,9 +1,60 @@
 import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
 import path from 'node:path';
+import { stringify } from 'yaml';
 import { describe, expect, it } from 'vitest';
 import { stableStringify, sha256 } from '../../src/core/hash.js';
-import { createCompleteSolidChange, fixture, runCli, updateYaml } from '../helpers.js';
+import { advanceSolidToApply, createCompleteSolidChange, fixture, runCli, updateYaml, write } from '../helpers.js';
+
+async function git(root: string, args: string[]): Promise<string> {
+  const result = await new Promise<{ code: number; stdout: string; stderr: string }>((resolve, reject) => {
+    const child = spawn('git', args, { cwd: root, shell: false, stdio: ['ignore', 'pipe', 'pipe'] });
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
+    child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk));
+    child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk));
+    child.on('error', reject);
+    child.on('close', (code) => resolve({ code: code ?? 1, stdout: Buffer.concat(stdout).toString('utf8'), stderr: Buffer.concat(stderr).toString('utf8') }));
+  });
+  expect(result.code, result.stderr).toBe(0);
+  return result.stdout.trim();
+}
+
+async function initializeGit(root: string): Promise<void> {
+  await git(root, ['init', '-q']);
+  await git(root, ['config', 'user.name', 'XForge Test']);
+  await git(root, ['config', 'user.email', 'test@example.test']);
+  await git(root, ['add', '.']);
+  await git(root, ['commit', '-qm', 'base']);
+}
+
+/**
+ * A Change sitting in Apply with one work package whose `verify` command reads a committed source
+ * file, in a real Git worktree — the shape every work-package verify reuse question has.
+ */
+async function applyStageWithVerify(root: string, verify: string, source = 'export const refund = true;\n'): Promise<void> {
+  await createCompleteSolidChange(root);
+  await write(root, 'src/order/refund.ts', source);
+  await write(root, 'xforge/changes/add-feature/work-packages.yaml', stringify({
+    apiVersion: 'xforge.dev/v1alpha1',
+    kind: 'WorkPackagePlan',
+    packages: [{
+      id: 'T001',
+      goal: 'Implement T001',
+      depends_on: [],
+      inputs: ['xforge/changes/add-feature/design.md'],
+      write_paths: ['src/order/**'],
+      skills: ['xforge-apply'],
+      verify: [verify],
+      done_when: ['T001 is covered by an automated check'],
+    }],
+  }, { lineWidth: 120 }));
+  await initializeGit(root);
+  await advanceSolidToApply(root);
+}
+
+const VERIFY_EVIDENCE = ['xforge', 'changes', 'add-feature', 'evidence', 'agents', 'T001', 'verify-1.json'];
 
 describe('check and Gate evidence', () => {
   it('runs only the current Stage Gates, not the verify Stage set', async () => {
@@ -200,6 +251,100 @@ describe('check and Gate evidence', () => {
     const evidence = JSON.parse(await readFile(path.join(root, 'xforge', 'changes', 'add-feature', 'evidence', 'tests.json'), 'utf8'));
     expect(evidence.outputTruncated).toBe(true);
     expect(Buffer.byteLength(evidence.stdout)).toBe(1024);
+  });
+
+  /*
+   * The loop XForge exists to govern: an Agent runs `check`, edits source, and runs `check` again
+   * without committing. `inputDigest` is derived from the Gate, the governance revision, and the
+   * structural pre-check — none of which an uncommitted edit moves — so reuse keyed on it alone
+   * reported a verify as passed without ever executing the command.
+   */
+  it('re-runs a work-package verify after an uncommitted source edit instead of reusing its Evidence', async () => {
+    const root = await fixture();
+    const verify = `${process.execPath} -e "process.exit(require('node:fs').readFileSync('src/order/refund.ts','utf8').includes('BROKEN') ? 1 : 0)"`;
+    await applyStageWithVerify(root, verify);
+
+    const first = await runCli(root, ['check', '--change', 'add-feature']);
+    expect(first.code, JSON.stringify(first.json?.diagnostics, null, 2)).toBe(0);
+    expect(first.json.data.workPackages).toEqual([
+      expect.objectContaining({ packageId: 'T001', command: verify, status: 'passed', cached: false }),
+    ]);
+
+    /* The edit that would now fail the verify. Nothing is committed, so HEAD, the Change's
+       Artifacts, and the policy snapshot are all exactly as the passing Evidence recorded them. */
+    await writeFile(path.join(root, 'src', 'order', 'refund.ts'), 'export const refund = BROKEN;\n');
+
+    const second = await runCli(root, ['check', '--change', 'add-feature']);
+    expect(second.code).toBe(1);
+    expect(second.json.data.workPackages[0]).toMatchObject({ packageId: 'T001', status: 'failed', cached: false });
+    expect(second.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_WORK_PACKAGE_VERIFY_FAILED');
+    /* And the Evidence on disk says failed, so a later transition cannot read the stale pass. */
+    expect(JSON.parse(await readFile(path.join(root, ...VERIFY_EVIDENCE), 'utf8'))).toMatchObject({ status: 'failed', exitCode: 1 });
+  });
+
+  it('reuses passed work-package verify Evidence when nothing in the tree moved', async () => {
+    const root = await fixture();
+    const verify = `${process.execPath} -e "process.exit(0)"`;
+    await applyStageWithVerify(root, verify);
+    const evidencePath = path.join(root, ...VERIFY_EVIDENCE);
+
+    const first = await runCli(root, ['check', '--change', 'add-feature']);
+    expect(first.code, JSON.stringify(first.json?.diagnostics, null, 2)).toBe(0);
+    expect(first.json.data.workPackages[0]).toMatchObject({ status: 'passed', cached: false });
+    const evidence = await readFile(evidencePath, 'utf8');
+
+    const second = await runCli(root, ['check', '--change', 'add-feature']);
+    expect(second.code).toBe(0);
+    expect(second.json.data.workPackages[0]).toMatchObject({ packageId: 'T001', status: 'passed', cached: true });
+    /* Byte-identical Evidence is the proof the command did not run again: a real run rewrites
+       startedAt, finishedAt, and durationMs. A reused Gate also reports no file change. */
+    expect(await readFile(evidencePath, 'utf8')).toBe(evidence);
+    expect(second.json.changes.map((item: any) => item.path)).not.toContain(VERIFY_EVIDENCE.join('/'));
+  });
+
+  it('re-runs a reusable work-package verify when --force is given', async () => {
+    const root = await fixture();
+    const verify = `${process.execPath} -e "process.exit(0)"`;
+    await applyStageWithVerify(root, verify);
+    const evidencePath = path.join(root, ...VERIFY_EVIDENCE);
+
+    expect((await runCli(root, ['check', '--change', 'add-feature'])).code).toBe(0);
+    const evidence = await readFile(evidencePath, 'utf8');
+
+    const forced = await runCli(root, ['check', '--change', 'add-feature', '--force']);
+    expect(forced.code).toBe(0);
+    expect(forced.json.data.workPackages[0]).toMatchObject({ packageId: 'T001', status: 'passed', cached: false });
+    expect(await readFile(evidencePath, 'utf8')).not.toBe(evidence);
+    expect(forced.json.changes.map((item: any) => item.path)).toContain(VERIFY_EVIDENCE.join('/'));
+  });
+
+  /*
+   * Evidence with no attesting `gate.after` event is a transition-unblocking artifact: control-plane
+   * gate resolution decides on the Evidence file alone. The failure is injected without any seam in
+   * production code — the Gate's own command replaces the Change's audit shard with a directory, so
+   * the append that records `gate.after` fails for real, after `gate.before` already succeeded.
+   */
+  it('restores the previously attested Evidence when gate.after cannot be recorded', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await updateYaml(root, 'xforge/scaffold/gates/unit-tests.yaml', (gate) => {
+      gate.spec.command = [process.execPath, '-e', 'process.exit(0)'];
+    });
+    expect((await runCli(root, ['install'])).code).toBe(0);
+    expect((await runCli(root, ['check', '--change', 'add-feature', '--gate', 'unit-tests'])).code).toBe(0);
+    const evidencePath = path.join(root, 'xforge', 'changes', 'add-feature', 'evidence', 'tests.json');
+    const attested = await readFile(evidencePath, 'utf8');
+
+    await updateYaml(root, 'xforge/scaffold/gates/unit-tests.yaml', (gate) => {
+      gate.spec.command = [process.execPath, '-e', "const fs = require('node:fs'); const shard = require('node:path').join('xforge', '.audit', 'changes', 'add-feature.jsonl'); fs.rmSync(shard, { force: true }); fs.mkdirSync(shard, { recursive: true });"];
+    });
+    expect((await runCli(root, ['install'])).code).toBe(0);
+    const sabotaged = await runCli(root, ['check', '--change', 'add-feature', '--gate', 'unit-tests']);
+    expect(sabotaged.code).not.toBe(0);
+
+    /* Restored, not deleted: this Evidence path is stable, so the write was an overwrite of a
+       properly attested result that a transient audit failure must not destroy. */
+    expect(await readFile(evidencePath, 'utf8')).toBe(attested);
   });
 
   it('passes the declared environment allowlist to a Gate but never a credential-shaped name', async () => {
