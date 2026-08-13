@@ -9,6 +9,7 @@ import type {
   GateResource,
   ProjectContext,
   WorkPackage,
+  WorkPackageAckReceipt,
   WorkPackageDelivery,
   WorkPackageDispatchReceipt,
   WorkPackagePlan,
@@ -323,6 +324,77 @@ function latestDispatch(dispatches: WorkPackageDispatchReceipt[] | undefined): W
   }).at(-1) ?? null;
 }
 
+/**
+ * Loads `WorkPackageAckReceipt` files, the Git-tracked counterpart to the (gitignored) local audit
+ * chain's `work-package.reviewed`/`work-package.integrated` events.
+ *
+ * `.audit/` is gitignored project-wide (see `xforge/scaffold/payload/xforge/.audit/.gitignore`), so
+ * a fresh `git clone` has no local audit history at all. Without a Git-tracked receipt, every
+ * previously reviewed/integrated work package would silently read back as merely `succeeded` on a
+ * clone — the review/integration record would be invisibly lost. A receipt here is only trusted once
+ * cross-checked against a known delivery for the same package and execution (see `deliveryDigest`
+ * below); an unmatched or tampered receipt is diagnosed and excluded, never silently accepted.
+ */
+async function loadAckReceipts(
+  project: ProjectContext,
+  changeId: string,
+  knownPackages: Set<string>,
+  deliveries: Map<string, WorkPackageDelivery[]>,
+): Promise<{ receipts: Map<string, WorkPackageAckReceipt[]>; diagnostics: Diagnostic[] }> {
+  const diagnostics: Diagnostic[] = [];
+  const receipts = new Map<string, WorkPackageAckReceipt[]>();
+  const changeRoot = `${project.changesPath}/${changeId}`;
+  const changeDirectory = await safeResolve(project.root, changeRoot);
+  const names = (await fg('evidence/agents/*/ack/*.json', {
+    cwd: changeDirectory,
+    onlyFiles: true,
+    followSymbolicLinks: false,
+    unique: true,
+  })).sort();
+  for (const name of names) {
+    const projectPath = `${changeRoot}/${name}`;
+    let receipt: WorkPackageAckReceipt;
+    try {
+      receipt = JSON.parse(await readFile(await safeResolve(project.root, projectPath), 'utf8')) as WorkPackageAckReceipt;
+    } catch (error) {
+      diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_ACK_RECEIPT_INVALID', `Acknowledgement receipt is not valid JSON: ${(error as Error).message}`, projectPath));
+      continue;
+    }
+    const schemaDiagnostics = await validateSchema('work-package-ack-receipt', receipt, projectPath);
+    diagnostics.push(...schemaDiagnostics);
+    if (schemaDiagnostics.some((item) => item.severity === 'error')) continue;
+    const { digest, ...unsigned } = receipt;
+    if (digest !== sha256(stableStringify(unsigned))) {
+      diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_ACK_RECEIPT_DIGEST_INVALID', 'Acknowledgement receipt digest is invalid.', projectPath));
+      continue;
+    }
+    const parts = name.split('/');
+    const directoryId = parts[2]!;
+    const fileName = path.posix.basename(name, '.json');
+    if (receipt.change !== changeId || receipt.packageId !== directoryId || fileName !== `${receipt.executionId}-${receipt.as}`) {
+      diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_ACK_RECEIPT_PATH_MISMATCH', 'Acknowledgement receipt identifiers must match its Change and evidence path.', projectPath));
+      continue;
+    }
+    if (!knownPackages.has(receipt.packageId)) {
+      diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_ACK_RECEIPT_UNKNOWN', `Acknowledgement receipt references unknown work package ${receipt.packageId}.`, projectPath));
+      continue;
+    }
+    const matchingDelivery = deliveries.get(receipt.packageId)?.find((item) => item.execution_id === receipt.executionId);
+    if (!matchingDelivery || sha256(stableStringify(matchingDelivery)) !== receipt.deliveryDigest) {
+      diagnostics.push(diagnostic(
+        'XFORGE_WORK_PACKAGE_ACK_RECEIPT_DELIVERY_MISMATCH',
+        `Acknowledgement receipt for ${receipt.packageId} does not match a known delivery for execution ${receipt.executionId}.`,
+        projectPath,
+      ));
+      continue;
+    }
+    const list = receipts.get(receipt.packageId) ?? [];
+    list.push(receipt);
+    receipts.set(receipt.packageId, list);
+  }
+  return { receipts, diagnostics };
+}
+
 async function validateSuccessfulDelivery(
   project: ProjectContext,
   changeId: string,
@@ -621,6 +693,8 @@ export async function resolveWorkPackages(
   diagnostics.push(...loadedDeliveries.diagnostics);
   const loadedDispatches = await loadDispatches(project, changeId, uniqueIds);
   diagnostics.push(...loadedDispatches.diagnostics);
+  const loadedAckReceipts = await loadAckReceipts(project, changeId, uniqueIds, loadedDeliveries.deliveries);
+  diagnostics.push(...loadedAckReceipts.diagnostics);
   const auditEvents = (await readAuditEvents(project)).filter((event) => event.change === changeId && event.outcome === 'succeeded');
   const latestByPackage = new Map<string, WorkPackageDelivery | null>();
   const invalidDeliveries = new Set<string>();
@@ -664,8 +738,22 @@ export async function resolveWorkPackages(
     if (delivery?.status === 'succeeded' && !invalidDeliveries.has(workPackage.id)) {
       const lifecycle = auditEvents.filter((event) => event.workPackage === workPackage.id
         && (!delivery.audit_correlation_id || event.correlationId === delivery.audit_correlation_id));
-      if (lifecycle.some((event) => event.eventType === 'work-package.reviewed')) status = 'reviewed';
-      else if (lifecycle.some((event) => event.eventType === 'work-package.integrated')) status = 'integrated';
+      /*
+       * A Git-tracked ack receipt for the currently latest delivery is authoritative on its own — a
+       * fresh clone with no local `.audit/` history still shows the correct lifecycle status from the
+       * committed receipt. When both the receipt and a matching local audit event exist (the normal
+       * case for an ack recorded by this fix), they agree and either would do. When only the audit
+       * event exists (an ack recorded before this fix shipped, so no receipt file was ever written),
+       * this falls back to that event so pre-existing history is not broken.
+       */
+      const receiptsForExecution = (loadedAckReceipts.receipts.get(workPackage.id) ?? [])
+        .filter((receipt) => receipt.executionId === delivery.execution_id);
+      const reviewed = lifecycle.some((event) => event.eventType === 'work-package.reviewed')
+        || receiptsForExecution.some((receipt) => receipt.status === 'reviewed');
+      const integrated = lifecycle.some((event) => event.eventType === 'work-package.integrated')
+        || receiptsForExecution.some((receipt) => receipt.status === 'integrated');
+      if (reviewed) status = 'reviewed';
+      else if (integrated) status = 'integrated';
       else status = 'succeeded';
     }
     else if (delivery?.status === 'failed' || invalidDeliveries.has(workPackage.id)) status = 'failed';

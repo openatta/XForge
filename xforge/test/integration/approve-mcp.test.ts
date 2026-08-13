@@ -12,6 +12,14 @@ async function toDesignWithMcpProvider(root: string): Promise<void> {
   expect((await runCli(root, ['check', '--change', 'add-feature', '--gate', 'structure'])).code).toBe(0);
   expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'design'])).code).toBe(0);
 
+  // mcp-approval.ts allowlists the provider subprocess's environment (it no longer inherits the
+  // ambient environment wholesale); the test-only fake platform reads its scripted decision out of
+  // these XFORGE_TEST_MCP_* vars (see fixtures/mcp-approval-server.mjs), so this fixture declares
+  // them via spec.env.allow the same way a real provider would opt in to what it actually needs.
+  // XFORGE_TEST_MCP_TOKEN itself doesn't need to be listed: it's consumed by the CLI process via
+  // authTokenEnv and handed to the subprocess as XFORGE_MCP_TOKEN, not passed through by name.
+  // (XFORGE_TEST_MCP_EXPECTED_VALUE is deliberately not named "...TOKEN": the allowlist's
+  // credential-shaped deny pattern would drop it even when listed here.)
   await write(root, 'xforge/scaffold/mcp-servers/review-bot.yaml', [
     'apiVersion: xforge.dev/v1alpha2',
     'kind: McpServer',
@@ -21,6 +29,8 @@ async function toDesignWithMcpProvider(root: string): Promise<void> {
     `  command: [${JSON.stringify(process.execPath)}, ${JSON.stringify(fixtureServer)}]`,
     '  authTokenEnv: XFORGE_TEST_MCP_TOKEN',
     '  timeoutSeconds: 10',
+    '  env:',
+    '    allow: [XFORGE_TEST_MCP_EXPECTED_VALUE, XFORGE_TEST_MCP_DECISION, XFORGE_TEST_MCP_APPROVER_ID, XFORGE_TEST_MCP_APPROVER_ROLE]',
     '',
   ].join('\n'));
 
@@ -41,7 +51,7 @@ describe('mcp approval provider', () => {
     const root = await fixture();
     await toDesignWithMcpProvider(root);
     const result = await runCli(root, mcpApproveArgs, {
-      XFORGE_TEST_MCP_TOKEN: 'shared-secret', XFORGE_TEST_MCP_EXPECTED_TOKEN: 'shared-secret',
+      XFORGE_TEST_MCP_TOKEN: 'shared-secret', XFORGE_TEST_MCP_EXPECTED_VALUE: 'shared-secret',
       XFORGE_TEST_MCP_DECISION: 'approve', XFORGE_TEST_MCP_APPROVER_ID: 'alice@example.test', XFORGE_TEST_MCP_APPROVER_ROLE: 'owner',
     });
     expect(result.code).toBe(0);
@@ -58,7 +68,7 @@ describe('mcp approval provider', () => {
     const root = await fixture();
     await toDesignWithMcpProvider(root);
     const result = await runCli(root, mcpApproveArgs, {
-      XFORGE_TEST_MCP_TOKEN: 'shared-secret', XFORGE_TEST_MCP_EXPECTED_TOKEN: 'shared-secret', XFORGE_TEST_MCP_DECISION: 'pending',
+      XFORGE_TEST_MCP_TOKEN: 'shared-secret', XFORGE_TEST_MCP_EXPECTED_VALUE: 'shared-secret', XFORGE_TEST_MCP_DECISION: 'pending',
     });
     expect(result.code).toBe(0);
     expect(result.json.ok).toBe(true);

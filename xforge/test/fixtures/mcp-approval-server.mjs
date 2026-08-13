@@ -7,7 +7,10 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprot
 const decision = process.env.XFORGE_TEST_MCP_DECISION ?? 'pending';
 const approverId = process.env.XFORGE_TEST_MCP_APPROVER_ID ?? 'reviewer@example.test';
 const approverRole = process.env.XFORGE_TEST_MCP_APPROVER_ROLE ?? 'owner';
-const expectedToken = process.env.XFORGE_TEST_MCP_EXPECTED_TOKEN;
+// Named "...VALUE" rather than "...TOKEN": mcp-approval.ts's subprocess-env allowlist denies any
+// name matching /token|secret|password|.../ outright, even if explicitly allowlisted, so a name
+// containing "TOKEN" here would never reach this process regardless of the McpServer's env.allow.
+const expectedToken = process.env.XFORGE_TEST_MCP_EXPECTED_VALUE;
 
 if (expectedToken && process.env.XFORGE_MCP_TOKEN !== expectedToken) {
   process.stderr.write('unauthorized\n');

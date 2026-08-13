@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xforge.dev/schemas/v1alpha2/work-package-ack-receipt.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "receiptId", "change", "packageId", "executionId", "as", "status", "deliveryDigest", "actor", "acknowledgedAt", "digest"],
+  "properties": {
+    "apiVersion": { "const": "xforge.dev/v1alpha2" },
+    "kind": { "const": "WorkPackageAckReceipt" },
+    "receiptId": { "type": "string", "format": "uuid" },
+    "change": { "type": "string", "minLength": 1 },
+    "packageId": { "$ref": "#/$defs/id" },
+    "executionId": { "$ref": "#/$defs/id" },
+    "as": { "enum": ["reviewer", "integrator"] },
+    "status": { "enum": ["reviewed", "integrated"] },
+    "deliveryDigest": { "$ref": "#/$defs/hash" },
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "provider", "role", "type"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "provider": { "type": "string", "minLength": 1 },
+        "role": { "type": "string", "minLength": 1 },
+        "type": { "enum": ["human", "agent", "system"] }
+      }
+    },
+    "acknowledgedAt": { "type": "string", "format": "date-time" },
+    "digest": { "$ref": "#/$defs/hash" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$" },
+    "hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

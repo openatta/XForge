@@ -102,6 +102,18 @@ function patchPaths(command: string): string[] {
   return [...command.matchAll(/^\*\*\* (?:Add|Update|Delete) File:\s*(.+)$/gm)].map((match) => match[1]!.trim());
 }
 
+/*
+ * Known, accepted gap: a `shell` capability call is matched against `match.commands` glob
+ * patterns on the raw command string only — it is never parsed for the file path(s) it might
+ * write. So `cat > xforge/manifest.yaml`, `tee`, `cp`, or any script that opens a protected path
+ * itself all bypass `fs.write` PermissionPolicy matching entirely; only tool calls that pass a
+ * structured file-path parameter are covered. Fixing this with command-string path extraction
+ * trades false negatives for false positives (a legitimate command that merely mentions a
+ * protected path as an argument would wrongly deny), and a before/after filesystem-snapshot
+ * approach needs cross-event state this dispatcher doesn't have. See
+ * `scaffold/payload/xforge/scaffold/policies/protected-files.yaml`'s header comment for the
+ * user-facing version of this same limitation.
+ */
 function resourcesFor(capabilityName: Capability, input: Record<string, any>, toolName: string, root: string): string[] {
   if (capabilityName === 'shell') return strings(input.command ?? input.cmd ?? input.value);
   if (capabilityName === 'fs.read' || capabilityName === 'fs.write') {

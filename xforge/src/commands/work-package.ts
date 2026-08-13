@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { stat } from 'node:fs/promises';
-import type { Diagnostic, FileChange, ProjectContext, WorkPackageDispatchReceipt } from '../types.js';
+import { rm, stat } from 'node:fs/promises';
+import type { Diagnostic, FileChange, ProjectContext, WorkPackageAckReceipt, WorkPackageDispatchReceipt } from '../types.js';
 import { recordAudit } from '../core/audit.js';
 import { resolveControlPlane } from '../core/control-plane.js';
 import { XForgeError, diagnostic } from '../core/errors.js';
@@ -55,12 +55,23 @@ export async function executeWorkPackageDispatch(project: ProjectContext, option
   const changes: FileChange[] = [{ action: 'create', path: target, digest: sha256(content), source: `work-package:${options.packageId}:dispatch` }];
   if (!options.dryRun) {
     await atomicWrite(project.root, target, content);
-    await recordAudit(project, {
-      eventType: 'work-package.dispatched', change: options.change, flow: resolved.flow.metadata.name, stage: control.governance.currentStage,
-      workPackage: options.packageId, correlationId: auditCorrelationId, revision: control.governance.revision,
-      actor: { id: process.env.USER ?? 'unknown', provider: 'local-os', role: 'coordinator', type: 'human' },
-      outcome: 'succeeded', input: { packageId: options.packageId, executionId, dispatchDigest: receipt.digest },
-    });
+    try {
+      await recordAudit(project, {
+        eventType: 'work-package.dispatched', change: options.change, flow: resolved.flow.metadata.name, stage: control.governance.currentStage,
+        workPackage: options.packageId, correlationId: auditCorrelationId, revision: control.governance.revision,
+        actor: { id: process.env.USER ?? 'unknown', provider: 'local-os', role: 'coordinator', type: 'human' },
+        outcome: 'succeeded', input: { packageId: options.packageId, executionId, dispatchDigest: receipt.digest },
+      });
+    } catch (error) {
+      /*
+       * A retry after a failed recordAudit would otherwise mint a fresh executionId and leave this
+       * orphaned receipt behind as a duplicate dispatch with no matching audit event. Removing it
+       * here means a retry starts clean, exactly as `transition.ts`/`approve.ts` already do for
+       * their own receipts.
+       */
+      await rm(await safeResolve(project.root, target), { force: true }).catch(() => undefined);
+      throw error;
+    }
   }
   return { data: { change: options.change, packageId: options.packageId, receipt, dryRun: options.dryRun }, diagnostics, changes };
 }
@@ -108,20 +119,60 @@ export async function executeWorkPackageAcknowledge(project: ProjectContext, opt
       `${options.role} acknowledgement requires ${options.role === 'integrator' ? 'a succeeded delivery' : 'an integrated delivery'}; current status is ${selected.status}.`,
     ));
   }
-  const status = options.role === 'integrator' ? 'integrated' : 'reviewed';
-  if (!options.dryRun && selected.status !== status && selected.status !== 'reviewed') {
-    await recordAudit(project, {
-      eventType: `work-package.${status}`,
+  const status: 'integrated' | 'reviewed' = options.role === 'integrator' ? 'integrated' : 'reviewed';
+  /*
+   * A re-acknowledgement that would not advance the package's lifecycle (already at `status`, or
+   * already at the terminal `reviewed`) records nothing new: no audit event and no receipt, so a
+   * redundant call stays a true no-op rather than accumulating duplicate ack receipts.
+   */
+  const shouldRecord = selected.status !== status && selected.status !== 'reviewed';
+  const changes: FileChange[] = [];
+  if (shouldRecord) {
+    if (!selected.delivery) throw new XForgeError(diagnostic('XFORGE_WORK_PACKAGE_ACK_DELIVERY_MISSING', `Acknowledgement requires a delivery for ${options.packageId}.`));
+    const executionId = selected.delivery.execution_id;
+    const deliveryDigest = sha256(stableStringify(selected.delivery));
+    const unsigned = {
+      apiVersion: 'xforge.dev/v1alpha2' as const,
+      kind: 'WorkPackageAckReceipt' as const,
+      receiptId: randomUUID(),
       change: options.change,
-      flow: resolved.flow.metadata.name,
-      stage: control.governance.currentStage,
-      workPackage: options.packageId,
-      correlationId: selected.delivery?.audit_correlation_id,
-      revision: control.governance.revision,
-      actor: { id: process.env.USER ?? 'unknown', provider: 'local-os', role: options.role, type: 'agent' },
-      outcome: 'succeeded',
-      input: { packageId: options.packageId, deliveryExecutionId: selected.delivery?.execution_id, evidence },
-    });
+      packageId: options.packageId,
+      executionId,
+      as: options.role,
+      status,
+      deliveryDigest,
+      actor: { id: process.env.USER ?? 'unknown', provider: 'local-os', role: options.role, type: 'agent' as const },
+      acknowledgedAt: new Date().toISOString(),
+    };
+    const receipt: WorkPackageAckReceipt = { ...unsigned, digest: sha256(stableStringify(unsigned)) };
+    const target = `${project.changesPath}/${options.change}/evidence/agents/${options.packageId}/ack/${executionId}-${options.role}.json`;
+    const content = `${JSON.stringify(receipt, null, 2)}\n`;
+    changes.push({ action: 'create', path: target, digest: sha256(content), source: `work-package:acknowledge:${options.role}` });
+    if (!options.dryRun) {
+      await atomicWrite(project.root, target, content);
+      try {
+        await recordAudit(project, {
+          eventType: `work-package.${status}`,
+          change: options.change,
+          flow: resolved.flow.metadata.name,
+          stage: control.governance.currentStage,
+          workPackage: options.packageId,
+          correlationId: selected.delivery?.audit_correlation_id,
+          revision: control.governance.revision,
+          actor: { id: process.env.USER ?? 'unknown', provider: 'local-os', role: options.role, type: 'agent' },
+          outcome: 'succeeded',
+          input: { packageId: options.packageId, deliveryExecutionId: selected.delivery?.execution_id, evidence, ackReceipt: receipt.digest },
+        });
+      } catch (error) {
+        /*
+         * Without a matching audit event a retry would otherwise see the receipt file already on
+         * disk and skip re-recording (the digest/executionId/as filename would collide), leaving the
+         * acknowledgement half-recorded. Remove it so a retry starts clean, same as dispatch/transition/approve.
+         */
+        await rm(await safeResolve(project.root, target), { force: true }).catch(() => undefined);
+        throw error;
+      }
+    }
   }
-  return { data: { change: options.change, packageId: options.packageId, role: options.role, evidence, status, dryRun: options.dryRun }, diagnostics, changes: [] };
+  return { data: { change: options.change, packageId: options.packageId, role: options.role, evidence, status, dryRun: options.dryRun }, diagnostics, changes };
 }

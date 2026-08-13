@@ -7,6 +7,7 @@ import { atomicWrite } from '../core/files.js';
 import { sha256, stableStringify } from '../core/hash.js';
 import { normalizeRelative, safeResolve } from '../core/path-safety.js';
 import { XForgeError, diagnostic } from '../core/errors.js';
+import { filterEnvironment } from '../core/env-safety.js';
 import { isStageFlow, resolveChangeState } from '../core/flow-resolver.js';
 import { loadSelectedResources } from '../core/resource-loader.js';
 import { resolveControlPlane } from '../core/control-plane.js';
@@ -17,38 +18,18 @@ import { evaluateConstitutionCheck } from '../core/constitution-check.js';
 import { knownIdentities } from '../core/ledger-identity.js';
 
 /**
- * Gate subprocesses never inherit the ambient environment. This is the built-in allowlist: enough
- * for the shipped `npm test` / `npm audit` Gates to work on a developer machine, in CI, and behind
- * a corporate proxy, without becoming a blanket passthrough.
+ * Gate subprocesses never inherit the ambient environment; `filterEnvironment` (core/env-safety.ts)
+ * carries the built-in allowlist shared with other XForge-spawned subprocesses, enough for the
+ * shipped `npm test` / `npm audit` Gates to work on a developer machine, in CI, and behind a
+ * corporate proxy, without becoming a blanket passthrough.
  */
-const DEFAULT_GATE_ENV_ALLOW = [
-  'PATH', 'HOME', 'SHELL', 'USER', 'LOGNAME', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TZ', 'TERM',
-  'TMPDIR', 'TEMP', 'TMP',
-  'SystemRoot', 'COMSPEC', 'PATHEXT', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'ProgramData',
-  'ProgramFiles', 'ProgramFiles(x86)', 'NUMBER_OF_PROCESSORS', 'OS',
-  'CI', 'NODE_ENV', 'FORCE_COLOR', 'NO_COLOR',
-  'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'no_proxy',
-  'NODE_EXTRA_CA_CERTS', 'SSL_CERT_FILE', 'SSL_CERT_DIR',
-];
-
-/** `npm_config_*` carries registry/cache/proxy settings; credential-shaped names are filtered below. */
-const DEFAULT_GATE_ENV_PREFIXES = ['npm_config_', 'NPM_CONFIG_'];
-
-/** Never inherited, from any source: the manifest cannot opt a credential back in. */
-const GATE_ENV_DENY = /(?:password|passwd|secret|token|api[_-]?key|auth|credential|cookie|session|private[_-]?key)/i;
-
 function gateEnvironment(project: ProjectContext, gate: GateResource): NodeJS.ProcessEnv {
   const manifest = project.manifest.gates?.env;
-  const allow = new Set([...DEFAULT_GATE_ENV_ALLOW, ...(manifest?.allow ?? []), ...(gate.spec.env?.allow ?? [])]);
-  const prefixes = [...DEFAULT_GATE_ENV_PREFIXES, ...(manifest?.allowPrefixes ?? []), ...(gate.spec.env?.allowPrefixes ?? [])];
-  const environment: NodeJS.ProcessEnv = {};
-  for (const [name, value] of Object.entries(process.env)) {
-    if (value === undefined || value === '') continue;
-    if (GATE_ENV_DENY.test(name)) continue;
-    if (!allow.has(name) && !prefixes.some((prefix) => prefix.length > 0 && name.startsWith(prefix))) continue;
-    environment[name] = value;
-  }
-  return environment;
+  const { env } = filterEnvironment({
+    allow: [...(manifest?.allow ?? []), ...(gate.spec.env?.allow ?? [])],
+    allowPrefixes: [...(manifest?.allowPrefixes ?? []), ...(gate.spec.env?.allowPrefixes ?? [])],
+  });
+  return env;
 }
 
 function redact(input: string): string {

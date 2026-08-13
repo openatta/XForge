@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { rm } from 'node:fs/promises';
 import type { ApprovalPolicy, ApprovalReceipt, Diagnostic, FileChange, NextAction, ProjectContext } from '../types.js';
 import { recordAudit } from '../core/audit.js';
 import { resolveControlPlane } from '../core/control-plane.js';
@@ -7,6 +8,7 @@ import { atomicWrite } from '../core/files.js';
 import { isStageFlow, resolveChangeState } from '../core/flow-resolver.js';
 import { sha256, stableStringify } from '../core/hash.js';
 import { assertManaged } from '../core/project-loader.js';
+import { safeResolve } from '../core/path-safety.js';
 import { loadSelectedResources } from '../core/resource-loader.js';
 import { approvalReceiptDigest } from '../core/approval-receipt.js';
 import { pollApproval, submitApprovalRequest, withMcpApprovalSession } from '../core/mcp-approval.js';
@@ -138,24 +140,32 @@ export async function executeApprove(project: ProjectContext, options: ApproveOp
   const policy = approvalPolicy(resolved.flow, control.governance.currentStage, options.transition, options.policy);
   const revision = control.governance.revision;
   let receipt: ApprovalReceipt;
+  let mcpDiagnostics: Diagnostic[] = [];
 
   if (!options.dryRun) await recordAudit(project, { eventType: 'approval.requested', change: options.change, flow: resolved.flow.metadata.name, stage: control.governance.currentStage, revision, decision: policy.id, outcome: 'succeeded' });
 
   if (options.provider) {
     const provider = project.manifest.approvals?.providers.find((item) => item.id === options.provider);
-    if (!provider) throw new XForgeError(diagnostic('XFORGE_APPROVAL_PROVIDER_FORBIDDEN', `Approval provider is not authorized: ${options.provider}.`));
-    if (!policy.providers.includes(provider.id)) throw new XForgeError(diagnostic('XFORGE_APPROVAL_PROVIDER_FORBIDDEN', `Policy ${policy.id} does not allow provider ${provider.id}.`));
+    if (!provider) throw new XForgeError(diagnostic('XFORGE_APPROVAL_PROVIDER_FORBIDDEN', `Approval provider is not authorized: ${options.provider}.`), {
+      nextActions: [{ action: 'resolve-approval-provider', reason: `"${options.provider}" is not declared under manifest.yaml's approvals.providers. Check the provider id, or run xforge doctor to list approval-provider configuration gaps.`, actor: 'human', command: ['xforge', 'doctor'] }],
+    });
+    if (!policy.providers.includes(provider.id)) throw new XForgeError(diagnostic('XFORGE_APPROVAL_PROVIDER_FORBIDDEN', `Policy ${policy.id} does not allow provider ${provider.id}.`), {
+      nextActions: [{ action: 'resolve-approval-provider', reason: `Policy ${policy.id} only allows: ${policy.providers.join(', ') || '(none)'}. Either use one of those providers or add "${provider.id}" to the policy's providers list in the Flow definition.`, actor: 'human' }],
+    });
     const server = resources.mcpServers.get(provider.mcpServer);
-    if (!server) throw new XForgeError(diagnostic('XFORGE_APPROVAL_MCP_SERVER_MISSING', `McpServer resource is missing or not enabled: ${provider.mcpServer}.`));
+    if (!server) throw new XForgeError(diagnostic('XFORGE_APPROVAL_MCP_SERVER_MISSING', `McpServer resource is missing or not enabled: ${provider.mcpServer}.`), {
+      nextActions: [{ action: 'resolve-approval-provider', reason: `Approval provider "${provider.id}" references McpServer "${provider.mcpServer}", which is not registered or not enabled in the manifest. Register it under mcp-servers/, or reconfigure the policy to use an available provider.`, actor: 'human', command: ['xforge', 'doctor'] }],
+    });
     const governingDigest = sha256(stableStringify({ change: options.change, flow: resolved.flow.metadata.name, policy: policy.id, revision }));
     const resumeCommand = ['xforge', 'approve', '--change', options.change, '--for', options.transition, '--policy', policy.id, '--provider', provider.id];
-    const poll = await withMcpApprovalSession(project, server.value, provider.id, async (client, timeoutMs) => {
+    const { result: poll, diagnostics: envDiagnostics } = await withMcpApprovalSession(project, server.value, provider.id, async (client, timeoutMs) => {
       await submitApprovalRequest(client, timeoutMs, {
         change: options.change, flow: resolved.flow.metadata.name, stage: control.governance.currentStage, transition: options.transition, policyId: policy.id,
         revision, governingDigest, roles: policy.roles, reason: options.reason ?? '',
       });
       return pollApproval(client, timeoutMs, governingDigest);
     });
+    mcpDiagnostics = envDiagnostics;
     if (poll.status === 'pending') {
       /*
        * A pending external decision is a state of the world, not a failure of this command: an
@@ -164,7 +174,7 @@ export async function executeApprove(project: ProjectContext, options: ApproveOp
        */
       return {
         data: { change: options.change, policy: policy.id, transition: options.transition, receipt: null, dryRun: options.dryRun, status: 'pending' },
-        diagnostics: [...resources.diagnostics, ...control.diagnostics],
+        diagnostics: [...resources.diagnostics, ...control.diagnostics, ...mcpDiagnostics],
         changes: [],
         nextActions: [{
           action: 'await-approval', type: 'approval', id: policy.id, status: 'pending', actor: 'human',
@@ -195,7 +205,9 @@ export async function executeApprove(project: ProjectContext, options: ApproveOp
      * what makes it trustworthy later is that this same run also appends a matching `approval.decided`
      * event to the Change's audit hash chain (see `approvalVerifiedInChain`).
      */
-    if (!policy.providers.includes('local')) throw new XForgeError(diagnostic('XFORGE_APPROVAL_PROVIDER_FORBIDDEN', `Policy ${policy.id} does not allow local approvals.`));
+    if (!policy.providers.includes('local')) throw new XForgeError(diagnostic('XFORGE_APPROVAL_PROVIDER_FORBIDDEN', `Policy ${policy.id} does not allow local approvals.`), {
+      nextActions: [{ action: 'resolve-approval-provider', reason: `Policy ${policy.id} requires an external provider (${policy.providers.join(', ') || '(none configured)'}) and does not permit a human to approve at the terminal. If the declared provider's McpServer is a placeholder or unreachable, this is a configuration gap, not a pending decision — tell the user rather than retrying. Fixing it requires editing the Flow/manifest to register a working provider or add "local" to this policy's providers, not a CLI command.`, actor: 'human' }],
+    });
     if (!options.interactive || !options.terminal) {
       throw new XForgeError(diagnostic(
         'XFORGE_APPROVAL_INTERACTIVE_REQUIRED',
@@ -238,11 +250,22 @@ export async function executeApprove(project: ProjectContext, options: ApproveOp
   const changes: FileChange[] = [{ action: 'create', path: target, digest: sha256(content), source: `approval:${policy.id}` }];
   if (!options.dryRun) {
     await atomicWrite(project.root, target, content);
-    await recordAudit(project, { eventType: 'approval.decided', change: options.change, flow: resolved.flow.metadata.name, stage: control.governance.currentStage, revision, decision: receipt.decision, reason: receipt.reason, outcome: receipt.decision === 'approve' ? 'succeeded' : 'denied', input: { policy: policy.id, receipt: receipt.digest } });
+    try {
+      await recordAudit(project, { eventType: 'approval.decided', change: options.change, flow: resolved.flow.metadata.name, stage: control.governance.currentStage, revision, decision: receipt.decision, reason: receipt.reason, outcome: receipt.decision === 'approve' ? 'succeeded' : 'denied', input: { policy: policy.id, receipt: receipt.digest } });
+    } catch (error) {
+      /*
+       * `approvalVerifiedInChain` trusts a receipt only once a matching `approval.decided` event is
+       * in the chain (see the comment above `collectLocalDecision`), so a receipt written without
+       * that event is a human decision the system can never treat as valid. Removing it here means a
+       * retry redoes the whole decision cleanly instead of leaving an unusable, undead receipt file.
+       */
+      await rm(await safeResolve(project.root, target), { force: true }).catch(() => undefined);
+      throw error;
+    }
   }
   return {
     data: { change: options.change, policy: policy.id, transition: options.transition, receipt: options.dryRun ? null : receipt, dryRun: options.dryRun, status: 'recorded' },
-    diagnostics: [...resources.diagnostics, ...control.diagnostics],
+    diagnostics: [...resources.diagnostics, ...control.diagnostics, ...mcpDiagnostics],
     changes,
   };
 }

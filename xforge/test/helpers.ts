@@ -83,6 +83,41 @@ export async function runCli(root: string, args: string[], env: NodeJS.ProcessEn
   return { ...result, json };
 }
 
+/**
+ * Same conventions as `runCli` (cwd, env passthrough, coverage instrumentation, stdout/stderr/code
+ * capture), but with `stdio[0]` piped instead of `ignore` so callers can feed the child's stdin —
+ * needed to exercise `hook`'s `for await (const chunk of process.stdin)` parsing at the real CLI
+ * boundary, which `runCli` structurally cannot reach.
+ */
+export async function runCliWithStdin(
+  root: string,
+  args: string[],
+  stdinContent: string,
+  env: NodeJS.ProcessEnv = {},
+): Promise<{ code: number; stdout: string; stderr: string; json: any }> {
+  const coverageEnvironment = process.env.XFORGE_TEST_NODE_V8_COVERAGE
+    ? { NODE_V8_COVERAGE: process.env.XFORGE_TEST_NODE_V8_COVERAGE }
+    : {};
+  const result = await new Promise<{ code: number; stdout: string; stderr: string }>((resolve, reject) => {
+    const child = spawn(process.execPath, [cliPath, ...args], {
+      cwd: root,
+      env: { ...process.env, ...coverageEnvironment, ...env },
+      shell: false,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
+    child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk));
+    child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk));
+    child.on('error', reject);
+    child.on('close', (code) => resolve({ code: code ?? 1, stdout: Buffer.concat(stdout).toString(), stderr: Buffer.concat(stderr).toString() }));
+    child.stdin.end(stdinContent);
+  });
+  let json: any = null;
+  try { json = JSON.parse(result.stdout); } catch {}
+  return { ...result, json };
+}
+
 export function changeYaml(flow: 'quick' | 'solid' | 'major', overrides: Record<string, unknown> = {}): string {
   const value = {
     flow,

@@ -1,4 +1,5 @@
-import type { Diagnostic, FileChange, Flow, GateEvidence, ProjectContext, StageFlow } from '../types.js';
+import { readFile } from 'node:fs/promises';
+import type { Diagnostic, FileChange, Flow, GateEvidence, GateResource, ProjectContext, StageFlow } from '../types.js';
 import { checkStructure } from '../core/checker.js';
 import { diagnostic } from '../core/errors.js';
 import { assertManaged } from '../core/project-loader.js';
@@ -8,6 +9,8 @@ import { readAuditEvents, recordAudit } from '../core/audit.js';
 import { isStageFlow, resolveChangeState } from '../core/flow-resolver.js';
 import { loadTransitionReceipts, resolveControlPlane } from '../core/control-plane.js';
 import { sha256, stableStringify } from '../core/hash.js';
+import { safeResolve } from '../core/path-safety.js';
+import type { SelectedResources } from '../core/resource-loader.js';
 
 /** Stages that run before any implementation exists, so no work-package verify can be meaningful. */
 const PRE_APPLY_STAGES = new Set(['propose', 'clarify', 'design', 'check']);
@@ -23,6 +26,8 @@ export interface CheckOptions {
   allGates?: boolean;
   /** Resolve Gates for this Stage instead of the Change's current Stage. */
   stage?: string;
+  /** Bypass reuse of passed, still-current work-package verify Evidence; always re-run every verify Gate. */
+  force?: boolean;
 }
 
 export type GateSelection = 'none' | 'explicit' | 'stage' | 'all' | 'archive';
@@ -33,7 +38,7 @@ export interface CheckData {
   /** The Stage whose Gates were selected, or null when selection did not come from a Stage. */
   stage: string | null;
   gateSelection: GateSelection;
-  workPackages: Array<{ packageId: string; command: string; status: 'passed' | 'failed'; evidence: GateEvidence }>;
+  workPackages: Array<{ packageId: string; command: string; status: 'passed' | 'failed'; evidence: GateEvidence; cached: boolean }>;
   gates: Array<{ id: string; status: 'passed' | 'failed'; evidence: GateEvidence | null }>;
 }
 
@@ -47,6 +52,71 @@ function flowGateIds(flow: StageFlow): string[] {
 function stageGateIds(flow: StageFlow, stageId: string): string[] | null {
   const stage = flow.stages.find((candidate) => candidate.id === stageId);
   return stage ? [...new Set([...(stage.gates ?? []), ...(stage.exit?.gates ?? [])])] : null;
+}
+
+/**
+ * Mirrors the `revision` derivation `runGate` performs internally (gate.ts, `export async function
+ * runGate`) so `inputDigest` can be predicted here without running the Gate. Returns `null` on any
+ * failure to resolve state/control-plane so the caller falls back to actually running the Gate.
+ */
+async function computeGateInputDigest(
+  project: ProjectContext,
+  changeId: string,
+  gate: GateResource,
+  structurePassed: boolean,
+  resources: SelectedResources,
+): Promise<string | null> {
+  try {
+    const resolved = await resolveChangeState(project, changeId);
+    const control = isStageFlow(resolved.flow) && resolved.flow.governance
+      ? await resolveControlPlane(project, changeId, resolved.flow, resolved.state, resources, resolved.config)
+      : null;
+    const revision = control?.governance.revision ?? {
+      contentRevision: sha256(stableStringify({ changeId, flow: resolved.flow.metadata.name })),
+      stateRevision: sha256(stableStringify({ changeId, flow: resolved.flow.metadata.name, stage: 'legacy' })),
+      policySnapshotDigest: sha256(stableStringify({ legacy: true })), gitBase: 'unknown', gitHead: 'unknown',
+    };
+    return sha256(stableStringify({ gate, revision, structurePassed }));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Reuses passed Evidence already on disk for `gate` when its `inputDigest` matches what this run
+ * would produce, so `check` does not re-run a Gate whose outcome could not have changed. Mirrors the
+ * evidence self-consistency check in gate.ts's own evidence-conflict-detection code (`gate`/`change`
+ * fields and digest recomputation), then additionally requires the `inputDigest` to match and the
+ * cached `status` to be `'passed'`. Any mismatch, missing file, or parse failure returns `null` so
+ * the caller falls back to running the Gate for real; a caching bug must never silently skip a Gate.
+ *
+ * Reads the (cheap) evidence file *before* computing the (expensive — a full `resolveChangeState` +
+ * `resolveControlPlane`) expected digest: the common case for a work package that has never been
+ * verified yet is "no evidence file exists," and probing the control plane before even checking that
+ * would otherwise double the control-plane resolution cost of every cache-miss `check` call (`runGate`
+ * resolves it again internally) — on a CI runner with less headroom than a developer machine, that
+ * regression is exactly what pushed several unrelated, pre-existing tests over their timeout.
+ */
+async function readReusableGateEvidence(
+  project: ProjectContext,
+  changeId: string,
+  gate: GateResource,
+  resources: SelectedResources,
+): Promise<GateEvidence | null> {
+  const evidencePath = `${project.changesPath}/${changeId}/evidence/${gate.spec.evidence}`;
+  let existing: GateEvidence;
+  try {
+    const existingSource = await readFile(await safeResolve(project.root, evidencePath), 'utf8');
+    existing = JSON.parse(existingSource) as GateEvidence;
+  } catch {
+    return null;
+  }
+  const { digest: existingDigest, ...existingUnsigned } = existing;
+  if (existing.gate !== gate.metadata.name || existing.change !== changeId || existingDigest !== sha256(stableStringify(existingUnsigned))) return null;
+  if (existing.status !== 'passed') return null;
+  const expectedInputDigest = await computeGateInputDigest(project, changeId, gate, true, resources);
+  if (!expectedInputDigest || existing.inputDigest !== expectedInputDigest) return null;
+  return existing;
 }
 
 export async function executeCheck(project: ProjectContext, options: CheckOptions): Promise<{
@@ -133,6 +203,17 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
   const workPackagesInScope = selectedStage === null || !PRE_APPLY_STAGES.has(selectedStage);
   if (!hasStructureErrors && !options.gate && options.change && workPackagesInScope && structure.change?.workPackages) {
     for (const verification of workPackageVerificationGates(structure.change.workPackages)) {
+      const reused = options.force ? null : await readReusableGateEvidence(project, options.change, verification.gate, structure.resources);
+      if (reused) {
+        workPackageResults.push({
+          packageId: verification.packageId,
+          command: verification.command,
+          status: reused.status,
+          evidence: reused,
+          cached: true,
+        });
+        continue;
+      }
       const result = await runGate(project, options.change, verification.gate, true);
       changes.push(result.change);
       if (result.evidence.status === 'failed') diagnostics.push(diagnostic(
@@ -147,6 +228,7 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
         command: verification.command,
         status: result.evidence.status,
         evidence: result.evidence,
+        cached: false,
       });
     }
   }

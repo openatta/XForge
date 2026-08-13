@@ -9,8 +9,15 @@ spec:
     Shared governance assets (Constitution, canonical Specs, Manifest, Lock) are written by the
     Integrator or by an explicit XForge transaction, never by a Worker implementing a work package.
   scope:
+    # Mirrors protected-files' deny list exactly. Broader xforge/** paths (flows,
+    # scaffold resources, changes) are edited through normal governed Changes via
+    # `xforge install`/`xforge check`, not blanket-denied — expanding this scope back to
+    # xforge/** would misreport those paths as guarded when the policy does not cover them.
     paths:
-      - xforge/**
+      - xforge/constitution.md
+      - xforge/specs/**
+      - xforge/manifest.yaml
+      - xforge/lock.yaml
   enforcement:
     # guarded: a live PermissionPolicy refuses the write at the tool call.
     gateRefs: []

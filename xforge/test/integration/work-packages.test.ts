@@ -1,4 +1,4 @@
-import { access, readFile } from 'node:fs/promises';
+import { access, readFile, rm } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { stringify } from 'yaml';
@@ -227,14 +227,34 @@ describe('work-package protocol', () => {
     await write(root, integrationEvidence, 'Integrated T001 and reran contract verification.\n');
     const integrated = await runCli(root, ['work-package', 'acknowledge', '--change', 'add-feature', '--package', 'T001', '--as', 'integrator', '--evidence', integrationEvidence], approvalTestEnv);
     expect(integrated.code).toBe(0);
+    /* Acknowledge must write a Git-visible receipt, not only a local audit event. */
+    expect(integrated.json.changes).not.toEqual([]);
+    expect(integrated.json.changes[0]).toMatchObject({ action: 'create', source: 'work-package:acknowledge:integrator' });
+    const integratedReceiptPath = path.join(root, 'xforge', 'changes', 'add-feature', 'evidence', 'agents', 'T001', 'ack', `${binding.executionId}-integrator.json`);
+    expect(await exists(integratedReceiptPath)).toBe(true);
     const integratedState = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
     expect(integratedState.json.data.change.workPackages.packages[0].status).toBe('integrated');
     const reviewEvidence = 'xforge/changes/add-feature/evidence/agents/T001/review.md';
     await write(root, reviewEvidence, 'Independent review passed.\n');
     const reviewed = await runCli(root, ['work-package', 'acknowledge', '--change', 'add-feature', '--package', 'T001', '--as', 'reviewer', '--evidence', reviewEvidence], approvalTestEnv);
     expect(reviewed.code).toBe(0);
+    expect(reviewed.json.changes).not.toEqual([]);
+    expect(reviewed.json.changes[0]).toMatchObject({ action: 'create', source: 'work-package:acknowledge:reviewer' });
+    const reviewedReceiptPath = path.join(root, 'xforge', 'changes', 'add-feature', 'evidence', 'agents', 'T001', 'ack', `${binding.executionId}-reviewer.json`);
+    expect(await exists(reviewedReceiptPath)).toBe(true);
     const reviewedState = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
     expect(reviewedState.json.data.change.workPackages.packages[0].status).toBe('reviewed');
+
+    /*
+     * `.audit/` is gitignored (see `xforge/scaffold/payload/xforge/.audit/.gitignore`), so a fresh
+     * `git clone` never has it. Simulate that here: with the local audit chain gone, only the
+     * Git-tracked ack receipts remain, and status must still read back as `reviewed` rather than
+     * silently falling back to `succeeded`.
+     */
+    await rm(path.join(root, 'xforge', '.audit'), { recursive: true, force: true });
+    const clonedState = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
+    expect(clonedState.code).toBe(0);
+    expect(clonedState.json.data.change.workPackages.packages[0].status).toBe('reviewed');
   });
 
   it('rejects a succeeded delivery without an exact done_when evidence mapping', async () => {
