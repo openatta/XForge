@@ -13,16 +13,33 @@ import { loadSelectedResources } from '../core/resource-loader.js';
 import { approvalReceiptDigest } from '../core/approval-receipt.js';
 import { pollApproval, submitApprovalRequest, withMcpApprovalSession } from '../core/mcp-approval.js';
 
-/** A local approval is repository-level evidence about a moment, so it is not valid forever. */
-export const LOCAL_APPROVAL_LIFETIME_HOURS = 168;
+/**
+ * An approval is evidence about a moment, so it is not valid forever.
+ *
+ * This is the default lifetime for every receipt this command writes, whichever mechanism produced
+ * it. A local receipt always gets it. An mcp receipt gets it only when the provider did not state
+ * its own `expiresAt`: without this, a provider that simply omits the field would produce an
+ * approval that never expires (control-plane.ts treats an absent `expiresAt` as unbounded), so
+ * forgetting one optional field would buy a stronger receipt than the local path can issue.
+ */
+export const APPROVAL_LIFETIME_HOURS = 168;
+
+/** The default expiry stamped on a receipt, `APPROVAL_LIFETIME_HOURS` from now. */
+function approvalExpiry(): string {
+  return new Date(Date.now() + APPROVAL_LIFETIME_HOURS * 3_600_000).toISOString();
+}
 
 /**
- * The live terminal the CLI uses to obtain a human decision.
+ * The live terminal the CLI uses to obtain an approval decision.
  *
- * The decision must be produced by this dialogue, never by argv: an Agent runs inside a TTY, so
- * `--decision approve --attestation human` on the command line is not evidence that a human decided
- * anything. `cli.ts` supplies an implementation bound to the controlling terminal (`/dev/tty` when
- * available, otherwise stdin/stderr); omitting it makes a local approval impossible.
+ * The decision must be produced by this dialogue, never by argv: `--decision approve --attestation
+ * human` on the command line is a caller stating its own conclusion, which is not evidence of
+ * anything. `cli.ts` supplies an implementation over this process's own stdin (prompts go to
+ * stderr), gated on both stdin and stdout being TTYs. Be exact about what that gate shows: the
+ * command ran in an interactive session and something answered the questions. It does not show that
+ * a human answered them — a pty satisfies `isTTY` and can drive the prompts just as well. XForge
+ * does not open `/dev/tty`, and opening it would not close that gap either. Omitting the terminal
+ * makes a local approval impossible.
  */
 export interface ApprovalTerminal {
   /** Shows context. Never returns input. */
@@ -39,7 +56,7 @@ export interface ApproveOptions {
   role?: string;
   reason?: string;
   decision?: 'approve' | 'reject';
-  /** Intent hint only. It can never satisfy the human-attestation requirement by itself. */
+  /** Intent hint only. Nothing a caller passes here is ever copied onto a receipt. */
   attestation?: 'human';
   provider?: string;
   interactive: boolean;
@@ -90,15 +107,29 @@ interface LocalDecision {
 }
 
 /**
- * Obtains the decision from the human at the terminal.
+ * Obtains the decision from whoever is at the terminal.
  *
- * Flags may pre-fill identity and reason, but the decision word itself must be typed live at the
- * terminal — a caller that only stuffs argv never reaches this function's questions at all (see the
- * `interactive`/`terminal` gate in `executeApprove`), so it cannot produce a local approval. There is
- * no code to type back: the live dialogue is the evidence. What makes the resulting receipt trustworthy
- * is not anything on the receipt itself, but that `executeApprove` records a matching `approval.decided`
- * event in this Change's audit hash chain in the same run — a later read cross-checks the receipt
- * against that chain (see `approvalVerifiedInChain`) rather than against a value the human retyped.
+ * Flags may pre-fill identity and reason, but the decision word itself must be typed live — a caller
+ * that only stuffs argv never reaches these questions at all (see the `interactive`/`terminal` gate
+ * in `executeApprove`), so it cannot produce a local approval. There is no code to type back: the
+ * live dialogue is the evidence, and it is evidence of an interactive session rather than of a
+ * particular person. A pty that answers these prompts produces a receipt identical to a typed one,
+ * and the receipt's `approver.id` is whatever was entered, not a verified identity.
+ *
+ * Alongside the dialogue, `executeApprove` appends a matching `approval.decided` event to this
+ * Change's audit hash chain in the same run, and a later read cross-checks the receipt against that
+ * chain (`approvalVerifiedInChain`) rather than against a value the approver retyped. Be honest
+ * about the strength of that too: the chain is an unkeyed SHA-256 over public inputs, stored in the
+ * repository the governed Agent can write. It reliably catches a receipt that was never decided
+ * through this command — a hand-placed file, a corrupted or truncated log — and it does not
+ * withstand an actor who rewrites the chain and the receipt together. That is corruption-evidence,
+ * not tamper-evidence.
+ *
+ * So the local mechanism is honest-agent governance: it makes an unattended self-approval a
+ * deliberate, recorded act instead of an accident, and it is trustworthy to the degree the
+ * operator's environment is. A policy that needs more than that should not list `local` in its
+ * providers at all; it should require an mcp provider, where the decision is made by a system whose
+ * secret and endpoint sit outside the tree the Agent can reach.
  */
 async function collectLocalDecision(
   terminal: ApprovalTerminal,
@@ -193,17 +224,25 @@ export async function executeApprove(project: ProjectContext, options: ApproveOp
       policySnapshotDigest: revision.policySnapshotDigest, gitBase: revision.gitBase, gitHead: revision.gitHead,
       governingDigest, governingRevision: revision.governingRevision!,
       decision: poll.decision, approver: { id: poll.approver.id, provider: provider.id, role: poll.approver.role, type: 'external-system' as const },
-      decidedAt: new Date().toISOString(), reason: poll.reason, ...(poll.expiresAt ? { expiresAt: poll.expiresAt } : {}),
+      decidedAt: new Date().toISOString(), reason: poll.reason,
+      /* The provider's own expiry wins when it states one (`narrowPoll` has already rejected the
+         response outright unless it is an RFC 3339 date-time); otherwise the same default lifetime
+         the local path uses applies, so an omitted field cannot buy a receipt that outlives every
+         other kind. */
+      expiresAt: poll.expiresAt ?? approvalExpiry(),
     };
     receipt = { ...unsigned, digest: approvalReceiptDigest({ ...unsigned, digest: '' }) };
   } else {
     /*
-     * Local approval. `--attestation human` is only an intent hint: an Agent session runs on a TTY,
-     * so neither the flag nor `isTTY` proves a human decided. The CLI therefore obtains the identity,
-     * the decision, and the reason from the live terminal itself and sets the human attestation
-     * itself — there is no receipt-file-import path and nothing on the receipt is retyped as proof;
-     * what makes it trustworthy later is that this same run also appends a matching `approval.decided`
-     * event to the Change's audit hash chain (see `approvalVerifiedInChain`).
+     * Local approval. `--attestation human` is only an intent hint: neither the flag nor the `isTTY`
+     * gate proves a human decided, since an Agent session runs on a TTY too. The CLI therefore takes
+     * identity, decision, and reason from the live terminal dialogue and sets the attestation itself
+     * rather than accepting one from the caller, and there is no receipt-file-import path at all.
+     * Read `attestation.method: 'cli-terminal'` as "this decision arrived through the CLI's terminal
+     * dialogue", never as "a human was verified" — the field records the mechanism, not an identity
+     * check. What the receipt is worth later rests on the matching `approval.decided` event this same
+     * run appends to the Change's audit chain (`approvalVerifiedInChain`), with the limits of that
+     * chain spelled out above `collectLocalDecision`.
      */
     if (!policy.providers.includes('local')) throw new XForgeError(diagnostic('XFORGE_APPROVAL_PROVIDER_FORBIDDEN', `Policy ${policy.id} does not allow local approvals.`), {
       nextActions: [{ action: 'resolve-approval-provider', reason: `Policy ${policy.id} requires an external provider (${policy.providers.join(', ') || '(none configured)'}) and does not permit a human to approve at the terminal. If the declared provider's McpServer is a placeholder or unreachable, this is a configuration gap, not a pending decision — tell the user rather than retrying. Fixing it requires editing the Flow/manifest to register a working provider or add "local" to this policy's providers, not a CLI command.`, actor: 'human' }],
@@ -211,7 +250,7 @@ export async function executeApprove(project: ProjectContext, options: ApproveOp
     if (!options.interactive || !options.terminal) {
       throw new XForgeError(diagnostic(
         'XFORGE_APPROVAL_INTERACTIVE_REQUIRED',
-        'Local approval requires an interactive terminal: XForge asks for the approver, the decision, and the reason on stdin. Command-line flags cannot constitute the decision. Use an mcp provider in non-interactive mode.',
+        'Local approval requires an interactive terminal: XForge asks for the approver, the decision, and the reason on stdin, and command-line flags cannot constitute the decision. There is no manifest setting that relaxes this. For a non-interactive session, use an mcp provider instead.',
       ));
     }
     const governingDigest = sha256(stableStringify({ change: options.change, flow: resolved.flow.metadata.name, policy: policy.id, revision }));
@@ -227,7 +266,7 @@ export async function executeApprove(project: ProjectContext, options: ApproveOp
       governingDigest, governingRevision: revision.governingRevision!,
       decision: decided.decision, approver: { id: decided.actor, provider: 'local', role: decided.role, type: 'human' as const },
       decidedAt: new Date().toISOString(), reason: decided.reason,
-      expiresAt: new Date(Date.now() + LOCAL_APPROVAL_LIFETIME_HOURS * 3_600_000).toISOString(),
+      expiresAt: approvalExpiry(),
       attestation: { method: 'cli-terminal' as const, respondedAt: decided.respondedAt },
     };
     receipt = { ...unsigned, digest: approvalReceiptDigest({ ...unsigned, digest: '' }) };

@@ -1,7 +1,7 @@
 ---
 name: xforge-propose
 description: 创建受治理的 Change，并仅生成 Propose Stage 允许的 change.yaml、proposal 与 delta Specs；用于用户要求把已足够明确的想法、缺陷或功能正式规格化，但尚未授权实现时。
-allowed-tools: Read Grep Glob Write Edit Bash(npx:*)
+allowed-tools: Read, Grep, Glob, Write, Edit, Bash(npx:*)
 ---
 
 # 不变量
@@ -9,6 +9,7 @@ allowed-tools: Read Grep Glob Write Edit Bash(npx:*)
 - 先运行 `npx --no-install xforge state`，从 State 读取 Changes 路径、Flows、policy、Constitution、Rules、Specs 和项目模块。
 - 只消费 `xforge-propose` 对应的 ready Action；每次写入前重读 Action inputs，写入后刷新 State。
 - Flow 表达交付侧重点与治理量级：Quick 强调快速，限低风险、单模块、易回滚且无关键影响；Solid 强调稳定，适合常规产品与工程变更；Major 强调重大影响治理，用于高风险、跨系统或关键影响变更。不确定时升级或请求决定。
+- 三个 Flow 都要回答 Constitution 台账，只是时点不同：Solid 与 Major 在 Check（实现之前）回答，Quick 没有 Check Stage，改在 Verify 针对最终 diff 回答。选择 Quick 不会跳过 Constitution，只会改变提问的时点。
 - Specs 使用机器约定的 `ADDED|MODIFIED|REMOVED|RENAMED Requirements`、`Requirement`、`Scenario`、`WHEN`、`THEN` 标题。
 
 # 权限

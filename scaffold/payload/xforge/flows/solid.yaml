@@ -9,7 +9,6 @@ policy:
   eligibleWhen:
     risk: [low, medium]
     criticalImpacts: forbidden
-  onUncertain: escalate
 artifacts:
   - id: proposal
     generates: proposal.md
@@ -69,11 +68,12 @@ artifacts:
   - id: constitution-check
     generates: evidence/constitution-check.yaml
     description: Answer every Constitution principle for this Change
-    instruction: One entry per `## ` principle in xforge/constitution.md, each with status compliant|violation|not-applicable. A violation needs a justification and a named approvedBy; not-applicable needs a justification. A general claim of compliance does not satisfy the Gate.
+    instruction: One entry per `## ` principle in xforge/constitution.md, each with status compliant|violation|not-applicable. Every entry must cite at least one machine-locatable reference in `references` — a Requirement id from this Change's delta Specs, a file path that exists, or `gate:<name>` for a Gate that passed. A violation additionally needs a justification and a named approvedBy; not-applicable needs a justification. A general claim of compliance does not satisfy the Gate.
     outline: |
       principles:
         - principle: <exact `## ` heading from constitution.md>
           status: <compliant|violation|not-applicable>
+          references: [<Requirement id | existing path | gate:<name>>]
           justification: <required for violation and not-applicable>
           approvedBy: <named person, required for violation>
   - id: assurance
@@ -86,11 +86,6 @@ artifacts:
       ## Coherence
       ## Gates and evidence
       ## Findings
-  - id: verification-receipt
-    generates: evidence/verification-receipt.yaml
-    description: Bind a verification receipt to the current revision and Gate Evidence
-    instruction: Record only the current Change revision, Git HEAD, Flow version, input digest, and passed Evidence references.
-    outline: ''
 governance:
   approvalPolicies:
     - id: planning-solid
@@ -136,23 +131,22 @@ stages:
     requires: [check]
     produces: []
     reworkTo: [propose, design, check]
-    execution:
-      planning: just-in-time
-      workPackages: adaptive
   - id: verify
     skill: xforge-verify
     authority: assurance-write
     requires: [apply]
-    produces: [assurance, verification-receipt]
+    produces: [assurance]
     gates: [structure, unit-tests]
     reworkTo: [apply]
+    exit:
+      conditions:
+        verificationReceipt: passed
 terminal:
   archive:
     handler: xforge-verify
     authority: archive-write
     requires: [verify]
     syncSpecs: true
-    evidencePolicy: current-revision
     approvals: [closing-solid]
     auditPolicy:
       requiredEventTypes: [gate.after, stage.entered, approval.decided]

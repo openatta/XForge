@@ -1,18 +1,19 @@
 ---
 name: xforge-continue
 description: Resume a Change from current machine state and execute the next legal Action consistent with user authority; use when the user says continue, resume, do the next step, or a new session must recover from an interruption.
-allowed-tools: Read Grep Glob Bash
+allowed-tools: Read, Grep, Glob, Write, Edit, Bash
 ---
 
 # Invariants
 
-- Run `npx --no-install xforge state`, resolve one Change, then run State for that Change. Never hard-code Quick/Solid/Major order.
-- Select only a CLI typed `nextActions` entry with `status=ready` whose actor, authority, and user authorization match, and execute its command. Never infer the next step from Markdown or Flow familiarity.
+- Run `npx --no-install xforge state`, resolve one Change, then run `npx --no-install xforge state --change <id>`. Never hard-code Quick/Solid/Major order.
+- Select only a CLI typed `nextActions` entry with `status=ready` whose actor and user authorization match, and execute its command. Never infer the next step from Markdown or Flow familiarity.
 - Refresh State after every Action and never advance from stale session/model memory.
 
 # Authority
 
 - Authority comes from the selected ready Action and its Skill; Continue never expands it.
+- An Action's `authority` field names the scope its Stage declares (`planning-write`, `assurance-write`, …). It is an instruction to you about what that Stage may write — the CLI does not compare it against an operation and it will not stop a write that exceeds it. What actually stops one is the effective PermissionPolicy, the Gates, and the Approvals; treat `authority` as the boundary you are told to keep, never as the mechanism that keeps it.
 - Do not claim external, CLI, or user-decision Actions. Archive always needs explicit authority.
 - Approval Actions may only request (submit) a human/external provider decision via the terminal or an mcp provider poll; an Agent never self-approves.
 

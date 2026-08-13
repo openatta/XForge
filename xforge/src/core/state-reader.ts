@@ -73,6 +73,13 @@ export async function readState(project: ProjectContext, options: StateOptions):
       stages: isStageFlow(flow) ? flow.stages.map((stage) => ({
         id: stage.id,
         skill: stage.skill,
+        /*
+         * Reported exactly as the Flow declares it, and descriptive only: `authority` names the
+         * write scope a Stage is documented to have so an Agent can keep inside it, but nothing in
+         * XForge compares it against an operation. What actually refuses a write is the effective
+         * PermissionPolicy, the Gates, and the Approvals — the Skill text says the same thing, and
+         * this field must not be read as a capability the CLI enforces.
+         */
         authority: stage.authority,
         requires: stage.requires,
         produces: stage.produces,

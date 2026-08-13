@@ -66,23 +66,19 @@ async function mergeGitignore(projectRoot, seedGitignorePath) {
  * Wires the shipped scaffold's approval mechanisms to something the harness can actually decide
  * against, without touching any Flow's policy definitions (`major.yaml` etc. are exercised exactly
  * as shipped):
- *  - `approvals.local.requireTty: false` lets `approval-provider.mjs` drive a local approval by
- *    spawning `xforge approve` with piped stdin instead of a real controlling terminal — the CLI
- *    still requires the decision to be typed into that stream, it just accepts a piped one here.
  *  - The scaffold ships `enterprise-approvals` as a deliberately-broken placeholder McpServer
  *    (`command` points at a binary that does not exist) so a real deployment fails loudly instead
  *    of silently working. The harness is exactly the "real approval system" an adopting org is
  *    meant to point that placeholder at, so it overwrites `command` to the MCP test fixture already
- *    used by the internal test suite (`xforge/test/fixtures/mcp-approval-server.mjs`) — needed for
- *    Major, whose implementation-major/closing-major policies do not allow `local` at all.
+ *    used by the internal test suite (`xforge/test/fixtures/mcp-approval-server.mjs`).
+ *
+ * This is now the *only* mechanism the harness drives. The manifest switch that used to let a piped
+ * stdin substitute for a controlling terminal was removed from the product — a switch that relaxes
+ * governance while living inside the tree the governed Agent writes lets the Agent decide whether
+ * governance applies to it — so `approval-provider.mjs` prefers mcp for every policy that offers it,
+ * which the shipped policies all do.
  */
 async function enableApprovalHarness(projectRoot) {
-  const manifestPath = path.join(projectRoot, 'xforge', 'manifest.yaml');
-  const manifest = parseYaml(await readFile(manifestPath, 'utf8'));
-  manifest.approvals ??= { providers: [] };
-  manifest.approvals.local = { ...manifest.approvals.local, requireTty: false };
-  await writeFile(manifestPath, stringifyYaml(manifest));
-
   const mcpServerPath = path.join(projectRoot, 'xforge', 'scaffold', 'mcp-servers', 'enterprise-approvals.yaml');
   if (await exists(mcpServerPath)) {
     const server = parseYaml(await readFile(mcpServerPath, 'utf8'));

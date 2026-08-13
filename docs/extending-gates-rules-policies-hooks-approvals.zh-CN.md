@@ -328,12 +328,12 @@ receipt 只有在项目自己的防篡改 audit hash chain 里能找到匹配事
    不再有需要读回去的确认/挑战码，也没有一项来自命令行 flag：
    `--actor`/`--role`/`--reason` 只是给对话框预填的建议，从不作为权威依据；
    `--attestation human` 也只是一个意图提示，本身不构成决定。刻意做成不能
-   自动化：Agent 不能自我批准。如果确认这件事本身是由 Agent 所在的 harness
-   完成的（比如 harness 已经在会话里问过人类，再由 Agent 拉起
-   `xforge approve` 子进程时天然没有 TTY），可以在 `manifest.yaml` 里设置
-   `approvals.local.requireTty: false` 跳过这一个环境检查——其它所有要求
-   （现场对话、以及 policy 的 `providers` 必须包含 `local`）照样强制。默认值
-   是 `true`（要求真实 TTY），和之前行为一致。
+   自动化。stdin 和 stdout 都必须是 TTY，并且刻意没有提供任何 manifest 开关
+   来放宽这一点。要准确理解它证明了什么：存在一个交互式会话、并且有东西回答了
+   提问——它**不**证明回答者是人（pty 同样能通过）。所以它的作用是让"无人值守
+   的自我批准"变成一个刻意且留痕的动作，而不是让它不可能。需要比这更强的属性
+   的 policy 就不该列出 `local`，而应改用 `mcp` provider——那里的决定由一个
+   密钥和端点都在 Agent 写不到的地方的系统做出。
 2. **`mcp` provider**——`xforge approve --provider <id>`，`<id>` 指
    `manifest.yaml` 的 `approvals.providers` 里的一条，唯一存在的形状是
    `{ id, type: mcp, mcpServer: <id>, roles: [...] }`。XForge 会对登记好的

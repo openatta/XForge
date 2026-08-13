@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { readChangeAuditIndex } from '../../src/core/audit.js';
 import { sha256, stableStringify } from '../../src/core/hash.js';
 import { loadProject } from '../../src/core/project-loader.js';
+import { executeTransition, repairTransitionChain } from '../../src/commands/transition.js';
 import type { TransitionReceipt } from '../../src/types.js';
 import { createCompleteSolidChange, fixture, runCli, write } from '../helpers.js';
 
@@ -68,6 +69,155 @@ async function cloneWithoutAuditData(root: string): Promise<void> {
   await rm(absolute(root, 'xforge/.audit'), { recursive: true, force: true });
   await rm(absolute(root, indexRelative), { force: true });
 }
+
+/**
+ * A receipt claiming the same place in the chain as `sibling`, differing only in where it goes.
+ *
+ * This is what a `git merge` hands you, with no conflict to resolve: two developers branch from the
+ * same commit, each records a Stage transition out of the same Stage, and each receipt used to be
+ * named with a fresh UUID — so Git saw two *added* files in one directory and kept both.
+ */
+function fabricateSibling(sibling: TransitionReceipt, to: string): TransitionReceipt {
+  const { digest: _digest, ...unsigned } = { ...sibling, receiptId: randomUUID(), to, transitionedAt: new Date().toISOString() };
+  return { ...unsigned, digest: sha256(stableStringify(unsigned)) };
+}
+
+/** A receipt that jumps to a Stage the Flow cannot reach from `from`, with an otherwise perfect chain. */
+function fabricateSkip(previous: TransitionReceipt, to: string): TransitionReceipt {
+  const { digest: _digest, ...unsigned } = {
+    ...previous, receiptId: randomUUID(), sequence: previous.sequence + 1,
+    from: previous.to, to, previousReceiptDigest: previous.digest, transitionedAt: new Date().toISOString(),
+  };
+  return { ...unsigned, digest: sha256(stableStringify(unsigned)) };
+}
+
+async function plant(root: string, receipt: TransitionReceipt): Promise<TransitionReceipt> {
+  await write(root, `${transitionsRelative}/${String(receipt.sequence).padStart(4, '0')}-${receipt.receiptId}.json`, `${JSON.stringify(receipt, null, 2)}\n`);
+  return receipt;
+}
+
+async function blockedFor(root: string, to: string): Promise<string[]> {
+  const state = await runCli(root, ['state', '--change', CHANGE]);
+  return (state.json.data.change.governance.readyTransitions as any[]).find((item) => item.to === to)?.blockedBy ?? [];
+}
+
+describe('transition chain forks', () => {
+  /*
+   * The defect this pins needs no concurrency at all: two branches, two receipts at the same
+   * sequence, one clean merge. Before the fix that made every command on the Change fail with an
+   * error diagnostic, with no repair path and standing guidance not to delete the receipt.
+   */
+  it('names a duplicate sequence, blocks only transitions, and repairs by dropping the leaf', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    expect((await runCli(root, ['install'])).code).toBe(0);
+    expect((await runCli(root, ['check', '--change', CHANGE, '--gate', 'structure'])).code).toBe(0);
+    expect((await runCli(root, ['transition', '--change', CHANGE, '--to', 'design'])).code).toBe(0);
+    const opening = (await receipts(root)).at(-1)!;
+
+    /* Branch A took Design forward to Check; branch B sent it back to Propose for rework. Both are
+       legal transitions out of Design, both are sequence 2, and neither knows about the other. */
+    const forward = await plant(root, fabricateSibling({ ...opening, sequence: 2, from: 'design', previousReceiptDigest: opening.digest }, 'check'));
+    const rework = await plant(root, fabricateSibling({ ...opening, sequence: 2, from: 'design', previousReceiptDigest: opening.digest }, 'propose'));
+
+    const state = await runCli(root, ['state', '--change', CHANGE]);
+    /* The Change must still be readable. An error here is what bricked it: `control.diagnostics` is
+       spread into the blocking set of transition, work-package, archive and state alike. */
+    expect(state.code, JSON.stringify(state.json?.diagnostics)).toBe(0);
+    const fork = (state.json.diagnostics as any[]).find((item) => item.code === 'XFORGE_TRANSITION_CHAIN_INVALID');
+    expect(fork, JSON.stringify(state.json.diagnostics)).toBeTruthy();
+    expect(fork.severity).toBe('warning');
+    expect(fork.message).toContain('sequence 2');
+    expect(fork.details.droppable).toEqual(expect.arrayContaining([forward.receiptId, rework.receiptId]));
+
+    /* Blocked, but only where a forked history actually makes the answer unknowable. */
+    for (const target of (state.json.data.change.governance.readyTransitions as any[])) {
+      expect(target.blockedBy).toContain('transition-chain:invalid');
+    }
+    /* `design` is a legal target from both sides of the fork, so the refusal is about the fork. */
+    const refused = await runCli(root, ['transition', '--change', CHANGE, '--to', 'design']);
+    expect(refused.code).toBe(1);
+    expect((refused.json.diagnostics as any[]).some((item) => item.message.includes('transition-chain:invalid'))).toBe(true);
+
+    /* The repair drops the branch nothing was built on and the Change comes back to life. */
+    const project = await loadProject(root, { exactRoot: true });
+    const repaired = await repairTransitionChain(project, { change: CHANGE, receiptId: rework.receiptId, dryRun: false });
+    expect(repaired.data.dropped?.receiptId).toBe(rework.receiptId);
+    /* Dropping a fork's leaf leaves the surviving branch contiguous, so nothing is rewritten and no
+       already-recorded stage.entered attestation is invalidated. */
+    expect(repaired.data.renumbered).toEqual([]);
+
+    const after = await runCli(root, ['state', '--change', CHANGE]);
+    expect(codes(after)).not.toContain('XFORGE_TRANSITION_CHAIN_INVALID');
+    expect(after.json.data.change.governance.currentStage).toBe('check');
+    expect((await receipts(root)).map((item) => item.receiptId)).not.toContain(rework.receiptId);
+    expect(await blockedFor(root, 'apply')).not.toContain('transition-chain:invalid');
+  });
+
+  it('refuses to drop a receipt a later receipt chains to', async () => {
+    const root = await fixture();
+    await structurePassed(root);
+    expect((await runCli(root, ['transition', '--change', CHANGE, '--to', 'design'])).code).toBe(0);
+    const opening = (await receipts(root)).at(-1)!;
+    const project = await loadProject(root, { exactRoot: true });
+    await plant(root, fabricateSibling({ ...opening, sequence: 2, from: 'design', previousReceiptDigest: opening.digest }, 'check'));
+
+    await expect(repairTransitionChain(project, { change: CHANGE, receiptId: opening.receiptId, dryRun: false }))
+      .rejects.toThrow(/chains to its digest/);
+    expect((await receipts(root)).map((item) => item.receiptId)).toContain(opening.receiptId);
+  });
+
+  /* The receipt name is the whole reason the merge above was silent: a UUID in it meant two writers
+     never collided on one path, so Git had nothing to ask about. */
+  it('names a receipt after its sequence alone, so a second writer collides instead of forking', async () => {
+    const root = await fixture();
+    await structurePassed(root);
+    expect((await runCli(root, ['transition', '--change', CHANGE, '--to', 'design'])).code).toBe(0);
+    const names = (await readdir(absolute(root, transitionsRelative))).filter((name) => name.endsWith('.json'));
+    expect(names).toEqual(['0001.json']);
+
+    /* Two transitions in flight at once must not produce two receipts at one sequence, however the
+       two runs happen to interleave. */
+    const project = await loadProject(root, { exactRoot: true });
+    await Promise.allSettled([
+      executeTransition(project, { change: CHANGE, to: 'propose', dryRun: false }),
+      executeTransition(project, { change: CHANGE, to: 'propose', dryRun: false }),
+    ]);
+    const sequences = (await receipts(root)).map((item) => item.sequence);
+    expect(new Set(sequences).size).toBe(sequences.length);
+  });
+});
+
+describe('transition receipt reachability', () => {
+  /*
+   * The continuity check validated sequence, previousReceiptDigest and `from`, and took `to` on the
+   * receipt's word — while the schema leaves both as free strings. So one hand-written file skipped
+   * Check, Apply and Verify, and `terminalGovernanceBlocks` then re-checked the Gates of the Stage
+   * the skip was designed to leave behind.
+   */
+  it('rejects a receipt whose target Stage the Flow cannot reach from its source', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    expect((await runCli(root, ['install'])).code).toBe(0);
+    expect((await runCli(root, ['check', '--change', CHANGE, '--gate', 'structure'])).code).toBe(0);
+    expect((await runCli(root, ['transition', '--change', CHANGE, '--to', 'design'])).code).toBe(0);
+    const skip = await plant(root, fabricateSkip((await receipts(root)).at(-1)!, 'ready-to-archive'));
+
+    const state = await runCli(root, ['state', '--change', CHANGE]);
+    const rejected = (state.json.diagnostics as any[]).find((item) => item.code === 'XFORGE_TRANSITION_UNREACHABLE_STAGE');
+    expect(rejected, JSON.stringify(state.json.diagnostics)).toBeTruthy();
+    expect(rejected.severity).toBe('error');
+    /* The message has to say what was claimed and what is legal, or it cannot be acted on. */
+    expect(rejected.message).toContain('design -> ready-to-archive');
+    expect(rejected.message).toContain('check');
+    expect(rejected.details.receiptId).toBe(skip.receiptId);
+
+    /* A receipt that is not evidence of a legitimate transition must not close the Change either. */
+    const archived = await runCli(root, ['archive', '--change', CHANGE]);
+    expect(archived.code).toBe(1);
+    expect(codes(archived)).toContain('XFORGE_TRANSITION_UNREACHABLE_STAGE');
+  });
+});
 
 describe('transition orphan-receipt scan', () => {
   it('warns without blocking when the last receipt has no attesting stage.entered event', async () => {

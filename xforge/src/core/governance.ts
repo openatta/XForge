@@ -1,4 +1,7 @@
+import { statSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { ChangeConfig, PermissionPolicyResource, RuleResource } from '../types.js';
 
 export interface NormalizedRule {
@@ -78,7 +81,41 @@ export function policyApplies(policy: PermissionPolicyResource, config: ChangeCo
 type PathMatcher = (value: string) => boolean;
 
 const requireFromHere = createRequire(import.meta.url);
-const NOCASE = process.platform === 'win32';
+
+/**
+ * Case sensitivity of *path* matching must follow the filesystem, not the OS family.
+ *
+ * This used to be `process.platform === 'win32'`, which made the matcher case-sensitive on macOS —
+ * where the default APFS volume is case-*insensitive*. `xforge/manifest.yaml` and
+ * `XForge/Manifest.yaml` are the same file to every editor tool there, but only the first one
+ * matched `protected-files`, so a single capitalisation defeated the policy.
+ *
+ * Windows and macOS are treated as case-insensitive unconditionally (their defaults, and erring
+ * that way means a `deny` policy covers *more* spellings of the same file, which is the safe
+ * direction). Elsewhere the answer is probed once at load by asking the filesystem whether this
+ * module's own file is reachable under a case-flipped name — that catches a case-insensitive mount
+ * on Linux. The probe inspects the CLI's own location rather than a project root because the
+ * matcher is context-free; a project on a differently-cased volume than the CLI is the known
+ * residual gap, and it resolves toward `false` (stricter matching), never toward silently matching
+ * nothing.
+ */
+function caseInsensitiveFilesystem(): boolean {
+  if (process.platform === 'win32' || process.platform === 'darwin') return true;
+  try {
+    const self = fileURLToPath(import.meta.url);
+    const base = path.basename(self);
+    const flipped = base === base.toLowerCase() ? base.toUpperCase() : base.toLowerCase();
+    if (flipped === base) return false;
+    return statSync(path.join(path.dirname(self), flipped)).isFile();
+  } catch {
+    return false;
+  }
+}
+
+const NOCASE = caseInsensitiveFilesystem();
+/** Non-path patterns (commands, hosts, tool names) are not filesystem entries, so they keep the
+ *  previous OS-family rule rather than inheriting the volume's case folding. */
+const WILDCARD_NOCASE = process.platform === 'win32';
 const matcherCache = new Map<string, PathMatcher>();
 let picomatchFactory: ((pattern: string, options: Record<string, unknown>) => PathMatcher) | null | undefined;
 
@@ -160,10 +197,47 @@ export function matchPathGlob(pattern: string, value: string): boolean {
  * subagent ids and tool names. Those are not `/`-segmented namespaces — a command pattern like
  * `rm -rf *` is meant to swallow `/tmp/x` — so path-segment semantics would be wrong here.
  * Path patterns must use {@link matchPathGlob}.
+ *
+ * Deliberately NOT a regex. This used to compile `*` to `.*` and hand the result to `RegExp`, which
+ * backtracks: with *k* wildcards a non-matching subject costs O(n^k), and the subject here is the
+ * *agent's own command string*. Measured on the previous implementation, a six-wildcard `rm -rf`
+ * pattern against a 900-character command took 2.7 s and `'*a*a*a*b'` against 2000 `a`s never
+ * finished.
+ * A hung dispatcher is a fail-open on every host that does not block on hook timeout (Claude Code
+ * does not), so an agent could disable enforcement by padding its own command line.
+ *
+ * The replacement is the standard greedy two-pointer scan with a single backtrack anchor: linear in
+ * the subject per `*`, O(n·m) worst case, no recursion and no catastrophic case. `?` matches exactly
+ * one character (including a newline, which the old `.` did not); pattern characters are compared
+ * literally, so regex metacharacters in a policy pattern are no longer silently significant.
  */
 export function matchWildcard(pattern: string, value: string): boolean {
-  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.');
-  return new RegExp(`^${escaped}$`, NOCASE ? 'i' : '').test(value);
+  const glob = WILDCARD_NOCASE ? pattern.toLowerCase() : pattern;
+  const subject = WILDCARD_NOCASE ? value.toLowerCase() : value;
+  let globIndex = 0;
+  let subjectIndex = 0;
+  let starIndex = -1;
+  let resumeIndex = 0;
+  while (subjectIndex < subject.length) {
+    const char = globIndex < glob.length ? glob[globIndex] : undefined;
+    if (char === '?' || (char !== undefined && char === subject[subjectIndex])) {
+      globIndex += 1;
+      subjectIndex += 1;
+    } else if (char === '*') {
+      starIndex = globIndex;
+      resumeIndex = subjectIndex;
+      globIndex += 1;
+    } else if (starIndex >= 0) {
+      // The most recent `*` absorbs one more character; nothing before it is ever revisited.
+      resumeIndex += 1;
+      globIndex = starIndex + 1;
+      subjectIndex = resumeIndex;
+    } else {
+      return false;
+    }
+  }
+  while (globIndex < glob.length && glob[globIndex] === '*') globIndex += 1;
+  return globIndex === glob.length;
 }
 
 export function effectivePolicyEffect(policies: PermissionPolicyResource[]): 'deny' | 'ask' | 'allow' | null {

@@ -16,7 +16,7 @@ Two provider types, two trust models — pick per policy, not globally:
 
 | Provider `type` | Who/what decides | Trust boundary | Typical use |
 |---|---|---|---|
-| `local` | A human at a real TTY | The TTY itself (or, with `approvals.local.requireTty: false`, whatever your Agent harness already confirmed in-session) | Small teams, low-ceremony changes |
+| `local` | Someone at a real TTY | The TTY itself — an interactive session, not a verified identity | Small teams, low-ceremony changes |
 | `mcp` | Your platform, live | The MCP connection itself (transport + auth token) | Programmatic or automated review — a bot that evaluates the Change and decides, or a human workflow your platform already runs, reachable over MCP |
 
 If your platform can already expose an MCP server, `mcp` is the one that

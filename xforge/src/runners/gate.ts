@@ -8,6 +8,7 @@ import { sha256, stableStringify } from '../core/hash.js';
 import { normalizeRelative, safeResolve } from '../core/path-safety.js';
 import { XForgeError, diagnostic } from '../core/errors.js';
 import { filterEnvironment } from '../core/env-safety.js';
+import { redact } from '../core/redaction.js';
 import { isStageFlow, resolveChangeState } from '../core/flow-resolver.js';
 import { loadSelectedResources } from '../core/resource-loader.js';
 import { resolveControlPlane } from '../core/control-plane.js';
@@ -32,15 +33,6 @@ function gateEnvironment(project: ProjectContext, gate: GateResource): NodeJS.Pr
   return env;
 }
 
-function redact(input: string): string {
-  let output = input.replace(/((?:password|passwd|secret|api[_-]?key|(?:access[_-]?)?token|authorization)\s*[:=]\s*)([^\s]+)/gi, '$1[REDACTED]');
-  for (const [key, value] of Object.entries(process.env)) {
-    if (!/(?:password|passwd|secret|api[_-]?key|token)/i.test(key) || !value || value.length < 5) continue;
-    output = output.split(value).join('[REDACTED]');
-  }
-  return output;
-}
-
 function appendBounded(chunks: Buffer[], currentBytes: number, chunk: Buffer, limit: number): { bytes: number; truncated: boolean } {
   if (currentBytes >= limit) return { bytes: currentBytes, truncated: true };
   const remaining = limit - currentBytes;
@@ -51,7 +43,42 @@ function appendBounded(chunks: Buffer[], currentBytes: number, chunk: Buffer, li
 
 type GateProcessResult = Pick<GateEvidence, 'command' | 'shell' | 'workingDirectory' | 'exitCode' | 'timedOut' | 'outputTruncated' | 'stdout' | 'stderr'>;
 
-async function runCommand(project: ProjectContext, gate: GateResource): Promise<GateProcessResult> {
+/**
+ * Why a Gate's command never ran, when that is distinguishable from it running and failing.
+ *
+ * A required Gate whose executable is missing and a required Gate whose tests failed are both
+ * blocking, and must stay blocking — an unrunnable check is not a pass. But they are not the same
+ * problem and they do not have the same fix: one is "fix the code", the other is "install the tool
+ * or point the Gate at one this project actually has". Reporting both as XFORGE_GATE_FAILED sent
+ * every Node-less project chasing a failing test suite that never existed. The shipped `unit-tests`
+ * and `security-scan` Gates are `npm`-based, so this is the default experience of any project
+ * without a `package.json`.
+ *
+ * It is carried beside `GateProcessResult` rather than inside it because Evidence is a digested,
+ * schema-bound artifact (`types.ts`, `GateEvidence`): adding a field here would change every
+ * Evidence digest and the Evidence schema for something that is a property of this run's
+ * diagnostics, not of the recorded result. `exitCode` and `stderr` already carry the raw facts.
+ */
+interface GateCommandUnavailable {
+  executable: string;
+  reason: 'spawn-failed' | 'exit-127';
+  detail: string;
+}
+
+interface GateExecution {
+  result: GateProcessResult;
+  unavailable: GateCommandUnavailable | null;
+}
+
+/**
+ * Exit status a shell (or a launcher that delegates to one, such as `npm run`) uses for "command
+ * not found". No test runner uses 127 to mean "the tests failed", so treating it as a tooling gap
+ * is safe in the direction that matters: it never turns a real failure into a pass, it only renames
+ * the diagnostic. Both cases still block.
+ */
+const COMMAND_NOT_FOUND_EXIT = 127;
+
+async function runCommand(project: ProjectContext, gate: GateResource): Promise<GateExecution> {
   const command = gate.spec.command;
   if (!command?.length) throw new Error(`Gate ${gate.metadata.name} has no command`);
   const workingRelative = normalizeRelative(gate.spec.workingDirectory ?? '.', `Gate ${gate.metadata.name} workingDirectory`);
@@ -66,7 +93,7 @@ async function runCommand(project: ProjectContext, gate: GateResource): Promise<
 
   const safeEnvironment = gateEnvironment(project, gate);
 
-  const result = await new Promise<{ exitCode: number | null }>((resolve, reject) => {
+  const result = await new Promise<{ exitCode: number | null; spawnError: NodeJS.ErrnoException | null }>((resolve) => {
     const child = spawn(command[0]!, command.slice(1), {
       cwd: workingDirectory,
       shell: gate.spec.shell === true,
@@ -91,19 +118,40 @@ async function runCommand(project: ProjectContext, gate: GateResource): Promise<
       forceTimer.unref();
     }, gate.spec.timeoutSeconds * 1000);
     timer.unref();
-    child.on('error', (error) => { clearTimeout(timer); if (forceTimer) clearTimeout(forceTimer); reject(error); });
-    child.on('close', (exitCode) => { clearTimeout(timer); if (forceTimer) clearTimeout(forceTimer); resolve({ exitCode }); });
+    /*
+     * A spawn failure resolves rather than rejects: "the executable is missing" is a result this
+     * runner has to report precisely (see GateCommandUnavailable), not an exception to be flattened
+     * into a generic failure by the caller. `close` may still follow `error`; the first settle wins.
+     */
+    child.on('error', (error) => { clearTimeout(timer); if (forceTimer) clearTimeout(forceTimer); resolve({ exitCode: null, spawnError: error }); });
+    child.on('close', (exitCode) => { clearTimeout(timer); if (forceTimer) clearTimeout(forceTimer); resolve({ exitCode, spawnError: null }); });
   });
 
+  const executable = command[0]!;
+  let unavailable: GateCommandUnavailable | null = null;
+  if (result.spawnError && (result.spawnError.code === 'ENOENT' || result.spawnError.code === 'EACCES')) {
+    /* ENOENT: nothing on PATH by that name. EACCES: the file is there but is not executable —
+       equally "this Gate cannot run here", and equally not a statement about the code under test. */
+    unavailable = { executable, reason: 'spawn-failed', detail: result.spawnError.message };
+  } else if (!result.spawnError && result.exitCode === COMMAND_NOT_FOUND_EXIT && !timedOut) {
+    unavailable = { executable, reason: 'exit-127', detail: `${executable} exited ${COMMAND_NOT_FOUND_EXIT}` };
+  }
+
   return {
-    command,
-    shell: gate.spec.shell === true,
-    workingDirectory: workingRelative,
-    exitCode: result.exitCode,
-    timedOut,
-    outputTruncated: truncated,
-    stdout: redact(Buffer.concat(stdout).toString('utf8')),
-    stderr: redact(Buffer.concat(stderr).toString('utf8')),
+    result: {
+      command,
+      shell: gate.spec.shell === true,
+      workingDirectory: workingRelative,
+      exitCode: result.exitCode,
+      timedOut,
+      outputTruncated: truncated,
+      stdout: redact(Buffer.concat(stdout).toString('utf8')),
+      /* A spawn failure produces no child output at all, so the error is the only evidence of what
+         happened; it goes through `redact` like any other captured text because it echoes the
+         command line, which can carry a credential a project put in a Gate argument. */
+      stderr: redact(result.spawnError ? result.spawnError.message : Buffer.concat(stderr).toString('utf8')),
+    },
+    unavailable,
   };
 }
 
@@ -170,6 +218,7 @@ export async function runGate(
   await recordAudit(project, { eventType: 'gate.before', change: changeId, flow, stage, revision, refs: { gates: [gate.metadata.name] }, input: { gate: gate.metadata.name }, outcome: 'succeeded' });
   const startedAt = new Date();
   let result: GateProcessResult;
+  let unavailable: GateCommandUnavailable | null = null;
   if (gate.spec.builtin === 'structure') {
     result = {
       command: ['builtin:structure'],
@@ -214,7 +263,9 @@ export async function runGate(
     };
   } else {
     try {
-      result = await runCommand(project, gate);
+      const execution = await runCommand(project, gate);
+      result = execution.result;
+      unavailable = execution.unavailable;
     } catch (error) {
       result = {
         command: gate.spec.command ?? [], shell: gate.spec.shell === true,
@@ -289,11 +340,26 @@ export async function runGate(
     } catch { /* The audit failure below is the actionable one; report it, not a cleanup failure. */ }
     throw error;
   }
+  /*
+   * An unrunnable Gate still fails — Evidence records `failed`, so every transition it guards stays
+   * blocked and no caller can read it as a pass. Only the diagnostic differs, because the two
+   * outcomes need different actions from the reader and XFORGE_GATE_FAILED describes only one of
+   * them. Note that `blockRemedy` (core/control-plane.ts) offers its re-run advice for `stale`
+   * Evidence only, so nothing here was telling a Node-less project what to do about a `npm test`
+   * Gate it can never satisfy.
+   */
+  const failureDiagnostic = unavailable
+    ? diagnostic(
+      'XFORGE_GATE_COMMAND_UNAVAILABLE',
+      `Gate ${gate.metadata.name} could not be executed: ${unavailable.executable} is not available here (${unavailable.detail}). This is a missing tool, not a failing check — install it, or change the Gate's command in its Gate resource so it runs something this project has.`,
+      evidencePath,
+      'error',
+      { gate: gate.metadata.name, executable: unavailable.executable, reason: unavailable.reason, exitCode: evidence.exitCode },
+    )
+    : diagnostic('XFORGE_GATE_FAILED', `Mandatory Gate failed: ${gate.metadata.name}`, evidencePath, 'error', { exitCode: evidence.exitCode, timedOut: evidence.timedOut });
   return {
     evidence,
-    diagnostic: status === 'failed'
-      ? diagnostic('XFORGE_GATE_FAILED', `Mandatory Gate failed: ${gate.metadata.name}`, evidencePath, 'error', { exitCode: evidence.exitCode, timedOut: evidence.timedOut })
-      : null,
+    diagnostic: status === 'failed' ? failureDiagnostic : null,
     change: { action, path: evidencePath, digest: sha256(`${JSON.stringify(evidence, null, 2)}\n`), source: `gate:${gate.metadata.name}` },
   };
 }

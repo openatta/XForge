@@ -95,7 +95,7 @@
         "policy": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["assuranceLevel", "eligibleWhen", "onUncertain"],
+          "required": ["assuranceLevel", "eligibleWhen"],
           "properties": {
             "assuranceLevel": { "enum": ["quick", "solid", "major"] },
             "eligibleWhen": {
@@ -121,7 +121,7 @@
                 }
               }
             },
-            "onUncertain": { "enum": ["escalate", "request-decision"] }
+            "onUncertain": { "enum": ["escalate", "request-decision"], "description": "Accepted for compatibility with Flows written before v0.7.9 and no longer read by the CLI; escalation is decided by eligibleWhen/requiredWhen. The shipped Flows omit it." }
           }
         },
         "artifacts": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/stageArtifact" } },
@@ -176,6 +176,7 @@
               },
               "execution": {
                 "type": "object",
+                "description": "Accepted for compatibility with Flows written before v0.7.9 and no longer read by the CLI; xforge-apply decides plan shape from the work at hand. The shipped Flows omit it.",
                 "additionalProperties": false,
                 "required": ["planning", "workPackages"],
                 "properties": {
@@ -194,13 +195,13 @@
             "archive": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["handler", "authority", "requires", "syncSpecs", "evidencePolicy"],
+              "required": ["handler", "authority", "requires", "syncSpecs"],
               "properties": {
                 "handler": { "$ref": "#/$defs/id" },
                 "authority": { "const": "archive-write" },
                 "requires": { "$ref": "#/$defs/idList" },
                 "syncSpecs": { "type": "boolean" },
-                "evidencePolicy": { "const": "current-revision" },
+                "evidencePolicy": { "const": "current-revision", "description": "Accepted for compatibility with Flows written before v0.7.9 and no longer read by the CLI; archive always binds Evidence to the current revision. The shipped Flows omit it." },
                 "approvals": { "$ref": "#/$defs/idList" },
                 "auditPolicy": { "$ref": "#/$defs/auditPolicy" }
               }

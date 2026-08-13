@@ -1,7 +1,7 @@
 ---
 name: xforge-scaffold
 description: 定制当前项目的 agents、skills、rules、permission policies、hooks、gates 等 XForge canonical 资产并安全投影到目标工具；用于用户要求新增、修改、启停或安装项目 Agent 能力时。
-allowed-tools: Read Grep Glob Write Edit Bash(npx:*)
+allowed-tools: Read, Grep, Glob, Write, Edit, Bash(npx:*)
 ---
 
 # 不变量
@@ -13,7 +13,7 @@ allowed-tools: Read Grep Glob Write Edit Bash(npx:*)
 
 # 权限
 
-- 可以修改 `xforge/scaffold/**`；仅在新增、删除、启用或停用资源时最小修改 `xforge/manifest.yaml` 的 scaffold selection 列表。
+- 可以修改 `xforge/scaffold/**`；仅在新增、删除、启用或停用资源时最小修改 `xforge/manifest.yaml` 的 scaffold selection 列表。`xforge/manifest.yaml` 由 `protected-manifest` PermissionPolicy 覆盖，其 effect 是 `ask` 而不是 `deny`：写这个文件会触发确认提示，回答之前先向用户展示准确的 selection diff。
 - 不得修改产品代码、Specs、Changes、Flow 业务状态或生成目录。
 - Hooks、PermissionPolicy、网络、Secrets、工具权限扩大和破坏性命令必须在 install 前明确展示并取得确认。安装、平台信任和运行时 active 是三个独立状态，不得互相推断。
 

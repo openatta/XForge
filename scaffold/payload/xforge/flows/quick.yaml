@@ -10,7 +10,6 @@ policy:
     risk: [low]
     criticalImpacts: forbidden
     maxModules: 1
-  onUncertain: escalate
 artifacts:
   - id: proposal
     generates: proposal.md
@@ -33,6 +32,17 @@ artifacts:
       #### Scenario: <name>
       - **WHEN** ...
       - **THEN** ...
+  - id: constitution-check
+    generates: evidence/constitution-check.yaml
+    description: Answer every Constitution principle for this Change
+    instruction: One entry per `## ` principle in xforge/constitution.md, each with status compliant|violation|not-applicable. Every entry must cite at least one machine-locatable reference in `references` — a Requirement id from this Change's delta Specs, a file path that exists, or `gate:<name>` for a Gate that passed. A violation additionally needs a justification and a named approvedBy; not-applicable needs a justification. A general claim of compliance does not satisfy the Gate.
+    outline: |
+      principles:
+        - principle: <exact `## ` heading from constitution.md>
+          status: <compliant|violation|not-applicable>
+          references: [<Requirement id | existing path | gate:<name>>]
+          justification: <required for violation and not-applicable>
+          approvedBy: <named person, required for violation>
   - id: assurance
     generates: assurance.md
     description: Record verification against requirements, tests, and constraints
@@ -43,11 +53,6 @@ artifacts:
       ## Coherence
       ## Gates and evidence
       ## Findings
-  - id: verification-receipt
-    generates: evidence/verification-receipt.yaml
-    description: Bind a verification receipt to the current revision and Gate Evidence
-    instruction: Record only the current Change revision, Git HEAD, Flow version, input digest, and passed Evidence references.
-    outline: ''
 governance:
   approvalPolicies:
     - id: quick-close
@@ -55,8 +60,12 @@ governance:
       roles: [owner, maintainer]
       separationOfDuties: false
       providers: [local, enterprise-approvals]
+  # Kept identical to `terminal.archive.auditPolicy` below. `xforge audit verify` reads this block
+  # while archive resolves `terminal.archive.auditPolicy ?? governance.audit`; when the two disagree
+  # the command reports a Change as audit-complete that archive then rejects. Quick's archive needs
+  # a `quick-close` approval, so `approval.decided` belongs in both.
   audit:
-    requiredEventTypes: [gate.after, stage.entered]
+    requiredEventTypes: [gate.after, stage.entered, approval.decided]
     runtimeCoverage: optional
     remoteDelivery: optional
 stages:
@@ -73,23 +82,28 @@ stages:
     requires: [propose]
     produces: []
     reworkTo: [propose]
-    execution:
-      planning: just-in-time
-      workPackages: internal
+  # Quick has no Check Stage, so the Constitution ledger is answered here rather than before
+  # implementation. That is a deliberate trade-off: enforcing it at Propose would ask an Agent to
+  # certify compliance against a Change that has not been designed or written yet — exactly the
+  # unfalsifiable "seven labelled sentences" the ledger exists to replace. Answering it at Verify
+  # means every entry can cite something real (a Requirement, the diff, `gate:unit-tests`), and the
+  # gate ordering below runs `unit-tests` first so `constitution-check` can cross-check it.
   - id: verify
     skill: xforge-verify
     authority: assurance-write
     requires: [apply]
-    produces: [assurance, verification-receipt]
-    gates: [structure, unit-tests]
+    produces: [constitution-check, assurance]
+    gates: [structure, unit-tests, constitution-check]
     reworkTo: [apply]
+    exit:
+      conditions:
+        verificationReceipt: passed
 terminal:
   archive:
     handler: xforge-verify
     authority: archive-write
     requires: [verify]
     syncSpecs: true
-    evidencePolicy: current-revision
     approvals: [quick-close]
     auditPolicy:
       requiredEventTypes: [gate.after, stage.entered, approval.decided]

@@ -1,7 +1,7 @@
 ---
 name: xforge-kanban
 description: 仅根据 Git 提交元数据,为当前仓库生成活跃度看板——按贡献者统计活跃度与代码量、提交时段热力图,以及 feature/fix/其它分类;用于用户要求项目看板、贡献报告、活跃度热力图或提交历史汇总时。
-allowed-tools: Read Grep Glob Write Bash(git:*) Bash(node:*)
+allowed-tools: Read, Grep, Glob, Write, Bash(git:*), Bash(node:*)
 ---
 
 # 不变量

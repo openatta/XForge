@@ -2,8 +2,10 @@ import { spawn } from 'node:child_process';
 import { rm } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { approveCurrentRevision, approvalTestEnv, createCompleteSolidChange, fixture, runCli, updateYaml, write } from '../helpers.js';
+import { approveCurrentRevision, approvalTestEnv, changeYaml, createCompleteSolidChange, fixture, runCli, updateYaml, write } from '../helpers.js';
 import { approvalsForPolicy } from '../../src/core/control-plane.js';
+import { recordAudit } from '../../src/core/audit.js';
+import { loadProject } from '../../src/core/project-loader.js';
 
 /** Runs the CLI with the harness approval secret and fails loudly, so setup steps cannot pass silently. */
 async function successfulCli(root: string, args: string[]): Promise<any> {
@@ -63,6 +65,31 @@ describe('Protocol 2 control plane', () => {
     );
     expect(relaxed.separationSatisfied).toBe(true);
     expect(relaxed.missing).toBe(0);
+  });
+
+  /*
+   * `minApprovers` counted receipts keyed on the raw approver id while separation of duties compared
+   * the same field trimmed and lowercased, so one human under two spellings satisfied Major's
+   * `minApprovers: 2`. Both rules read one identity now.
+   */
+  it('counts one human once however their identity is spelled or routed', () => {
+    const policy = { ...majorPolicy, separationOfDuties: false };
+    const spellings = approvalsForPolicy([receipt('alice', 'maintainer'), receipt(' Alice ', 'owner')], policy, 'apply', binding);
+    expect(spellings.valid).toHaveLength(1);
+    expect(spellings.missing).toBe(1);
+
+    /* Two routes to the same person are still one person: folding the provider into the key would
+       let a single approver satisfy a two-approver policy by deciding twice. */
+    const bothProviders = { ...policy, providers: ['local', 'enterprise-approvals'] };
+    const routes = approvalsForPolicy(
+      [receipt('alice', 'maintainer'), { ...receipt('alice', 'owner'), approver: { id: 'alice', provider: 'local', role: 'owner' } }],
+      bothProviders, 'apply', binding,
+    );
+    expect(routes.valid).toHaveLength(1);
+    expect(routes.missing).toBe(1);
+
+    /* Two actual people still clear it, which is the shape the policy is asking for. */
+    expect(approvalsForPolicy([receipt('alice', 'maintainer'), receipt('bob', 'maintainer')], policy, 'apply', binding).missing).toBe(0);
   });
 
   it('matches legacy receipts on stateRevision and current receipts on governingRevision', () => {
@@ -209,6 +236,52 @@ describe('Protocol 2 control plane', () => {
     expect(await blockedFor()).toEqual([]);
   });
 
+  /*
+   * The sibling ledger (`core/check-findings.ts`) accepts `findings: []` and the shipped flow text
+   * tells the Agent to record one. This ledger rejected `entries: []` outright, which stranded every
+   * Major Change that genuinely had nothing to clarify: the clarify Stage declares no Gates and no
+   * Approvals, so this condition is its only blocker, and the only escape was to invent a question
+   * and attribute a decision to a named human.
+   */
+  it('accepts an explicitly empty ledger while still refusing an absent one', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await updateYaml(root, 'xforge/flows/solid.yaml', (flow) => {
+      flow.stages.find((stage: any) => stage.id === 'propose').exit = { conditions: { materialQuestions: 'resolved' } };
+    });
+    expect((await runCli(root, ['install'])).code).toBe(0);
+    expect((await runCli(root, ['check', '--change', 'add-feature', '--gate', 'structure'])).code).toBe(0);
+
+    const ledger = 'xforge/changes/add-feature/evidence/conditions/materialQuestions.yaml';
+    const blockedFor = async (): Promise<string[]> => {
+      const state = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
+      return state.json.data.change.governance.readyTransitions.find((item: any) => item.to === 'design').blockedBy;
+    };
+
+    /* Absent and empty must not collapse into one another: no file is still no assertion. */
+    expect(await blockedFor()).toContain('condition:materialQuestions:ledger-missing-expected-resolved');
+
+    /* A readable but contentless file is not an assertion either. */
+    await write(root, ledger, '\n');
+    expect((await runCli(root, ['check', '--change', 'add-feature', '--gate', 'structure'])).code).toBe(0);
+    expect(await blockedFor()).toContain('condition:materialQuestions:ledger-unreadable');
+
+    /* A ledger with no entries key at all is a malformed ledger, not an empty one. */
+    await write(root, ledger, 'condition: materialQuestions\nstatus: resolved\n');
+    expect((await runCli(root, ['check', '--change', 'add-feature', '--gate', 'structure'])).code).toBe(0);
+    expect(await blockedFor()).toContain('condition:materialQuestions:entries-missing');
+
+    /* An explicit empty list is the assertion "this Change raised no material questions". */
+    await write(root, ledger, 'condition: materialQuestions\nstatus: resolved\nentries: []\n');
+    expect((await runCli(root, ['check', '--change', 'add-feature', '--gate', 'structure'])).code).toBe(0);
+    expect(await blockedFor()).toEqual([]);
+
+    /* A declared status still has to be the one the Stage asks for, empty list or not. */
+    await write(root, ledger, 'condition: materialQuestions\nstatus: open\nentries: []\n');
+    expect((await runCli(root, ['check', '--change', 'add-feature', '--gate', 'structure'])).code).toBe(0);
+    expect(await blockedFor()).toContain('condition:materialQuestions:status-open-expected-resolved');
+  });
+
   it('reports mandatory guidance without machine coverage as uncovered', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
@@ -238,6 +311,32 @@ describe('Protocol 2 control plane', () => {
     expect(state.code).toBe(1);
     expect(state.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_APPROVAL_RECEIPT_DIGEST_INVALID');
     expect(state.json.data.change.governance.approvals).toEqual([]);
+  });
+});
+
+describe('Archive audit policy resolution', () => {
+  /*
+   * `xforge audit verify` is what a Skill tells the Agent to run before archiving, so it has to
+   * validate the policy archive actually enforces. It read `flow.governance.audit` while the control
+   * plane resolves `terminal.archive.auditPolicy ?? flow.governance.audit`, and in the shipped
+   * `quick` Flow those disagree by exactly one event — so the pre-flight passed and archive refused.
+   */
+  it('validates the archive audit policy, not the weaker flow-level one', async () => {
+    const root = await fixture();
+    /* Pinned on the resolution rather than on whatever the shipped Flow happens to say, so aligning
+       the two blocks in `quick.yaml` cannot quietly retire this test. */
+    await updateYaml(root, 'xforge/flows/quick.yaml', (flow) => {
+      flow.governance.audit.requiredEventTypes = ['gate.after', 'stage.entered'];
+      flow.terminal.archive.auditPolicy = { requiredEventTypes: ['gate.after', 'stage.entered', 'approval.decided'], runtimeCoverage: 'optional', remoteDelivery: 'optional' };
+    });
+    await write(root, 'xforge/changes/quick-change/change.yaml', changeYaml('quick'));
+    const project = await loadProject(root, { exactRoot: true });
+    for (const eventType of ['gate.after', 'stage.entered']) {
+      await recordAudit(project, { eventType, change: 'quick-change', flow: 'quick', stage: 'verify', outcome: 'succeeded' });
+    }
+    const result = await runCli(root, ['audit', 'verify', '--change', 'quick-change']);
+    expect(result.code).toBe(1);
+    expect((result.json.diagnostics as any[]).some((item) => item.code === 'XFORGE_AUDIT_EVENT_MISSING' && item.message.includes('approval.decided'))).toBe(true);
   });
 });
 

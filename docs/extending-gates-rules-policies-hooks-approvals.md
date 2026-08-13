@@ -353,13 +353,14 @@ two paths:
    of this is taken from command-line flags: `--actor`/`--role`/`--reason`
    are only pre-fill suggestions for the prompts, never authoritative, and
    `--attestation human` is only an intent hint, not itself a decision.
-   Deliberately not automatable: Agents cannot self-approve. If your Agent
-   harness itself mediates the confirmation (e.g. it already asked the
-   human in-session before shelling out) and the `xforge approve` subprocess
-   therefore has no TTY, set `approvals.local.requireTty: false` in
-   `manifest.yaml` — every other requirement (the live dialogue, and the
-   policy allowing the `local` provider) still applies. The default is
-   `true` (require a real TTY), unchanged from before.
+   Both stdin and stdout must be TTYs, and there is deliberately no manifest
+   switch to relax that. Be precise about what the check establishes: an
+   interactive session existed and something answered the prompts. It is not
+   proof of human identity — a pty satisfies it — so treat it as making an
+   unattended self-approval a deliberate, recorded act rather than an
+   impossible one. A policy that needs a stronger property than that should
+   not list `local` at all; use an `mcp` provider, where the decision is made
+   by a system whose secret and endpoint sit outside the tree the Agent writes.
 2. **`mcp` provider** — `xforge approve --provider <id>`, where `<id>` names
    an entry in `manifest.yaml`'s `approvals.providers` of the only shape
    that exists, `{ id, type: mcp, mcpServer: <id>, roles: [...] }`. XForge
