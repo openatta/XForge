@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { TargetId } from '../constants.js';
 import { CLI_VERSION, PROTOCOL_VERSION } from '../constants.js';
 import { getAdapter } from '../adapters/index.js';
+import { PROJECTED_DIMENSIONS, type ProjectionDimension } from '../adapters/capabilities.js';
 import type {
   DesiredFile,
   Diagnostic,
@@ -154,6 +155,55 @@ export function capabilityGapDiagnostics(resources: SelectedResources, targets: 
   return result;
 }
 
+interface DroppedResource { id: string; path: string }
+
+const DIMENSION_GAP: Record<ProjectionDimension, { kind: string; gap: string }> = {
+  commands: { kind: 'Skill', gap: 'does not project Skill command files; these Skills install without a command entry point' },
+  rules: { kind: 'Rule', gap: 'does not project rule files; these Rules are not installed for that target' },
+  agents: { kind: 'Agent', gap: 'does not project agent files; these Agents are not installed for that target' },
+};
+
+/**
+ * Turns the resources an Adapter declined to project into diagnostics, one summary per target and
+ * dimension rather than one per resource: with five targets the per-resource form put seventeen
+ * notes into the stream of every install, sync and update, which teaches readers to skip the
+ * stream. `details.resources` still names every affected resource and its source path.
+ *
+ * The choice of code comes from `PROJECTED_DIMENSIONS`, not from guessing why the Adapter returned
+ * null. When the table says the target cannot express the dimension, the drop is a structural
+ * property of the target and worth an `info` note — `info` deliberately, because `projection.ts`
+ * refuses to apply the whole plan when any diagnostic is an `error`, so anything louder than a
+ * warning here would make install impossible for every Codex or OpenCode project. When the table
+ * declares support and the Adapter produced nothing anyway, the two disagree and one of them must
+ * be fixed: that is a `warning`, and is unreachable with today's adapters.
+ */
+function capabilityDropDiagnostics(target: TargetId, dropped: Record<ProjectionDimension, DroppedResource[]>): Diagnostic[] {
+  const result: Diagnostic[] = [];
+  for (const dimension of Object.keys(DIMENSION_GAP) as ProjectionDimension[]) {
+    const resources = dropped[dimension];
+    if (resources.length === 0) continue;
+    const { kind, gap } = DIMENSION_GAP[dimension];
+    const names = resources.map((item) => item.id).join(', ');
+    const details = { target, dimension, kind, count: resources.length, resources };
+    result.push(PROJECTED_DIMENSIONS[target][dimension]
+      ? diagnostic(
+        'XFORGE_ADAPTER_PROJECTION_MISSING',
+        `Adapter for ${target} produced no ${dimension} output for ${resources.length} resource(s) (${names}) although the capability table declares support for that dimension; the table and the adapter disagree and one of them must be fixed.`,
+        undefined,
+        'warning',
+        details,
+      )
+      : diagnostic(
+        'XFORGE_CAPABILITY_CONTENT_UNSUPPORTED',
+        `Target ${target} ${gap}: ${names}.`,
+        undefined,
+        'info',
+        details,
+      ));
+  }
+  return result;
+}
+
 async function buildDesired(
   project: ProjectContext,
   resources: SelectedResources,
@@ -163,6 +213,7 @@ async function buildDesired(
   const diagnostics = capabilityGapDiagnostics(resources, targets);
   for (const target of targets) {
     const adapter = getAdapter(target);
+    const dropped: Record<ProjectionDimension, DroppedResource[]> = { commands: [], rules: [], agents: [] };
     for (const bootstrap of adapter.bootstrap()) addDesired(desired, bootstrap);
 
     for (const [id, directory] of resources.skills) {
@@ -176,6 +227,10 @@ async function buildDesired(
           ...adapter.trace('skill', id, [sourcePath]),
         });
       }
+      // One local, used for both the trace and the diagnostic: on a zh-CN project the Skill
+      // document that exists on disk is the localized variant, so naming plain `SKILL.md` in the
+      // diagnostic pointed operators at a file that is not there.
+      const skillDocPath = `xforge/scaffold/skills/${id}/${project.manifest.scaffold.language === 'zh-CN' ? localizedVariant('SKILL.md') : 'SKILL.md'}`;
       const commandPath = adapter.commandPath(id);
       const commandContent = adapter.renderCommand(id);
       if (commandPath && commandContent != null) addDesired(desired, {
@@ -183,15 +238,9 @@ async function buildDesired(
         content: Buffer.from(commandContent),
         source: `skill-command:${id}`,
         target,
-        ...adapter.trace('skill-command', id, [`xforge/scaffold/skills/${id}/${project.manifest.scaffold.language === 'zh-CN' ? localizedVariant('SKILL.md') : 'SKILL.md'}`]),
+        ...adapter.trace('skill-command', id, [skillDocPath]),
       });
-      else diagnostics.push(diagnostic(
-        'XFORGE_CAPABILITY_CONTENT_UNSUPPORTED',
-        `Target ${target} cannot express Command ${id} in its own format; Command ${id} is not projected for that target.`,
-        `xforge/scaffold/skills/${id}/SKILL.md`,
-        'info',
-        { target, kind: 'command', resource: id },
-      ));
+      else dropped.commands.push({ id, path: skillDocPath });
     }
 
     for (const [id, agent] of resources.agents) {
@@ -204,13 +253,9 @@ async function buildDesired(
         target,
         ...adapter.trace('agent', id, [agent.yamlPath, agent.instructionsPath]),
       });
-      else diagnostics.push(diagnostic(
-        'XFORGE_CAPABILITY_CONTENT_UNSUPPORTED',
-        `Target ${target} cannot express Agent ${id} in its own format; Agent ${id} is not projected for that target.`,
-        agent.yamlPath,
-        'info',
-        { target, kind: 'agent', resource: id },
-      ));
+      // `yamlPath` is the language-independent `<id>.yaml`, so unlike the Skill document above it
+      // needs no zh-CN variant resolution.
+      else dropped.agents.push({ id, path: agent.yamlPath });
     }
 
     for (const [id, rule] of resources.rules) {
@@ -223,14 +268,9 @@ async function buildDesired(
         target,
         ...adapter.trace('rule', id, [rule.yamlPath]),
       });
-      else diagnostics.push(diagnostic(
-        'XFORGE_CAPABILITY_CONTENT_UNSUPPORTED',
-        `Target ${target} cannot express Rule ${id} in its own format; Rule ${id} is not projected for that target.`,
-        rule.yamlPath,
-        'info',
-        { target, kind: 'rule', resource: id },
-      ));
+      else dropped.rules.push({ id, path: rule.yamlPath });
     }
+    diagnostics.push(...capabilityDropDiagnostics(target, dropped));
     const governance = adapter.renderGovernance({
       policies: [...resources.policies].map(([id, item]) => ({ id, ...item })),
       hooks: [...resources.hooks].map(([id, item]) => ({ id, ...item })),

@@ -490,6 +490,72 @@ export async function approvalVerifiedInChain(
   return committed.document.events.some((event) => event.eventType === 'approval.decided' && event.inputDigest === expected);
 }
 
+/** The lifecycle events `xforge work-package acknowledge` records; nothing else attests a receipt. */
+const ACKNOWLEDGEMENT_EVENT_TYPES = new Set(['work-package.integrated', 'work-package.reviewed']);
+
+/**
+ * The `inputDigest` an acknowledgement audit event must carry to attest a receipt with this digest.
+ *
+ * The single definition both sides of the acknowledgement protocol use: `work-package acknowledge`
+ * passes it to `recordAudit` as an explicit `inputDigest`, and `resolveWorkPackages` recomputes it
+ * from the committed receipt to decide whether the chain vouches for it. Because the value is a
+ * function of the receipt digest alone, the two sides cannot drift and the read side never has to
+ * reconstruct anything the write side happened to know — the receipt digest already commits to the
+ * Change, package, execution, role, status, delivery and actor.
+ */
+export function acknowledgementAttestationDigest(receiptDigest: string): string {
+  return sha256(stableStringify({ ackReceipt: receiptDigest }));
+}
+
+/** Which acknowledgement receipts one Change's audit history vouches for. */
+export interface AcknowledgementAttestations {
+  /**
+   * True when the Change has no audit history at all — no local chain entries and no committed
+   * index file. It is a property of the Change, evaluated once, never of an individual receipt.
+   */
+  noAuditData: boolean;
+  /** Whether the chain (local or committed) carries an acknowledgement event for this receipt. */
+  attests(receiptDigest: string): boolean;
+}
+
+/**
+ * Which Git-tracked acknowledgement receipts this Change's audit chain actually attests.
+ *
+ * A `WorkPackageAckReceipt` is a plain committed JSON file, and every property it commits to — its
+ * self-digest, the delivery it binds, its path — is computable offline by whoever wrote it. Taken
+ * at face value, a hand-written receipt therefore mints a `reviewed`/`integrated` record naming any
+ * actor its author likes. That fact is the product, so it has to be attested rather than believed:
+ * `work-package.reviewed`/`work-package.integrated` carry `sha256({ackReceipt})` as their
+ * `inputDigest`, inside a hash chain whose committed per-Change index survives a fresh clone, so
+ * matching against it is an offline check of "this receipt was written by an `acknowledge` run".
+ * Forging it means rewriting the chain, which is what the chain exists to detect. This mirrors
+ * `approvalVerifiedInChain`, which answers the same question for Approval receipts.
+ *
+ * `noAuditData` is the one escape, and it is deliberately all-or-nothing. `xforge/.audit/**` is
+ * gitignored, so a clone of a project that never committed `evidence/audit/index.json` has no audit
+ * data whatsoever; there the committed receipt is the only surviving truth about who reviewed what,
+ * and refusing it would resurrect the exact loss the receipt was introduced to fix. It cannot be
+ * used to slip one forged receipt past a real chain: it requires that the Change has *no* events on
+ * the local chain and *no* committed index file, not merely that this one event is missing. A
+ * committed index that exists but fails its digest check counts as audit data — a tampered index
+ * fails closed rather than unlocking the escape.
+ */
+export async function readAcknowledgementAttestations(project: ProjectContext, changeId: string): Promise<AcknowledgementAttestations> {
+  const local = await readChangeLogEvents(project, changeId);
+  /* Fresh clone / CI: the chain file is gitignored, the committed index is not. */
+  const committed = await readChangeAuditIndex(project, changeId);
+  const digests = new Set<string>();
+  for (const event of local) if (ACKNOWLEDGEMENT_EVENT_TYPES.has(event.eventType)) digests.add(event.inputDigest);
+  if (committed?.digestValid) {
+    for (const event of committed.document.events) if (ACKNOWLEDGEMENT_EVENT_TYPES.has(event.eventType)) digests.add(event.inputDigest);
+  }
+  const noAuditData = local.length === 0 && committed === null;
+  return {
+    noAuditData,
+    attests: (receiptDigest: string) => noAuditData || digests.has(acknowledgementAttestationDigest(receiptDigest)),
+  };
+}
+
 /* ------------------------------------------------------------------ archive-facing read API */
 
 export interface ChangeAuditFacts {

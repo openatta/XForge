@@ -59,11 +59,20 @@
         "env": {
           "type": "object",
           "additionalProperties": false,
-          "description": "Extra environment variables this MCP provider's stdio subprocess may inherit, on top of the built-in allowlist. Credential-looking names are always dropped.",
+          "description": "Extra environment variables this MCP provider's stdio subprocess may inherit, on top of the built-in allowlist. Credential-looking names are always dropped, even when listed here or matched by a declared prefix.",
           "properties": {
             "allow": {
               "type": "array",
               "uniqueItems": true,
+              "description": "Exact variable names to pass through.",
+              "items": {
+                "$ref": "#/$defs/envName"
+              }
+            },
+            "allowPrefixes": {
+              "type": "array",
+              "uniqueItems": true,
+              "description": "Variable-name prefixes to pass through, so a provider needing a family of variables (e.g. CORP_APPROVALS_) need not enumerate every one. A prefix is a leading fragment of a name, not a complete name, so a trailing underscore is expected (CORP_APPROVALS_).",
               "items": {
                 "$ref": "#/$defs/envName"
               }

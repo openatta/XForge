@@ -79,6 +79,35 @@ describe('hook CLI boundary (stdin parsing and exit codes)', () => {
     });
   });
 
+  it('fails closed with a platform deny line, not an Envelope, when argument parsing itself throws', async () => {
+    const root = await fixture();
+    // `--bogus` throws XFORGE_OPTION_UNKNOWN inside parseArguments, so `parsed` is null and the
+    // normal error path would emit a full Envelope — which a host reads as a decision object with
+    // no opinion, i.e. every tool call silently permitted. cli.ts recovers the command position and
+    // the raw --target/--event instead.
+    const result = await runCliWithStdin(root, ['hook', 'dispatch', '--target', 'cursor', '--event', 'agent.tool.before', '--bogus'], '{}');
+    expect(result.code).toBe(2);
+    // Cursor's own shape, recovered from raw argv: a codex/claude-shaped payload would be
+    // unrecognisable to this host and would fail open by another route.
+    expect(result.json).toEqual({
+      permission: 'deny',
+      user_message: 'XForge governance dispatcher failed closed.',
+      agent_message: 'XForge governance dispatcher failed closed.',
+    });
+    expect(result.json.ok).toBeUndefined();
+    expect(result.stdout).not.toContain('diagnostics');
+  });
+
+  it('still returns a diagnostic Envelope for a non-hook command that merely carries "hook" as an option value', async () => {
+    const root = await fixture();
+    // `argv.includes('hook')` would misroute this onto the Hook output channel. The command position
+    // is `state`; `hook` is only the value of --change.
+    const result = await runCliWithStdin(root, ['state', '--change', 'hook', '--bogus'], '');
+    expect(result.code).toBe(1);
+    expect(result.json?.ok).toBe(false);
+    expect(result.json?.diagnostics?.[0]?.code).toBe('XFORGE_OPTION_UNKNOWN');
+  });
+
   it('treats empty stdin as an empty payload object rather than a parse failure', async () => {
     const root = await fixture();
     // `source ? JSON.parse(source) : {}` in cli.ts short-circuits on an empty (post-trim) stdin, so

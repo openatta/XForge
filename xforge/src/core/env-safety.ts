@@ -25,8 +25,16 @@ export const ENV_DENY = /(?:password|passwd|secret|token|api[_-]?key|auth|creden
 export interface FilteredEnvironment {
   /** The environment to hand to `spawn`/`StdioClientTransport`. */
   env: Record<string, string>;
-  /** Names present (and non-empty) in `process.env` that were excluded, for diagnostics. */
+  /** Every name present (and non-empty) in `process.env` that was excluded — use it for a count. */
   filtered: string[];
+  /**
+   * The subset of `filtered` excluded only because nothing allowed it: exactly the names a caller
+   * could legitimately opt back in via `env.allow` / `env.allowPrefixes`. Credential-shaped
+   * (deny-matched) names are deliberately absent — they can never be opted back in, so naming them
+   * in operator-facing output would publish an inventory of the machine's secret-ish variable names
+   * for no debugging benefit. Diagnostics should name these, and only count the rest.
+   */
+  notAllowed: string[];
 }
 
 /**
@@ -40,11 +48,16 @@ export function filterEnvironment(options: { allow?: string[]; allowPrefixes?: s
   const prefixes = [...DEFAULT_ENV_ALLOW_PREFIXES, ...(options.allowPrefixes ?? [])];
   const env: Record<string, string> = {};
   const filtered: string[] = [];
+  const notAllowed: string[] = [];
   for (const [name, value] of Object.entries(process.env)) {
     if (value === undefined || value === '') continue;
     if (ENV_DENY.test(name)) { filtered.push(name); continue; }
-    if (!allow.has(name) && !prefixes.some((prefix) => prefix.length > 0 && name.startsWith(prefix))) { filtered.push(name); continue; }
+    if (!allow.has(name) && !prefixes.some((prefix) => prefix.length > 0 && name.startsWith(prefix))) {
+      filtered.push(name);
+      notAllowed.push(name);
+      continue;
+    }
     env[name] = value;
   }
-  return { env, filtered };
+  return { env, filtered, notAllowed };
 }

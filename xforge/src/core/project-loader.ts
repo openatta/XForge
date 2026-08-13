@@ -199,18 +199,30 @@ export async function loadProject(start = process.cwd(), options: { exactRoot?: 
   };
 }
 
-/** Parses a `major.minor.patch[-prerelease]` string the same way `scripts/prepare-release.mjs` does. */
+/**
+ * Parses a `major.minor.patch[-prerelease]` string, as `scripts/prepare-release.mjs` does. Splits
+ * at the *first* `-` and keeps the whole remainder as the prerelease, so a prerelease that itself
+ * contains a hyphen (`0.8.0-rc-1`) is not silently truncated to a prefix that compares equal to
+ * its siblings.
+ */
 function parseVersion(value: string): { core: number[]; prerelease: string } {
-  const [core, prerelease = ''] = value.split('-', 2) as [string, string?];
-  return { core: core!.split('.').map((part) => Number(part)), prerelease };
+  const separator = value.indexOf('-');
+  const core = separator === -1 ? value : value.slice(0, separator);
+  return { core: core.split('.').map((part) => Number(part)), prerelease: separator === -1 ? '' : value.slice(separator + 1) };
 }
 
 /**
- * Three-way compare, `< 0` when `left` is older than `right`. A version without a prerelease
- * outranks an otherwise-equal version with one, matching standard SemVer precedence; two
- * differing prereleases compare lexicographically, which is not fully SemVer-spec-compliant but
- * is directionally safe for this codebase's own release versions (see the note on
- * `canUpgradeDeclaredCli` about why prerelease precision doesn't matter much here).
+ * Three-way compare, `< 0` when `left` is older than `right`.
+ *
+ * A version without a prerelease outranks an otherwise-equal version with one, matching standard
+ * SemVer precedence — so `0.8.0-rc.1 < 0.8.0`, and reconciling an rc pin up to its GA release is
+ * correctly seen as an upgrade while the reverse is correctly seen as a downgrade. Two differing
+ * prereleases are compared with numeric collation (`rc.2 < rc.10`, not the plain lexical order
+ * that would invert them), exactly as `scripts/prepare-release.mjs` compares the versions it
+ * stamps. Numeric collation is not a full SemVer §11 identifier-by-identifier comparison, but it
+ * agrees with it on every prerelease shape this project publishes, and — unlike a lexical or
+ * dot-segment compare — it cannot report an *older* running CLI as newer, which is the mistake
+ * that would turn this upgrade channel into a silent downgrade.
  */
 function compareVersions(left: string, right: string): number {
   const a = parseVersion(left);
@@ -222,7 +234,7 @@ function compareVersions(left: string, right: string): number {
   if (a.prerelease === b.prerelease) return 0;
   if (a.prerelease === '') return 1;
   if (b.prerelease === '') return -1;
-  return a.prerelease < b.prerelease ? -1 : 1;
+  return a.prerelease.localeCompare(b.prerelease, 'en', { numeric: true });
 }
 
 /**
@@ -242,6 +254,17 @@ function compareVersions(left: string, right: string): number {
  *   `manifest.xforge.version` — if a project's three version fields have already drifted from each
  *   other (not something any XForge command produces today), that is an unexpected hand-edited or
  *   corrupted state this feature does not attempt to guess how to reconcile.
+ *
+ * Prereleases are deliberately *not* excluded. A prerelease CLI reconciles a project just like a
+ * GA one, in both directions of the boundary (`0.7.9-rc.1 -> 0.7.9`, `0.7.8 -> 0.7.9-rc.1`), for
+ * two reasons: `compareVersions` orders prereleases correctly, so none of the guarantees above
+ * weaken; and refusing here would only move the dead end this feature exists to remove — a project
+ * pinned by a prerelease CLI would have no in-tool way back. That requires all three version
+ * fields to *accept* a prerelease, which is why `manifest.schema.json` shares one `semver` $def
+ * across `xforge.version`, `scaffold.version`, and `scaffold.source.version` rather than letting
+ * `scaffold.version` keep a narrower pattern: `reconcileDeclaredCliVersion` writes the identical
+ * string into all three, so a field that rejects what the other two accept would make the very
+ * Manifest this function just wrote fail `loadProject`'s schema validation on the next command.
  */
 export function canUpgradeDeclaredCli(manifest: Manifest): boolean {
   if (manifest.xforge.source !== 'npm' || manifest.xforge.package !== CLI_NAME) return false;

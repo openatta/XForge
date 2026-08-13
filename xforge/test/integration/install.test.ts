@@ -1,7 +1,7 @@
 import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { fixture, runCli, updateYaml, write } from '../helpers.js';
+import { fixture, runCli, updateYaml, write, yamlFile } from '../helpers.js';
 
 async function exists(filePath: string): Promise<boolean> {
   try { await access(filePath); return true; } catch { return false; }
@@ -101,6 +101,59 @@ describe('install lifecycle', () => {
       expect(forTarget.details.reason).toBe('no-static-projection');
       expect(forTarget.message).toContain('no static permission-policy projection');
     }
+  });
+
+  // Codex has no command-file and no rule-file format; OpenCode has commands but no rule files.
+  // Those are structural properties of the targets, declared in PROJECTED_DIMENSIONS, and every
+  // affected resource used to disappear from the projection with no diagnostic at all. One summary
+  // per target and dimension is now emitted, at `info` severity: `projection.ts` refuses to apply
+  // the plan when any diagnostic is an `error`, so promoting these would break install outright for
+  // every Codex or OpenCode project. A drop the table did *not* declare is a different code
+  // (XFORGE_ADAPTER_PROJECTION_MISSING, warning) and must not appear with today's adapters.
+  it('summarises the resources targets structurally cannot project, at info severity', async () => {
+    const root = await fixture();
+    const manifest = await yamlFile<any>(root, 'xforge/manifest.yaml');
+    const result = await runCli(root, ['install']);
+    expect(result.code, JSON.stringify(result.json.diagnostics, null, 2)).toBe(0);
+
+    const gaps = result.json.diagnostics.filter((item: any) => item.code === 'XFORGE_CAPABILITY_CONTENT_UNSUPPORTED');
+    const gap = (target: string, dimension: string) =>
+      gaps.find((item: any) => item.details?.target === target && item.details?.dimension === dimension);
+    const ids = (item: any) => item.details.resources.map((resource: any) => resource.id);
+
+    // Exactly three summaries for the whole install: codex commands, codex rules, opencode rules.
+    expect(gaps.map((item: any) => `${item.details.target}:${item.details.dimension}`).sort())
+      .toEqual(['codex:commands', 'codex:rules', 'opencode:rules']);
+    // 13 shipped Skills and 4 shipped Rules today; the ids are cross-checked against the manifest
+    // so a scaffold change moves both numbers together instead of quietly shrinking coverage.
+    expect(gap('codex', 'commands').details.count).toBe(13);
+    expect(ids(gap('codex', 'commands')).sort()).toEqual([...manifest.scaffold.skills].sort());
+    expect(gap('codex', 'rules').details.count).toBe(4);
+    expect(ids(gap('codex', 'rules')).sort()).toEqual([...manifest.scaffold.rules].sort());
+    expect(gap('opencode', 'rules').details.count).toBe(4);
+    expect(ids(gap('opencode', 'rules')).sort()).toEqual([...manifest.scaffold.rules].sort());
+
+    // claude, cursor and github-copilot project every dimension; opencode projects commands; no
+    // target drops an Agent, so the agents dimension never appears.
+    for (const target of ['claude', 'cursor', 'github-copilot']) {
+      expect(gaps.filter((item: any) => item.details?.target === target)).toEqual([]);
+    }
+    expect(gap('opencode', 'commands')).toBeUndefined();
+    expect(gaps.filter((item: any) => item.details?.dimension === 'agents')).toEqual([]);
+
+    // The severity guard: raising these to error would make install unusable on codex/opencode.
+    for (const item of gaps) expect(item.severity).toBe('info');
+    expect(result.json.diagnostics.map((item: any) => item.code)).not.toContain('XFORGE_ADAPTER_PROJECTION_MISSING');
+
+    // The summary points at the Skill documents that exist on disk (the localized variant would be
+    // named here on a zh-CN project), and the Skill content itself still installs for Codex even
+    // though the command wrapper does not.
+    expect(gap('codex', 'commands').details.resources).toContainEqual({
+      id: 'xforge-apply', path: 'xforge/scaffold/skills/xforge-apply/SKILL.md',
+    });
+    expect(gap('codex', 'commands').message).toContain('install without a command entry point');
+    expect(await exists(path.join(root, '.agents', 'skills', 'xforge-apply', 'SKILL.md'))).toBe(true);
+    expect(await exists(path.join(root, '.opencode', 'commands', 'xforge-apply.md'))).toBe(true);
   });
 });
 

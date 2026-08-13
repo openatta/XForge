@@ -6,7 +6,10 @@ import { createCompleteSolidChange, fixture, runCli, updateYaml, write } from '.
 
 const fixtureServer = fileURLToPath(new URL('../fixtures/mcp-approval-server.mjs', import.meta.url));
 
-async function toDesignWithMcpProvider(root: string): Promise<void> {
+/** What the fixture server needs to read its scripted decision out of the environment. */
+const FIXTURE_ENV_ALLOW = ['XFORGE_TEST_MCP_EXPECTED_VALUE', 'XFORGE_TEST_MCP_DECISION', 'XFORGE_TEST_MCP_APPROVER_ID', 'XFORGE_TEST_MCP_APPROVER_ROLE'];
+
+async function toDesignWithMcpProvider(root: string, env: { allow?: string[]; allowPrefixes?: string[] } = { allow: FIXTURE_ENV_ALLOW }): Promise<void> {
   await createCompleteSolidChange(root);
   expect((await runCli(root, ['install'])).code).toBe(0);
   expect((await runCli(root, ['check', '--change', 'add-feature', '--gate', 'structure'])).code).toBe(0);
@@ -16,6 +19,8 @@ async function toDesignWithMcpProvider(root: string): Promise<void> {
   // ambient environment wholesale); the test-only fake platform reads its scripted decision out of
   // these XFORGE_TEST_MCP_* vars (see fixtures/mcp-approval-server.mjs), so this fixture declares
   // them via spec.env.allow the same way a real provider would opt in to what it actually needs.
+  // `env` is a parameter so individual tests can swap in an allowPrefixes declaration, or add a
+  // name the deny filter is expected to drop anyway.
   // XFORGE_TEST_MCP_TOKEN itself doesn't need to be listed: it's consumed by the CLI process via
   // authTokenEnv and handed to the subprocess as XFORGE_MCP_TOKEN, not passed through by name.
   // (XFORGE_TEST_MCP_EXPECTED_VALUE is deliberately not named "...TOKEN": the allowlist's
@@ -30,7 +35,8 @@ async function toDesignWithMcpProvider(root: string): Promise<void> {
     '  authTokenEnv: XFORGE_TEST_MCP_TOKEN',
     '  timeoutSeconds: 10',
     '  env:',
-    '    allow: [XFORGE_TEST_MCP_EXPECTED_VALUE, XFORGE_TEST_MCP_DECISION, XFORGE_TEST_MCP_APPROVER_ID, XFORGE_TEST_MCP_APPROVER_ROLE]',
+    ...(env.allow ? [`    allow: ${JSON.stringify(env.allow)}`] : []),
+    ...(env.allowPrefixes ? [`    allowPrefixes: ${JSON.stringify(env.allowPrefixes)}`] : []),
     '',
   ].join('\n'));
 
@@ -79,6 +85,65 @@ describe('mcp approval provider', () => {
     expect(pending.command).toEqual(['xforge', 'approve', '--change', 'add-feature', '--for', 'apply', '--policy', 'planning-solid', '--provider', 'review-bot']);
     const state = await runCli(root, ['state', '--change', 'add-feature']);
     expect(state.json.data.change.governance.pendingApprovals.some((item: any) => item.policyId === 'planning-solid')).toBe(true);
+  });
+
+  /*
+   * The three tests below pin the security invariant itself, not just the happy path: the fixture
+   * server exits non-zero if a forbidden variable reaches it (see fixtures/mcp-approval-server.mjs),
+   * so a leak shows up as XFORGE_APPROVAL_MCP_CONNECTION_FAILED rather than a silent pass. Each one
+   * therefore asserts a *successful* approval — success means the variable never arrived.
+   */
+  it('does not pass an undeclared ambient variable through to the provider subprocess', async () => {
+    const root = await fixture();
+    await toDesignWithMcpProvider(root);
+    const result = await runCli(root, mcpApproveArgs, {
+      XFORGE_TEST_MCP_TOKEN: 'shared-secret', XFORGE_TEST_MCP_EXPECTED_VALUE: 'shared-secret',
+      XFORGE_TEST_MCP_DECISION: 'approve', XFORGE_TEST_MCP_APPROVER_ID: 'alice@example.test', XFORGE_TEST_MCP_APPROVER_ROLE: 'owner',
+      // Present in the CLI's own environment, absent from this McpServer's spec.env.allow.
+      XFORGE_TEST_MCP_FORBIDDEN_LEAK: 'leaked',
+    });
+    expect(result.code).toBe(0);
+    expect(result.json.data.receipt.approver.id).toBe('alice@example.test');
+  });
+
+  /*
+   * Deny beats allow: a manifest cannot opt a credential-shaped name back in. Also pins the bounded
+   * diagnostic — the filtered-variable report counts credential-shaped exclusions but never names
+   * them, so this envelope (which lands in agent context and CI logs) is not an inventory of the
+   * machine's secret-ish variable names.
+   */
+  it('drops a credential-shaped variable even when the McpServer explicitly allows it', async () => {
+    const root = await fixture();
+    await toDesignWithMcpProvider(root, { allow: [...FIXTURE_ENV_ALLOW, 'XFORGE_TEST_MCP_AUTH_BACKDOOR'] });
+    const result = await runCli(root, mcpApproveArgs, {
+      XFORGE_TEST_MCP_TOKEN: 'shared-secret', XFORGE_TEST_MCP_EXPECTED_VALUE: 'shared-secret',
+      XFORGE_TEST_MCP_DECISION: 'approve', XFORGE_TEST_MCP_APPROVER_ID: 'alice@example.test', XFORGE_TEST_MCP_APPROVER_ROLE: 'owner',
+      XFORGE_TEST_MCP_AUTH_BACKDOOR: 'backdoor',
+    });
+    expect(result.code).toBe(0);
+    expect(result.json.data.receipt.approver.id).toBe('alice@example.test');
+    const filteredDiagnostic = result.json.diagnostics.find((item: any) => item.code === 'XFORGE_APPROVAL_MCP_ENV_FILTERED');
+    expect(filteredDiagnostic).toBeDefined();
+    expect(filteredDiagnostic.message).not.toContain('XFORGE_TEST_MCP_AUTH_BACKDOOR');
+    expect(filteredDiagnostic.message).not.toContain('XFORGE_TEST_MCP_TOKEN');
+  });
+
+  /*
+   * spec.env.allowPrefixes: a provider needing a family of variables declares the family, not every
+   * member. Nothing here is listed in spec.env.allow, so the fixture only receives its scripted
+   * decision if prefix matching works — a broken prefix path shows up as a 'pending' result. The
+   * credential-shaped name is set too: a matching prefix must not beat the deny filter either.
+   */
+  it('passes variables declared via allowPrefixes through, while the deny filter still wins', async () => {
+    const root = await fixture();
+    await toDesignWithMcpProvider(root, { allowPrefixes: ['XFORGE_TEST_MCP_'] });
+    const result = await runCli(root, mcpApproveArgs, {
+      XFORGE_TEST_MCP_TOKEN: 'shared-secret', XFORGE_TEST_MCP_EXPECTED_VALUE: 'shared-secret',
+      XFORGE_TEST_MCP_DECISION: 'approve', XFORGE_TEST_MCP_APPROVER_ID: 'prefixed@example.test', XFORGE_TEST_MCP_APPROVER_ROLE: 'owner',
+      XFORGE_TEST_MCP_AUTH_BACKDOOR: 'backdoor',
+    });
+    expect(result.code).toBe(0);
+    expect(result.json.data.receipt.approver).toEqual({ id: 'prefixed@example.test', provider: 'review-bot', role: 'owner', type: 'external-system' });
   });
 
   it('fails after retrying a few times when the server cannot be reached', async () => {

@@ -46,12 +46,7 @@ resources:
     kind: gate
     license: project
     version: 1
-  - digest: 5a51cb53ae072ebddd32c8de668023cdb1e9d2a055978d13fe049615b2e98de4
-    id: runtime-audit
-    kind: hook
-    license: project
-    version: 1
-  - digest: e04e4a8c2f3bf7ce11d50ff74a09dbf4145e3e90e2aef5f736d29b2010ee7385
+  - digest: 46d4f648ece14f385a136a4bca43f78d47488100317cdc3e637298388afaab1d
     id: protected-files
     kind: permission-policy
     license: project
@@ -61,7 +56,7 @@ resources:
     kind: rule
     license: project
     version: 1
-  - digest: 76322b1855af9b73c02b72874a26868a315335eb4bb4dcda3832d284de4f3657
+  - digest: 1a28cf4dec56b3cfed60295e63aa97ceef5c78e5153408435ee9f3d68a760b70
     id: governance-assets-are-integrator-only
     kind: rule
     license: project
@@ -141,7 +136,7 @@ resources:
     kind: skill
     license: project
     version: "1"
-  - digest: cc1a353d62f6c2ee2a115eaa4906f52ade3aef05269a2b0b605e03c5471ea4a6
+  - digest: aff5b693366da51a0e14b022ec48af2adf0c63c61d92d2f934a5554f40b55f59
     id: xforge-verify
     kind: skill
     license: project
@@ -160,7 +155,7 @@ targets:
   - opencode
   - github-copilot
 xforge:
-  integrity: sha256:5851faeb2834db4562295653186971128cfcc6df169c01ecc649226d587cab25
+  integrity: sha256:f93c8416846c3140fc7df0ff20c8933c9940b98dd66bc34b86cbfe903c2232b4
   package: "@xforge/cli"
   protocol: "2"
   source: npm

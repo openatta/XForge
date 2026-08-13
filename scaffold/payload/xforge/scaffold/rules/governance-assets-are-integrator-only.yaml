@@ -6,18 +6,23 @@ metadata:
 spec:
   severity: must
   instruction: >-
-    Shared governance assets (Constitution, canonical Specs, Manifest, Lock) are written by the
-    Integrator or by an explicit XForge transaction, never by a Worker implementing a work package.
+    Shared governance assets (Constitution, canonical Specs, Manifest, Lock, Flow definitions, the
+    audit chain) are written by the Integrator, an explicit XForge transaction, or the CLI itself,
+    never by a Worker implementing a work package. Scaffold resources under xforge/scaffold/ and
+    Change content under xforge/changes/ are written by the governing Skills and are intentionally
+    outside this Rule's scope.
   scope:
-    # Mirrors protected-files' deny list exactly. Broader xforge/** paths (flows,
-    # scaffold resources, changes) are edited through normal governed Changes via
-    # `xforge install`/`xforge check`, not blanket-denied — expanding this scope back to
-    # xforge/** would misreport those paths as guarded when the policy does not cover them.
+    # Mirrors protected-files' deny list exactly. Scaffold resources and Change content are edited
+    # through normal governed Changes (xforge-scaffold, xforge-propose/xforge-apply) and are
+    # deliberately absent from both lists — declaring a path here that the policy does not deny
+    # would misreport it as guarded.
     paths:
       - xforge/constitution.md
       - xforge/specs/**
       - xforge/manifest.yaml
       - xforge/lock.yaml
+      - xforge/flows/**
+      - xforge/.audit/**
   enforcement:
     # guarded: a live PermissionPolicy refuses the write at the tool call.
     gateRefs: []

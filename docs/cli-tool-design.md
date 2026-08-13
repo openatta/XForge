@@ -101,7 +101,7 @@ Hook 分两平面：
 - Workflow：由 CLI 直接调用，覆盖 stage/gate/approval/archive/work-package/audit delivery；
 - Runtime：由 Adapter bridge 接入平台 session/prompt/tool/permission/subagent/stop 事件。
 
-默认 Scaffold 选择 `runtime-audit`，但 `enabled: false`。PermissionPolicy 仍会生成最小 pre-tool bridge，以实现可观察的项目 guard。Hook install、platform trust 和 active 状态不能互相推断。
+默认 Scaffold 不选择 `runtime-audit`（它是一个 `enabled: false` 的示例资源，且目前没有 dispatcher 执行 `builtin: audit`）。PermissionPolicy 仍会生成最小 pre-tool bridge，以实现可观察的项目 guard——该 bridge 只依赖 policy，与 Hook 选择无关。Hook install、platform trust 和 active 状态不能互相推断。
 
 ## 7. Adapter 投影
 

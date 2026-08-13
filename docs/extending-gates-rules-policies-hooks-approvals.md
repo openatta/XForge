@@ -220,8 +220,9 @@ paths. In practice, `xforge hook`'s dispatcher always resolves matching
 PermissionPolicies and always records an audit event on a relevant call — a
 Hook resource's real job is *declaring that a given platform event should
 invoke `xforge hook` at all*, and at what `failurePolicy`, not selecting
-different runtime behavior per Hook. `runtime-audit.yaml` (shipped disabled
-by default) is the concrete example:
+different runtime behavior per Hook. `runtime-audit.yaml` (shipped as an
+unselected, disabled example — no dispatcher executes its `builtin: audit`
+action yet) is the concrete shape:
 
 ```yaml
 apiVersion: xforge.dev/v1alpha2
@@ -407,7 +408,7 @@ there's no working default `McpServer` resource behind it. Using it without
 registering a real `McpServer` (see
 [Extending Approvals with an MCP provider](extending-approvals-with-mcp.md))
 fails closed with `XFORGE_APPROVAL_MCP_SERVER_MISSING`, the same pattern the
-`runtime-audit` Hook uses by shipping disabled by default.
+`runtime-audit` Hook uses by shipping unselected and disabled.
 
 ### Trust model — why there's no signature
 

@@ -274,8 +274,8 @@ files.
 
 - Runtime Hook and permission coverage is platform-specific and may require an
   explicit project trust step in the coding tool.
-- The default `runtime-audit` Hook is selected but disabled until a project
-  deliberately enables it.
+- The `runtime-audit` Hook ships as an unselected example: no dispatcher executes
+  its `builtin: audit` action yet, so selecting it would have no effect.
 - Generated Hooks invoke `npx --no-install xforge` from the project root so they
   resolve the exact local package without downloading a replacement.
 - Gate success proves the configured command ran for the recorded revision; it
