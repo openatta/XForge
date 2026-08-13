@@ -224,7 +224,7 @@ function parseVersion(value: string): { core: number[]; prerelease: string } {
  * dot-segment compare — it cannot report an *older* running CLI as newer, which is the mistake
  * that would turn this upgrade channel into a silent downgrade.
  */
-function compareVersions(left: string, right: string): number {
+export function compareVersions(left: string, right: string): number {
   const a = parseVersion(left);
   const b = parseVersion(right);
   for (let index = 0; index < Math.max(a.core.length, b.core.length); index += 1) {

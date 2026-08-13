@@ -556,6 +556,90 @@ export async function readAcknowledgementAttestations(project: ProjectContext, c
   };
 }
 
+/** The lifecycle event `xforge transition` records after a receipt is on disk; nothing else attests one. */
+const TRANSITION_EVENT_TYPE = 'stage.entered';
+
+/**
+ * The `inputDigest` a `stage.entered` audit event must carry to attest a Transition receipt.
+ *
+ * The single definition both sides of the transition protocol use, exactly as
+ * `acknowledgementAttestationDigest` serves the acknowledgement protocol: `transition` passes it to
+ * `recordAudit`, and the orphan-receipt scan recomputes it from the receipt on disk to ask whether
+ * the chain ever said this Stage was entered. The receipt digest already commits to the Change,
+ * Flow, from/to Stages, revision and actor, so the receipt digest alone is enough of a subject.
+ */
+export function transitionAttestationDigest(receiptDigest: string): string {
+  return sha256(stableStringify({ transitionReceipt: receiptDigest }));
+}
+
+/** What this machine can prove about the `stage.entered` events behind one Change's receipts. */
+export interface TransitionAttestations {
+  /**
+   * Whether the readable attestations can be treated as the *complete* set for this Change, so that
+   * a missing one means something. A property of the Change, evaluated once, never of a receipt.
+   */
+  complete: boolean;
+  /** Whether the chain (local or committed) carries a `stage.entered` event for this receipt. */
+  attests(receiptDigest: string): boolean;
+  /**
+   * Whether a receipt's `auditHead` names an event still on *this* machine's local chain — i.e.
+   * whether this working tree is the one that wrote the receipt.
+   */
+  writtenHere(auditHead: string | null): boolean;
+}
+
+/**
+ * Which Transition receipts this Change's audit history attests, and whether absence proves anything.
+ *
+ * `transition` writes the receipt and then records `stage.entered`; a process killed between the two
+ * (SIGKILL, power loss, container eviction) leaves a receipt no event attests, and because
+ * `control-plane.ts` derives `currentStage` from the last receipt, that remnant silently advances
+ * the Change. Detecting it means reasoning from an *absent* event, which is only sound when the set
+ * of readable events is known to be complete — otherwise a legitimate receipt is accused of being a
+ * crash remnant, which is far more damaging than the remnant.
+ *
+ * `complete` is therefore deliberately narrow, and mirrors `readAcknowledgementAttestations`'
+ * all-or-nothing `noAuditData` escape rather than trying to reason per receipt:
+ * - the committed index must exist and pass its digest check — `xforge/.audit/**` is gitignored, so
+ *   on any machine that did not run the flow the index is the only surviving record, and a missing
+ *   or hand-edited one means this machine simply cannot see what happened elsewhere;
+ * - it must not be `eventsTruncated`, and neither it nor the local shard anchor may report a pruned
+ *   prefix — past either boundary an attestation can be gone for reasons that have nothing to do
+ *   with a crash.
+ *
+ * `writtenHere` is the second, independent test, and it is what a "was the chain pruned?" check
+ * cannot do: a Change cloned from a colleague has a perfectly complete-looking local chain of the
+ * *clone's own* events, so the colleague's receipts appear unattested. Their `auditHead` names a
+ * chain head that never existed on this machine, which says plainly that this working tree is not
+ * where they were written and their attestations were never expected to be here.
+ */
+export async function readTransitionAttestations(project: ProjectContext, changeId: string): Promise<TransitionAttestations> {
+  const local = await readChangeLogEvents(project, changeId);
+  /* Fresh clone / CI: the chain file is gitignored, the committed index is not. */
+  const committed = await readChangeAuditIndex(project, changeId);
+  const anchor = await anchorFor(project, shardKeyFor(changeId));
+  const digests = new Set<string>();
+  const localHashes = new Set<string>();
+  for (const event of local) {
+    localHashes.add(event.hash);
+    if (event.eventType === TRANSITION_EVENT_TYPE) digests.add(event.inputDigest);
+  }
+  if (committed?.digestValid) {
+    for (const event of committed.document.events) if (event.eventType === TRANSITION_EVENT_TYPE) digests.add(event.inputDigest);
+  }
+  const complete = Boolean(
+    committed?.digestValid
+    && !committed.document.eventsTruncated
+    && committed.document.chain.prunedCount === 0
+    && anchor.prunedCount === 0,
+  );
+  return {
+    complete,
+    attests: (receiptDigest: string) => digests.has(transitionAttestationDigest(receiptDigest)),
+    writtenHere: (auditHead: string | null) => auditHead !== null && localHashes.has(auditHead),
+  };
+}
+
 /* ------------------------------------------------------------------ archive-facing read API */
 
 export interface ChangeAuditFacts {

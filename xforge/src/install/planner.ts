@@ -453,6 +453,20 @@ function notInstalled(project: ProjectContext, command: ProjectionMode): never {
   });
 }
 
+/**
+ * The same installation-record precondition `resolveTargets` enforces mid-plan, exposed so a
+ * command can fail-closed on it *before* it writes anything of its own. `update` runs this ahead
+ * of `reconcileDeclaredCliVersion`: without it, a project that was `init`ed but never `install`ed
+ * would get its three declared version pins rewritten and only then hit XFORGE_NOT_INSTALLED
+ * inside the projection — a failed command that left a write behind. Dry-run needs the guard just
+ * as much as a real run: `planProjection` raises this before `--dry-run` is ever consulted, so the
+ * cheap precondition has to refuse in both modes or a dry run would start reporting a plan the
+ * real run cannot execute.
+ */
+export async function assertInstalledRecord(project: ProjectContext, command: ProjectionMode): Promise<void> {
+  if (installedTargets(await readOwnership(project)).length === 0) notInstalled(project, command);
+}
+
 function assertSyncIdentity(project: ProjectContext, state: OwnershipStateV2): void {
   const targets = installedTargets(state);
   const adapterMismatch = targets.some((target) => state.targets[target]?.adapterVersion !== getAdapter(target).version);

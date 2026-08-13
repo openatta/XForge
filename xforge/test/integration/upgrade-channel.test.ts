@@ -168,6 +168,42 @@ describe('declared CLI version upgrade channel', () => {
     expect(await manifestText(root)).toBe(before);
   });
 
+  it('refuses a never-installed project before reconciling, leaving the Manifest byte-identical', async () => {
+    /* `init`ed on an older CLI, never `install`ed: the declared version is genuinely stale, so the
+       upgrade channel would happily reconcile it — but `update` cannot project without an
+       installation record, so the command as a whole is doomed. The reconciliation writes the three
+       pins to disk, so ordering it ahead of that guard would mean a failed command left a write
+       behind; the guard has to run first. */
+    const root = await fixture();
+    await pinDeclaredVersion(root, '0.7.7');
+    const before = await manifestText(root);
+
+    /* A dry run must refuse identically. `planProjection` raises XFORGE_NOT_INSTALLED before
+       `--dry-run` is consulted, so a guard that only fired on real runs would let a dry run report
+       a reconciliation plan no real run could ever carry out. */
+    const dryRun = await runCli(root, ['update', '--dry-run']);
+    expect(dryRun.code).toBe(1);
+    expect(dryRun.json.changes).toEqual([]);
+    expect(dryRun.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_NOT_INSTALLED');
+
+    const update = await runCli(root, ['update']);
+    expect(update.code).toBe(1);
+    expect(update.json.changes).toEqual([]);
+    expect(update.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_NOT_INSTALLED');
+    /* The guidance out of the dead end is still `install`, not another `update`. */
+    expect(update.json.nextActions[0].action).toBe('install');
+    expect(update.json.nextActions[0].command).toEqual(['xforge', 'install', '--dry-run']);
+
+    /* The assertion the ordering exists for: not merely "the pins are still 0.7.7", but that no
+       byte of the file moved — the failed command is indistinguishable on disk from never having
+       run at all. */
+    expect(await manifestText(root)).toBe(before);
+    const manifest = await yamlFile<any>(root, MANIFEST);
+    expect(manifest.xforge.version).toBe('0.7.7');
+    expect(manifest.scaffold.version).toBe('0.7.7');
+    expect(manifest.scaffold.source.version).toBe('0.7.7');
+  });
+
   it('does not touch the Manifest when the declared version already equals the running one', async () => {
     const root = await installedFixture();
     const before = await manifestText(root);
