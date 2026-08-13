@@ -22,6 +22,47 @@ export type Fragment = NonNullable<DesiredFile['fragment']>;
 export type JsonFragment = Extract<Fragment, { format: 'json' }>;
 export type MarkerFragment = Extract<Fragment, { format: 'markers' }>;
 
+/**
+ * A fragment as it is persisted in the ownership record.
+ *
+ * `createdByXForge` is provenance, and it is *recorded* rather than inferred. `removeFragment` used
+ * to decide "the file exists only because of XForge" from the recorded `seed` alone, on the theory
+ * that a seed is written only when XForge creates the file. Adapters set `seed` unconditionally on
+ * the descriptor (it describes what to write *if* the file is missing — see
+ * `adapters/governance.ts`), so the theory was false: a repository whose `opencode.json` was exactly
+ * OpenCode's documented minimal config, committed long before XForge, had that file deleted by
+ * `uninstall` with no conflict and no backup. The plan knows whether the destination existed; that
+ * answer is written down here instead of being reconstructed from a value that never carried it.
+ *
+ * Absent on records written before this field existed. It is read as "not ours" in that case
+ * (see {@link createdByXForge}): leaving an `{"$schema": ...}` stub behind is a papercut, deleting a
+ * user's committed file is not.
+ */
+export type RecordedFragment = Fragment & { createdByXForge?: boolean };
+
+/** Provenance of the destination as a whole, defaulting to "not XForge's" when unrecorded. */
+export function createdByXForge(fragment: Fragment | undefined): boolean {
+  return (fragment as RecordedFragment | undefined)?.createdByXForge === true;
+}
+
+/** The fragment to persist for a destination whose provenance the plan just determined. */
+export function recordedFragment(desired: Fragment, created: boolean): RecordedFragment {
+  if (desired.format === 'markers') return { ...desired, createdByXForge: created };
+  const { seed, ...rest } = desired;
+  // The seed is only ever material XForge wrote, so it is only ever recorded as such.
+  return { ...rest, ...(created && seed ? { seed } : {}), createdByXForge: created };
+}
+
+/**
+ * Line endings are not content. Git's `core.autocrlf=true` — the default on Windows — rewrites
+ * every managed text file on checkout, so a byte-exact comparison reads a whole installation as
+ * user-modified. Comparisons normalize; the files themselves are never rewritten, so a CRLF working
+ * tree stays CRLF.
+ */
+export function normalizeEol(text: string): string {
+  return text.replace(/\r\n/g, '\n');
+}
+
 export class FragmentParseError extends Error {}
 
 function itemKey(value: unknown): string {
@@ -41,14 +82,49 @@ function readPath(root: Record<string, unknown>, path: string[]): unknown {
   return cursor;
 }
 
-function writePath(root: Record<string, unknown>, path: string[], value: unknown): void {
+/**
+ * Decides which pre-existing leaf a guarded write may replace. Everything else at that address is
+ * the project's own and is not XForge's to overwrite.
+ */
+interface WriteGuard {
+  filePath: string;
+  replaceable: (existing: unknown) => boolean;
+}
+
+function describeValue(value: unknown): string {
+  return Array.isArray(value) ? 'an array' : value === null ? 'null' : `a ${typeof value}`;
+}
+
+/**
+ * Writes `value` at `path`, creating the ancestor objects it needs.
+ *
+ * With a `guard` the write refuses instead of clobbering. XForge owns the *leaf* at `path`, never
+ * whatever the project happens to have put on the way to it: `{"permission": {"bash": "deny"}}` is
+ * OpenCode's documented shorthand for "block every shell command", and replacing that string with
+ * the object XForge needs for `permission.bash.<pattern>` silently removes a blanket denial — a
+ * security downgrade the user is never told about and which `uninstall` cannot restore either,
+ * since it only deletes the keys it recorded. The refusal travels as a `FragmentParseError`, which
+ * `planFragments` turns into an install conflict, giving partially-owned destinations the same
+ * fail-closed posture whole-file destinations have always had.
+ */
+function writePath(root: Record<string, unknown>, path: string[], value: unknown, guard: WriteGuard | null = null): void {
   let cursor = root;
-  for (const key of path.slice(0, -1)) {
+  for (const [index, key] of path.slice(0, -1).entries()) {
     const next = cursor[key];
-    if (!isPlainObject(next)) cursor[key] = {};
+    if (!isPlainObject(next)) {
+      if (guard && next !== undefined) {
+        throw new FragmentParseError(`${guard.filePath} defines ${path.slice(0, index + 1).join('.')} as ${describeValue(next)}, but XForge needs an object there to install ${path.join('.')}; it will not replace a value it did not write.`);
+      }
+      cursor[key] = {};
+    }
     cursor = cursor[key] as Record<string, unknown>;
   }
-  cursor[path.at(-1)!] = value;
+  const leaf = path.at(-1)!;
+  const existing = cursor[leaf];
+  if (guard && existing !== undefined && !guard.replaceable(existing)) {
+    throw new FragmentParseError(`${guard.filePath} already defines ${path.join('.')} as ${describeValue(existing)}; XForge will not replace a value it did not write.`);
+  }
+  cursor[leaf] = value;
 }
 
 /** Deletes the leaf at `path` and every ancestor container the deletion leaves empty. */
@@ -93,7 +169,8 @@ export function fragmentDrifted(current: string | null, recorded: Fragment, file
   if (current === null) return true;
   if (recorded.format === 'markers') {
     const block = markerBlock(current, recorded);
-    return block === null || block.body !== recorded.body.trim();
+    // Compared line-ending-insensitively: a CRLF checkout of the block XForge wrote is that block.
+    return block === null || normalizeEol(block.body) !== normalizeEol(recorded.body.trim());
   }
   const parsed = parseJsonObject(current, filePath);
   if (!parsed) return true;
@@ -129,9 +206,20 @@ export function applyFragment(current: string | null, desired: Fragment, recorde
     const theirs = (Array.isArray(existing) ? existing : []).filter((item) => !recordedItems.has(itemKey(item)) && !mine.has(itemKey(item)));
     const merged = [...owned.items, ...theirs];
     if (merged.length === 0) deletePath(next, owned.path);
-    else writePath(next, owned.path, merged);
+    // An owned array address that already holds something other than a list (a project that wrote
+    // `permissions.allow: "*"`) is a disagreement about the file's shape, not a merge.
+    else writePath(next, owned.path, merged, { filePath, replaceable: Array.isArray });
   }
-  for (const owned of desired.values ?? []) writePath(next, owned.path, owned.value);
+  for (const owned of desired.values ?? []) {
+    const recordedValue = (previous?.values ?? []).find((item) => itemKey(item.path) === itemKey(owned.path));
+    writePath(next, owned.path, owned.value, {
+      filePath,
+      // Replaceable when it is already what this render produces, or exactly what the record says
+      // XForge last wrote there. Anything else at that address arrived from the project.
+      replaceable: (existing) => itemKey(existing) === itemKey(owned.value)
+        || (recordedValue !== undefined && itemKey(existing) === itemKey(recordedValue.value)),
+    });
+  }
 
   // Retract material this render no longer produces.
   for (const stale of previous?.arrays ?? []) {
@@ -155,10 +243,16 @@ export function applyFragment(current: string | null, desired: Fragment, recorde
  * owns remains and the file itself should go.
  */
 export function removeFragment(current: string, recorded: Fragment, filePath: string): string | null {
+  // Whether the destination itself goes is a question about who created it, not about what is left
+  // in it: subtracting XForge's material from a file the project committed can legitimately leave
+  // nothing behind (an `{"$schema": ...}` stub, an empty `{}` placeholder) and that file is still
+  // the project's. Only a destination XForge created is XForge's to delete.
+  const created = createdByXForge(recorded);
   if (recorded.format === 'markers') {
     const block = markerBlock(current, recorded);
     const remainder = block === null ? current : `${current.slice(0, block.start)}${current.slice(block.end)}`;
-    return remainder.trim() === '' ? null : `${remainder.replace(/\n{3,}/g, '\n\n').replace(/\n*$/, '')}\n`;
+    if (remainder.trim() === '') return created ? null : remainder;
+    return `${remainder.replace(/\n{3,}/g, '\n\n').replace(/\n*$/, '')}\n`;
   }
   const parsed = parseJsonObject(current, filePath);
   if (!parsed) return null;
@@ -174,13 +268,14 @@ export function removeFragment(current: string, recorded: Fragment, filePath: st
   for (const owned of recorded.values ?? []) {
     if (itemKey(readPath(next, owned.path)) === itemKey(owned.value)) deletePath(next, owned.path);
   }
-  // The seed was written only because XForge created the file. If nothing but an untouched seed
-  // is left, the file exists solely because of XForge and goes with it.
+  // A seed is only recorded for a destination XForge created (see `recordedFragment`), so nothing
+  // but an untouched seed means the file exists solely because of XForge and goes with it. On a
+  // destination the project already had, the remainder is returned as it stands — `{}` included.
   const seed = recorded.seed ?? {};
   const onlySeedRemains = Object.keys(next).length > 0
     && Object.entries(next).every(([key, value]) => key in seed && itemKey(value) === itemKey(seed[key]));
-  if (onlySeedRemains) return null;
-  return Object.keys(next).length === 0 ? null : `${JSON.stringify(next, null, 2)}\n`;
+  if (created && (onlySeedRemains || Object.keys(next).length === 0)) return null;
+  return `${JSON.stringify(next, null, 2)}\n`;
 }
 
 /**

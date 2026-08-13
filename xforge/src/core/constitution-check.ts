@@ -1,5 +1,7 @@
-import { access, readFile } from 'node:fs/promises';
-import type { ProjectContext } from '../types.js';
+import { access, readFile, readdir } from 'node:fs/promises';
+import path from 'node:path';
+import fg from 'fast-glob';
+import type { ApprovalReceipt, ProjectContext } from '../types.js';
 import { safeResolve } from './path-safety.js';
 import { loadYaml } from './yaml.js';
 import { knownIdentities, unknownIdentityReason, type KnownIdentities } from './ledger-identity.js';
@@ -15,6 +17,24 @@ import { knownIdentities, unknownIdentityReason, type KnownIdentities } from './
  * the project's own `constitution.md`, so every one must be named and answered. Amending the
  * Constitution therefore invalidates the ledger of every in-flight Change, which is the point — a
  * new principle has to be considered by work that is already underway.
+ *
+ * Answering is not the same as complying, though, and the first version of this Gate only checked
+ * the former: `status: compliant` required nothing else, so a ledger of seven bare `compliant`
+ * lines passed. That upgraded "one sentence an Agent could write" to "seven labelled sentences an
+ * Agent could write. Two things close that gap, in ascending order of strength:
+ *
+ * 1. **A compliant answer must cite something machine-locatable** (`references`): a Requirement id
+ *    declared by this Change's delta Specs, a path that actually exists, or `gate:<name>` for a
+ *    Gate this Change has passing Evidence for. This does not prove the citation supports the
+ *    claim — the same honest limit `check-findings`' `refs` check states about itself — but it does
+ *    mean every principle was answered while looking at a specific, checkable artifact, and a
+ *    ledger nobody can trace back to anything is rejected outright.
+ * 2. **Where the CLI already knows the answer, it checks rather than asks.** Two principles have a
+ *    machine-visible truth: the observability principle is contradicted by failing `unit-tests`
+ *    Gate Evidence, and the self-approval principle is contradicted by an exception approved by
+ *    somebody who does not appear on any approval receipt this Change actually holds. Neither
+ *    fires speculatively — a Change that has not run its tests yet (Check runs long before Verify)
+ *    or holds no receipts yet is not penalised for evidence that does not exist.
  */
 export const CONSTITUTION_CHECK_PATH = 'evidence/constitution-check.yaml';
 
@@ -22,9 +42,14 @@ export type PrincipleStatus = 'compliant' | 'violation' | 'not-applicable';
 
 const STATUSES: PrincipleStatus[] = ['compliant', 'violation', 'not-applicable'];
 
+/** How a `references` entry resolved, for diagnostics. `null` means it resolved to nothing. */
+export type ReferenceKind = 'gate' | 'path' | 'requirement';
+
 export interface ConstitutionCheckResult {
   status: 'passed' | 'failed';
   problems: string[];
+  /** Non-blocking observations, e.g. a principle the CLI could have cross-checked but had no evidence for. */
+  warnings: string[];
   principles: string[];
   covered: string[];
   violations: string[];
@@ -43,10 +68,135 @@ function normalize(value: string): string {
   return value.toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
-export async function evaluateConstitutionCheck(project: ProjectContext, changeId: string, known?: KnownIdentities): Promise<ConstitutionCheckResult> {
+function list(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map(text).filter(Boolean);
+  const single = text(value);
+  return single ? [single] : [];
+}
+
+/**
+ * What this Change can be cited against: the Gates it has passing Evidence for, and the Requirement
+ * names its delta Specs and the project's canonical Specs declare. Both are read once per
+ * evaluation and reused across every entry.
+ */
+interface CitableFacts {
+  /** Gate name -> latest recorded status, from the Change's own `evidence/*.json`. */
+  gates: Map<string, string>;
+  /** Lower-cased Requirement heading text, plus its leading id token when the heading has one. */
+  requirements: Set<string>;
+}
+
+async function readGateEvidence(project: ProjectContext, changeId: string): Promise<Map<string, string>> {
+  const gates = new Map<string, string>();
+  let directory: string;
+  try { directory = await safeResolve(project.root, `${project.changesPath}/${changeId}/evidence`); }
+  catch { return gates; }
+  let names: string[] = [];
+  try { names = (await readdir(directory)).filter((name) => name.endsWith('.json')).sort(); }
+  catch { return gates; }
+  for (const name of names) {
+    try {
+      const evidence = JSON.parse(await readFile(path.join(directory, name), 'utf8')) as { gate?: unknown; status?: unknown };
+      const gate = text(evidence.gate);
+      const status = text(evidence.status);
+      if (gate && status) gates.set(gate, status);
+    } catch { /* Unreadable Evidence is the Gate runner's problem to report, not this ledger's. */ }
+  }
+  return gates;
+}
+
+async function readRequirements(project: ProjectContext, changeId: string): Promise<Set<string>> {
+  const requirements = new Set<string>();
+  const roots = [`${project.changesPath}/${changeId}/specs`, project.specsPath];
+  for (const relative of roots) {
+    let directory: string;
+    try { directory = await safeResolve(project.root, relative); }
+    catch { continue; }
+    let files: string[] = [];
+    try { files = await fg('**/*.md', { cwd: directory, onlyFiles: true, followSymbolicLinks: false }); }
+    catch { continue; }
+    for (const file of files) {
+      let content: string;
+      try { content = await readFile(path.join(directory, file), 'utf8'); }
+      catch { continue; }
+      for (const match of content.matchAll(/^###\s+Requirement:\s*(.+?)\s*$/gm)) {
+        const heading = match[1]!.trim();
+        if (!heading) continue;
+        requirements.add(normalize(heading));
+        /* `### Requirement: REQ-042 Widget works` — the id alone is the usual citation form. */
+        const [first] = heading.split(/\s+/);
+        if (first) requirements.add(normalize(first));
+      }
+    }
+  }
+  return requirements;
+}
+
+async function resolveReference(
+  project: ProjectContext,
+  changeId: string,
+  reference: string,
+  facts: CitableFacts,
+): Promise<ReferenceKind | null> {
+  const gateMatch = /^gate:(.+)$/i.exec(reference);
+  if (gateMatch) {
+    const name = gateMatch[1]!.trim();
+    return facts.gates.get(name) === 'passed' ? 'gate' : null;
+  }
+  if (facts.requirements.has(normalize(reference))) return 'requirement';
+  /* Change-relative first (the form every other ledger uses), then project-relative. */
+  for (const candidate of [`${project.changesPath}/${changeId}/${reference}`, reference]) {
+    try {
+      await access(await safeResolve(project.root, candidate));
+      return 'path';
+    } catch { /* try the next spelling */ }
+  }
+  return null;
+}
+
+/** The observability principle names automated verification; `unit-tests` is the Gate that proves it. */
+function isObservabilityPrinciple(principle: string): boolean {
+  return /observab|automated verification|test/i.test(principle);
+}
+
+/**
+ * Approvers this Change actually holds a receipt from, lower-cased. Only `approve` decisions count:
+ * a rejection is not somebody signing off on an exception.
+ */
+function receiptApprovers(receipts: ApprovalReceipt[]): Set<string> {
+  const approvers = new Set<string>();
+  for (const receipt of receipts) {
+    if (receipt.decision !== 'approve') continue;
+    const id = text(receipt.approver?.id);
+    if (id) approvers.add(id.toLowerCase());
+  }
+  return approvers;
+}
+
+function citesApprovalReceipt(name: string, approvers: Set<string>): boolean {
+  const normalized = name.trim().toLowerCase();
+  if (approvers.has(normalized)) return true;
+  const match = /^(.*?)\s*<(.+)>$/.exec(normalized);
+  return Boolean(match && (approvers.has(match[1]!.trim()) || approvers.has(match[2]!.trim())));
+}
+
+export interface ConstitutionCheckOptions {
+  /**
+   * Approval receipts this Change holds. Supplied by callers that already loaded them; when
+   * omitted the receipts are read from disk, so the Gate behaves the same either way.
+   */
+  approvals?: ApprovalReceipt[];
+}
+
+export async function evaluateConstitutionCheck(
+  project: ProjectContext,
+  changeId: string,
+  known?: KnownIdentities,
+  options: ConstitutionCheckOptions = {},
+): Promise<ConstitutionCheckResult> {
   const relative = `${project.changesPath}/${changeId}/${CONSTITUTION_CHECK_PATH}`;
   const principles = constitutionPrinciples(project.constitution.content);
-  const empty = (problems: string[]): ConstitutionCheckResult => ({ status: 'failed', problems, principles, covered: [], violations: [] });
+  const empty = (problems: string[]): ConstitutionCheckResult => ({ status: 'failed', problems, warnings: [], principles, covered: [], violations: [] });
 
   if (principles.length === 0) {
     return empty([`${project.constitution.path}: no "## " principle sections found; the Constitution cannot be checked against.`]);
@@ -57,7 +207,7 @@ export async function evaluateConstitutionCheck(project: ProjectContext, changeI
   catch { return empty([`${relative}: path is outside the project.`]); }
   try { await access(absolute); }
   catch {
-    return empty([`${relative}: record one entry per Constitution principle (${principles.length} in ${project.constitution.path}). A general claim of compliance does not satisfy this Gate.`]);
+    return empty([`${relative}: record one entry per Constitution principle (${principles.length} in ${project.constitution.path}), each citing at least one machine-locatable reference. A general claim of compliance does not satisfy this Gate.`]);
   }
   if ((await readFile(absolute, 'utf8')).trim().length === 0) return empty([`${relative}: the Constitution ledger is empty.`]);
 
@@ -69,6 +219,7 @@ export async function evaluateConstitutionCheck(project: ProjectContext, changeI
   }
 
   const problems: string[] = [];
+  const warnings: string[] = [];
   const covered: string[] = [];
   const violations: string[] = [];
   const byName = new Map<string, Record<string, unknown>>();
@@ -86,6 +237,14 @@ export async function evaluateConstitutionCheck(project: ProjectContext, changeI
     byName.set(match, entry);
   }
 
+  const facts: CitableFacts = {
+    gates: await readGateEvidence(project, changeId),
+    requirements: await readRequirements(project, changeId),
+  };
+  const approvals = options.approvals ?? (await loadReceipts(project, changeId));
+  const approvers = receiptApprovers(approvals);
+  let citedAnything = false;
+
   for (const principle of principles) {
     const entry = byName.get(principle);
     if (!entry) { problems.push(`${relative}: principle "${principle}" is not answered.`); continue; }
@@ -95,21 +254,88 @@ export async function evaluateConstitutionCheck(project: ProjectContext, changeI
       problems.push(`${relative}: principle "${principle}" has status "${text(entry.status) || '(none)'}"; expected one of ${STATUSES.join(', ')}.`);
       continue;
     }
+
+    /*
+     * A compliant answer is the one status that asserts something about this Change without owing
+     * a justification, so it is the one that has to be traceable. Every reference is resolved; an
+     * entry passes on the first one that resolves, and a dangling reference is named individually
+     * so the fix is obvious.
+     */
+    const references = list(entry.references);
+    const resolved: string[] = [];
+    const dangling: string[] = [];
+    for (const reference of references) {
+      if (await resolveReference(project, changeId, reference, facts)) resolved.push(reference);
+      else dangling.push(reference);
+    }
+    if (resolved.length > 0) citedAnything = true;
+    if (status === 'compliant') {
+      if (references.length === 0) {
+        problems.push(`${relative}: principle "${principle}" is answered compliant with no references; cite at least one machine-locatable reference — a Requirement id from this Change's delta Specs, a path that exists, or gate:<name> for a Gate this Change has passed.`);
+      } else if (resolved.length === 0) {
+        problems.push(`${relative}: principle "${principle}" cites only references this project cannot locate (${dangling.join(', ')}); a citation nobody can follow is not evidence of compliance.`);
+      } else if (dangling.length > 0) {
+        warnings.push(`${relative}: principle "${principle}" cites ${dangling.join(', ')}, which this project cannot locate.`);
+      }
+      /* The CLI does not have to take an Agent's word for this one: the Gate already ran. */
+      if (isObservabilityPrinciple(principle)) {
+        const unitTests = facts.gates.get('unit-tests');
+        if (unitTests && unitTests !== 'passed') {
+          problems.push(`${relative}: principle "${principle}" is answered compliant, but this Change's unit-tests Gate Evidence records status "${unitTests}". Automated verification that does not pass does not establish compliance.`);
+        } else if (!unitTests) {
+          warnings.push(`${relative}: principle "${principle}" could not be cross-checked — this Change has no unit-tests Gate Evidence yet. It will be checked again once the Gate has run.`);
+        }
+      }
+    }
+
     /* A deviation is allowed, but only as a recorded, reasoned decision — never as a silent one. */
     if (status === 'violation') {
       violations.push(principle);
       if (!text(entry.justification)) problems.push(`${relative}: principle "${principle}" is declared a violation with no justification.`);
       const approvedBy = text(entry.approvedBy);
       if (!approvedBy) problems.push(`${relative}: a Constitution violation needs a named approver in approvedBy; principle "${principle}" has none.`);
-      else {
+      else if (approvers.size > 0 && !citesApprovalReceipt(approvedBy, approvers)) {
+        /*
+         * "No Agent may approve its own exception" is only meaningful if the approver is somebody
+         * the project can show actually approved something. Once this Change holds approval
+         * receipts, an exception attributed to anyone not on one of them is an assertion, not a
+         * decision. Before the first receipt exists — Check runs ahead of every approval Stage —
+         * the weaker known-identity test below is all there is to check against, and blocking there
+         * would make recording a violation at Check impossible.
+         */
+        problems.push(`${relative}: principle "${principle}" is approved by "${approvedBy}", who holds no approval receipt for this Change (${[...approvers].slice(0, 4).join(', ')}). An exception must be approved by someone who actually decided it.`);
+      } else {
         const reason = known && unknownIdentityReason(approvedBy, known);
         if (reason) problems.push(`${relative}: principle "${principle}" is approved by "${approvedBy}", which ${reason}.`);
       }
     }
+
     if (status === 'not-applicable' && !text(entry.justification)) {
       problems.push(`${relative}: principle "${principle}" is marked not-applicable with no justification.`);
     }
   }
 
-  return { status: problems.length === 0 ? 'passed' : 'failed', problems, principles, covered, violations };
+  /*
+   * Stated separately from the per-entry problems because it is a different failure: not "this
+   * answer is unsupported" but "this whole ledger is a blanket claim of compliance", which is
+   * exactly what the Gate exists to reject.
+   */
+  if (!citedAnything && violations.length === 0) {
+    problems.push(`${relative}: no entry in this ledger cites anything; a ledger of bare statuses is the general claim of compliance this Gate replaces.`);
+  }
+
+  return { status: problems.length === 0 ? 'passed' : 'failed', problems, warnings, principles, covered, violations };
+}
+
+/**
+ * Imported lazily so this module stays usable from the Gate runner without pulling the whole
+ * control plane into every caller's module graph.
+ */
+async function loadReceipts(project: ProjectContext, changeId: string): Promise<ApprovalReceipt[]> {
+  try {
+    const { loadApprovalReceipts } = await import('./control-plane.js');
+    return (await loadApprovalReceipts(project, changeId)).receipts;
+  } catch {
+    return [];
+  }
 }

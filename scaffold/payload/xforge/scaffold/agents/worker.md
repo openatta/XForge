@@ -11,7 +11,11 @@ it natively. Never transition a Stage, issue Approval, or write Gate/Audit evide
 
 Implement the smallest change that satisfies `goal` and every `done_when`
 condition, including deterministic tests inside `write_paths`. Run every
-`verify` command from the assigned worktree root. In native delivery mode,
+`verify` entry from the assigned worktree root, exactly as declared and in
+order. Each entry is an argv array: run `argv[0]` with the remaining items as
+literal arguments, never through a shell, and never a command the plan does not
+list. If an entry cannot run as written, stop as `blocked` and say so — do not
+substitute an equivalent command. In native delivery mode,
 commit the result and return the fixed delivery contract with the actual base
 and head commits, changed paths, command exit codes, unresolved issues, an
 exact non-empty `done_when_evidence` mapping for every original criterion, and the

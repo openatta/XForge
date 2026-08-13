@@ -10,6 +10,7 @@ import { loadSelectedResources } from '../core/resource-loader.js';
 import { resolvedResourceEntries } from '../core/lockfile.js';
 import { stableStringify } from '../core/hash.js';
 import { assertManaged } from '../core/project-loader.js';
+import { redact } from '../core/redaction.js';
 
 export interface ScriptRunResult {
   id: string;
@@ -113,8 +114,16 @@ export async function runProjectScript(project: ProjectContext, id: string, extr
     exitCode,
     timedOut,
     outputTruncated,
-    stdout: Buffer.concat(stdout).toString('utf8'),
-    stderr: Buffer.concat(stderr).toString('utf8'),
+    /*
+     * Redacted on the same terms as Gate output (`core/redaction.ts`). A project Script is a
+     * project-defined subprocess with a filtered-but-populated environment, exactly like a Gate, and
+     * this result is a public return value: today `runScriptHooks` reads only the parsed decision
+     * out of it, but nothing in the type says so, and the first consumer that logs or records
+     * `stdout` would have shipped whatever a Script echoed. Applying it at the source makes that
+     * consumer safe by construction instead of by review.
+     */
+    stdout: redact(Buffer.concat(stdout).toString('utf8')),
+    stderr: redact(Buffer.concat(stderr).toString('utf8')),
     durationMs: Date.now() - started,
   };
 }

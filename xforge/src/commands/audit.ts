@@ -37,7 +37,14 @@ export async function executeAudit(project: ProjectContext, options: { action: '
   if (options.action === 'verify' && options.change) {
     const resolved = await resolveChangeState(project, options.change);
     if (isStageFlow(resolved.flow) && resolved.flow.governance) {
-      const policy = resolved.flow.governance.audit;
+      /*
+       * The same resolution `core/control-plane.ts`'s `terminalGovernanceBlocks` uses, and it has to
+       * be: this command is what a Skill tells the Agent to run before archiving, so validating a
+       * different policy than archive enforces makes it a false all-clear. In the shipped `quick`
+       * Flow the two disagree by exactly one event — the flow-level block omits `approval.decided`
+       * and the terminal policy requires it — so `audit verify` passed and archive then refused.
+       */
+      const policy = resolved.flow.terminal?.archive?.auditPolicy ?? resolved.flow.governance.audit;
       const present = new Set(facts?.eventTypes ?? events.map((event) => event.eventType));
       const remoteRequired = policy.remoteDelivery === 'required' || Boolean(project.manifest.audit?.remote?.requiredFor.includes(resolved.flow.policy.assuranceLevel));
       for (const eventType of policy.requiredEventTypes) {

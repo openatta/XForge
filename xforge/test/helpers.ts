@@ -1,4 +1,4 @@
-import { cp, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -7,6 +7,7 @@ import { parse, stringify } from 'yaml';
 import { afterAll } from 'vitest';
 import { CHECK_FINDINGS_PATH } from '../src/core/check-findings.js';
 import { CONSTITUTION_CHECK_PATH, constitutionPrinciples } from '../src/core/constitution-check.js';
+import { VERIFICATION_RECEIPT_PATH } from '../src/core/verification-receipt.js';
 import { executeApprove, type ApprovalTerminal } from '../src/commands/approve.js';
 import { loadProject } from '../src/core/project-loader.js';
 
@@ -132,7 +133,10 @@ export function checkFindings(entries = ''): string {
 export async function constitutionLedger(root: string): Promise<string> {
   const source = await readFile(path.join(root, 'xforge', 'constitution.md'), 'utf8');
   const principles = constitutionPrinciples(source);
-  return `principles:\n${principles.map((name) => `  - principle: ${JSON.stringify(name)}\n    status: compliant\n`).join('')}`;
+  /* `compliant` now has to cite something resolvable — a bare status is what the gate was
+     rewritten to reject. `proposal.md` is written by `createCompleteSolidChange`, so every
+     fixture that uses this ledger already has it. */
+  return `principles:\n${principles.map((name) => `  - principle: ${JSON.stringify(name)}\n    status: compliant\n    references: [proposal.md]\n`).join('')}`;
 }
 
 export async function createCompleteSolidChange(root: string, id = 'add-feature'): Promise<void> {
@@ -145,7 +149,8 @@ export async function createCompleteSolidChange(root: string, id = 'add-feature'
   await write(root, `${base}/${CHECK_FINDINGS_PATH}`, checkFindings());
   await write(root, `${base}/${CONSTITUTION_CHECK_PATH}`, await constitutionLedger(root));
   await write(root, `${base}/assurance.md`, '## Completeness\nAll requirements are covered.\n');
-  await write(root, `${base}/evidence/verification-receipt.yaml`, 'status: passed\nrevision: fixture\n');
+  /* No verification receipt here: it is no longer an Artifact, and a valid one can only be written
+     after `check` produces the Gate Evidence it must cite. See `writeVerificationReceipt`. */
 }
 
 /**
@@ -201,10 +206,40 @@ export async function advanceSolidToApply(root: string, id = 'add-feature'): Pro
   await successful(root, ['transition', '--change', id, '--to', 'apply']);
 }
 
+/**
+ * Writes the Stage's verification receipt from what actually happened, which is the only way to
+ * write a valid one: it cites each passing Gate's Evidence digest, so it can only be produced
+ * after `check` has run. Mirrors what `xforge-verify` instructs an Agent to do at this point.
+ */
+export async function writeVerificationReceipt(root: string, id: string): Promise<void> {
+  const state = await successful(root, ['state', '--change', id]);
+  const contentRevision = state.data.change.governance.revision.contentRevision;
+  const currentStage = state.data.change.governance.currentStage;
+  /* Only this Stage's Gates belong in the receipt — citing an earlier Stage's Evidence is rejected
+     as unverifiable, because the evaluator resolves citations against the current Stage's Gate set. */
+  const flow = await yamlFile<any>(root, `xforge/flows/${state.data.change.flow}.yaml`);
+  const stage = flow.stages.find((item: any) => item.id === currentStage);
+  const stageGates = new Set<string>([...(stage?.gates ?? []), ...(stage?.exit?.gates ?? [])]);
+  const evidenceRoot = path.join(root, state.data.change.path, 'evidence');
+  const gates: Array<{ gate: string; status: string }> = [];
+  let gitHead = '';
+  for (const name of (await readdir(evidenceRoot)).filter((item) => item.endsWith('.json')).sort()) {
+    const evidence = JSON.parse(await readFile(path.join(evidenceRoot, name), 'utf8'));
+    if (!stageGates.has(evidence.gate)) continue;
+    if (evidence.status !== 'passed' || evidence.contentRevision !== contentRevision) continue;
+    gates.push({ gate: evidence.gate, status: 'passed' });
+    gitHead ||= evidence.gitHead;
+  }
+  await write(root, `${state.data.change.path}/${VERIFICATION_RECEIPT_PATH}`, stringify({
+    status: 'passed', contentRevision, gitHead, gates,
+  }));
+}
+
 export async function advanceSolidToReadyToArchive(root: string, id = 'add-feature'): Promise<void> {
   await advanceSolidToApply(root, id);
   await successful(root, ['transition', '--change', id, '--to', 'verify']);
   await successful(root, ['check', '--change', id]);
+  await writeVerificationReceipt(root, id);
   await successful(root, ['transition', '--change', id, '--to', 'ready-to-archive']);
   await approveCurrentRevision(root, id, 'archive', 'closing-solid');
 }

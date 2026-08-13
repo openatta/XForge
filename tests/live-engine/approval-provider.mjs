@@ -54,8 +54,13 @@ function planApprovers(definition) {
  * Drives `xforge approve`'s local terminal dialogue over a piped stdin. `--actor`/`--role`/
  * `--reason` are only pre-fill suggestions (never the decision itself, by design — an Agent could
  * otherwise self-approve by stuffing argv), so blank lines accept them; the decision word must
- * still be typed. Requires `approvals.local.requireTty: false` in the project's manifest (set once
- * by setup.mjs) since this stdin is piped, not a real controlling terminal.
+ * still be typed.
+ *
+ * This now requires a real controlling terminal: the manifest switch that used to let a piped
+ * stdin stand in for one was removed, because a switch that relaxes governance while living inside
+ * the tree the governed Agent writes lets the Agent decide whether governance applies to it. The
+ * harness therefore prefers the mcp mechanism wherever a policy offers one (see `mechanismFor`),
+ * and this path is kept only for a policy that offers nothing else.
  */
 function runLocalApproval(root, { changeId, transition, policyId, approver, decision, reason }) {
   /* Flags pre-fill identity/role/reason (blank answers below accept the suggestion); the decision
@@ -87,7 +92,7 @@ function runMcpApproval(root, { changeId, transition, policyId, providerId, appr
   ], {
     XFORGE_ENTERPRISE_APPROVALS_TOKEN: MCP_TOKEN,
     XFORGE_TEST_MCP_TOKEN: MCP_TOKEN,
-    XFORGE_TEST_MCP_EXPECTED_TOKEN: MCP_TOKEN,
+    XFORGE_TEST_MCP_EXPECTED_VALUE: MCP_TOKEN,
     XFORGE_TEST_MCP_DECISION: decision,
     XFORGE_TEST_MCP_APPROVER_ID: approver.id,
     XFORGE_TEST_MCP_APPROVER_ROLE: approver.role,
@@ -95,9 +100,14 @@ function runMcpApproval(root, { changeId, transition, policyId, providerId, appr
 }
 
 function mechanismFor(definition) {
-  if (definition.providers.includes('local')) return { kind: 'local' };
+  /* Prefer mcp over local. setup.mjs points the scaffold's placeholder McpServer at a real fixture,
+     so mcp is drivable unattended, whereas local now demands an actual controlling terminal. Every
+     shipped policy lists `enterprise-approvals`, so this branch is what the harness normally takes. */
   const providerId = definition.providers.find((id) => id !== 'local');
-  if (!providerId) throw new Error(`Policy has no usable provider: ${JSON.stringify(definition.providers)}`);
+  if (!providerId) {
+    if (definition.providers.includes('local')) return { kind: 'local' };
+    throw new Error(`Policy has no usable provider: ${JSON.stringify(definition.providers)}`);
+  }
   return { kind: 'mcp', providerId };
 }
 

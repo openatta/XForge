@@ -258,6 +258,10 @@ function renderOpenCode(input: GovernanceProjectionInput, version: string): Gove
       || left.pattern.localeCompare(right.pattern));
     const fragment: DesiredFile['fragment'] = {
       format: 'json',
+      // What to write *if* `opencode.json` is missing, nothing more: `applyFragment` never applies
+      // a seed to a file that already exists, and `planFragments` records it only for a destination
+      // XForge actually created. It is deliberately not a claim of ownership over `$schema` — the
+      // same two lines are the documented minimal config a project may well have committed itself.
       seed: { $schema: 'https://opencode.ai/config.json' },
       values: entries.map((entry) => ({ path: ['permission', entry.key, entry.pattern], value: entry.effect })),
     };

@@ -45,10 +45,13 @@ describe('archive transaction', () => {
     expect(await exists(path.join(archiveRoot, archiveNames[0]!, 'evidence', 'tests.json'))).toBe(true);
   });
 
-  it('blocks archive on a missing verification receipt or failed mandatory Gate', async () => {
+  it('blocks archive on a missing Artifact or failed mandatory Gate', async () => {
     const incompleteRoot = await fixture();
     await createCompleteSolidChange(incompleteRoot);
-    await rm(path.join(incompleteRoot, 'xforge', 'changes', 'add-feature', 'evidence', 'verification-receipt.yaml'));
+    /* The verification receipt is no longer an Artifact — it is a Stage exit condition decided
+       against real Gate Evidence — so the artifact-completeness block is pinned on `assurance`,
+       which still is one. */
+    await rm(path.join(incompleteRoot, 'xforge', 'changes', 'add-feature', 'assurance.md'));
     const incomplete = await runCli(incompleteRoot, ['archive', '--change', 'add-feature', '--dry-run']);
     expect(incomplete.code).toBe(1);
     expect(incomplete.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_ARCHIVE_ARTIFACTS_INCOMPLETE');

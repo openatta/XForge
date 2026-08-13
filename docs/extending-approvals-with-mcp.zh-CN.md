@@ -15,7 +15,7 @@ approve` 自己变成一个 MCP client，实时直接跟你们审批平台的 MC
 
 | provider `type` | 谁/什么在做决定 | 信任边界 | 典型场景 |
 |---|---|---|---|
-| `local` | 坐在真实 TTY 前的人 | TTY 本身（或者，设了 `approvals.local.requireTty: false` 之后，是 Agent harness 已经在会话里确认过的事实） | 小团队、轻量流程的变更 |
+| `local` | 坐在真实 TTY 前的人 | TTY 本身——它证明的是存在交互式会话，不是经过验证的身份 | 小团队、轻量流程的变更 |
 | `mcp` | 你们的平台，实时 | MCP 连接本身（传输方式 + 认证 token） | 程序化/自动化评审——一个评估 Change 并做决定的 bot，或者你们平台本来就跑的人工审批流程，只是暴露成了 MCP |
 
 如果你们的平台已经能暴露一个 MCP server，`mcp` 这条路径的好处是不需要任何人

@@ -1,7 +1,7 @@
 import { access, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { createCompleteSolidChange, fixture, runCli, updateYaml, write } from '../helpers.js';
+import { createCompleteSolidChange, fixture, runCli, runCliWithStdin, updateYaml, write } from '../helpers.js';
 import { executeApprove, type ApprovalTerminal } from '../../src/commands/approve.js';
 import { loadProject } from '../../src/core/project-loader.js';
 
@@ -53,21 +53,39 @@ describe('local approval human attestation', () => {
   });
 
   /*
-   * `approvals.local.requireTty: false` used to turn the flag set itself into a valid approval. The
-   * decision now comes from the CLI's own terminal dialogue, so a scripted caller with no terminal
-   * still cannot produce one, whatever the manifest says.
+   * The one that matters. `approvals.local.requireTty: false` used to let a caller pipe the four
+   * answers into a non-terminal stdin and get back a receipt that is genuinely produced by
+   * `approve`: a real matching approval.decided chain event, attestation.method 'cli-terminal' set
+   * by the CLI itself, nothing on it distinguishable from a decision a person made. That switch
+   * lived in manifest.yaml — inside the tree the governed Agent writes — which made it the Agent's
+   * own decision whether the check applied to it. The setting is gone, so a piped decision is
+   * refused however the manifest is configured.
+   *
+   * This does not claim a TTY proves a human: a pty answering these same prompts still succeeds
+   * (see the comment above `interactive` in cli.ts). It pins that the one governance-relaxing knob
+   * the Agent could reach for no longer exists.
    */
-  it('still refuses a scripted caller when approvals.local.requireTty is false', async () => {
+  it('refuses a decision piped into a non-terminal stdin', async () => {
+    const root = await fixture();
+    await toDesign(root);
+    const result = await runCliWithStdin(root, localApproveArgs, 'alice\nowner\napprove\nLGTM\n');
+    expect(result.code).toBe(1);
+    expect(result.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_APPROVAL_INTERACTIVE_REQUIRED');
+    expect(await recordedApprovals(root)).toEqual([]);
+  });
+
+  /* And the manifest can no longer even express the request: `approvals.local` is not a key. */
+  it('rejects a manifest that still tries to configure the local approval path', async () => {
     const root = await fixture();
     await toDesign(root);
     await updateYaml(root, 'xforge/manifest.yaml', (manifest) => {
       manifest.approvals.local = { requireTty: false };
     });
-    const result = await runCli(root, localApproveArgs);
+    const state = await runCli(root, ['state']);
+    expect(state.code).toBe(1);
+    expect(state.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_SCHEMA_INVALID');
+    const result = await runCliWithStdin(root, localApproveArgs, 'alice\nowner\napprove\nLGTM\n');
     expect(result.code).toBe(1);
-    expect(result.json.diagnostics.map((item: any) => item.code)).toEqual(expect.arrayContaining([
-      expect.stringMatching(/^XFORGE_APPROVAL_(INTERACTIVE_REQUIRED|DECISION_REQUIRED|FIELDS_REQUIRED|ROLE_FORBIDDEN)$/),
-    ]));
     expect(await recordedApprovals(root)).toEqual([]);
   });
 

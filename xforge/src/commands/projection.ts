@@ -18,6 +18,13 @@ export interface ProjectionCommandOptions {
   target?: TargetId;
   dryRun: boolean;
   verifyDigests?: boolean;
+  /**
+   * `--adopt`: re-baseline managed destinations that drifted from their installation record instead
+   * of refusing. This whole command is all-or-nothing — `hasErrors` below blocks every write, not
+   * just the write to the offending file — so one hand-edited managed file otherwise stops every
+   * other file from syncing. See `ProjectionOptions.adopt` for what it does and does not cover.
+   */
+  adopt?: boolean;
 }
 
 export async function executeProjection(
@@ -28,7 +35,7 @@ export async function executeProjection(
   if (mode === 'update') assertUpdateCompatible(project);
   else assertManaged(project, mode);
   const structure = await checkStructure(project);
-  const plan = await planProjection(project, { mode, target: options.target, verifyDigests: options.verifyDigests });
+  const plan = await planProjection(project, { mode, target: options.target, verifyDigests: options.verifyDigests, adopt: options.adopt });
   const updateResolvableCodes = new Set(['XFORGE_LOCK_CLI_MISMATCH', 'XFORGE_LOCK_PROTOCOL_MISMATCH']);
   const structureDiagnostics = mode === 'update'
     ? structure.diagnostics.filter((item) => !updateResolvableCodes.has(item.code))

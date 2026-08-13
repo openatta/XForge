@@ -1,7 +1,7 @@
 ---
 name: xforge-status
 description: 把 xforge state 的机器状态解释为 Change 或 Requirement 的可读进度；用于用户询问做到哪、为何阻塞、剩余工作包、Evidence 是否当前或能否 Verify/Archive 时。
-allowed-tools: Read Grep Glob Bash(npx:*)
+allowed-tools: Read, Grep, Glob, Bash(npx:*)
 ---
 
 # 不变量

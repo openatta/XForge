@@ -35,6 +35,18 @@
         { "pattern": "^[^*?{}\\[\\]]+$" }
       ]
     },
+    "verifyCommand": {
+      "description": "A verification command. The argv form is authoritative: XForge spawns argv[0] with the remaining items as literal arguments and never invokes a shell, so the command cannot compose, redirect, or substitute. The single-string form is deprecated and accepted for one version only: it is split on whitespace with quote grouping and rejected outright if it contains shell metacharacters (XFORGE_WORK_PACKAGE_VERIFY_UNSAFE).",
+      "oneOf": [
+        {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 128,
+          "items": { "type": "string", "minLength": 1, "maxLength": 4096 }
+        },
+        { "type": "string", "minLength": 1, "maxLength": 4096, "deprecated": true }
+      ]
+    },
     "workPackage": {
       "type": "object",
       "additionalProperties": false,
@@ -68,7 +80,7 @@
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
-          "items": { "type": "string", "minLength": 1, "maxLength": 4096 }
+          "items": { "$ref": "#/$defs/verifyCommand" }
         },
         "done_when": {
           "type": "array",

@@ -1,18 +1,19 @@
 ---
 name: xforge-continue
 description: 从当前机器状态恢复 Change，并执行与用户授权一致的下一合法 Action；用于用户说继续、恢复、执行下一步，或新会话需要从中断点推进时。
-allowed-tools: Read Grep Glob Bash
+allowed-tools: Read, Grep, Glob, Write, Edit, Bash
 ---
 
 # 不变量
 
 - 先运行 `npx --no-install xforge state` 并解析唯一 Change，再运行 `npx --no-install xforge state --change <id>`；不硬编码 Quick/Solid/Major 顺序。
-- 只选择 CLI typed `nextActions` 中 actor、authority 和用户授权匹配的 `status=ready` Action，并执行其 command；不得从 Markdown 或熟悉的 Flow 猜下一步。
+- 只选择 CLI typed `nextActions` 中 actor 与用户授权匹配的 `status=ready` Action，并执行其 command；不得从 Markdown 或熟悉的 Flow 猜下一步。
 - 每个 Action 完成后刷新 State，不依赖旧会话或模型记忆推进。
 
 # 权限
 
 - 权限来自被选择的 ready Action 与对应 Skill；Continue 本身不扩大写权限。
+- Action 的 `authority` 字段只是它所属 Stage 声明的范围（`planning-write`、`assurance-write` 等）。它是给你的指令，说明该 Stage 可以写什么；CLI 不会拿它去比对某个操作，也不会因此拦下越界的写入。真正拦下越界写入的是生效的 PermissionPolicy、Gates 与 Approvals。把 `authority` 当作被要求遵守的边界，而不是保证边界的机制。
 - external/CLI/用户决定 Action 不得由 Agent 冒领；Archive 永远需要明确授权。
 - Approval Action 只能通过终端交互或 mcp provider 轮询请求（提交）人类/外部 provider 的决定，Agent 永远不能自行批准。
 

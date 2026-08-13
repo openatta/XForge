@@ -1,7 +1,10 @@
-import { createHmac, randomUUID } from 'node:crypto';
-import { access, appendFile, mkdir, open, readFile, readdir, rm, stat } from 'node:fs/promises';
+import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
+import { rmSync } from 'node:fs';
+import { access, appendFile, mkdir, open, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { hostname } from 'node:os';
 import path from 'node:path';
 import type { AuditEvent, GovernanceRevision, ProjectContext } from '../types.js';
+import { XForgeError, diagnostic } from './errors.js';
 import { atomicWrite } from './files.js';
 import { sha256, stableStringify } from './hash.js';
 import { safeResolve } from './path-safety.js';
@@ -16,8 +19,19 @@ const ANCHORS_FILE = `${AUDIT_DIRECTORY}/anchors.json`;
 const GLOBAL_SHARD_KEY = '_global';
 const CHANGE_ID_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 const TAIL_WINDOW_BYTES = 65_536;
-const INDEX_VERSION = 2;
-/** Workflow events are the auditable decisions; runtime events are summarized, not enumerated. */
+/**
+ * v3 splits the committed index's retained events into a governance-bearing set that is never
+ * evicted and a bounded residual, and records that split in `governanceComplete`. A v2 index is
+ * still readable — `indexGovernanceComplete` falls back to its `eventsTruncated` flag — and
+ * `recordIndexEvent` rebuilds any index whose version is not the current one, so a project heals on
+ * its next recorded event rather than needing a migration command.
+ */
+const INDEX_VERSION = 3;
+/**
+ * How many *residual* (non-governance) workflow events the committed index retains. Runtime events
+ * are summarized rather than enumerated, and governance events (see `GOVERNANCE_EVENT_TYPES`) are
+ * exempt from this limit entirely.
+ */
 const INDEX_EVENT_LIMIT = 1_000;
 
 async function exists(filePath: string): Promise<boolean> {
@@ -37,20 +51,159 @@ function shardRelative(shardKey: string | null): string {
   return shardKey === null ? GLOBAL_LOG : `${SHARD_DIRECTORY}/${shardKey}.jsonl`;
 }
 
-async function acquireLock(project: ProjectContext, shardKey: string | null): Promise<() => Promise<void>> {
+/* ------------------------------------------------------------------ append lock */
+
+/**
+ * Who holds an append lock, written inside the lock directory itself.
+ *
+ * The lock is a `mkdir` mutex, which is atomic on every filesystem XForge targets but carries no
+ * information: a bare directory cannot say whether its creator is still alive. XForge installs no
+ * signal handlers (deliberately — a library that traps SIGINT changes the host process's exit
+ * semantics), so Node's default disposition terminates without running `appendEvent`'s `finally`.
+ * One Ctrl-C, agent-harness SIGTERM or CI container eviction while the lock is held therefore used
+ * to poison *every* later command that records an audit event for that Change — `check`,
+ * `transition`, `approve`, `archive`, `work-package`, every `xforge hook` call — with no way to
+ * recover short of deleting a directory nobody documents.
+ *
+ * These three fields are what a later process needs to decide the holder is gone: `pid` + `hostname`
+ * because a pid is only meaningful on the machine that issued it, and `startedAt` because a pid can
+ * be recycled and because a holder on another host can only ever be judged by age.
+ */
+interface LockOwner { pid: number; hostname: string; startedAt: string }
+
+/**
+ * How long a lock may be held before any other process may take it over. A hold is local file IO
+ * only — remote delivery happens outside the lock — so a legitimate hold is milliseconds; a minute
+ * is far past any plausible one while staying far short of "the operator gave up and rebooted".
+ */
+const LOCK_TTL_MS = 60_000;
+const LOCK_RETRY_MS = 25;
+/**
+ * The old budget was 40 × 25ms = 1s, which is genuinely too short: one `xforge hook` runs per agent
+ * tool call, and a burst of parallel tool calls contends on the same per-Change lock. A stale lock
+ * no longer costs a wait at all (it is reclaimed on the first pass), so the budget only has to cover
+ * real contention.
+ */
+const LOCK_TIMEOUT_MS = 10_000;
+const LOCK_OWNER_FILE = 'owner.json';
+
+/** Absolute paths of locks this process currently holds, for the best-effort exit sweep. */
+const heldLocks = new Set<string>();
+let exitCleanupRegistered = false;
+
+function registerExitCleanup(): void {
+  if (exitCleanupRegistered) return;
+  exitCleanupRegistered = true;
+  /* Best effort only, and deliberately not a signal handler: 'exit' does not run for SIGKILL or for
+     an unhandled signal, so the reclaim path below stays the load-bearing recovery mechanism and
+     this is just the cheap way to keep an orderly exit from leaving litter behind. */
+  process.on('exit', () => {
+    for (const lock of heldLocks) {
+      try { rmSync(lock, { recursive: true, force: true }); } catch { /* the process is exiting anyway */ }
+    }
+  });
+}
+
+/** Whether a pid exists on this host. EPERM means it exists and belongs to somebody else. */
+function processAlive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try { process.kill(pid, 0); return true; }
+  catch (error) { return (error as NodeJS.ErrnoException).code === 'EPERM'; }
+}
+
+async function readLockOwner(lock: string): Promise<LockOwner | null> {
+  try {
+    const parsed = JSON.parse(await readFile(path.join(lock, LOCK_OWNER_FILE), 'utf8')) as Partial<LockOwner>;
+    if (typeof parsed?.pid !== 'number' || typeof parsed.hostname !== 'string' || typeof parsed.startedAt !== 'string') return null;
+    return { pid: parsed.pid, hostname: parsed.hostname, startedAt: parsed.startedAt };
+  } catch { return null; }
+}
+
+/**
+ * Why an existing lock may be taken over, or null when it must be waited on.
+ *
+ * Two independent signals, because neither alone covers the failure: a dead pid on this host is
+ * proof the holder is gone and is available immediately, while age is the only thing that can be
+ * said about a holder on another host, a recycled pid, or a lock written by a version of XForge
+ * that recorded no owner at all.
+ */
+async function lockReclaimReason(lock: string, now: number): Promise<string | null> {
+  const owner = await readLockOwner(lock);
+  if (owner === null) {
+    /* Either a pre-owner-file lock, or the sub-millisecond window between another process's mkdir
+       and its owner write. Age is the only available signal, so it is the only one used — which
+       also means a lock being created right now is never mistaken for an abandoned one. */
+    const age = await stat(lock).then((info) => now - info.mtimeMs).catch(() => 0);
+    return age > LOCK_TTL_MS ? 'no-owner-expired' : null;
+  }
+  if (owner.hostname === hostname() && !processAlive(owner.pid)) return `process-gone:${owner.pid}`;
+  const startedAt = Date.parse(owner.startedAt);
+  if (Number.isFinite(startedAt) && now - startedAt > LOCK_TTL_MS) return `expired:${owner.pid}`;
+  return null;
+}
+
+interface HeldLock {
+  release: () => Promise<void>;
+  /** Set when this acquisition took a lock over from a holder that is provably gone. */
+  reclaimed: { path: string; reason: string } | null;
+}
+
+async function acquireLock(project: ProjectContext, shardKey: string | null): Promise<HeldLock> {
   const relative = `${LOCK_DIRECTORY}/${shardKey ?? GLOBAL_SHARD_KEY}.lock`;
   const lock = await safeResolve(project.root, relative);
   await mkdir(path.dirname(lock), { recursive: true });
-  for (let attempt = 0; attempt < 40; attempt += 1) {
+  const deadline = Date.now() + LOCK_TIMEOUT_MS;
+  let reclaimed: HeldLock['reclaimed'] = null;
+  for (;;) {
+    let acquired = false;
     try {
       await mkdir(lock);
-      return () => rm(lock, { recursive: true, force: true });
+      acquired = true;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-      await new Promise((resolve) => setTimeout(resolve, 25));
     }
+    if (acquired) {
+      heldLocks.add(lock);
+      registerExitCleanup();
+      const owner: LockOwner = { pid: process.pid, hostname: hostname(), startedAt: new Date().toISOString() };
+      /* A failed owner write must not fail the append: the lock still excludes, it just degrades to
+         age-based reclaim. */
+      await writeFile(path.join(lock, LOCK_OWNER_FILE), `${JSON.stringify(owner)}\n`, 'utf8').catch(() => undefined);
+      return {
+        reclaimed,
+        release: async () => { heldLocks.delete(lock); await rm(lock, { recursive: true, force: true }); },
+      };
+    }
+    const reason = await lockReclaimReason(lock, Date.now());
+    if (reason !== null) {
+      /* Racy by construction, and harmlessly so: if two waiters both decide to reclaim, one wins the
+         following mkdir and the other finds a fresh, live, un-reclaimable lock on its next pass. */
+      await rm(lock, { recursive: true, force: true });
+      reclaimed = { path: relative, reason };
+      continue;
+    }
+    if (Date.now() >= deadline) {
+      /* An XForgeError, not a bare Error: this used to surface as an unstructured crash with no
+         diagnostic and no next action, on a condition whose remedy is a single named path. */
+      throw new XForgeError(
+        diagnostic(
+          'XFORGE_AUDIT_LOCK_TIMEOUT',
+          `Timed out after ${LOCK_TIMEOUT_MS / 1000}s waiting for the audit append lock ${relative}, which is held by a live process.`,
+          relative,
+        ),
+        {
+          nextActions: [{
+            action: `Wait for the other xforge process to finish, or delete ${relative} if none is running`,
+            reason: `The lock is held by a process that is still alive on this host. XForge reclaims a lock automatically once its owner exits or the lock is older than ${LOCK_TTL_MS / 1000}s, so deleting it by hand is only needed when neither has happened.`,
+            type: 'maintenance',
+            command: ['rm', '-rf', relative],
+          }],
+          root: project.root,
+        },
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, LOCK_RETRY_MS));
   }
-  throw new Error('Timed out waiting for the audit append lock.');
 }
 
 function parseLines(source: string): AuditEvent[] {
@@ -88,6 +241,136 @@ export async function readChangeLogEvents(project: ProjectContext, changeId: str
 
 function eventHash(event: Omit<AuditEvent, 'hash'>): string {
   return sha256(stableStringify(event));
+}
+
+/* ------------------------------------------------------------------ optional HMAC anchor */
+
+/**
+ * An audit event as it is written to disk. `hmac` is present only when the project declares
+ * `audit.chain.hmacSecretEnv`; it is not part of `AuditEvent` because the default posture does not
+ * have it, and because every reader must keep working on a chain that does not carry it.
+ */
+type SignedAuditEvent = AuditEvent & { hmac?: string };
+
+/**
+ * Why an *optional* keyed anchor exists at all.
+ *
+ * `eventHash` is an unkeyed sha256 and `auditIndexDigest` is a self-consistency check, so both are
+ * computable by anyone holding the repository — which, for an agent-driven product, is everyone the
+ * chain is meant to attest. That makes the default chain corruption-evident (an edit that forgets to
+ * recompute a hash is caught) but not tamper-evident (an edit that recomputes it is not). XForge's
+ * default posture is honest-agent governance and that trade is deliberate: the chain's job is to
+ * make an accidental or careless rewrite impossible to hide, not to defend against the operator.
+ *
+ * Teams that need the stronger property declare `audit.chain.hmacSecretEnv` in the manifest, naming
+ * an environment variable — the same indirection `audit.remote.hmacSecretEnv` already uses for
+ * remote delivery, so a secret is never written into a tracked file. When it is set, every appended
+ * event and every committed index carries an HMAC over its unsigned body, and forging either
+ * requires the secret rather than just the repository.
+ *
+ * Every failure mode fails *closed*. A chain written with a secret and read without one is reported
+ * as unverifiable rather than silently downgraded to the unkeyed check, an unsigned event inside a
+ * signed chain is reported as missing its signature, and appending to a chain whose declared secret
+ * is absent from the environment refuses rather than writing an event nobody can later verify.
+ */
+interface ChainSigner {
+  /** The declared environment variable name, or null when the project declares no chain secret. */
+  env: string | null;
+  /** The secret read from that variable; null when declared but absent from this environment. */
+  secret: string | null;
+  configured: boolean;
+}
+
+/**
+ * `audit.chain` is read structurally rather than off the `Manifest` type: the declaration is opt-in
+ * and additive, and this file must keep compiling and behaving identically for every project that
+ * does not use it.
+ */
+function chainSigner(project: ProjectContext): ChainSigner {
+  const env = (project.manifest.audit as { chain?: { hmacSecretEnv?: string } } | undefined)?.chain?.hmacSecretEnv ?? null;
+  const value = env ? process.env[env] : undefined;
+  return { env, secret: value && value.length > 0 ? value : null, configured: env !== null };
+}
+
+function signBody(secret: string, body: unknown): string {
+  return createHmac('sha256', secret).update(stableStringify(body)).digest('hex');
+}
+
+function sameSignature(left: string, right: string): boolean {
+  if (left.length !== right.length) return false;
+  return timingSafeEqual(Buffer.from(left, 'utf8'), Buffer.from(right, 'utf8'));
+}
+
+/**
+ * - `ok`: signed and verified, or unsigned in a project that declares no chain secret.
+ * - `missing`: the project signs its chain but this record carries no signature.
+ * - `invalid`: the signature does not match the record.
+ * - `unverifiable`: the record is signed but this environment holds no secret to check it with.
+ */
+type SignatureVerdict = 'ok' | 'missing' | 'invalid' | 'unverifiable';
+
+function verdictFor(signer: ChainSigner, hmac: string | undefined, body: unknown): SignatureVerdict {
+  if (!signer.configured) return hmac === undefined ? 'ok' : 'unverifiable';
+  if (signer.secret === null) return 'unverifiable';
+  if (hmac === undefined) return 'missing';
+  return sameSignature(hmac, signBody(signer.secret, body)) ? 'ok' : 'invalid';
+}
+
+/** The signed content of an event: everything except the two fields derived from it. */
+function unsignedBody(event: AuditEvent): Omit<AuditEvent, 'hash'> {
+  const { hash: _hash, hmac: _hmac, ...body } = event as SignedAuditEvent;
+  return body;
+}
+
+function eventSignature(signer: ChainSigner, event: AuditEvent): SignatureVerdict {
+  return verdictFor(signer, (event as SignedAuditEvent).hmac, unsignedBody(event));
+}
+
+function signatureDiagnostic(verdict: SignatureVerdict, signer: ChainSigner, subject: string, eventId?: string): { code: string; message: string; eventId?: string } {
+  const where = eventId ? { eventId } : {};
+  if (verdict === 'invalid') return { code: 'XFORGE_AUDIT_HMAC_INVALID', message: `${subject} HMAC does not match its content.`, ...where };
+  if (verdict === 'missing') return { code: 'XFORGE_AUDIT_HMAC_MISSING', message: `${subject} carries no HMAC, but this project signs its audit chain (audit.chain.hmacSecretEnv: ${signer.env}).`, ...where };
+  return {
+    code: 'XFORGE_AUDIT_HMAC_UNVERIFIABLE',
+    message: signer.env
+      ? `${subject} is signed but ${signer.env} is not set in this environment, so the audit chain cannot be verified.`
+      : `${subject} is signed but this project declares no audit.chain.hmacSecretEnv, so the audit chain cannot be verified.`,
+    ...where,
+  };
+}
+
+/** Adds the chain hash and, when the project signs its chain, the HMAC over the same body. */
+function sealEvent(signer: ChainSigner, unsigned: Omit<AuditEvent, 'hash'>): SignedAuditEvent {
+  const hash = eventHash(unsigned);
+  if (!signer.configured) return { ...unsigned, hash };
+  if (signer.secret === null) {
+    throw new XForgeError(
+      diagnostic('XFORGE_AUDIT_CHAIN_SECRET_MISSING', `This project signs its audit chain, but ${signer.env} is not set in this environment.`, 'xforge/manifest.yaml'),
+      {
+        nextActions: [{
+          action: `Export ${signer.env} before running commands that record audit events`,
+          reason: 'Appending an unsigned event to a signed chain would leave a record that no later verification can accept, so the append refuses instead.',
+          type: 'maintenance',
+        }],
+      },
+    );
+  }
+  return { ...unsigned, hmac: signBody(signer.secret, unsigned), hash };
+}
+
+/**
+ * Local chain events an attestation may be read from.
+ *
+ * With no chain secret declared this is the identity function, which is what keeps the default
+ * posture unchanged. With one declared, an event whose HMAC does not verify — or cannot be verified
+ * here — is not evidence of anything, so it is dropped rather than believed. Callers deliberately
+ * keep the *unfiltered* list for their "is there any audit data at all?" tests: filtering an
+ * unverifiable chain down to nothing must never look like a project that never had a chain, because
+ * that would turn a fail-closed check into a fail-open one.
+ */
+function attestableEvents(signer: ChainSigner, events: AuditEvent[]): AuditEvent[] {
+  if (!signer.configured) return events;
+  return events.filter((event) => eventSignature(signer, event) === 'ok');
 }
 
 /* ------------------------------------------------------------------ anchors */
@@ -142,7 +425,9 @@ async function anchorFor(project: ProjectContext, shardKey: string | null, ancho
 }
 
 async function persistAnchor(project: ProjectContext, shardKey: string | null, record: AnchorRecord): Promise<void> {
-  const release = await acquireLock(project, `${shardKey ?? GLOBAL_SHARD_KEY}-anchors`);
+  /* A reclaim here is not recorded: this lock is taken while the shard lock is already held, so
+     writing an event would deadlock. The reclaim of the shard lock itself is the one that matters. */
+  const { release } = await acquireLock(project, `${shardKey ?? GLOBAL_SHARD_KEY}-anchors`);
   try {
     const anchors = await readAnchors(project);
     anchors[shardKey ?? GLOBAL_SHARD_KEY] = record;
@@ -200,14 +485,15 @@ export interface AuditVerification {
   shards?: Record<string, string | null>;
 }
 
-function verifyChain(events: AuditEvent[], base: string | null): { diagnostics: AuditVerification['diagnostics']; head: string | null } {
+function verifyChain(events: AuditEvent[], base: string | null, signer: ChainSigner): { diagnostics: AuditVerification['diagnostics']; head: string | null } {
   const diagnostics: AuditVerification['diagnostics'] = [];
   let previous = base;
   for (const event of events) {
-    const { hash, ...unsigned } = event;
-    if (hash !== eventHash(unsigned)) diagnostics.push({ code: 'XFORGE_AUDIT_HASH_INVALID', message: 'Audit event hash does not match its content.', eventId: event.eventId });
+    if (event.hash !== eventHash(unsignedBody(event))) diagnostics.push({ code: 'XFORGE_AUDIT_HASH_INVALID', message: 'Audit event hash does not match its content.', eventId: event.eventId });
     if (event.previousHash !== previous) diagnostics.push({ code: 'XFORGE_AUDIT_CHAIN_BROKEN', message: 'Audit previousHash does not match the chain head.', eventId: event.eventId });
-    previous = hash;
+    const verdict = eventSignature(signer, event);
+    if (verdict !== 'ok') diagnostics.push(signatureDiagnostic(verdict, signer, 'Audit event', event.eventId));
+    previous = event.hash;
   }
   return { diagnostics, head: previous };
 }
@@ -226,12 +512,13 @@ export async function verifyAudit(project: ProjectContext, changeId?: string): P
   try { keys = await shardKeys(project); }
   catch (error) { return { valid: false, head: null, eventCount: 0, remotePending: 0, diagnostics: [{ code: 'XFORGE_AUDIT_PARSE_FAILED', message: (error as Error).message }] }; }
   const anchors = await readAnchors(project);
+  const signer = chainSigner(project);
   const heads = new Map<string | null, string | null>();
   try {
     for (const key of [null, ...keys] as Array<string | null>) {
       const events = await readLog(project, key);
       const anchor = await anchorFor(project, key, anchors);
-      const result = verifyChain(events, anchor.base);
+      const result = verifyChain(events, anchor.base, signer);
       diagnostics.push(...result.diagnostics);
       shards[key ?? GLOBAL_SHARD_KEY] = result.head;
       heads.set(key, result.head);
@@ -279,12 +566,78 @@ export interface AuditIndexDocument {
   coverageGaps: string[];
   runtimeEventCount: number;
   events: AuditIndexEventSummary[];
+  /**
+   * Whether `events` is missing any *residual* (non-governance) workflow event this Change produced.
+   * Ordinary volume trips this — it says nothing about whether the index can still answer a
+   * governance question, which is what `governanceComplete` is for.
+   */
   eventsTruncated: boolean;
+  /**
+   * Whether every governance-bearing event this index ever saw is still in `events`. True for any
+   * index built by v3 or later, because those event types are exempt from `INDEX_EVENT_LIMIT`; false
+   * only when a v2 index that had already dropped events (and could have dropped governance ones,
+   * since v2 evicted the *newest*) was folded in and the local chain could not be shown to cover it.
+   * Absent on v2 documents — read it through `indexGovernanceComplete`, never directly.
+   */
+  governanceComplete?: boolean;
   /** Mirrors of `chain.*` kept for readers of the v1 index layout. */
   chainHead: string | null;
   chainValid: boolean;
+  /** HMAC over the document minus `digest` and this field; present only when the chain is signed. */
+  hmac?: string;
   /** sha256 over the whole document minus this field; a hand-edited index fails to match. */
   digest: string;
+}
+
+/**
+ * The event types the attestation readers in this file reason from, and therefore the ones the
+ * committed index may never evict.
+ *
+ * The v2 index kept the *oldest* `INDEX_EVENT_LIMIT` workflow events, and governance events happen
+ * at Stage boundaries — i.e. late — while `runGate` emits `gate.before`/`gate.after` per gate run
+ * (doubled when remote delivery is inline). A Change with a handful of work packages crosses 1000
+ * events in a few dozen edit-then-check cycles, at which point the index silently stopped recording
+ * exactly the events archive depends on. The consequence only ever appeared on a fresh clone or in
+ * CI, where the gitignored local chain is absent and the committed index is the sole source: the
+ * Approval receipt read as unverified and archive became permanently impossible while the laptop
+ * that ran the flow kept working. Exempting these types is what makes the limit a cap on *noise*.
+ *
+ * Every literal here is one the readers below actually consult — `approvalVerifiedInChain`,
+ * `readAcknowledgementAttestations` (via `ACKNOWLEDGEMENT_EVENT_TYPES`) and
+ * `readTransitionAttestations` (via `TRANSITION_EVENT_TYPE`). Adding a reader that reasons from a
+ * new event type means adding that type here, or it will silently start losing its evidence at
+ * volume; the set is assembled from those same constants so the two cannot drift.
+ */
+const GOVERNANCE_EVENT_TYPES = new Set<string>();
+
+/** Unbounded by design: a Change produces a handful of these, not thousands. */
+function isGovernanceEvent(eventType: string): boolean {
+  return GOVERNANCE_EVENT_TYPES.has(eventType);
+}
+
+/** v2 documents predate the flag; their `eventsTruncated` carried exactly this meaning. */
+function indexGovernanceComplete(document: AuditIndexDocument): boolean {
+  return document.governanceComplete ?? !document.eventsTruncated;
+}
+
+/**
+ * Applies `INDEX_EVENT_LIMIT` to the residual events only, evicting the oldest first.
+ *
+ * `document.events` is in chain order on a rebuild and in timestamp order after a merge, so the
+ * front of the residual really is its oldest end. Governance events keep their positions, so the
+ * retained list stays a chronologically ordered subset either way.
+ */
+function enforceEventLimit(document: Omit<AuditIndexDocument, 'digest'>): void {
+  let residual = 0;
+  for (const event of document.events) if (!isGovernanceEvent(event.eventType)) residual += 1;
+  if (residual <= INDEX_EVENT_LIMIT) return;
+  let evictable = residual - INDEX_EVENT_LIMIT;
+  document.events = document.events.filter((event) => {
+    if (evictable === 0 || isGovernanceEvent(event.eventType)) return true;
+    evictable -= 1;
+    return false;
+  });
+  document.eventsTruncated = true;
 }
 
 export function auditIndexDigest(document: Omit<AuditIndexDocument, 'digest'> & { digest?: string }): string {
@@ -317,7 +670,10 @@ async function indexPathFor(project: ProjectContext, changeId: string): Promise<
 export interface LoadedAuditIndex {
   path: string;
   document: AuditIndexDocument;
+  /** True only when the document is both self-consistent and (when signed) correctly signed. */
   digestValid: boolean;
+  /** `ok` for every project that does not declare `audit.chain.hmacSecretEnv`. */
+  signature: SignatureVerdict;
 }
 
 /** Reads the committed per-Change index. Returns null when the Change has no index on disk. */
@@ -328,8 +684,13 @@ export async function readChangeAuditIndex(project: ProjectContext, changeId: st
   try { document = JSON.parse(await readFile(await safeResolve(project.root, relative), 'utf8')) as AuditIndexDocument; }
   catch { return null; }
   if (document?.kind !== 'AuditIndex') return null;
-  const digestValid = typeof document.digest === 'string' && document.digest === auditIndexDigest(document) && document.change === changeId;
-  return { path: relative, document, digestValid };
+  const { digest: _digest, hmac, ...body } = document;
+  const signature = verdictFor(chainSigner(project), hmac, body);
+  const selfConsistent = typeof document.digest === 'string' && document.digest === auditIndexDigest(document) && document.change === changeId;
+  /* Fails closed on every signature verdict other than `ok`, including "signed but this environment
+     holds no secret": a reader that cannot check the signature must not fall back to the unkeyed
+     digest, or declaring a secret would buy nothing. */
+  return { path: relative, document, digestValid: selfConsistent && signature === 'ok', signature };
 }
 
 function emptyIndex(changeId: string, anchor: AnchorRecord, remoteConfigured: boolean): Omit<AuditIndexDocument, 'digest'> {
@@ -339,6 +700,7 @@ function emptyIndex(changeId: string, anchor: AnchorRecord, remoteConfigured: bo
     chain: { anchor: anchor.base, head: anchor.base, eventCount: anchor.prunedCount, valid: true, prunedCount: anchor.prunedCount, prunedThrough: anchor.prunedThrough },
     delivery: { remoteConfigured, pending: 0, delivered: 0 },
     eventTypes: { ...(anchor.prunedEventTypes ?? {}) }, coverageGaps: [], runtimeEventCount: 0, events: [], eventsTruncated: false,
+    governanceComplete: true,
     chainHead: anchor.base, chainValid: true,
   };
 }
@@ -356,17 +718,33 @@ function applyEvent(document: Omit<AuditIndexDocument, 'digest'>, event: AuditEv
   }
   for (const gap of event.coverage.gaps) if (!document.coverageGaps.includes(gap)) document.coverageGaps.push(gap);
   if (event.plane === 'runtime') document.runtimeEventCount += 1;
-  else if (document.events.length < INDEX_EVENT_LIMIT) document.events.push(summarize(event));
-  else document.eventsTruncated = true;
+  /* Every workflow event is retained on the way in. The limit is applied once, in `writeIndex`, and
+     only to the residual — so a governance event can never be refused entry because of gate noise,
+     and a rebuild costs one pass over the chain rather than one eviction scan per event. */
+  else document.events.push(summarize(event));
 }
 
-async function writeIndex(project: ProjectContext, changeId: string, document: Omit<AuditIndexDocument, 'digest'>): Promise<void> {
+async function writeIndex(project: ProjectContext, changeId: string, document: Omit<AuditIndexDocument, 'digest'>): Promise<AuditIndexDocument | null> {
   const relative = await indexPathFor(project, changeId);
-  if (!relative) return;
+  if (!relative) return null;
+  const signer = chainSigner(project);
+  /* A project that signs its index must never have that index rewritten by an environment that
+     cannot sign it: the replacement would fail verification everywhere, and because an unverifiable
+     committed index is deliberately not merged, the rewrite would also drop the history it held.
+     Appending refuses outright (`sealEvent`); a refresh simply leaves the committed file alone. */
+  if (signer.configured && signer.secret === null) return null;
   document.generatedAt = new Date().toISOString();
   document.coverageGaps.sort();
-  const complete: AuditIndexDocument = { ...document, digest: auditIndexDigest(document) };
+  /* The one place the retained-event limit is enforced, so no builder can forget it and no builder
+     has to pay for it per event. */
+  enforceEventLimit(document);
+  /* Any `hmac` carried over from the document that was read is stale by construction — the body it
+     signed has just changed — so it is dropped and recomputed rather than trusted. */
+  const { hmac: _stale, ...body } = document;
+  const signed = signer.secret === null ? body : { ...body, hmac: signBody(signer.secret, body) };
+  const complete: AuditIndexDocument = { ...signed, digest: auditIndexDigest(signed) };
   await atomicWrite(project.root, relative, `${JSON.stringify(complete, null, 2)}\n`);
+  return complete;
 }
 
 /**
@@ -383,6 +761,19 @@ function mergeCommittedIndex(
   fresh: Omit<AuditIndexDocument, 'digest'>,
   committed: AuditIndexDocument,
 ): Omit<AuditIndexDocument, 'digest'> {
+  /*
+   * Whether this rebuild demonstrably contains everything the committed document did, captured
+   * before the counters below are merged into `fresh`. It is what lets an index that a *v2* build
+   * truncated the wrong way heal: `refreshChangeAuditIndex` replays the entire local chain, so when
+   * neither side reports a pruned prefix and every committed summary reappears in the replay, the
+   * rebuilt document is a superset and the old truncation says nothing about it any more. When the
+   * local chain cannot show that — a fresh clone, a pruned prefix — the flag is inherited, because
+   * whatever v2 dropped is genuinely unrecoverable and pretending otherwise would be worse.
+   */
+  const freshIds = new Set(fresh.events.map((item) => item.eventId));
+  const replayedCommitted = fresh.chain.prunedCount === 0
+    && committed.chain.prunedCount === 0
+    && committed.events.every((item) => freshIds.has(item.eventId));
   for (const [type, summary] of Object.entries(committed.eventTypes)) {
     const local = fresh.eventTypes[type];
     /* Counts are informational; presence is what archive tests. Keep whichever side saw more, and
@@ -413,8 +804,13 @@ function mergeCommittedIndex(
       merged.push({ ...item });
     }
     merged.sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp));
-    fresh.eventsTruncated = fresh.eventsTruncated || committed.eventsTruncated || merged.length > INDEX_EVENT_LIMIT;
-    fresh.events = merged.slice(0, INDEX_EVENT_LIMIT);
+    fresh.events = merged;
+    if (!replayedCommitted) {
+      fresh.eventsTruncated = fresh.eventsTruncated || committed.eventsTruncated;
+      if (!indexGovernanceComplete(committed)) fresh.governanceComplete = false;
+    }
+    /* The limit is applied to the whole union on the way out, so what survives is chosen once from
+       everything known — never "the first 1000 by timestamp", which is what dropped the Approval. */
     fresh.chain.head ??= committed.chain.head;
     fresh.chainHead ??= committed.chainHead;
     fresh.delivery.pending = Math.max(fresh.delivery.pending, committed.delivery.pending);
@@ -432,7 +828,7 @@ export async function refreshChangeAuditIndex(project: ProjectContext, changeId:
   const shard = shardKey === null ? [] : await readLog(project, shardKey);
   let document = emptyIndex(changeId, anchor, Boolean(project.manifest.audit?.remote));
   for (const event of [...legacy, ...shard]) applyEvent(document, event);
-  const verification = verifyChain(shard, anchor.base);
+  const verification = verifyChain(shard, anchor.base, chainSigner(project));
   const valid = verification.diagnostics.length === 0;
   document.chain.valid = valid;
   document.chainValid = valid;
@@ -441,8 +837,8 @@ export async function refreshChangeAuditIndex(project: ProjectContext, changeId:
      inject event types, and readChangeAuditEvents already reports it as untrusted. */
   const committed = await readChangeAuditIndex(project, changeId);
   if (committed?.digestValid) document = mergeCommittedIndex(document, committed.document);
-  await writeIndex(project, changeId, document);
-  return { ...document, digest: auditIndexDigest(document) };
+  /* The written document is the return value: it is the one carrying the signature, when signed. */
+  return await writeIndex(project, changeId, document) ?? { ...document, digest: auditIndexDigest(document) };
 }
 
 /** O(1) index maintenance for high-volume runtime events; falls back to a rebuild when out of sync. */
@@ -482,13 +878,16 @@ export async function approvalVerifiedInChain(
   receiptDigest: string,
 ): Promise<boolean> {
   const expected = sha256(stableStringify({ policy: policyId, receipt: receiptDigest }));
-  const local = await readChangeLogEvents(project, changeId);
-  if (local.some((event) => event.eventType === 'approval.decided' && event.inputDigest === expected)) return true;
+  const local = attestableEvents(chainSigner(project), await readChangeLogEvents(project, changeId));
+  if (local.some((event) => event.eventType === APPROVAL_EVENT_TYPE && event.inputDigest === expected)) return true;
   /* Fresh clone / CI: the chain file is gitignored, the committed index is not. */
   const committed = await readChangeAuditIndex(project, changeId);
   if (!committed?.digestValid) return false;
-  return committed.document.events.some((event) => event.eventType === 'approval.decided' && event.inputDigest === expected);
+  return committed.document.events.some((event) => event.eventType === APPROVAL_EVENT_TYPE && event.inputDigest === expected);
 }
+
+/** The lifecycle event `xforge approve` records; nothing else attests an Approval receipt. */
+const APPROVAL_EVENT_TYPE = 'approval.decided';
 
 /** The lifecycle events `xforge work-package acknowledge` records; nothing else attests a receipt. */
 const ACKNOWLEDGEMENT_EVENT_TYPES = new Set(['work-package.integrated', 'work-package.reviewed']);
@@ -545,7 +944,9 @@ export async function readAcknowledgementAttestations(project: ProjectContext, c
   /* Fresh clone / CI: the chain file is gitignored, the committed index is not. */
   const committed = await readChangeAuditIndex(project, changeId);
   const digests = new Set<string>();
-  for (const event of local) if (ACKNOWLEDGEMENT_EVENT_TYPES.has(event.eventType)) digests.add(event.inputDigest);
+  /* `noAuditData` below is computed from the *unfiltered* list on purpose: a signed chain that this
+     environment cannot verify must not filter down to "no audit data" and unlock the escape. */
+  for (const event of attestableEvents(chainSigner(project), local)) if (ACKNOWLEDGEMENT_EVENT_TYPES.has(event.eventType)) digests.add(event.inputDigest);
   if (committed?.digestValid) {
     for (const event of committed.document.events) if (ACKNOWLEDGEMENT_EVENT_TYPES.has(event.eventType)) digests.add(event.inputDigest);
   }
@@ -558,6 +959,14 @@ export async function readAcknowledgementAttestations(project: ProjectContext, c
 
 /** The lifecycle event `xforge transition` records after a receipt is on disk; nothing else attests one. */
 const TRANSITION_EVENT_TYPE = 'stage.entered';
+
+/*
+ * The one place the governance-bearing set is assembled, from the very constants the three readers
+ * in this section match on. Declared after them rather than beside `GOVERNANCE_EVENT_TYPES` so it
+ * cannot quietly list a type no reader uses, or omit one every reader depends on; the functions that
+ * consult the set all run long after this statement.
+ */
+for (const type of [APPROVAL_EVENT_TYPE, ...ACKNOWLEDGEMENT_EVENT_TYPES, TRANSITION_EVENT_TYPE]) GOVERNANCE_EVENT_TYPES.add(type);
 
 /**
  * The `inputDigest` a `stage.entered` audit event must carry to attest a Transition receipt.
@@ -603,9 +1012,15 @@ export interface TransitionAttestations {
  * - the committed index must exist and pass its digest check — `xforge/.audit/**` is gitignored, so
  *   on any machine that did not run the flow the index is the only surviving record, and a missing
  *   or hand-edited one means this machine simply cannot see what happened elsewhere;
- * - it must not be `eventsTruncated`, and neither it nor the local shard anchor may report a pruned
- *   prefix — past either boundary an attestation can be gone for reasons that have nothing to do
- *   with a crash.
+ * - it must report its governance events complete, and neither it nor the local shard anchor may
+ *   report a pruned prefix — past either boundary an attestation can be gone for reasons that have
+ *   nothing to do with a crash.
+ *
+ * That first test used to be `!eventsTruncated`, which made the whole scan disable itself on any
+ * Change that simply produced more than `INDEX_EVENT_LIMIT` workflow events — i.e. precisely the
+ * long, many-cycle Changes most likely to have been interrupted. Since v3 the index never evicts a
+ * `stage.entered`, so the question "could an attestation be missing for a reason other than a crash?"
+ * is answered by `governanceComplete` and no longer by the volume of gate noise.
  *
  * `writtenHere` is the second, independent test, and it is what a "was the chain pruned?" check
  * cannot do: a Change cloned from a colleague has a perfectly complete-looking local chain of the
@@ -620,16 +1035,19 @@ export async function readTransitionAttestations(project: ProjectContext, change
   const anchor = await anchorFor(project, shardKeyFor(changeId));
   const digests = new Set<string>();
   const localHashes = new Set<string>();
+  const attestable = new Set(attestableEvents(chainSigner(project), local).map((event) => event.eventId));
   for (const event of local) {
+    /* `writtenHere` asks where a receipt was written, not whether to believe it, and answering "not
+       here" only ever suppresses an accusation — so it reads every local hash, signed or not. */
     localHashes.add(event.hash);
-    if (event.eventType === TRANSITION_EVENT_TYPE) digests.add(event.inputDigest);
+    if (event.eventType === TRANSITION_EVENT_TYPE && attestable.has(event.eventId)) digests.add(event.inputDigest);
   }
   if (committed?.digestValid) {
     for (const event of committed.document.events) if (event.eventType === TRANSITION_EVENT_TYPE) digests.add(event.inputDigest);
   }
   const complete = Boolean(
     committed?.digestValid
-    && !committed.document.eventsTruncated
+    && indexGovernanceComplete(committed.document)
     && committed.document.chain.prunedCount === 0
     && anchor.prunedCount === 0,
   );
@@ -670,8 +1088,13 @@ export interface ChangeAuditFacts {
 export async function readChangeAuditEvents(project: ProjectContext, changeId: string): Promise<ChangeAuditFacts> {
   const diagnostics: ChangeAuditFacts['diagnostics'] = [];
   const remoteConfigured = Boolean(project.manifest.audit?.remote);
+  const signer = chainSigner(project);
   const loaded = await readChangeAuditIndex(project, changeId);
-  if (loaded && !loaded.digestValid) {
+  if (loaded && loaded.signature !== 'ok') {
+    /* A signature failure is a different accusation from a hand-edited document — "signed by a key
+       this environment cannot check" is usually a missing env var, not tampering — so it says so. */
+    diagnostics.push(signatureDiagnostic(loaded.signature, signer, `Committed audit index ${loaded.path}`));
+  } else if (loaded && !loaded.digestValid) {
     diagnostics.push({ code: 'XFORGE_AUDIT_INDEX_TAMPERED', message: `Committed audit index digest does not match its content: ${loaded.path}` });
   }
   const index = loaded?.digestValid ? loaded.document : null;
@@ -692,14 +1115,17 @@ export async function readChangeAuditEvents(project: ProjectContext, changeId: s
   const anchor = await anchorFor(project, shardKey);
   /* Legacy entries sit inside the interleaved global chain, so only their content hash is checked
      here; their linkage is covered by verifyAudit over the whole global chain. */
+  const legacyDiagnostics: ChangeAuditFacts['diagnostics'] = [];
   for (const event of legacy) {
-    const { hash, ...unsigned } = event;
-    if (hash !== eventHash(unsigned)) diagnostics.push({ code: 'XFORGE_AUDIT_HASH_INVALID', message: 'Audit event hash does not match its content.', eventId: event.eventId });
+    if (event.hash !== eventHash(unsignedBody(event))) legacyDiagnostics.push({ code: 'XFORGE_AUDIT_HASH_INVALID', message: 'Audit event hash does not match its content.', eventId: event.eventId });
+    const verdict = eventSignature(signer, event);
+    if (verdict !== 'ok') legacyDiagnostics.push(signatureDiagnostic(verdict, signer, 'Audit event', event.eventId));
   }
-  const legacyInvalid = diagnostics.some((item) => item.code === 'XFORGE_AUDIT_HASH_INVALID');
+  diagnostics.push(...legacyDiagnostics);
+  const legacyInvalid = legacyDiagnostics.length > 0;
   const verification = shardKey === null
     ? { diagnostics: [] as AuditVerification['diagnostics'], head: legacy.at(-1)?.hash ?? null }
-    : verifyChain(shard, anchor.base);
+    : verifyChain(shard, anchor.base, signer);
   diagnostics.push(...verification.diagnostics);
   const logValid = !parseFailed && !legacyInvalid && verification.diagnostics.length === 0;
   const logTypes = [...new Set(events.map((event) => event.eventType))];
@@ -752,9 +1178,35 @@ export async function readChangeAuditEvents(project: ProjectContext, changeId: s
 
 /* ------------------------------------------------------------------ append */
 
+/**
+ * The event that records taking an abandoned lock over.
+ *
+ * It is built here rather than routed through `recordAudit` because it is written *while the lock is
+ * held*: calling `recordAudit` would re-enter `acquireLock` on the same shard and deadlock. Writing
+ * it onto the very chain the lock protects is also the right place for it — the reclaim is a fact
+ * about that chain's history, and it lands immediately before the event whose append discovered it.
+ * `deliveryState: 'not-configured'` keeps it from creating remote-delivery debt of its own.
+ */
+function lockReclaimBody(project: ProjectContext, changeId: string | null, reclaimed: { path: string; reason: string }): Omit<AuditEvent, 'previousHash' | 'hash'> {
+  return {
+    apiVersion: 'xforge.dev/v1alpha2', kind: 'AuditEvent', eventId: randomUUID(), eventType: 'audit.lock.reclaimed',
+    timestamp: new Date().toISOString(), plane: 'workflow', platform: 'xforge', surface: 'local',
+    sessionId: 'unknown', turnId: 'unknown', toolCallId: 'unknown', correlationId: randomUUID(),
+    actor: { id: 'xforge-audit', provider: 'xforge', role: 'system', type: 'system' },
+    change: changeId, flow: null, stage: null, workPackage: null,
+    stateRevision: 'unknown', gitBase: 'unknown', gitHead: 'unknown',
+    refs: { rules: [], policies: [], gates: [] },
+    decision: 'reclaimed', reason: reclaimed.reason, outcome: 'succeeded', durationMs: null,
+    inputDigest: sha256(stableStringify({ lock: reclaimed.path })), outputDigest: sha256(reclaimed.reason),
+    redaction: project.manifest.audit?.redaction ?? 'metadata-only', coverage: { observed: true, gaps: [] },
+    deliveryState: 'not-configured',
+  };
+}
+
 async function appendEvent(project: ProjectContext, changeId: string | null, event: Omit<AuditEvent, 'previousHash' | 'hash'>): Promise<AuditEvent> {
   const shardKey = shardKeyFor(changeId);
-  const release = await acquireLock(project, shardKey);
+  const signer = chainSigner(project);
+  const { release, reclaimed } = await acquireLock(project, shardKey);
   try {
     const relative = shardRelative(shardKey);
     const absolute = await safeResolve(project.root, relative);
@@ -763,13 +1215,20 @@ async function appendEvent(project: ProjectContext, changeId: string | null, eve
     const created = shardKey !== null && !(shardKey in anchors) && !await exists(absolute);
     const anchor = await anchorFor(project, shardKey, anchors);
     const tail = await chainHead(absolute);
-    const unsigned = { ...event, previousHash: tail.head ?? anchor.base };
-    const complete: AuditEvent = { ...unsigned, hash: eventHash(unsigned) };
-    const line = `${JSON.stringify(complete)}\n`;
-    await appendFile(absolute, line, { encoding: 'utf8', flag: 'a' });
-    tailCache.set(absolute, { size: tail.size + Buffer.byteLength(line), head: complete.hash });
+    const bodies = reclaimed === null ? [event] : [lockReclaimBody(project, changeId, reclaimed), event];
+    let previous = tail.head ?? anchor.base;
+    let lines = '';
+    let last!: AuditEvent;
+    for (const body of bodies) {
+      last = sealEvent(signer, { ...body, previousHash: previous });
+      lines += `${JSON.stringify(last)}\n`;
+      previous = last.hash;
+    }
+    await appendFile(absolute, lines, { encoding: 'utf8', flag: 'a' });
+    tailCache.set(absolute, { size: tail.size + Buffer.byteLength(lines), head: previous });
     if (created) await persistAnchor(project, shardKey, anchor);
-    return complete;
+    /* The caller's event is always the last one written, so the returned head is still its own. */
+    return last;
   } finally {
     await release();
   }
@@ -913,7 +1372,9 @@ export async function pruneExpiredAuditEvents(project: ProjectContext, options: 
   const cutoff = (options.now ?? Date.now()) - days * 86_400_000;
   const pruned: Array<string | null> = [];
   for (const key of [null, ...await shardKeys(project)] as Array<string | null>) {
-    const release = await acquireLock(project, key);
+    /* Pruning rewrites the shard in place rather than appending, so a reclaim has nowhere to be
+       recorded that would not itself be a rewrite; the append path records it instead. */
+    const { release } = await acquireLock(project, key);
     try {
       const events = await readLog(project, key);
       let boundary = 0;

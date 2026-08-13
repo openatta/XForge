@@ -270,6 +270,31 @@ describe('projection lifecycle v2', () => {
     expect(await exists(path.join(root, 'opencode.json'))).toBe(false);
   });
 
+  // The same reduction, on a file the project committed itself: identical contents, opposite
+  // outcome. Deleting it used to be inferred from the recorded seed, which the adapter sets on
+  // every descriptor — so this exact file (OpenCode's documented minimal config, and byte for byte
+  // what the seed would have written) was destroyed by `uninstall` with no conflict and no backup.
+  // Provenance now comes from the record, not from the contents. See install-ownership-safety.test.ts
+  // for the rest of the class, including the empty-placeholder `.claude/settings.json` variant.
+  it('uninstall keeps a shared file the project already had, even when nothing but its own contents remain', async () => {
+    const root = await fixture();
+    await write(root, 'xforge/scaffold/policies/no-force-push.yaml', [
+      'apiVersion: xforge.dev/v1alpha2', 'kind: PermissionPolicy', 'metadata:', '  name: no-force-push', '  version: 1',
+      'spec:', '  capability: shell', '  effect: deny', '  match:', '    commands:', '      - git push --force *',
+      '  reason: Force pushes are forbidden.', '',
+    ].join('\n'));
+    await updateYaml(root, 'xforge/manifest.yaml', (manifest) => { manifest.scaffold.policies.push('no-force-push'); });
+    const minimal = { $schema: 'https://opencode.ai/config.json' };
+    await write(root, 'opencode.json', `${JSON.stringify(minimal, null, 2)}\n`);
+    expect((await runCli(root, ['install'])).code).toBe(0);
+    expect((await ownership(root)).targets.opencode.files['opencode.json'].fragment.createdByXForge).toBe(false);
+
+    const result = await runCli(root, ['uninstall']);
+    expect(result.code, JSON.stringify(result.json.diagnostics, null, 2)).toBe(0);
+    expect(await exists(path.join(root, 'opencode.json'))).toBe(true);
+    expect(JSON.parse(await readFile(path.join(root, 'opencode.json'), 'utf8'))).toEqual(minimal);
+  });
+
   // P1-2: an unsupported Hook event used to be dropped by a bare `continue`, with the declared
   // capability matrix never consulted by anything.
   it('reports a Hook event a target cannot deliver instead of dropping it silently', async () => {

@@ -13,10 +13,17 @@ import { fileURLToPath } from 'node:url';
  * Rebuilding it the honest way — running a real `xforge install` over a staged copy of the patched
  * payload — regenerates the integrity anchor and recomputes every per-resource digest.
  *
- * Invoke this as `npm run relock`, not directly: the payload edit that made a relock necessary also
- * makes `scaffold/files.sha256` stale, and the build's own copy-scaffold step verifies that digest
- * before this script would ever run. The npm script refreshes files.sha256 first, then builds, then
- * relocks; `npm run build && node dev-relock.mjs` by hand fails on that ordering.
+ * Invoke this as `npm run relock`, not directly. Two ordering constraints sandwich this script and
+ * neither is obvious:
+ *   - Before: the payload edit that made a relock necessary also makes `scaffold/files.sha256`
+ *     stale, and the build's own copy-scaffold step verifies that digest, so files.sha256 has to be
+ *     regenerated before the build this script depends on.
+ *   - After: this script rewrites `scaffold/payload/xforge/lock.yaml` *after* that build already
+ *     copied the old lock into `xforge/scaffold/`, which is the copy shipped in the package and
+ *     read by `loadBundledScaffold`. Without a second build, every `xforge init` seeds a project
+ *     whose lock names the previous integrity and fails `XFORGE_LOCK_CLI_MISMATCH` immediately.
+ *     The second build is safe and idempotent: `dist/` does not depend on the payload, so the
+ *     integrity this script just pinned does not move.
  */
 
 /*

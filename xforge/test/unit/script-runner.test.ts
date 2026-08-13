@@ -117,6 +117,28 @@ describe('project Script runner', () => {
     expect((caught as XForgeError).diagnostics[0]?.message).toBeTruthy();
   });
 
+  /*
+   * The Gate runner redacted its captured output and this one did not, for no reason anybody had
+   * stated: both spawn a project-defined subprocess with a filtered-but-populated environment, and
+   * both hand the captured text back to a caller. Today only `runScriptHooks` reads this result, and
+   * only the parsed decision out of it — nothing in the type says so, so the first consumer that
+   * logs or records `stdout` would have shipped whatever a Script echoed. `redact` now lives in
+   * core/redaction.ts and applies to both runners.
+   */
+  it('redacts credential-shaped output from a project Script, as the Gate runner does', async () => {
+    const root = await fixture();
+    await registerNodeScript(root, 'leaky', [
+      "process.stdout.write('API_KEY=supersecretvalue\\n');",
+      "process.stderr.write('token=another-secret-value\\n');",
+    ].join('\n'));
+    const result = await runProjectScript(await loadProject(root), 'leaky');
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('API_KEY=[REDACTED]');
+    expect(result.stdout).not.toContain('supersecretvalue');
+    expect(result.stderr).toContain('token=[REDACTED]');
+    expect(result.stderr).not.toContain('another-secret-value');
+  });
+
   it('only forwards the fixed env allowlist to the child, never an arbitrary parent-process variable', async () => {
     const root = await fixture();
     await registerNodeScript(root, 'env-probe', [

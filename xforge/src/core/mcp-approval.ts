@@ -10,6 +10,14 @@ import { safeResolve } from './path-safety.js';
 const CONNECT_ATTEMPTS = 3;
 const CONNECT_BACKOFF_MS = 1000;
 
+/**
+ * Ceiling on a tool result before it is parsed at all. A decision is a few hundred bytes; anything
+ * past this is a malfunctioning or hostile provider, and `JSON.parse` on an unbounded attacker-sized
+ * string is the wrong place to find that out. The limit is generous enough that no honest provider
+ * can hit it by accident.
+ */
+const MAX_TOOL_RESULT_BYTES = 256 * 1024;
+
 export interface McpApprovalSubmission {
   change: string;
   flow: string;
@@ -83,19 +91,92 @@ async function buildTransport(project: ProjectContext, server: McpServerResource
   return new StreamableHTTPClientTransport(new URL(server.spec.url!), { requestInit: { headers: { authorization: `Bearer ${token}` } } });
 }
 
-async function callToolJson<T>(client: Client, name: string, args: Record<string, unknown>, timeoutMs: number): Promise<T> {
+async function callToolJson(client: Client, name: string, args: Record<string, unknown>, timeoutMs: number): Promise<unknown> {
   const result = await client.callTool({ name, arguments: args }, undefined, { timeout: timeoutMs });
   if (result.isError) throw new Error(`MCP tool ${name} returned an error result.`);
   const text = (result.content as Array<{ type: string; text?: string }> | undefined)?.find((item) => item.type === 'text')?.text;
   if (!text) throw new Error(`MCP tool ${name} returned no text content to parse.`);
-  return JSON.parse(text) as T;
+  if (Buffer.byteLength(text, 'utf8') > MAX_TOOL_RESULT_BYTES) {
+    throw new Error(`MCP tool ${name} returned ${Buffer.byteLength(text, 'utf8')} bytes, over the ${MAX_TOOL_RESULT_BYTES}-byte limit for a tool result.`);
+  }
+  /* Deliberately not cast to a caller-supplied T. This is unvalidated third-party input, and a cast
+     would let it be trusted field by field; `pollApproval` narrows it explicitly instead. */
+  return JSON.parse(text) as unknown;
+}
+
+/** A malformed provider response, reported as a provider problem rather than an internal error. */
+function invalidResponse(detail: string): XForgeError {
+  return new XForgeError(diagnostic(
+    'XFORGE_APPROVAL_MCP_RESPONSE_INVALID',
+    `MCP approval provider returned a poll_approval result XForge cannot act on: ${detail}.`,
+  ), {
+    nextActions: [{
+      action: 'resolve-approval-provider', actor: 'human',
+      reason: 'The provider answered, but its poll_approval result does not match the shape XForge requires: either {"status":"pending"}, or {"status":"decided","decision":"approve"|"reject","approver":{"id":"...","role":"..."},"reason":"..."} with an optional RFC 3339 "expiresAt". Nothing was recorded. This is a provider implementation problem, not a transient failure — fix the provider (or the adapter in front of it) rather than retrying.',
+      command: ['xforge', 'doctor'],
+    }],
+  });
+}
+
+/** The shape approval-receipt.schema.json's `date-time` format accepts, checked before ingestion. */
+const RFC_3339_DATE_TIME = /^\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[Zz]|[+-]\d{2}:\d{2})$/;
+
+function requiredString(value: unknown, field: string): string {
+  if (typeof value !== 'string' || value.trim().length === 0) throw invalidResponse(`${field} must be a non-empty string`);
+  return value;
+}
+
+/**
+ * Narrows an unvalidated `poll_approval` body to `McpApprovalPoll`, or throws.
+ *
+ * Everything downstream of this function treats the result as a decision: `commands/approve.ts`
+ * copies the approver, reason, and expiry straight onto a receipt it then writes and records in the
+ * audit chain. So this is the only place that gets to decide the provider said something coherent,
+ * and it is deliberately strict rather than forgiving — a field XForge cannot understand is a
+ * provider that has not been integrated yet, and guessing at its intent would mean recording an
+ * approval nobody made. Two failures this closes specifically: a body with no `approver` used to
+ * dereference to a TypeError and surface as XFORGE_INTERNAL_ERROR, and an unrecognised `status`
+ * used to fall through the pending branch and be treated as a decision.
+ *
+ * `expiresAt` is only checked for shape when present; the absent case is filled in by the caller,
+ * which owns the default lifetime.
+ */
+function narrowPoll(body: unknown): McpApprovalPoll {
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) throw invalidResponse('the result is not a JSON object');
+  const value = body as Record<string, unknown>;
+  if (value.status === 'pending') return { status: 'pending' };
+  if (value.status !== 'decided') throw invalidResponse(`status must be "pending" or "decided", not ${JSON.stringify(value.status)}`);
+  if (value.decision !== 'approve' && value.decision !== 'reject') {
+    throw invalidResponse(`decision must be "approve" or "reject", not ${JSON.stringify(value.decision)}`);
+  }
+  if (typeof value.approver !== 'object' || value.approver === null || Array.isArray(value.approver)) {
+    throw invalidResponse('a decided result must carry an approver object');
+  }
+  const approver = value.approver as Record<string, unknown>;
+  const id = requiredString(approver.id, 'approver.id');
+  const role = requiredString(approver.role, 'approver.role');
+  /* Every one of these lands on a receipt whose own schema requires it non-empty, so accepting a
+     blank here would only defer the failure to the next read of a receipt already on disk. */
+  const reason = requiredString(value.reason, 'reason');
+  if (value.expiresAt !== undefined) {
+    const expiresAt = requiredString(value.expiresAt, 'expiresAt');
+    /* Both checks matter: the pattern is what approval-receipt.schema.json's date-time format will
+       demand of the receipt this value is copied onto, and Date.parse is what control-plane.ts
+       actually compares against `now` when deciding whether the approval is still live. */
+    if (!RFC_3339_DATE_TIME.test(expiresAt) || Number.isNaN(Date.parse(expiresAt))) {
+      throw invalidResponse(`expiresAt must be an RFC 3339 date-time, not ${JSON.stringify(value.expiresAt)}`);
+    }
+    return { status: 'decided', decision: value.decision, approver: { id, role }, reason, expiresAt };
+  }
+  return { status: 'decided', decision: value.decision, approver: { id, role }, reason };
 }
 
 /**
  * Connects to `server`, runs `fn` against the live session, and closes the connection.
- * The whole (connect + fn) unit is retried up to CONNECT_ATTEMPTS times on any failure —
- * safe because submit_approval_request is idempotent (keyed by governingDigest) and
- * poll_approval is a pure read.
+ * The whole (connect + fn) unit is retried up to CONNECT_ATTEMPTS times on a transport-shaped
+ * failure — safe because submit_approval_request is idempotent (keyed by governingDigest) and
+ * poll_approval is a pure read. An XForgeError propagates on the first attempt instead: it means
+ * the provider answered and the answer was unusable, which retrying only delays.
  *
  * Alongside the caller's result, this returns `diagnostics`: an info-severity entry counting how
  * many ambient environment variables were filtered out of the provider subprocess's environment and
@@ -135,8 +216,12 @@ export async function withMcpApprovalSession<T>(
         await client.close();
       }
     } catch (error) {
-      lastError = error;
       await client.close().catch(() => {});
+      /* An XForgeError from `fn` is a decided verdict about what the provider said (see
+         `narrowPoll`), not a transport hiccup. Repeating the call cannot change the answer, and
+         burying it under CONNECTION_FAILED would send the reader looking at their network. */
+      if (error instanceof XForgeError) throw error;
+      lastError = error;
       if (attempt < CONNECT_ATTEMPTS) await sleep(CONNECT_BACKOFF_MS * attempt);
     }
   }
@@ -153,9 +238,9 @@ export async function withMcpApprovalSession<T>(
 }
 
 export async function submitApprovalRequest(client: Client, timeoutMs: number, input: McpApprovalSubmission): Promise<void> {
-  await callToolJson<{ accepted?: boolean }>(client, 'submit_approval_request', input as unknown as Record<string, unknown>, timeoutMs);
+  await callToolJson(client, 'submit_approval_request', input as unknown as Record<string, unknown>, timeoutMs);
 }
 
 export async function pollApproval(client: Client, timeoutMs: number, governingDigest: string): Promise<McpApprovalPoll> {
-  return callToolJson<McpApprovalPoll>(client, 'poll_approval', { governingDigest }, timeoutMs);
+  return narrowPoll(await callToolJson(client, 'poll_approval', { governingDigest }, timeoutMs));
 }

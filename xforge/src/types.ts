@@ -112,9 +112,6 @@ export interface Manifest {
    */
   approvals?: {
     providers: Array<{ id: string; type: 'mcp'; mcpServer: string; roles: string[] }>;
-    local?: {
-      requireTty?: boolean;
-    };
   };
   audit?: {
     redaction: 'strict' | 'balanced';
@@ -126,6 +123,14 @@ export interface Manifest {
       timeoutSeconds: number;
       requiredFor: Array<'quick' | 'solid' | 'major'>;
     };
+    /**
+     * Opt-in HMAC over the local hash chain and the committed index. Absent (the default) leaves
+     * the chain unkeyed, which detects corruption and accidental rewrites but not an actor who
+     * rewrites the chain and its artifacts together — every input to the hash is public and lives
+     * in the repository. Declaring a secret whose value comes from outside that repository is what
+     * turns the chain from corruption-evident into tamper-evident.
+     */
+    chain?: { hmacSecretEnv?: string };
     /**
      * Per-plane remote delivery. Defaults to `inline` for the workflow plane and `spool` for the
      * runtime plane, so an agent tool call never blocks on an audit HTTP round-trip.
@@ -195,10 +200,6 @@ export interface FlowStage {
     approvals?: string[];
     auditEvents?: string[];
   };
-  execution?: {
-    planning: 'just-in-time';
-    workPackages: 'internal' | 'adaptive' | 'required';
-  };
 }
 
 export interface ApprovalPolicy {
@@ -230,7 +231,8 @@ export interface StageFlow {
       risk?: Array<'low' | 'medium' | 'high'>;
       anyImpact?: Array<'security' | 'privacy' | 'publicApi' | 'dataMigration'>;
     };
-    onUncertain: 'escalate' | 'request-decision';
+    /** Accepted for compatibility with Flows written before it was removed; nothing reads it. */
+    onUncertain?: 'escalate' | 'request-decision';
   };
   artifacts: StageFlowArtifact[];
   governance?: {
@@ -244,7 +246,8 @@ export interface StageFlow {
       authority: 'archive-write';
       requires: string[];
       syncSpecs: boolean;
-      evidencePolicy: 'current-revision';
+      /** Accepted for compatibility with Flows written before it was removed; nothing reads it. */
+      evidencePolicy?: 'current-revision';
       approvals?: string[];
       auditPolicy?: FlowAuditPolicy;
     };
@@ -272,7 +275,13 @@ export interface WorkPackage {
   inputs: string[];
   write_paths: string[];
   skills: string[];
-  verify: string[];
+  /**
+   * Each entry is an argv array run without a shell. A bare string is the deprecated pre-argv form:
+   * it is accepted for one version when it contains no shell metacharacters and rejected outright
+   * when it does, because a string that reaches `sh -c` lets a work-package plan — a file the Change
+   * owns and the lockfile does not cover — compose arbitrary commands. See `core/work-packages.ts`.
+   */
+  verify: Array<string[] | string>;
   done_when: string[];
 }
 
@@ -831,4 +840,6 @@ export interface AuditEvent {
   previousHash: string | null;
   deliveryState: 'not-configured' | 'pending' | 'spooled' | 'delivered';
   hash: string;
+  /** Present only when `manifest.audit.chain.hmacSecretEnv` is declared. See `core/audit.ts`. */
+  hmac?: string;
 }

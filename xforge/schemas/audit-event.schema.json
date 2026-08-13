@@ -1,20 +1,260 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://xforge.dev/schemas/v1alpha2/audit-event.schema.json",
-  "type": "object", "additionalProperties": false,
-  "required": ["apiVersion", "kind", "eventId", "eventType", "timestamp", "plane", "platform", "surface", "sessionId", "turnId", "toolCallId", "correlationId", "actor", "change", "flow", "stage", "workPackage", "stateRevision", "gitBase", "gitHead", "refs", "decision", "reason", "outcome", "durationMs", "inputDigest", "outputDigest", "redaction", "coverage", "previousHash", "deliveryState", "hash"],
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "apiVersion",
+    "kind",
+    "eventId",
+    "eventType",
+    "timestamp",
+    "plane",
+    "platform",
+    "surface",
+    "sessionId",
+    "turnId",
+    "toolCallId",
+    "correlationId",
+    "actor",
+    "change",
+    "flow",
+    "stage",
+    "workPackage",
+    "stateRevision",
+    "gitBase",
+    "gitHead",
+    "refs",
+    "decision",
+    "reason",
+    "outcome",
+    "durationMs",
+    "inputDigest",
+    "outputDigest",
+    "redaction",
+    "coverage",
+    "previousHash",
+    "deliveryState",
+    "hash"
+  ],
   "properties": {
-    "apiVersion": { "const": "xforge.dev/v1alpha2" }, "kind": { "const": "AuditEvent" }, "eventId": { "type": "string", "format": "uuid" }, "eventType": { "type": "string", "minLength": 1 }, "timestamp": { "type": "string", "format": "date-time" },
-    "plane": { "enum": ["workflow", "runtime"] }, "platform": { "type": "string" }, "surface": { "enum": ["local", "cloud", "ci", "unknown"] },
-    "sessionId": { "type": "string" }, "turnId": { "type": "string" }, "toolCallId": { "type": "string" }, "correlationId": { "type": "string" },
-    "actor": { "type": "object", "additionalProperties": false, "required": ["id", "provider", "role", "type"], "properties": { "id": { "type": "string" }, "provider": { "type": "string" }, "role": { "type": "string" }, "type": { "enum": ["human", "agent", "system", "external-system"] } } },
-    "change": { "type": ["string", "null"] }, "flow": { "type": ["string", "null"] }, "stage": { "type": ["string", "null"] }, "workPackage": { "type": ["string", "null"] },
-    "stateRevision": { "type": "string" }, "gitBase": { "type": "string" }, "gitHead": { "type": "string" },
-    "refs": { "type": "object", "additionalProperties": false, "required": ["rules", "policies", "gates"], "properties": { "rules": { "$ref": "#/$defs/strings" }, "policies": { "$ref": "#/$defs/strings" }, "gates": { "$ref": "#/$defs/strings" } } },
-    "decision": { "type": ["string", "null"] }, "reason": { "type": ["string", "null"] }, "outcome": { "enum": ["succeeded", "failed", "denied", "spooled", "unknown"] }, "durationMs": { "type": ["integer", "null"], "minimum": 0 },
-    "inputDigest": { "type": "string" }, "outputDigest": { "type": "string" }, "redaction": { "enum": ["metadata-only", "strict", "balanced"] },
-    "coverage": { "type": "object", "additionalProperties": false, "required": ["observed", "gaps"], "properties": { "observed": { "type": "boolean" }, "gaps": { "$ref": "#/$defs/strings" } } },
-    "previousHash": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" }, "deliveryState": { "enum": ["not-configured", "pending", "spooled", "delivered"] }, "hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+    "apiVersion": {
+      "const": "xforge.dev/v1alpha2"
+    },
+    "kind": {
+      "const": "AuditEvent"
+    },
+    "eventId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "eventType": {
+      "type": "string",
+      "minLength": 1
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "plane": {
+      "enum": [
+        "workflow",
+        "runtime"
+      ]
+    },
+    "platform": {
+      "type": "string"
+    },
+    "surface": {
+      "enum": [
+        "local",
+        "cloud",
+        "ci",
+        "unknown"
+      ]
+    },
+    "sessionId": {
+      "type": "string"
+    },
+    "turnId": {
+      "type": "string"
+    },
+    "toolCallId": {
+      "type": "string"
+    },
+    "correlationId": {
+      "type": "string"
+    },
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "provider",
+        "role",
+        "type"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "human",
+            "agent",
+            "system",
+            "external-system"
+          ]
+        }
+      }
+    },
+    "change": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "flow": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "stage": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "workPackage": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "stateRevision": {
+      "type": "string"
+    },
+    "gitBase": {
+      "type": "string"
+    },
+    "gitHead": {
+      "type": "string"
+    },
+    "refs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rules",
+        "policies",
+        "gates"
+      ],
+      "properties": {
+        "rules": {
+          "$ref": "#/$defs/strings"
+        },
+        "policies": {
+          "$ref": "#/$defs/strings"
+        },
+        "gates": {
+          "$ref": "#/$defs/strings"
+        }
+      }
+    },
+    "decision": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "outcome": {
+      "enum": [
+        "succeeded",
+        "failed",
+        "denied",
+        "spooled",
+        "unknown"
+      ]
+    },
+    "durationMs": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "inputDigest": {
+      "type": "string"
+    },
+    "outputDigest": {
+      "type": "string"
+    },
+    "redaction": {
+      "enum": [
+        "metadata-only",
+        "strict",
+        "balanced"
+      ]
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "observed",
+        "gaps"
+      ],
+      "properties": {
+        "observed": {
+          "type": "boolean"
+        },
+        "gaps": {
+          "$ref": "#/$defs/strings"
+        }
+      }
+    },
+    "previousHash": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "deliveryState": {
+      "enum": [
+        "not-configured",
+        "pending",
+        "spooled",
+        "delivered"
+      ]
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "hmac": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Present only when manifest.audit.chain.hmacSecretEnv is declared."
+    }
   },
-  "$defs": { "strings": { "type": "array", "items": { "type": "string" } } }
+  "$defs": {
+    "strings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
 }
