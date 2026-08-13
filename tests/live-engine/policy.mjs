@@ -53,6 +53,7 @@ export function createLiveEnginePolicy({
     maxAttemptsPerStage: positiveInteger(maxAttemptsPerStage, 'maxAttemptsPerStage'),
     timeoutSeconds: positiveInteger(timeoutSeconds, 'timeoutSeconds'),
     spentUsd: 0,
+    tokens: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, total: 0 },
     budgetAccountingComplete: true,
     stages: Object.fromEntries(stages.map((stage) => [stage, { attempts: 0, runs: [] }])),
   };
@@ -109,7 +110,7 @@ export function reserveLiveEngineAttempt(policy, { stage, requestedBudgetUsd, is
 }
 
 export function completeLiveEngineAttempt(policy, {
-  stage, attempt, costUsd, exitCode, timedOut, classification, output, finishedAt,
+  stage, attempt, costUsd, tokens, exitCode, timedOut, classification, output, finishedAt,
 }) {
   assertLiveEnginePolicy(policy);
   const entry = stageEntry(policy, stage);
@@ -121,14 +122,24 @@ export function completeLiveEngineAttempt(policy, {
   const knownCost = costUsd !== null && costUsd !== undefined && Number.isFinite(numericCost) && numericCost >= 0;
   if (knownCost) policy.spentUsd = rounded(policy.spentUsd + numericCost);
   else policy.budgetAccountingComplete = false;
+  /* Cost still drives the budget stop — that is the guardrail — but tokens are what a reader can
+     actually compare, since the dollar figure depends on whichever engine and rate card produced
+     it. Both are recorded; only tokens are reported. */
+  if (tokens) {
+    policy.tokens ??= { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, total: 0 };
+    for (const key of ['input', 'output', 'cacheRead', 'cacheCreation', 'total']) {
+      policy.tokens[key] += Number(tokens[key] ?? 0);
+    }
+  }
   Object.assign(run, {
     status: exitCode === 0 && !timedOut ? 'completed' : 'failed',
     costUsd: knownCost ? numericCost : null,
+    tokens: tokens ?? null,
     exitCode,
     timedOut,
     classification,
     output,
     finishedAt,
   });
-  return { spentUsd: policy.spentUsd, budgetAccountingComplete: policy.budgetAccountingComplete };
+  return { spentUsd: policy.spentUsd, tokens: policy.tokens ?? null, budgetAccountingComplete: policy.budgetAccountingComplete };
 }

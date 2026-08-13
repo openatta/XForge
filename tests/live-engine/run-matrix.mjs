@@ -350,8 +350,10 @@ process.stdout.write(`${JSON.stringify({
   flow: selected.flow,
   project: projectRoot,
   acceptanceExitCode: acceptance.status,
-  suiteSpentUsd: finalPolicy.spentUsd,
-  suiteBudgetUsd: finalPolicy.suiteBudgetUsd,
+  /* Reported in tokens: the spend figure still gates the run (see `budgetAccountingComplete`,
+     which fails the suite when a call's cost could not be accounted for) but it is priced by
+     whichever engine served the request, so it is not comparable across runs. */
+  suiteTokens: finalPolicy.tokens ?? null,
   budgetAccountingComplete: finalPolicy.budgetAccountingComplete,
   policyPath,
 }, null, 2)}\n`);

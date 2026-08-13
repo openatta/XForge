@@ -70,10 +70,10 @@ for (const [stage, name] of Object.entries(stages)) {
     durationMs: value.duration_ms ?? null,
     apiDurationMs: value.duration_api_ms ?? null,
     turns: value.num_turns ?? null,
-    costUsd: value.total_cost_usd ?? null,
     usage: {
       inputTokens: value.usage?.input_tokens ?? null,
       cacheReadInputTokens: value.usage?.cache_read_input_tokens ?? null,
+      cacheCreationInputTokens: value.usage?.cache_creation_input_tokens ?? null,
       outputTokens: value.usage?.output_tokens ?? null,
     },
   };
@@ -121,10 +121,16 @@ const summary = {
   totals: {
     durationMs: engineValues.reduce((sum, item) => sum + (item.durationMs ?? 0), 0),
     turns: engineValues.reduce((sum, item) => sum + (item.turns ?? 0), 0),
-    costUsd: engineValues.reduce((sum, item) => sum + (item.costUsd ?? 0), 0),
+    /* Totals are in tokens. A dollar figure here would be priced by whichever engine served the
+       run, so it could not be compared with any other run; the runner's own budget accounting
+       still enforces a spend ceiling, it just is not what gets reported. */
     inputTokens: engineValues.reduce((sum, item) => sum + (item.usage.inputTokens ?? 0), 0),
     cacheReadInputTokens: engineValues.reduce((sum, item) => sum + (item.usage.cacheReadInputTokens ?? 0), 0),
+    cacheCreationInputTokens: engineValues.reduce((sum, item) => sum + (item.usage.cacheCreationInputTokens ?? 0), 0),
     outputTokens: engineValues.reduce((sum, item) => sum + (item.usage.outputTokens ?? 0), 0),
+    totalTokens: engineValues.reduce((sum, item) => sum
+      + (item.usage.inputTokens ?? 0) + (item.usage.cacheReadInputTokens ?? 0)
+      + (item.usage.cacheCreationInputTokens ?? 0) + (item.usage.outputTokens ?? 0), 0),
   },
   runnerPolicy: runnerPolicy ? {
     path: path.relative(repositoryRoot, policyPath).split(path.sep).join('/'),

@@ -194,6 +194,22 @@ const fallback = {
 await writeFile(outputPath, output || `${JSON.stringify(fallback, null, 2)}\n`);
 
 const costUsd = typeof engineResult?.total_cost_usd === 'number' ? engineResult.total_cost_usd : null;
+/*
+ * Tokens, not dollars, are what these runs are reported in. The cost figure is still recorded and
+ * still drives the budget stop, but it is a function of whichever engine and rate card served the
+ * request, so it is not comparable between runs and says nothing useful to a reader. Token counts
+ * are the same quantity whoever answers.
+ */
+const usage = engineResult?.usage ?? null;
+const tokenCount = (value) => (typeof value === 'number' && Number.isFinite(value) ? value : 0);
+const tokens = usage ? {
+  input: tokenCount(usage.input_tokens),
+  output: tokenCount(usage.output_tokens),
+  cacheRead: tokenCount(usage.cache_read_input_tokens),
+  cacheCreation: tokenCount(usage.cache_creation_input_tokens),
+  total: tokenCount(usage.input_tokens) + tokenCount(usage.output_tokens)
+    + tokenCount(usage.cache_read_input_tokens) + tokenCount(usage.cache_creation_input_tokens),
+} : null;
 const classification = timedOut || spawnError
   ? 'environment_blocked'
   : code !== 0 || engineResult?.is_error === true
@@ -203,6 +219,7 @@ const completed = completeLiveEngineAttempt(policy, {
   stage,
   attempt: reservation.attempt,
   costUsd,
+  tokens,
   exitCode: code,
   timedOut,
   classification,
@@ -220,9 +237,8 @@ process.stdout.write(`${JSON.stringify({
   policy: policyPath,
   stage,
   attempt: reservation.attempt,
-  costUsd,
-  suiteSpentUsd: completed.spentUsd,
-  suiteBudgetUsd: policy.suiteBudgetUsd,
+  tokens,
+  suiteTokens: completed.tokens,
   isolation,
   classification,
 })}\n`);

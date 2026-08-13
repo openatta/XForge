@@ -274,7 +274,16 @@ const ENFORCEMENT_KINDS = new Set(['permission-policy', 'hook']);
  */
 async function assertEnforceableResources(project: ProjectContext, resources: SelectedResources): Promise<void> {
   const errors = resources.diagnostics.filter((item) => item.severity === 'error');
-  if (errors.length > 0) throw new XForgeError(errors, { root: project.root });
+  if (errors.length > 0) {
+    /* These are load/parse failures on the very resources that decide this call. Carry the first
+       one's own message into the deny so the operator is told which file is broken, not merely
+       that something is. */
+    throw new XForgeError([diagnostic(
+      'XFORGE_RESOURCE_UNENFORCEABLE',
+      `a governance resource could not be loaded, so it refuses to decide this call: ${errors[0]!.message} Every tool call stays denied until that file is fixed or restored (\`npx --no-install xforge install\` rewrites the generated ones).`,
+      errors[0]!.path,
+    ), ...errors], { root: project.root });
+  }
   const locked = (project.lock?.resources ?? []).filter((entry) => ENFORCEMENT_KINDS.has(String(entry.kind)));
   const resolved = await resolvedResourceEntries(project, {
     ...resources,
@@ -283,15 +292,29 @@ async function assertEnforceableResources(project: ProjectContext, resources: Se
   if (stableStringify(locked) !== stableStringify(resolved)) {
     throw new XForgeError(diagnostic(
       'XFORGE_LOCK_STALE',
-      'The PermissionPolicy/Hook set on disk does not match xforge/lock.yaml, so the runtime governance dispatcher refuses to enforce it. Run xforge install.',
+      'the PermissionPolicy/Hook set on disk does not match xforge/lock.yaml, so it refuses to enforce a policy set it cannot vouch for. Every tool call stays denied until the lock is refreshed. Tell the user to run `npx --no-install xforge install` in the project root, then retry.',
       'xforge/lock.yaml',
     ), { root: project.root });
   }
 }
 
-export function hookFailureOutput(target: TargetId, event: string): Record<string, unknown> {
+/**
+ * The deny a host sees when the dispatcher could not reach a decision.
+ *
+ * `reason` matters more than it looks. This deny is the *only* thing the host renders, and the
+ * conditions that reach here are mostly configuration problems with a specific remedy — a policy
+ * file edited out of step with `xforge/lock.yaml`, a resource that no longer parses. Without the
+ * remedy the operator sees every tool call refused with no clue why, which reads as "XForge is
+ * broken" rather than "XForge needs one command". The caller passes the diagnostic's own message
+ * so the fix travels with the refusal; the generic sentence is the fallback for a failure that
+ * genuinely has no better explanation (an unparsed argv, a payload that is not JSON).
+ */
+export function hookFailureOutput(target: TargetId, event: string, reason?: string): Record<string, unknown> {
   if (!event.includes('before') && !event.includes('permission')) return {};
-  return platformOutput(target, event, 'deny', 'XForge governance dispatcher failed closed.');
+  const detail = reason?.trim();
+  return platformOutput(target, event, 'deny', detail
+    ? `XForge governance dispatcher failed closed: ${detail}`
+    : 'XForge governance dispatcher failed closed.');
 }
 
 export async function executeHookDispatch(project: ProjectContext, options: { target: TargetId; event: string; payload: Record<string, any> }): Promise<{

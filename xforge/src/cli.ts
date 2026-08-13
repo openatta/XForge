@@ -576,7 +576,12 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
     }
     const target = parsed?.target ?? recoveredHookTarget(argv);
     const event = parsed?.event ?? recoveredHookEvent(argv);
-    process.stdout.write(`${JSON.stringify(hookFailureOutput(target, event))}\n`);
+    /* The deny is all the host renders, so the diagnostic's own message — which names the file at
+       fault and the command that fixes it — has to ride along. Dropping it is what turns a
+       one-command configuration problem into "every tool call is refused and nobody knows why". */
+    const reason = result.diagnostics.find((item) => item.severity === 'error')?.message
+      ?? result.diagnostics[0]?.message;
+    process.stdout.write(`${JSON.stringify(hookFailureOutput(target, event, reason))}\n`);
     return event.includes('after') ? 0 : 2;
   }
   const textMode = parsed?.text ?? argv.some((item) => ['--text', '--help', '--version'].includes(item));
