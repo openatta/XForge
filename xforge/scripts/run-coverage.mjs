@@ -1,8 +1,11 @@
 import { mkdir, rm } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
-const packageRoot = path.resolve(new URL('..', import.meta.url).pathname);
+/* fileURLToPath, not .pathname + path.resolve: see xforge/src/core/identity.ts's comment on why
+   the latter produces a broken doubled-drive-letter path (D:\D:\...) on Windows. */
+const packageRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const coverageRoot = path.join(packageRoot, 'coverage');
 const rawRoot = path.join(coverageRoot, 'raw');
 const vitest = path.join(packageRoot, 'node_modules', 'vitest', 'vitest.mjs');

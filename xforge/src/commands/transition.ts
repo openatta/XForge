@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import { rm } from 'node:fs/promises';
 import type { Diagnostic, FileChange, ProjectContext, TransitionReceipt } from '../types.js';
-import { recordAudit, verifyAudit } from '../core/audit.js';
+import { readChangeAuditEvents, recordAudit, verifyAudit } from '../core/audit.js';
 import { blockRemedy, resolveControlPlane } from '../core/control-plane.js';
 import { XForgeError, diagnostic } from '../core/errors.js';
 import { atomicWrite } from '../core/files.js';
@@ -8,6 +9,7 @@ import { flowEligibilityDiagnostics } from '../core/checker.js';
 import { isStageFlow, loadFlows, resolveChangeState } from '../core/flow-resolver.js';
 import { sha256, stableStringify } from '../core/hash.js';
 import { assertManaged } from '../core/project-loader.js';
+import { safeResolve } from '../core/path-safety.js';
 import { loadSelectedResources } from '../core/resource-loader.js';
 import { resolveWorkPackages } from '../core/work-packages.js';
 
@@ -47,7 +49,24 @@ export async function executeTransition(project: ProjectContext, options: { chan
   if (options.dryRun || !ready) return { data: { change: options.change, from: control.governance.currentStage, to: options.to, ready, receipt: null, dryRun: options.dryRun }, diagnostics, changes: [] };
 
   await recordAudit(project, { eventType: 'stage.entering', change: options.change, flow: resolved.flow.metadata.name, stage: control.governance.currentStage, revision: control.governance.revision, decision: options.to, outcome: 'succeeded' });
-  const audit = await verifyAudit(project);
+  /*
+   * The receipt binds to this Change's own chain head, not a project-wide rollup: `verifyAudit`
+   * without a Change ID folds every shard's diagnostics into one `valid` flag, so a different
+   * Change's corrupted shard would otherwise taint this receipt even though `blockedBy` above
+   * already proved this Change's own chain is intact (`control-plane.ts`'s `audit:chain-invalid`).
+   * A project-wide problem is still worth surfacing, just not as a hostage-taking hard block on
+   * every other Change's transitions.
+   */
+  const ownAudit = await readChangeAuditEvents(project, options.change);
+  const globalAudit = await verifyAudit(project);
+  if (!globalAudit.valid) {
+    diagnostics.push(diagnostic(
+      'XFORGE_AUDIT_CHAIN_UNTRUSTED_ELSEWHERE',
+      'This transition proceeded because this Change\'s own audit chain is intact, but a different Change\'s audit chain failed verification and the project-wide audit trail is not fully trustworthy. Run `xforge audit status` to locate the affected Change.',
+      undefined,
+      'warning',
+    ));
+  }
   const sequence = control.governance.transitions.length + 1;
   const unsigned = {
     apiVersion: 'xforge.dev/v1alpha2' as const, kind: 'TransitionReceipt' as const, receiptId: randomUUID(), sequence, change: options.change,
@@ -55,15 +74,26 @@ export async function executeTransition(project: ProjectContext, options: { chan
     stateRevisionBefore: control.governance.revision.stateRevision, policySnapshotDigest: control.governance.revision.policySnapshotDigest,
     gitHead: control.governance.revision.gitHead, previousReceiptDigest: control.governance.transitionHead, transitionedAt: new Date().toISOString(),
     actor: { id: process.env.XFORGE_ACTOR_ID ?? process.env.USER ?? 'unknown', provider: process.env.XFORGE_ACTOR_PROVIDER ?? 'local-os', type: process.env.XFORGE_ACTOR_TYPE === 'agent' ? 'agent' as const : 'human' as const },
-    approvals: requirement.approvals.map((item) => item.digest).sort(), gates: requirement.gates.map((item) => item.digest).sort(), auditHead: audit.head,
+    approvals: requirement.approvals.map((item) => item.digest).sort(), gates: requirement.gates.map((item) => item.digest).sort(), auditHead: ownAudit.chain.head,
   };
   const receipt: TransitionReceipt = { ...unsigned, digest: sha256(stableStringify(unsigned)) };
   const target = `${project.changesPath}/${options.change}/evidence/receipts/transitions/${String(sequence).padStart(4, '0')}-${receipt.receiptId}.json`;
   const content = `${JSON.stringify(receipt, null, 2)}\n`;
   await atomicWrite(project.root, target, content);
-  const nextResolved = await resolveChangeState(project, options.change);
-  const nextControl = await resolveControlPlane(project, options.change, nextResolved.flow as typeof resolved.flow, nextResolved.state, resources, nextResolved.config);
-  await recordAudit(project, { eventType: 'stage.entered', change: options.change, flow: resolved.flow.metadata.name, stage: options.to, revision: nextControl.governance.revision, decision: options.to, outcome: 'succeeded', input: { transitionReceipt: receipt.digest } });
+  try {
+    const nextResolved = await resolveChangeState(project, options.change);
+    const nextControl = await resolveControlPlane(project, options.change, nextResolved.flow as typeof resolved.flow, nextResolved.state, resources, nextResolved.config);
+    await recordAudit(project, { eventType: 'stage.entered', change: options.change, flow: resolved.flow.metadata.name, stage: options.to, revision: nextControl.governance.revision, decision: options.to, outcome: 'succeeded', input: { transitionReceipt: receipt.digest } });
+  } catch (error) {
+    /*
+     * State is derived from receipts on disk (see `control-plane.ts`), so an orphaned receipt with
+     * no matching `stage.entered` audit event would silently advance the Change's stage anyway, and
+     * a retry of the same transition would then fail confusingly as "already there." Compensate by
+     * removing the receipt so the Change is left exactly where it was before this call.
+     */
+    await rm(await safeResolve(project.root, target), { force: true }).catch(() => undefined);
+    throw error;
+  }
   const change: FileChange = { action: 'create', path: target, digest: sha256(content), source: `transition:${receipt.from}:${receipt.to}` };
   return { data: { change: options.change, from: receipt.from, to: receipt.to, ready: true, receipt, dryRun: false }, diagnostics, changes: [change] };
 }

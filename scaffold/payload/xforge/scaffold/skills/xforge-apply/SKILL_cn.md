@@ -28,7 +28,7 @@ allowed-tools: Read Grep Glob Write Edit Bash Task
 5. 仅当至少两个节点依赖已满足、`write_paths` 不相交、数据库/端口/缓存/账号/生成物等共享资源可隔离，且 Adapter 的 Agent 投影与 runtime 的子 Agent 执行都报告为 `native` 时并行激活 Worker。不得用模块数量代替冲突判断。
 6. 为每个 ready 包固定同一可信 base，创建独立 branch/worktree，并向一个 Worker 只派一个包。Worker 先读全部 inputs/skills，只做最小实现与范围内测试，真实运行所有 `verify`，原生模式下提交 commit，再返回固定 delivery contract。
 7. Main Agent 逐份核对 dispatch binding、commit ancestry、`base...head` 实际 diff、`write_paths`、验证退出码和 `done_when` 语义证据；成功 delivery 必须使用 `done_when_evidence` 将每条原始 `done_when` 精确映射一次到非空证据，并回带 `state_revision`、`policy_snapshot_digest`、`audit_correlation_id`。通过后才写入 `<change>/evidence/agents/<package>/<execution>.yaml` 并刷新 State，释放下一波依赖节点。
-8. 有多个 commits、共享契约、迁移、generated/lock 文件或集中集成验证时最多激活一个 Integrator，并由它独占这些共享写入；保存集成证据后运行 `xforge work-package acknowledge ... --as integrator --evidence <path>`。高风险或跨系统最终结果交给未参与实现的 Reviewer，保存审查证据后以 `--as reviewer` 确认。发现未声明的路径重叠时重新规划，不让 Integrator 掩盖规划错误。
+8. 有多个 commits、共享契约、迁移、generated/lock 文件或集中集成验证时最多激活一个 Integrator，并由它独占这些共享写入；保存集成证据后运行 `npx --no-install xforge work-package acknowledge ... --as integrator --evidence <path>`。高风险或跨系统最终结果交给未参与实现的 Reviewer，保存审查证据后以 `--as reviewer` 确认。发现未声明的路径重叠时重新规划，不让 Integrator 掩盖规划错误。
 9. Adapter 为 `degraded` 或 `unsupported` 时由 Main Agent 顺序执行工作包，或按声明的 degraded patch 流程交付；明确报告未获得并行/worktree 隔离，不得声称已激活子 Agent。
 10. 每个连贯单元完成后运行相称的测试、lint/build；所有实现完成后运行 `npx --no-install xforge check --change <id>`，请求 `npx --no-install xforge transition --change <id> --to verify`，再交给 `xforge-verify`。
 

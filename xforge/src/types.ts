@@ -485,6 +485,12 @@ export interface McpServerResource {
     url?: string;
     authTokenEnv: string;
     timeoutSeconds: number;
+    /**
+     * Extra environment variable names this MCP provider's `stdio` subprocess may inherit, on top
+     * of the built-in allowlist (see core/env-safety.ts). Names that look like credentials are
+     * always dropped, even if listed here.
+     */
+    env?: { allow?: string[] };
   };
 }
 
@@ -742,6 +748,22 @@ export interface TransitionReceipt {
   approvals: string[];
   gates: string[];
   auditHead: string | null;
+  digest: string;
+}
+
+export interface WorkPackageAckReceipt {
+  apiVersion: 'xforge.dev/v1alpha2';
+  kind: 'WorkPackageAckReceipt';
+  receiptId: string;
+  change: string;
+  packageId: string;
+  executionId: string;
+  as: 'reviewer' | 'integrator';
+  status: 'reviewed' | 'integrated';
+  /** Binds this ack to the specific delivery content acknowledged, so it cannot be replayed against a different delivery. */
+  deliveryDigest: string;
+  actor: { id: string; provider: string; role: string; type: 'human' | 'agent' | 'system' };
+  acknowledgedAt: string;
   digest: string;
 }
 

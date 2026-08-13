@@ -1,3 +1,14 @@
+# This policy is an advisory guardrail on an Agent's own tool calls, not a structural security
+# boundary: the runtime Hook that enforces it (`fs.write` capability) only inspects a tool call's
+# structured file-path parameter (e.g. an editor tool's `file_path`). A `shell` capability call
+# whose command happens to write one of these paths indirectly — `cat > xforge/manifest.yaml`,
+# `tee`, `cp`, a script that opens the file itself — is matched against `match.commands` glob
+# patterns on the whole command string, not the file it actually touches, so it is not caught here.
+# Compare this to `xforge approve`'s anti-self-approval design, which is structural (the decision
+# word can only come from a live terminal prompt, never argv or a tool call) — this policy is not
+# that kind of guarantee. Treat it as a guardrail an honest Agent respects, backed by the
+# `constitution-check` Gate, Git history, and the audit chain for after-the-fact attribution, not
+# as something that makes a write to these paths impossible.
 apiVersion: xforge.dev/v1alpha2
 kind: PermissionPolicy
 metadata:

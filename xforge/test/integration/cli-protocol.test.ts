@@ -1,5 +1,7 @@
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { fixture, runCli, updateYaml } from '../helpers.js';
+import { fixture, runCli, updateYaml, yamlFile } from '../helpers.js';
 
 describe('CLI protocol', () => {
   it('emits exactly one JSON document on stdout and nothing on stderr', async () => {
@@ -61,5 +63,76 @@ describe('CLI protocol', () => {
     const result = await runCli(root, ['state']);
     expect(result.code).toBe(1);
     expect(result.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_SCHEMA_INVALID');
+  });
+
+  it('lets update reconcile an older-but-Protocol-compatible declared CLI version, never install/check/sync', async () => {
+    const root = await fixture();
+    /* `update` (unlike `install`) requires an existing installation record, so this simulates a
+       real upgrade: install cleanly at the current version first, then roll the declared version
+       back to simulate a project whose Manifest lagged behind the CLI it's now running under. */
+    const initialInstall = await runCli(root, ['install']);
+    expect(initialInstall.code, JSON.stringify(initialInstall.json.diagnostics)).toBe(0);
+    /* `updateYaml` round-trips through the `yaml` library with `sortMapEntries: true`, so this
+       also exercises reconcileDeclaredCliVersion's key-order independence (see project-loader.ts) —
+       not just the happy-path field values. */
+    await updateYaml(root, 'xforge/manifest.yaml', (manifest) => {
+      manifest.xforge.version = '0.7.7';
+      manifest.scaffold.version = '0.7.7';
+      manifest.scaffold.source.version = '0.7.7';
+    });
+
+    const blockedInstall = await runCli(root, ['install']);
+    expect(blockedInstall.code).toBe(1);
+    expect(blockedInstall.json.nextActions[0]).toMatchObject({ action: 'resolve-declared-xforge', command: ['xforge', 'update'] });
+
+    const blockedCheck = await runCli(root, ['check']);
+    expect(blockedCheck.code).toBe(1);
+
+    const dryRun = await runCli(root, ['update', '--dry-run']);
+    expect(dryRun.code).toBe(0);
+    expect(dryRun.json.changes).toContainEqual(expect.objectContaining({ action: 'modify', path: 'xforge/manifest.yaml' }));
+    const stillOld = await readFile(path.join(root, 'xforge', 'manifest.yaml'), 'utf8');
+    expect(stillOld).toContain('0.7.7');
+
+    const update = await runCli(root, ['update']);
+    expect(update.code, JSON.stringify(update.json.diagnostics)).toBe(0);
+    expect(update.json.changes).toContainEqual(expect.objectContaining({ action: 'modify', path: 'xforge/manifest.yaml', source: 'xforge:declared-version-upgrade:0.7.7->0.7.8' }));
+    const manifest = await yamlFile(root, 'xforge/manifest.yaml');
+    expect(manifest.xforge.version).toBe('0.7.8');
+    expect(manifest.scaffold.version).toBe('0.7.8');
+    expect(manifest.scaffold.source.version).toBe('0.7.8');
+
+    const state = await runCli(root, ['state']);
+    expect(state.code).toBe(0);
+    expect(state.json.data.project.compatibility.mode).toBe('managed');
+  });
+
+  it('never lets update treat a newer declared version as a downgrade to reconcile', async () => {
+    const root = await fixture();
+    await updateYaml(root, 'xforge/manifest.yaml', (manifest) => {
+      manifest.xforge.version = '9.9.9';
+      manifest.scaffold.version = '9.9.9';
+      manifest.scaffold.source.version = '9.9.9';
+    });
+    const update = await runCli(root, ['update']);
+    expect(update.code).toBe(1);
+    expect(update.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_CLI_IDENTITY_MISMATCH');
+    const manifest = await yamlFile(root, 'xforge/manifest.yaml');
+    expect(manifest.xforge.version).toBe('9.9.9');
+  });
+
+  it('never lets update reconcile across a Protocol mismatch even when the version is older', async () => {
+    const root = await fixture();
+    await updateYaml(root, 'xforge/manifest.yaml', (manifest) => {
+      manifest.xforge.version = '0.7.7';
+      manifest.scaffold.version = '0.7.7';
+      manifest.scaffold.source.version = '0.7.7';
+      manifest.xforge.protocol = '1';
+    });
+    const update = await runCli(root, ['update']);
+    expect(update.code).toBe(1);
+    expect(update.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_PROTOCOL_MISMATCH');
+    const manifest = await yamlFile(root, 'xforge/manifest.yaml');
+    expect(manifest.xforge.version).toBe('0.7.7');
   });
 });

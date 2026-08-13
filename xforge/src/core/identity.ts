@@ -2,8 +2,15 @@ import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { lstatSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const packageRoot = path.resolve(new URL('../..', import.meta.url).pathname);
+/*
+ * `fileURLToPath`, not `new URL(...).pathname` + `path.resolve`: a `file://` URL's `.pathname` on
+ * Windows keeps a leading slash before the drive letter (`/D:/...`), which `path.resolve` does not
+ * strip — it prepends the cwd's own drive instead, producing a broken `D:\D:\...` path. `fileURLToPath`
+ * handles this (and URL-encoding) correctly on every platform.
+ */
+const packageRoot = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
 
 function git(args: string[]): string | null {
   try {
