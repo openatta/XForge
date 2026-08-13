@@ -35,8 +35,21 @@ export async function resolveInstallSpec({ mode, packRoot }) {
   const version = await cliPackageVersion();
   if (mode === 'npm') return { spec: `@xforge/cli@${version}`, version, source: 'npm' };
 
-  run('npm', ['run', 'build', '--prefix', 'xforge'], repositoryRoot);
   await mkdir(packRoot, { recursive: true });
+  /*
+   * Reuse an already-packed tarball for this version when one is here. Building and packing is the
+   * only step of a `--cli-source local` run that touches the shared repository rather than the
+   * isolated project, so three Flows starting at once used to run three `npm run build`s against
+   * one `xforge/dist` — whose `clean` step deletes it — and knock each other over before a single
+   * model call was made. With the pack reused, the Flows share one artifact and can genuinely run
+   * in parallel. Delete `tests/.tmp/live-engine-npm-pack` (or run one Flow at a time) to force a
+   * rebuild after changing the CLI.
+   */
+  const existing = path.join(packRoot, `xforge-cli-${version}.tgz`);
+  if (await readFile(existing).then(() => true, () => false)) {
+    return { spec: existing, version, source: 'local-tarball' };
+  }
+  run('npm', ['run', 'build', '--prefix', 'xforge'], repositoryRoot);
   const packed = JSON.parse(run('npm', [
     'pack', './xforge', '--json', '--ignore-scripts', '--pack-destination', packRoot,
   ], repositoryRoot));

@@ -72,7 +72,7 @@ describe('hook CLI boundary (stdin parsing and exit codes)', () => {
       hookSpecificOutput: {
         hookEventName: 'PreToolUse',
         permissionDecision: 'deny',
-        permissionDecisionReason: 'XForge governance dispatcher failed closed.',
+        permissionDecisionReason: expect.stringContaining('XForge governance dispatcher failed closed'),
       },
     });
     expect(result.stdout).not.toContain('SyntaxError');
@@ -98,7 +98,7 @@ describe('hook CLI boundary (stdin parsing and exit codes)', () => {
     const result = await runCliWithStdin(root, ['hook', 'dispatch', '--target', 'codex', '--event', 'agent.permission.request'], '{not valid json');
     expect(result.code).toBe(2);
     expect(result.json).toEqual({
-      hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'deny', message: 'XForge governance dispatcher failed closed.' } },
+      hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'deny', message: expect.stringContaining('XForge governance dispatcher failed closed') } },
     });
   });
 
@@ -114,8 +114,8 @@ describe('hook CLI boundary (stdin parsing and exit codes)', () => {
     // unrecognisable to this host and would fail open by another route.
     expect(result.json).toEqual({
       permission: 'deny',
-      user_message: 'XForge governance dispatcher failed closed.',
-      agent_message: 'XForge governance dispatcher failed closed.',
+      user_message: expect.stringContaining('XForge governance dispatcher failed closed'),
+      agent_message: expect.stringContaining('XForge governance dispatcher failed closed'),
     });
     expect(result.json.ok).toBeUndefined();
     expect(result.stdout).not.toContain('diagnostics');
@@ -157,7 +157,7 @@ describe('hook CLI boundary (stdin parsing and exit codes)', () => {
       hookSpecificOutput: {
         hookEventName: 'PreToolUse',
         permissionDecision: 'deny',
-        permissionDecisionReason: 'XForge governance dispatcher failed closed.',
+        permissionDecisionReason: expect.stringContaining('XForge governance dispatcher failed closed'),
       },
     });
   });
@@ -170,5 +170,13 @@ describe('hook CLI boundary (stdin parsing and exit codes)', () => {
     const result = await runCliWithStdin(root, ['hook', 'dispatch', '--target', 'claude', '--event', 'agent.tool.before'], payload);
     expect(result.code).toBe(2);
     expect(result.json).toMatchObject({ hookSpecificOutput: { permissionDecision: 'deny' } });
+    /*
+     * The deny is the only thing the host renders, so it has to carry the remedy. A refusal that
+     * says only "failed closed" leaves the operator watching every tool call get denied with no
+     * way to tell a configuration problem from a broken product.
+     */
+    const reason = (result.json as any).hookSpecificOutput.permissionDecisionReason as string;
+    expect(reason).toContain('does not match xforge/lock.yaml');
+    expect(reason).toContain('xforge install');
   });
 });
