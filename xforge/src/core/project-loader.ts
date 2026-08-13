@@ -210,39 +210,65 @@ export function assertManaged(project: ProjectContext, command: string): void {
     {
       root: project.root,
       nextActions: updateUpgradeAvailable(project)
-        ? [{ action: 'run-upgrade', reason: 'The running CLI is newer than the declared version; xforge update will lift this project to it.', command: ['xforge', 'update'] }]
+        ? [{ action: 'run-upgrade', reason: `The declared CLI version (${project.manifest.xforge.version}) is older than the running CLI (${CLI_VERSION}) and the Protocol matches — run xforge update to reconcile the declared version, rather than installing an older CLI.`, command: ['xforge', 'update'] }]
         : [{ action: 'resolve-declared-xforge', reason: 'Install the exact @xforge/cli npm version declared by the project.' }],
     },
   );
 }
 
-/**
- * Dot-separated version comparison. Segments that both parse as numbers compare numerically
- * (`9` < `10`); anything else compares lexically; a missing segment equals `''`. Returns -1/0/1.
- */
-export function compareVersions(left: string, right: string): number {
-  const l = left.split('.');
-  const r = right.split('.');
-  for (let i = 0; i < Math.max(l.length, r.length); i += 1) {
-    const ls = l[i] ?? '';
-    const rs = r[i] ?? '';
-    const ln = Number(ls);
-    const rn = Number(rs);
-    if (!Number.isNaN(ln) && !Number.isNaN(rn) && ln !== rn) return ln < rn ? -1 : 1;
-    if (ls !== rs) return ls < rs ? -1 : 1;
-  }
-  return 0;
+/** Parses a `major.minor.patch[-prerelease]` string, mirroring `scripts/prepare-release.mjs`. */
+function parseVersion(value: string): { core: string[]; prerelease: string } {
+  const [core = '', prerelease = ''] = value.split('-', 2) as [string, string?];
+  return { core: core.split('.'), prerelease: prerelease ?? '' };
 }
 
 /**
- * True when `xforge update` may lift this project to the running CLI's identity: the protocols
- * match and the running CLI is strictly newer than the declared one. A newer declaration stays
- * hard-blocked (downgrading must never happen silently).
+ * Dot-separated version comparison. Numeric segments compare numerically (`9` < `10`);
+ * non-numeric segments compare lexically; a missing segment equals `''`. A version without a
+ * prerelease outranks an otherwise-equal version with one (standard SemVer precedence), and
+ * differing prereleases compare lexically. Returns -1/0/1.
+ */
+export function compareVersions(left: string, right: string): number {
+  const a = parseVersion(left);
+  const b = parseVersion(right);
+  for (let i = 0; i < Math.max(a.core.length, b.core.length); i += 1) {
+    const ls = a.core[i] ?? '';
+    const rs = b.core[i] ?? '';
+    if (ls === rs) continue;
+    const ln = Number(ls);
+    const rn = Number(rs);
+    if (/^\d+$/.test(ls) && /^\d+$/.test(rs) && ln !== rn) return ln < rn ? -1 : 1;
+    return ls < rs ? -1 : 1;
+  }
+  if (a.prerelease === b.prerelease) return 0;
+  if (a.prerelease === '') return 1;
+  if (b.prerelease === '') return -1;
+  return a.prerelease < b.prerelease ? -1 : 1;
+}
+
+/**
+ * True when `xforge update` may lift this project to the running CLI's identity. Deliberately
+ * narrow: this is an *upgrade* channel, not a general "make the mismatch go away" escape hatch.
+ * It refuses whenever the situation isn't a clean, safe upgrade:
+ * - the declared package must already be `@xforge/cli` from npm (not some other/legacy source);
+ * - the Protocol must already match (a protocol mismatch is a structural incompatibility, not a
+ *   version lag — rewriting the version number would not make the CLI understand the other
+ *   Protocol's on-disk shapes);
+ * - the three declared version fields (`xforge.version`, `scaffold.version`,
+ *   `scaffold.source.version`) must already agree with each other — a drifted or hand-corrupted
+ *   manifest is refused rather than guessed at;
+ * - the declared version must be strictly older than the running CLI — never equal (nothing to
+ *   do) and never newer (that would silently declare a "downgrade" as resolved, exactly the
+ *   failure mode the exact-version lock exists to prevent).
  */
 export function updateUpgradeAvailable(project: ProjectContext): boolean {
-  return project.compatibility.protocol.matches
-    && !project.compatibility.cli.matches
-    && compareVersions(CLI_VERSION, project.manifest.xforge.version) > 0;
+  const { manifest } = project;
+  if (manifest.xforge.source !== 'npm' || manifest.xforge.package !== CLI_NAME) return false;
+  if (!project.compatibility.protocol.matches) return false;
+  if (manifest.scaffold.version !== manifest.xforge.version) return false;
+  if (manifest.scaffold.source.type !== 'npm' || manifest.scaffold.source.package !== CLI_NAME) return false;
+  if (manifest.scaffold.source.version !== manifest.xforge.version) return false;
+  return compareVersions(manifest.xforge.version, CLI_VERSION) < 0;
 }
 
 export function assertUpdateCompatible(project: ProjectContext): void {

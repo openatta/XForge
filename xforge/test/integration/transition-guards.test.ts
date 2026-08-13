@@ -1,8 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { readFile, readdir, writeFile } from 'node:fs/promises';
+import { readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { pruneExpiredAuditEvents, recordAudit } from '../../src/core/audit.js';
 import { sha256, stableStringify } from '../../src/core/hash.js';
+import { loadProject } from '../../src/core/project-loader.js';
 import { createCompleteSolidChange, fixture, runCli, write } from '../helpers.js';
 
 const transitionsRelative = 'xforge/changes/add-feature/evidence/receipts/transitions';
@@ -67,5 +69,29 @@ describe('transition audit-chain guards', () => {
     expect(result.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_TRANSITION_ORPHAN_RECEIPT');
     expect(result.json.diagnostics[0].message).toContain(orphan.receiptId);
     expect(result.json.nextActions[0]).toMatchObject({ action: 'remove-orphan-receipt' });
+  });
+
+  it('does not accuse receipts when a retention-pruned local chain has no usable committed index', async () => {
+    const root = await fixture();
+    await structurePassed(root);
+    expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'design'])).code).toBe(0);
+    const orphan = fabricateCrashReceipt(await firstReceipt(root));
+    await write(root, `${transitionsRelative}/0002-crash-remnant.json`, `${JSON.stringify(orphan, null, 2)}\n`);
+
+    /* Retention prunes every local event, leaving only the shard anchor. A fresh event keeps the
+       local chain non-empty (so the scan would run), and the committed index — the survivor of the
+       pruned attestations — is gone (a tampered one would be refused earlier as an invalid chain).
+       The stage.entered attestations for the receipts now exist nowhere this machine can read: the
+       scan cannot distinguish a crash remnant from a pruned-but-legitimate receipt, and must skip
+       instead of accusing. */
+    const project = await loadProject(root, { exactRoot: true });
+    const pruned = await pruneExpiredAuditEvents(project, { retentionDays: 1, now: Date.now() + 5 * 86_400_000 });
+    expect(pruned.removed).toBeGreaterThan(0);
+    await recordAudit(project, { eventType: 'gate.after', change: 'add-feature', flow: 'solid', stage: 'propose', outcome: 'succeeded', deliver: false });
+    await rm(path.join(root, 'xforge', 'changes', 'add-feature', 'evidence', 'audit', 'index.json'));
+
+    const result = await runCli(root, ['transition', '--change', 'add-feature', '--to', 'design']);
+    expect(result.code, JSON.stringify(result.json.diagnostics, null, 2)).toBe(0);
+    expect(result.json.diagnostics.map((item: any) => item.code)).not.toContain('XFORGE_TRANSITION_ORPHAN_RECEIPT');
   });
 });

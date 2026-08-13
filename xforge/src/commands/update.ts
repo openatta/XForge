@@ -4,10 +4,12 @@ import type { TargetId } from '../constants.js';
 import { CLI_VERSION } from '../constants.js';
 import type { FileChange, ProjectContext } from '../types.js';
 import { loadBundledScaffold } from '../core/bundled-scaffold.js';
+import { XForgeError, diagnostic } from '../core/errors.js';
 import { atomicWrite } from '../core/files.js';
 import { sha256 } from '../core/hash.js';
 import { localizedVariant } from '../core/language.js';
 import { updateUpgradeAvailable, upgradedProjectContext } from '../core/project-loader.js';
+import { assertInstalledRecord } from '../install/planner.js';
 import { executeProjection } from './projection.js';
 
 async function exists(filePath: string): Promise<boolean> {
@@ -42,30 +44,50 @@ async function seedMissingConstitutionFiles(project: ProjectContext, dryRun: boo
 }
 
 /**
+ * Replaces a direct-child `fieldName: value` line inside the block that follows a `blockKey:`
+ * header line at `blockIndent`, without touching anything outside that block or any more-deeply-
+ * nested field of the same name (`scaffold.version` vs. `scaffold.source.version`). Key *order*
+ * inside the block does not matter — only its indentation depth — so this survives a round trip
+ * through a YAML formatter that reorders keys but preserves nesting depth. Returns `null`,
+ * changing nothing, if the block or the field within it isn't found in the expected shape.
+ */
+function replaceFieldInBlock(text: string, blockKey: string, blockIndent: number, fieldName: string, fieldIndent: number, value: string): string | null {
+  const blockPattern = new RegExp(`^${' '.repeat(blockIndent)}${blockKey}:\\n((?:${' '.repeat(fieldIndent)}[^\\n]*\\n?)*)`, 'm');
+  const blockMatch = blockPattern.exec(text);
+  if (!blockMatch) return null;
+  const fieldPattern = new RegExp(`^${' '.repeat(fieldIndent)}${fieldName}: [^\\n]+`, 'm');
+  if (!fieldPattern.test(blockMatch[1]!)) return null;
+  const newBody = blockMatch[1]!.replace(fieldPattern, `${' '.repeat(fieldIndent)}${fieldName}: ${value}`);
+  return text.slice(0, blockMatch.index) + `${' '.repeat(blockIndent)}${blockKey}:\n${newBody}` + text.slice(blockMatch.index + blockMatch[0].length);
+}
+
+/**
  * Textual surgery over the manifest: rewrites only the release-stamped `version:` pins — the
  * `xforge` CLI identity block, and the Scaffold block's own `version:` plus `source.version:` —
  * to the running CLI version. Every other line (all other fields, orderings, comments) is
- * preserved byte for byte. The remaining identity fields (`source`, `package`, `protocol`) are
- * schema-constrained constants that cannot differ from the running CLI when an upgrade is legal.
+ * preserved byte for byte. Fails loudly when any of the three pins is missing from its expected
+ * shape: silently leaving a stale pin behind would report a successful upgrade that never
+ * happened. The remaining identity fields (`source`, `package`, `protocol`) are schema-
+ * constrained constants that `updateUpgradeAvailable` has already verified.
  */
-function bumpManifestVersion(source: string): string {
-  const lines = source.split('\n');
-  const topLevel = /^[A-Za-z][A-Za-z0-9_-]*:/;
-  /* Replace every `version:` line at the given indents inside the block, whatever the key order. */
-  const rewriteBlock = (start: number, anchors: RegExp[]): void => {
-    let cursor = start + 1;
-    while (cursor < lines.length && !topLevel.test(lines[cursor]!)) cursor += 1;
-    for (let j = start + 1; j < cursor; j += 1) {
-      if (anchors.some((anchor) => anchor.test(lines[j]!))) {
-        lines[j] = lines[j]!.replace(/version:.*$/, `version: ${CLI_VERSION}`);
-      }
+function bumpManifestVersion(source: string, project: ProjectContext): string {
+  let next = source;
+  for (const [blockKey, blockIndent, fieldName, fieldIndent] of [
+    ['scaffold', 0, 'version', 2],
+    ['source', 2, 'version', 4],
+    ['xforge', 0, 'version', 2],
+  ] as const) {
+    const replaced = replaceFieldInBlock(next, blockKey, blockIndent, fieldName, fieldIndent, CLI_VERSION);
+    if (replaced === null) {
+      throw new XForgeError(diagnostic(
+        'XFORGE_MANIFEST_VERSION_FIELD_NOT_FOUND',
+        `Could not locate ${blockKey}.${fieldName} in xforge/manifest.yaml in the expected shape to reconcile the declared CLI version. Edit it by hand instead.`,
+        'xforge/manifest.yaml',
+      ), { root: project.root });
     }
-  };
-  for (let i = 0; i < lines.length; i += 1) {
-    if (/^xforge:$/.test(lines[i]!)) rewriteBlock(i, [/^  version:/]);
-    else if (/^scaffold:$/.test(lines[i]!)) rewriteBlock(i, [/^  version:/, /^    version:/]);
+    next = replaced;
   }
-  return `${lines.join('\n')}\n`;
+  return next;
 }
 
 /**
@@ -76,8 +98,11 @@ function bumpManifestVersion(source: string): string {
  */
 async function applyUpgradeIdentity(project: ProjectContext, dryRun: boolean): Promise<{ project: ProjectContext; changes: FileChange[] }> {
   if (!updateUpgradeAvailable(project)) return { project, changes: [] };
+  /* A never-installed project must fail the whole command BEFORE the version pins are written:
+     bumping the manifest and then failing projection would leave a partial write behind. */
+  await assertInstalledRecord(project, 'update');
   const upgraded = upgradedProjectContext(project);
-  const content = bumpManifestVersion(await readFile(path.join(project.root, 'xforge', 'manifest.yaml'), 'utf8'));
+  const content = bumpManifestVersion(await readFile(path.join(project.root, 'xforge', 'manifest.yaml'), 'utf8'), project);
   if (!dryRun) await atomicWrite(project.root, 'xforge/manifest.yaml', content);
   return {
     project: upgraded,

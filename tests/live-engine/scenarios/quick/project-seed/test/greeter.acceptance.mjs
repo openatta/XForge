@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 
-const projectRoot = path.resolve(new URL('..', import.meta.url).pathname);
+/* fileURLToPath, not .pathname + path.resolve: a file:// URL's .pathname keeps a leading
+   slash before a Windows drive letter, which path.resolve does not strip. */
+const projectRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const cli = path.join(projectRoot, 'src', 'cli.mjs');
 
 function run(args) {

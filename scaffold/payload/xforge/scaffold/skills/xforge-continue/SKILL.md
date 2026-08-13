@@ -32,3 +32,4 @@ allowed-tools: Read Grep Glob Bash
 
 - Stop on material ambiguity, scope or permission expansion, failed Gate, stale revision, external side effect, or no ready Action.
 - Follow State `reworkTo`; never choose a later Stage to bypass a problem.
+- When an Approval Action fails or blocks because the configured provider is missing, unreachable, or not permitted by the policy (for example `XFORGE_APPROVAL_PROVIDER_FORBIDDEN`) — as opposed to a `status: pending` Action genuinely awaiting a human decision — this is a configuration gap, not ordinary pending review. Stop, do not retry, and tell the user the approval provider needs configuration: point at manifest.yaml `approvals.providers` and the Flow's `approvalPolicies`.

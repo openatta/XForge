@@ -3,6 +3,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createCompleteSolidChange, fixture, runCli, updateYaml, write } from '../helpers.js';
 import { executeApprove, type ApprovalTerminal } from '../../src/commands/approve.js';
+import { readChangeLogEvents } from '../../src/core/audit.js';
 import { loadProject } from '../../src/core/project-loader.js';
 
 async function toDesign(root: string): Promise<void> {
@@ -127,6 +128,33 @@ describe('local approval human attestation', () => {
     const state = await runCli(root, ['state', '--change', 'add-feature']);
     expect(state.json.diagnostics.some((item: any) => item.code === 'XFORGE_APPROVAL_NOT_IN_AUDIT_CHAIN')).toBe(false);
     expect(state.json.data.change.governance.readyTransitions.find((item: any) => item.to === 'check').ready).toBe(true);
+  });
+
+  it('returns the already recorded receipt when the same approver re-approves the same revision', async () => {
+    const root = await fixture();
+    await toDesign(root);
+    const project = await loadProject(root, { exactRoot: true });
+    const decision = { change: 'add-feature', transition: 'check', policy: 'planning-solid', interactive: true, dryRun: false };
+    const answers = {
+      'Approver identity': 'owner@example.test',
+      'Approver role': 'owner',
+      'Decision': 'approve',
+      'Reason': 'Reviewed the design at the terminal.',
+    };
+    const first = await executeApprove(project, { ...decision, terminal: scriptedTerminal(answers) });
+    expect(first.data.receipt).not.toBeNull();
+
+    /* A second run by the same approver against the same governing revision is idempotent: the
+       recorded receipt is returned as-is, no duplicate file is written, and the audit chain still
+       attests exactly one decision. */
+    const second = await executeApprove(project, { ...decision, terminal: scriptedTerminal(answers) });
+    expect(second.data.status).toBe('recorded');
+    expect(second.data.receipt!.receiptId).toBe(first.data.receipt!.receiptId);
+    expect(second.data.receipt!.digest).toBe(first.data.receipt!.digest);
+    expect(second.changes).toEqual([]);
+    expect(await recordedApprovals(root)).toHaveLength(1);
+    const events = await readChangeLogEvents(project, 'add-feature');
+    expect(events.filter((event) => event.eventType === 'approval.decided')).toHaveLength(1);
   });
 
   it('refuses when the decision is not typed at the terminal, even if flags suggest one', async () => {

@@ -149,7 +149,7 @@ export async function executeApprove(project: ProjectContext, options: ApproveOp
     if (!provider) {
       throw new XForgeError(
         diagnostic('XFORGE_APPROVAL_PROVIDER_FORBIDDEN', `Approval provider is not authorized: ${options.provider}.`),
-        { nextActions: [{ action: 'declare-approval-provider', type: 'approval', actor: 'human', reason: `Declare provider ${options.provider} under approvals.providers in xforge/manifest.yaml (mcpServer, roles), or re-run without --provider to select from the policy's own list.` }] },
+        { nextActions: [{ action: 'declare-approval-provider', type: 'approval', actor: 'human', reason: `Declare provider ${options.provider} under approvals.providers in xforge/manifest.yaml (mcpServer, roles), or re-run without --provider to select from the policy's own list.`, command: ['xforge', 'doctor'] }] },
       );
     }
     if (!policy.providers.includes(provider.id)) {
@@ -162,7 +162,7 @@ export async function executeApprove(project: ProjectContext, options: ApproveOp
     if (!server) {
       throw new XForgeError(
         diagnostic('XFORGE_APPROVAL_MCP_SERVER_MISSING', `McpServer resource is missing or not enabled: ${provider.mcpServer}.`),
-        { nextActions: [{ action: 'configure-mcp-server', type: 'approval', actor: 'human', reason: `Enable the ${provider.mcpServer} McpServer resource in xforge/manifest.yaml (see scaffold/mcp-servers/enterprise-approvals.yaml) and run xforge install, or approve locally on the terminal.` }] },
+        { nextActions: [{ action: 'configure-mcp-server', type: 'approval', actor: 'human', reason: `Enable the ${provider.mcpServer} McpServer resource in xforge/manifest.yaml (see scaffold/mcp-servers/enterprise-approvals.yaml) and run xforge install, or approve locally on the terminal. This is a configuration gap, not a pending decision — fix it rather than retrying.`, command: ['xforge', 'doctor'] }] },
       );
     }
     const governingDigest = sha256(stableStringify({ change: options.change, flow: resolved.flow.metadata.name, policy: policy.id, revision }));
@@ -216,7 +216,7 @@ export async function executeApprove(project: ProjectContext, options: ApproveOp
     if (!policy.providers.includes('local')) {
       throw new XForgeError(
         diagnostic('XFORGE_APPROVAL_PROVIDER_FORBIDDEN', `Policy ${policy.id} does not allow local approvals.`),
-        { nextActions: [{ action: 'select-allowed-provider', type: 'approval', actor: 'human', reason: `Policy ${policy.id} allows: ${policy.providers.join(', ') || '(none)'}. Re-run with --provider <id> for an allowed provider.` }] },
+        { nextActions: [{ action: 'resolve-approval-provider', type: 'approval', actor: 'human', reason: `Policy ${policy.id} requires an external provider (${policy.providers.join(', ') || '(none configured)'}) and does not permit a human to approve at the terminal. If the declared provider's McpServer is a placeholder or unreachable, this is a configuration gap, not a pending decision — tell the user rather than retrying. Fixing it requires editing the Flow/manifest to register a working provider or add "local" to this policy's providers, not a CLI command.` }] },
       );
     }
     if (!options.interactive || !options.terminal) {

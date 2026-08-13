@@ -1,10 +1,14 @@
 import { access, cp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { installCli, writeMinimalPackageJson } from './cli-source.mjs';
 import { parse as parseYaml, stringify as stringifyYaml } from '../../xforge/node_modules/yaml/dist/index.js';
 
-const repositoryRoot = path.resolve(new URL('../..', import.meta.url).pathname);
+/* fileURLToPath, not .pathname + path.resolve: a file:// URL's .pathname keeps a leading
+   slash before a Windows drive letter (/D:/...), which path.resolve does not strip -- it
+   prepends the cwd's own drive instead, producing a broken D:\D:\... path. */
+const repositoryRoot = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const temporaryRoot = path.join(repositoryRoot, 'tests', '.tmp');
 const scenariosRoot = path.join(repositoryRoot, 'tests', 'live-engine', 'scenarios');
 /* Per scenario, not shared: two concurrent setups would `npm pack` the same tarball path and one

@@ -58,6 +58,28 @@ describe('doctor', () => {
        expectation encoded an empty Rule layer: a policy nobody referenced was the normal state. */
     expect(result.json.data.uncited.map((item: any) => item.id)).not.toContain('protected-files');
     expect(result.json.data.unusedFlows.map((item: any) => item.id).sort()).toEqual(['major', 'quick']);
+    /* `local` keeps every shipped policy usable even while the enterprise-approvals McpServer is
+       still the unconfigured placeholder. */
+    expect(result.json.data.unusableApprovals).toEqual([]);
+  });
+
+  it('reports an approval policy whose providers are all unusable as a configuration gap', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    /* Drop `local` from Major's policies: the remaining provider's McpServer command is the
+       shipped placeholder, so the policy can never collect an approval. */
+    await updateYaml(root, 'xforge/flows/major.yaml', (flow) => {
+      for (const policy of flow.governance.approvalPolicies) policy.providers = ['enterprise-approvals'];
+    });
+    const result = await runCli(root, ['doctor']);
+    expect(result.code).toBe(0);
+    expect(result.json.data.unusableApprovals.map((item: any) => item.id).sort()).toEqual(['closing-major', 'implementation-major']);
+    expect(result.json.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'XFORGE_DOCTOR_APPROVAL_POLICY_UNUSABLE', severity: 'warning' }),
+    ]));
+    /* `--strict` escalates the gap into a failing exit code. */
+    const strict = await runCli(root, ['doctor', '--strict']);
+    expect(strict.code).toBe(1);
   });
 
   it('flags an enabled Gate that no Flow Stage or archive terminal references as dead code', async () => {

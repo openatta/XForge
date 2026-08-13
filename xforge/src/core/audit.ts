@@ -86,6 +86,12 @@ export async function readChangeLogEvents(project: ProjectContext, changeId: str
   return key === null ? legacy : [...legacy, ...await readLog(project, key)];
 }
 
+/** How many events the change's LOCAL shard anchor records as retention-pruned (0 = never pruned). */
+export async function localChainPrunedCount(project: ProjectContext, changeId: string): Promise<number> {
+  const anchor = await anchorFor(project, shardKeyFor(changeId));
+  return anchor.prunedCount;
+}
+
 function eventHash(event: Omit<AuditEvent, 'hash'>): string {
   return sha256(stableStringify(event));
 }

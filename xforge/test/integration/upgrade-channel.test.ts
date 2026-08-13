@@ -1,9 +1,8 @@
-import { appendFile, readFile } from 'node:fs/promises';
+import { appendFile, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { CLI_VERSION } from '../../src/constants.js';
 import { fixture, runCli, updateYaml, yamlFile } from '../helpers.js';
-
-const CLI_VERSION = '0.7.8';
 
 async function pinToOldVersion(root: string): Promise<void> {
   await updateYaml(root, 'xforge/manifest.yaml', (manifest) => {
@@ -93,5 +92,39 @@ describe('controlled upgrade channel', () => {
     expect(result.code).toBe(1);
     expect(result.json.nextActions[0].action).toBe('resolve-declared-xforge');
     expect((await yamlFile<any>(root, 'xforge/manifest.yaml')).xforge.version).toBe('0.0.1');
+  });
+
+  it('refuses an upgrade on a never-installed project without touching the manifest', async () => {
+    const root = await fixture();
+    await pinToOldVersion(root);
+
+    /* The upgrade would be legal identity-wise, but there is no installation record — the
+       command must fail before writing the version pins, not after (partial write). */
+    const result = await runCli(root, ['update']);
+    expect(result.code).toBe(1);
+    expect(result.json.changes).toEqual([]);
+    expect(result.json.diagnostics.map((item: { code: string }) => item.code)).toContain('XFORGE_NOT_INSTALLED');
+    expect(result.json.nextActions[0].action).toBe('install');
+    expect((await yamlFile<any>(root, 'xforge/manifest.yaml')).xforge.version).toBe('0.0.1');
+  });
+
+  it('fails loudly instead of silently skipping a version pin whose shape drifted', async () => {
+    const root = await fixture();
+    expect((await runCli(root, ['install', '--target', 'codex'])).code).toBe(0);
+    await pinToOldVersion(root);
+
+    /* A blank line right after the `xforge:` header keeps the YAML valid (blank lines are legal
+       inside block mappings) but stops the anchored block capture dead, so the version pin can
+       no longer be located in the expected shape. */
+    const manifestPath = path.join(root, 'xforge', 'manifest.yaml');
+    const text = await readFile(manifestPath, 'utf8');
+    const broken = text.replace('xforge:\n', 'xforge:\n\n');
+    await writeFile(manifestPath, broken);
+
+    const result = await runCli(root, ['update']);
+    expect(result.code).toBe(1);
+    expect(result.json.changes).toEqual([]);
+    expect(result.json.diagnostics.map((item: { code: string }) => item.code)).toContain('XFORGE_MANIFEST_VERSION_FIELD_NOT_FOUND');
+    expect(await readFile(manifestPath, 'utf8')).toBe(broken);
   });
 });

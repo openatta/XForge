@@ -32,3 +32,4 @@ allowed-tools: Read Grep Glob Bash
 
 - 在材料性歧义、范围扩大、失败 Gate、权限扩大、stale revision、外部副作用或无 ready Action 时停止。
 - State 返回 rework 时转到指定 Stage，不自行选择更晚阶段绕过问题。
+- 当 Approval Action 因配置的 provider 缺失、不可达或策略不允许而失败或阻塞（例如 `XFORGE_APPROVAL_PROVIDER_FORBIDDEN`）——不同于真正等待人类决定的 `status: pending` Action——这属于配置缺口，不是普通的待审状态。此时应停止、不要重试，并明确告知用户需要配置 approval provider：指向 manifest.yaml 的 `approvals.providers` 与对应 Flow 的 `approvalPolicies`。

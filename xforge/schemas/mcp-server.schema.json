@@ -113,7 +113,9 @@
     },
     "envName": {
       "type": "string",
-      "pattern": "^[A-Z_][A-Z0-9_]*$"
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
     },
     "metadata": {
       "type": "object",

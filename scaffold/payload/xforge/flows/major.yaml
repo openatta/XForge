@@ -120,6 +120,11 @@ artifacts:
     instruction: Record only the current Change revision, Git HEAD, Flow version, input digest, and passed Evidence references.
     outline: ''
 governance:
+  # `local` sits alongside `enterprise-approvals` (unlike a hypothetical enterprise-only
+  # policy) so a fresh project isn't locked out of Major entirely until an external
+  # approval system is registered: `minApprovers: 2` + `separationOfDuties: true` still
+  # require two distinct, role-diverse human decisions either way — local approval does
+  # not relax that bar, it only changes where the decision is captured.
   approvalPolicies:
     - id: implementation-major
       minApprovers: 2

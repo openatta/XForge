@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Diagnostic, FileChange, ProjectContext, TransitionReceipt } from '../types.js';
-import { readChangeAuditIndex, readChangeLogEvents, recordAudit, verifyAudit } from '../core/audit.js';
+import { localChainPrunedCount, readChangeAuditIndex, readChangeLogEvents, recordAudit, verifyAudit } from '../core/audit.js';
 import { blockRemedy, resolveControlPlane } from '../core/control-plane.js';
 import { XForgeError, diagnostic } from '../core/errors.js';
 import { atomicWrite, rollbackWrittenFile } from '../core/files.js';
@@ -19,13 +19,20 @@ import { resolveWorkPackages } from '../core/work-packages.js';
  * The local chain gates the scan: a fresh clone has no local events, and its committed index may
  * legitimately be truncated past the 1000-event summary limit — flagging old receipts there would
  * turn a retention boundary into a false accusation.
+ *
+ * The same holds when the local chain is retention-pruned AND the committed index is unusable
+ * (missing, digest-invalid, or itself truncated): the attestation digests then exist nowhere this
+ * machine can read, and the scan cannot distinguish a crash remnant from a pruned-but-legitimate
+ * receipt. In that combination the scan is skipped rather than accusing a retention boundary.
  */
 async function orphanTransitionReceipts(project: ProjectContext, changeId: string, receipts: TransitionReceipt[]): Promise<string[]> {
   if (receipts.length === 0) return [];
   const local = await readChangeLogEvents(project, changeId);
   if (local.length === 0) return [];
-  const localDigests = new Set(local.filter((event) => event.eventType === 'stage.entered').map((event) => event.inputDigest));
   const committed = await readChangeAuditIndex(project, changeId);
+  const indexUsable = Boolean(committed?.digestValid && !committed.document.eventsTruncated);
+  if (!indexUsable && await localChainPrunedCount(project, changeId) > 0) return [];
+  const localDigests = new Set(local.filter((event) => event.eventType === 'stage.entered').map((event) => event.inputDigest));
   const committedDigests = new Set((committed?.digestValid ? committed.document.events : [])
     .filter((event) => event.eventType === 'stage.entered')
     .map((event) => event.inputDigest));

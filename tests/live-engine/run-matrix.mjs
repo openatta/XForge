@@ -1,5 +1,6 @@
 import { access, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { parse } from '../../xforge/node_modules/yaml/dist/index.js';
 import { spawnXforge, runXforgeJson } from './xforge-cli.mjs';
@@ -19,7 +20,10 @@ import { assertLiveEnginePolicy, createLiveEnginePolicy } from './policy.mjs';
  * is kept as a small explicit table below, not invented generically.
  */
 
-const repositoryRoot = path.resolve(new URL('../..', import.meta.url).pathname);
+/* fileURLToPath, not .pathname + path.resolve: a file:// URL's .pathname keeps a leading
+   slash before a Windows drive letter (/D:/...), which path.resolve does not strip -- it
+   prepends the cwd's own drive instead, producing a broken D:\D:\... path. */
+const repositoryRoot = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const scriptsRoot = path.join(repositoryRoot, 'tests', 'live-engine');
 const scenariosRoot = path.join(scriptsRoot, 'scenarios');
 const temporaryRoot = path.join(repositoryRoot, 'tests', '.tmp');

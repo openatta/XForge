@@ -425,11 +425,22 @@ export interface ProjectionOptions {
   verifyDigests?: boolean;
 }
 
-function notInstalled(project: ProjectContext, command: ProjectionMode): never {
+function notInstalled(project: ProjectContext, command: string): never {
   throw new XForgeError(diagnostic('XFORGE_NOT_INSTALLED', `${command} requires an existing installation record.`, 'xforge/.state.json'), {
     root: project.root,
     nextActions: [{ action: 'install', reason: 'Create the initial managed installation record.', command: ['xforge', 'install', '--dry-run'] }],
   });
+}
+
+/**
+ * Fail-closed installed-record gate for commands that must not touch a project's governance
+ * files before knowing an installation record exists. `update` runs this before its
+ * declared-version reconciliation write, so a never-installed project cannot end up with a
+ * bumped manifest and a failed command (a partial write).
+ */
+export async function assertInstalledRecord(project: ProjectContext, command: string): Promise<void> {
+  const previous = await readOwnership(project);
+  if (installedTargets(previous).length === 0) notInstalled(project, command);
 }
 
 function assertSyncIdentity(project: ProjectContext, state: OwnershipStateV2): void {
