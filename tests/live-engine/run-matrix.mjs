@@ -177,6 +177,30 @@ async function reopenStageAttempts(policyPath, stageIds) {
 }
 
 /**
+ * Splits a recorded Stage's files into what the Agent wrote and what the CLI produced for it.
+ *
+ * A Stage commit holds both, because an Agent authors an Artifact and then runs `xforge check` or
+ * `xforge transition` in the same turn. Only the first half may be restored on a replay. The second
+ * half is the tooling under test: transition receipts are a hash chain, and restoring one recorded
+ * against the previous run's chain while this run builds its own forks it outright
+ * (`XFORGE_TRANSITION_CHAIN_INVALID`, which is how this was found). Gate Evidence, the audit log and
+ * the work-package records are the same kind of thing — regenerating them is the point of replaying.
+ *
+ * `change.yaml` stays on the authored side despite living beside them: it holds the Flow, the
+ * classification and the scope the Agent declared, and no governance state at all — that is entirely
+ * in the receipts. Excluding it made the Change cease to exist and `state` return nothing.
+ */
+function isAgentAuthored(file) {
+  const machineOwned = [
+    /\/evidence\/receipts\//,
+    /\/evidence\/audit\//,
+    /\/evidence\/agents\//,
+    /\/evidence\/[^/]+\.json$/,
+  ];
+  return !machineOwned.some((pattern) => pattern.test(`/${file}`));
+}
+
+/**
  * Replays one recorded Stage in place of calling the model.
  *
  * Only the Agent's own contribution is applied — the diff between the recorded Stage commit and its
@@ -188,13 +212,32 @@ async function reopenStageAttempts(policyPath, stageIds) {
 function applyRecordedStage(projectRoot, stageId) {
   const step = replay.steps.find((candidate) => candidate.stage === stageId);
   if (!step) {
-    throw new Error(`Cassette "${replay.scenario}" has no recorded step for ${stageId}. The Flow reached a Stage the recording never did, which is a real divergence, not a missing file.`);
+    /*
+     * A Stage the recording walked but committed nothing for wrote nothing, and replaying it is
+     * correctly a no-op. The read-only Skills are like this — `standalone-status` runs `xforge
+     * status` and reports, so `commit` finds an unchanged tree and skips. The timeline still has an
+     * entry for it, which is what separates "produced nothing" from "never happened": a Stage in
+     * neither list is a Flow that reached somewhere the recording never did, and that is a real
+     * divergence rather than a missing file.
+     */
+    const recorded = (replay.stages ?? []).some((candidate) => candidate.stage === stageId);
+    /* The archive prompt is the other shape of this: a standalone Skill exercise the Agent is
+       expected to end by reporting that closing Approval blocks it, so it writes nothing and older
+       cassettes carry no timeline entry for it either. Newer ones do — the entry is written below —
+       and until those replace these, its name is enough to tell it apart from a real divergence. */
+    if (recorded || stageId === 'archive') {
+      process.stdout.write(`${JSON.stringify({ replayed: stageId, files: 0, note: 'nothing recorded to apply; the Stage wrote nothing' })}\n`);
+      return;
+    }
+    throw new Error(`Cassette "${replay.scenario}" never reached ${stageId}. The Flow walked to a Stage the recording did not, which is a divergence, not a missing file.`);
   }
   const changes = cassetteGit(['diff', '--name-status', step.parent, step.commit]).trim();
   const applied = [];
+  const regenerated = [];
   for (const line of changes ? changes.split('\n') : []) {
     const [status, ...rest] = line.split('\t');
     const file = rest[rest.length - 1];
+    if (!isAgentAuthored(file)) { regenerated.push(file); continue; }
     if (status.startsWith('D')) {
       rmSync(path.join(projectRoot, file), { force: true });
     } else {
@@ -205,7 +248,20 @@ function applyRecordedStage(projectRoot, stageId) {
   /* `git checkout` against a foreign work tree stages what it writes into the cassette's index;
      resetting keeps that index from carrying over into the next step's diff. */
   cassetteGit(['reset', '--quiet']);
-  process.stdout.write(`${JSON.stringify({ replayed: stageId, commit: step.commit.slice(0, 8), files: applied.length })}\n`);
+  /*
+   * Re-run `xforge check` only where the recording shows the Agent ran it — that is, where its turn
+   * produced Gate Evidence. Running it after every Stage instead looks harmless and is not: at Apply
+   * it regenerates the work package's verification record before the delivery is bound, so the
+   * delivery diff then contains a file outside the package's `write_paths` and `apply -> verify`
+   * blocks on a boundary the Worker never crossed. When the tooling runs matters as much as whether
+   * it runs, and the recording is the statement of when.
+   */
+  if (regenerated.some((file) => /\/evidence\/[^/]+\.json$/.test(`/${file}`))) {
+    tryXforgeJson(projectRoot, ['check', '--change', scenarioConfig.changeId]);
+  }
+  process.stdout.write(`${JSON.stringify({
+    replayed: stageId, commit: step.commit.slice(0, 8), restored: applied.length, regenerated: regenerated.length,
+  })}\n`);
 }
 
 async function runEngine({ projectRoot, scenario, stageId, promptRelative, policyPath, options: cliOptions }) {
@@ -433,9 +489,14 @@ function timelineStep(projectRoot, stageId) {
   if (recorded.contentRevision !== entry.contentRevision) {
     throw new Error(`Replay diverged at ${stageId}: contentRevision ${entry.contentRevision} does not match the recorded ${recorded.contentRevision}. The same content produced a different revision, so something in how governed content is digested has changed.`);
   }
-  if (recorded.currentStage !== entry.currentStage) {
-    throw new Error(`Replay diverged at ${stageId}: the Change is at ${entry.currentStage}, the recording was at ${recorded.currentStage}.`);
-  }
+  /*
+   * `currentStage` is recorded but deliberately not asserted. An Agent transitions inside the turn
+   * that produced its Artifacts, so the recording observed the Stage it moved to; a replay makes
+   * that move a few steps later, from the harness, and would report the Stage it moved from. The
+   * difference is one of timing, not of behaviour, and the Stage sequence is already asserted by the
+   * loop having to reach each recorded Stage at all. `contentRevision` above carries the weight, and
+   * it is independent of where the Change sits.
+   */
 }
 
 const setup = JSON.parse(run('node', [
@@ -630,18 +691,55 @@ for (let index = 0; index < stages.length; ) {
       const isDeclaredRework = target >= 0 && target <= index
         && Boolean(backward) && backward.to === current
         && (origin?.reworkTo ?? []).includes(current);
+      /*
+       * Standing still is not the same as failing to act. A Stage held by an open blocker is a
+       * Change the Flow is refusing to advance, and the Agent that recorded that blocker is right
+       * to stop rather than transition — `solid-rework` produced exactly this on its first run:
+       * Check found the planted contradiction, wrote `F-1` with `reworkTo: design`, and left the
+       * Change where it was, and this branch called that a delinquent Agent.
+       *
+       * The block is probed with `--dry-run`, so asking the question does not move the Change. An
+       * Approval-gated Stage reaches the same conclusion through `declaredReworkTarget` above; this
+       * gives the ungated Stages the same reading rather than a second interpretation of it.
+       */
+      let reworkFrom = backward?.from;
+      let reworkTo = current;
+      let movedForward = false;
       if (!isDeclaredRework) {
-        throw new Error(`Agent did not self-transition ${stage.id} -> ${nextStage.id} as instructed (currentStage=${current}, lastReceipt=${backward ? `${backward.from}->${backward.to}` : 'none'}).`);
+        const probe = tryXforgeJson(projectRoot, ['transition', '--change', scenarioConfig.changeId, '--to', nextStage.id, '--dry-run']);
+        /*
+         * On a replay there is no Agent to have moved the Change, and the receipt it wrote during
+         * the recording is deliberately not restored — receipts chain, and grafting one run's chain
+         * onto another's forks it. So the harness makes the move the recording shows the Agent
+         * making, once the Gates agree it is allowed. What is being tested here is that the CLI
+         * still permits it on this content, not that a model remembered to ask.
+         */
+        if (replay && probe.data?.ready) {
+          runXforgeJson(projectRoot, ['transition', '--change', scenarioConfig.changeId, '--to', nextStage.id]);
+          commit(projectRoot, `Replayed the Agent's transition into ${nextStage.id}`);
+          movedForward = true;
+        } else {
+          const held = current === stage.id ? declaredReworkTarget(projectRoot, probe, stage) : null;
+          if (!held) {
+            const blocks = probe.diagnostics?.filter((item) => item.severity === 'error').map((item) => item.message).join(' ');
+            throw new Error(`Agent did not self-transition ${stage.id} -> ${nextStage.id} as instructed (currentStage=${current}, lastReceipt=${backward ? `${backward.from}->${backward.to}` : 'none'})${blocks ? `; the Stage is blocked by: ${blocks}` : ' and nothing blocks it'}.`);
+          }
+          runXforgeJson(projectRoot, ['transition', '--change', scenarioConfig.changeId, '--to', held]);
+          reworkFrom = stage.id;
+          reworkTo = held;
+        }
       }
+      if (!movedForward) {
       reworks += 1;
       if (reworks > maxReworks) {
-        throw new Error(`${scenarioName} reworked ${reworks} times (limit ${maxReworks}); last was ${backward.from} -> ${current}.`);
+        throw new Error(`${scenarioName} reworked ${reworks} times (limit ${maxReworks}); last was ${reworkFrom} -> ${reworkTo}.`);
       }
-      process.stdout.write(`${JSON.stringify({ rework: reworks, from: backward.from, to: current, receipt: backward.digest })}\n`);
-      commit(projectRoot, `Reworked ${backward.from} -> ${current}`);
-      index = target;
+      process.stdout.write(`${JSON.stringify({ rework: reworks, from: reworkFrom, to: reworkTo, cause: isDeclaredRework ? 'agent-transition' : 'blocking-finding' })}\n`);
+      commit(projectRoot, `Reworked ${reworkFrom} -> ${reworkTo}`);
+      index = stages.findIndex((candidate) => candidate.id === reworkTo);
       await reopenStageAttempts(policyPath, stages.slice(index).map((candidate) => candidate.id));
       advanced = false;
+      }
     }
   }
 
@@ -691,6 +789,9 @@ if (scenarioConfig.archiveVia) {
   await runEngine({
     projectRoot, scenario: scenarioName, stageId: 'archive', promptRelative: scenarioConfig.archiveVia, policyPath, options: selected,
   });
+  /* Recorded even though the Stage is expected to write nothing, so a replay can tell "this step
+     happened and produced no change" from "the Flow went somewhere the recording never did". */
+  timelineStep(projectRoot, 'archive');
 }
 /*
  * Archive is the Flow's terminal operation, and it was the one step nothing asserted: `passed`
