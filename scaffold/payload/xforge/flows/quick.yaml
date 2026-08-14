@@ -32,17 +32,6 @@ artifacts:
       #### Scenario: <name>
       - **WHEN** ...
       - **THEN** ...
-  - id: constitution-check
-    generates: evidence/constitution-check.yaml
-    description: Answer every Constitution principle for this Change
-    instruction: One entry per `## ` principle in xforge/constitution.md, each with status compliant|violation|not-applicable. Every entry must cite at least one machine-locatable reference in `references` — a Requirement id from this Change's delta Specs, a file path that exists, or `gate:<name>` for a Gate that passed. A violation additionally needs a justification and a named approvedBy; not-applicable needs a justification. A general claim of compliance does not satisfy the Gate.
-    outline: |
-      principles:
-        - principle: <exact `## ` heading from constitution.md>
-          status: <compliant|violation|not-applicable>
-          references: [<Requirement id | existing path | gate:<name>>]
-          justification: <required for violation and not-applicable>
-          approvedBy: <named person, required for violation>
   - id: assurance
     generates: assurance.md
     description: Record verification against requirements, tests, and constraints
@@ -82,18 +71,17 @@ stages:
     requires: [propose]
     produces: []
     reworkTo: [propose]
-  # Quick has no Check Stage, so the Constitution ledger is answered here rather than before
-  # implementation. That is a deliberate trade-off: enforcing it at Propose would ask an Agent to
-  # certify compliance against a Change that has not been designed or written yet — exactly the
-  # unfalsifiable "seven labelled sentences" the ledger exists to replace. Answering it at Verify
-  # means every entry can cite something real (a Requirement, the diff, `gate:unit-tests`), and the
-  # gate ordering below runs `unit-tests` first so `constitution-check` can cross-check it.
+  # Quick has no Constitution ledger. It is the Flow for a trivial, single-module, low-risk Change,
+  # and it has no Check Stage to answer the ledger before implementation; requiring it at Verify
+  # bought a per-principle certification on Changes whose whole point is that they carry no
+  # principle-level risk. Solid and Major both keep it, at Check, where a Change large enough to
+  # need it is designed before it is certified.
   - id: verify
     skill: xforge-verify
     authority: assurance-write
     requires: [apply]
-    produces: [constitution-check, assurance]
-    gates: [structure, unit-tests, constitution-check]
+    produces: [assurance]
+    gates: [structure, unit-tests]
     reworkTo: [apply]
     exit:
       conditions:

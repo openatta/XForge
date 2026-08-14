@@ -25,7 +25,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(npx:*)
 3. 核对测试、rollout、monitoring、stop signals、owner、path scope、依赖与并行边界是否匹配重大影响。
 4. 运行 `npx --no-install xforge check --change <id>`，把确定性诊断作为证据输入。
 5. 写 `evidence/check-findings.yaml`：按 blocker、warning、suggestion 记录每项 finding，指出 Artifact/Requirement 位置、原因、`refs`，blocker 未解决时还要写 `reworkTo` Stage；审查没有发现问题时写出显式空列表。
-6. 写 `evidence/constitution-check.yaml`：按文档顺序为 `xforge/constitution.md` 的每个 `## ` 标题写一条，`status` 为 `compliant`、`violation` 或 `not-applicable`，并至少给出一条机器可定位的 `references`——本 Change delta Specs 中的 Requirement id、真实存在的路径，或 `gate:<name>`（该 Change 已有通过的 Gate Evidence）。`violation` 还需要 `justification` 和具名 `approvedBy`（必须是真实审批人或 Git author；该 Change 已有 approval receipt 时必须是 receipt 上的人）；`not-applicable` 需要 `justification`。只写 `compliant` 而不引用任何东西，正是本 Gate 要拒绝的笼统声明。
+6. 写 `evidence/constitution-check.yaml`：按文档顺序为 `xforge/constitution.md` 的每个 `## ` 标题写一条，`status` 为 `compliant`、`violation` 或 `not-applicable`，并至少给出一条机器可定位的 `references`——本 Change delta Specs 中的 Requirement id、真实存在的路径，或 `gate:<name>`（该 Change 已有通过的 Gate Evidence）。`violation` 还需要 `justification` 和具名 `approvedBy`（必须是真实审批人或 Git author；该 Change 已有 approval receipt 时必须是 receipt 上的人）；`not-applicable` 需要 `justification`。只写 `compliant` 而不引用任何东西，正是本 Gate 要拒绝的笼统声明。每条 `justification` 都用块标量书写（`justification: >-`，正文缩进另起一行）：普通标量遇到「冒号加空格」或以 `[`、`{` 开头即失效。
 7. 在 `check-report.md` 与两个台账都写完之后，再运行一次 `npx --no-install xforge check --change <id>`，它会对最终内容重新运行并刷新当前 Stage 的整个 Gate 集合；`--all-gates` 还会运行 Change 尚未到达的 Stage 所属的 Gate，那些 Gate 不可能通过，Stage 中途通常不需要这样做。
 8. 刷新 State；有 blocker 时请求 State 指定的 rework Transition；无 blocker 时仍由 CLI Gate 与 Approval 决定是否可运行 `npx --no-install xforge transition --change <id> --to apply`。
 

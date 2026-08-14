@@ -33,4 +33,4 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash
 
 - 在材料性歧义、范围扩大、失败 Gate、权限扩大、stale revision、外部副作用或无 ready Action 时停止。
 - State 返回 rework 时转到指定 Stage，不自行选择更晚阶段绕过问题。
-- 当 Approval Action 因所配置的 provider 缺失、不可达或策略不允许而失败或阻塞（例如 `XFORGE_APPROVAL_PROVIDER_FORBIDDEN`）——不同于 `status: pending` 这种真正等待人类决定的 Action——这属于配置缺口，不是普通的待审状态。此时应停止、不要重试，并明确告知用户需要配置 approval provider：指向 manifest.yaml 的 `approvals.providers` 与对应 Flow 的 `approvalPolicies`。
+- Approval Action 因 provider 缺失、不可达或策略不允许而失败（例如 `XFORGE_APPROVAL_PROVIDER_FORBIDDEN`）属于配置缺口，不是 `status: pending` 那种等待人类决定的 Action。应停止、不要重试，并告知用户配置 provider：manifest.yaml 的 `approvals.providers` 与对应 Flow 的 `approvalPolicies`。

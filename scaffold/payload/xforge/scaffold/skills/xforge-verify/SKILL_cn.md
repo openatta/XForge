@@ -14,7 +14,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(npx:*)
 
 # 权限
 
-- 可写 Verify Stage `produces` 的 Artifact——assurance；若 Flow（Quick）把 Constitution 台账放在本 Stage 而不是 Check，还包括 `evidence/constitution-check.yaml`——以及 `evidence/verification-receipt.yaml`，后者是本 Stage 的 exit condition 而不是 Artifact。Gate Evidence（`evidence/*.json`）只能由 `npx --no-install xforge check` 生成；receipt 只引用这些 digest，不得把它们改写成自己的结论。
+- 可写 Verify Stage `produces` 的 Artifact——assurance——以及 `evidence/verification-receipt.yaml`，后者是本 Stage 的 exit condition 而不是 Artifact。Gate Evidence（`evidence/*.json`）只能由 `npx --no-install xforge check` 生成；receipt 只引用这些 digest，不得把它们改写成自己的结论。
 - 只有 `verify-and-archive` 或 `archive-current` 的明确用户授权允许调用 `npx --no-install xforge archive`；先 dry-run，再执行原子同步与移动。
 - 失败时只报告并返回 Apply rework；除非用户另行明确授权，不修改实现。
 
@@ -36,7 +36,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(npx:*)
        status: passed
    ```
 
-   本 Stage 每个通过的 Gate 都要引用一次，且必须是当前 digest——不得遗漏、不得引用其它 Stage 的 Gate、不得使用早先运行的 digest。之后若再改动任何 Artifact，必须重跑 Gate 并重写 receipt。若 Flow 把 `constitution-check` 列为本 Stage 的 Artifact，还要写 `evidence/constitution-check.yaml`：为 `xforge/constitution.md` 的每个 `## ` 标题写一条，含 status 和至少一条机器可定位的 `references`（Requirement id、真实存在的路径，或 `gate:<name>`）。任一 mandatory Gate、Requirement 或关键约束未验证时请求 `apply` rework Transition；不得手写 Gate PASS。
+   本 Stage 每个通过的 Gate 都要引用一次，且必须是当前 digest——不得遗漏、不得引用其它 Stage 的 Gate、不得使用早先运行的 digest。`gates` 只放 Gate；work-package 交付写在 `workPackageDeliveries`（`package`、`delivery`、`dispatch`、`status`、`verifyCommand`、`exitCode`），写成 `gates` 的一行会被以 `gate-unverifiable-<name>` 拒绝。之后若再改动任何 Artifact，必须重跑 Gate 并重写 receipt。任一 mandatory Gate、Requirement 或关键约束未验证时请求 `apply` rework Transition；不得手写 Gate PASS。
 6. Gate 和 Artifact 满足后调用 `npx --no-install xforge transition --change <id> --to ready-to-archive`；`verify-only` 到此停止，并报告 Closing Approval 与 Audit blockers。
 7. 已获当前 revision 的人类/外部 Closing Approval 后运行 `npx --no-install xforge audit verify --change <id>` 和 `npx --no-install xforge archive --change <id> --dry-run`，展示完整 Specs merge/move 计划、冲突和显著兼容影响；仅在 Approval、Audit、Gate 全部当前且计划无错误时运行 `npx --no-install xforge archive --change <id>`。
 8. 归档后运行 `npx --no-install xforge state`，确认 Change 离开 active set、主 Specs 可见且 Evidence 位于归档目录。
@@ -49,8 +49,8 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(npx:*)
 # 停止与返工
 
 - 在不完整实现、失败 Gate、无效 delivery、stale receipt、Spec 冲突、路径安全问题、目标碰撞或未授权归档时停止。
-- 在 approval provider 配置失败（`XFORGE_APPROVAL_PROVIDER_FORBIDDEN`、`XFORGE_APPROVAL_MCP_SERVER_MISSING`、`XFORGE_APPROVAL_MCP_TOKEN_MISSING`、`XFORGE_APPROVAL_MCP_CONNECTION_FAILED`）时停止：这说明 Closing Approval 的 provider 没有配置好，不是决定仍在等待。告知用户配置该 provider 的 McpServer 与 token（见 `scaffold/mcp-servers/`），或改在终端本地审批；绝不对同一个 provider 反复重试。
-- 归档时出现 `audit:remote-pending` 要停止。这说明 Flow 或 `manifest.yaml` 的 `audit.remote.requiredFor` 把远端 audit 投递设为 required，而 `XFORGE_AUDIT_ENDPOINT` 未设置或接收端不可达，所有事件都投递不出去。这是配置缺口，不是待决定：`npx --no-install xforge audit retry` 无法清空一个没有去处的队列。应告知用户配置该 endpoint（以及 token/HMAC 环境变量），或不再对该 assurance level 要求远端投递；绝不反复重试。
+- 在 approval provider 配置失败（`XFORGE_APPROVAL_PROVIDER_FORBIDDEN`、`XFORGE_APPROVAL_MCP_SERVER_MISSING`、`XFORGE_APPROVAL_MCP_TOKEN_MISSING`、`XFORGE_APPROVAL_MCP_CONNECTION_FAILED`）时停止：provider 未配置，不是决定仍在等待。告知用户配置其 McpServer 与 token（见 `scaffold/mcp-servers/`），或改在终端本地审批；绝不对同一个 provider 反复重试。
+- 归档时出现 `audit:remote-pending` 要停止：远端 audit 投递被设为 required，而 `XFORGE_AUDIT_ENDPOINT` 未设置或不可达，`audit retry` 没有可投递的去处。应告知用户配置该 endpoint（以及 token/HMAC 环境变量），或不再对该 assurance level 要求远端投递；绝不反复重试。
 - Verify 失败返回 Apply；governing artifact 自相矛盾时按 State 的 `reworkTo` 返回更早 Stage。
 
 # 判断要点
