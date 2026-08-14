@@ -1,0 +1,100 @@
+{
+  "apiVersion": "xforge-live-engine/v1",
+  "kind": "Cassette",
+  "scenario": "solid",
+  "flow": "solid",
+  "changeId": "task-ledger",
+  "recordedAt": "2026-08-14T07:50:12.750Z",
+  "scaffold": "sha256:150b38de2f6586a6ff0b9063cb02c7155aeac01c525e6592b004ca1610bfcc48",
+  "cli": null,
+  "outcome": "archived",
+  "reworks": 0,
+  "steps": [
+    {
+      "stage": "propose",
+      "commit": "2dfa46e6e8fe374a02b16693b86301ee1c16f351",
+      "parent": "0bb17736e0f824604d3091f4eaa1ed8f0a9d5af4",
+      "subject": "Live engine stage complete: solid:propose",
+      "files": 6
+    },
+    {
+      "stage": "standalone-revise",
+      "commit": "ab4ab28a80b908fb87ef4e0e69c02dd32cd70b9c",
+      "parent": "58440de5b1d778012aa7ac47c4e7e866e78f7e54",
+      "subject": "Live engine standalone checkpoint: standalone-revise",
+      "files": 2
+    },
+    {
+      "stage": "design",
+      "commit": "06a11f02f2dba452917d03474e8ab2731077fc4a",
+      "parent": "ab4ab28a80b908fb87ef4e0e69c02dd32cd70b9c",
+      "subject": "Live engine stage complete: solid:design",
+      "files": 2
+    },
+    {
+      "stage": "check",
+      "commit": "92ee1f7e3349fcf643626ebbac2049abcfbc38cd",
+      "parent": "0e863e13271a6a4b50a2141a70d4d21abce28655",
+      "subject": "Live engine stage complete: solid:check",
+      "files": 8
+    },
+    {
+      "stage": "apply",
+      "commit": "6276eb99ed953ff2899dda6317a49329cea4b4f2",
+      "parent": "0f0feab069924defe10d99ddec1d00cb5dc207dd",
+      "subject": "Live engine stage complete: solid:apply",
+      "files": 1
+    },
+    {
+      "stage": "apply-delivered",
+      "commit": "458f6a8388b60084832a715a4a32e112d8eb7828",
+      "parent": "d5157331134a5b2e322491ab24dd595d55183605",
+      "subject": "Live engine continuation: apply delivery observed",
+      "files": 2
+    },
+    {
+      "stage": "verify",
+      "commit": "82329e731c6dfe3917df962e957f3fb0f62b4af6",
+      "parent": "458f6a8388b60084832a715a4a32e112d8eb7828",
+      "subject": "Live engine stage complete: solid:verify",
+      "files": 6
+    }
+  ],
+  "stages": [
+    {
+      "stage": "propose",
+      "contentRevision": "8cdf8784739907d834e6ab18d6a468bf82f103d9c510b571d250ee0e1e17834d",
+      "currentStage": "design"
+    },
+    {
+      "stage": "standalone-revise",
+      "contentRevision": "8cdf8784739907d834e6ab18d6a468bf82f103d9c510b571d250ee0e1e17834d",
+      "currentStage": "design"
+    },
+    {
+      "stage": "design",
+      "contentRevision": "4fe1c88aa4c788f5da59e1e4f62e6db51c5b47aa730aec71b508d6ac087bb586",
+      "currentStage": "design"
+    },
+    {
+      "stage": "check",
+      "contentRevision": "d0f80e192cd0877110844382ce2c81631a81082f96deb37b80823e0a0097dfcb",
+      "currentStage": "apply"
+    },
+    {
+      "stage": "apply",
+      "contentRevision": "d0f80e192cd0877110844382ce2c81631a81082f96deb37b80823e0a0097dfcb",
+      "currentStage": "apply"
+    },
+    {
+      "stage": "apply-delivered",
+      "contentRevision": "d0f80e192cd0877110844382ce2c81631a81082f96deb37b80823e0a0097dfcb",
+      "currentStage": "verify"
+    },
+    {
+      "stage": "verify",
+      "contentRevision": "18f3e264e7ee78e131dd4106a6acdf3dc0e2f89df42693c9ff70d2d3091967e8",
+      "currentStage": "verify"
+    }
+  ]
+}
