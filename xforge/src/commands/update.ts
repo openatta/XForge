@@ -41,7 +41,7 @@ async function seedMissingConstitutionFiles(project: ProjectContext, dryRun: boo
   return changes;
 }
 
-export async function executeUpdate(project: ProjectContext, options: { target?: TargetId; dryRun: boolean }) {
+export async function executeUpdate(project: ProjectContext, options: { target?: TargetId; dryRun: boolean; adopt?: boolean }) {
   /*
    * Two orderings matter here, and they are independent of each other.
    *

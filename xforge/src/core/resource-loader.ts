@@ -43,7 +43,11 @@ async function loadFlatResource<T extends { metadata?: { name?: string } }>(
   assertResourceId(id);
   const yamlPath = `xforge/scaffold/${kind}/${id}.yaml`;
   const absolute = await safeResolve(project.root, yamlPath);
-  if (!await exists(absolute)) return { value: null, yamlPath, diagnostics: [diagnostic('XFORGE_RESOURCE_MISSING', `Selected ${kind.slice(0, -1)} resource is missing: ${id}`, yamlPath)] };
+  /* `kind` is the directory name, so it is plural; `policies` does not singularize by dropping a
+     letter. This message reaches an operator verbatim inside a runtime hook deny, so it is worth
+     getting right rather than shipping "Selected policie resource is missing". */
+  const singular = kind === 'policies' ? 'PermissionPolicy' : kind.replace(/s$/, '');
+  if (!await exists(absolute)) return { value: null, yamlPath, diagnostics: [diagnostic('XFORGE_RESOURCE_MISSING', `Selected ${singular} resource is missing: ${id}`, yamlPath)] };
   const value = await loadYaml<T>(absolute, yamlPath);
   const diagnostics = await validateSchema(schema, value, yamlPath);
   if (value.metadata?.name !== id) diagnostics.push(diagnostic('XFORGE_RESOURCE_NAME_MISMATCH', `Resource metadata.name must equal ${id}.`, yamlPath));

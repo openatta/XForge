@@ -55,7 +55,10 @@ describe('Flow artifact graph', () => {
     expect(planned.apply.ready).toBe(true);
     expect(planned.archive.ready).toBe(false);
     await write(root, `${base}/assurance.md`, '## Completeness\nPassed\n');
-    await write(root, `${base}/evidence/verification-receipt.yaml`, 'status: passed\n');
+    /* Quick answers the Constitution ledger at Verify (it has no Check Stage), and the verification
+       receipt is no longer an Artifact — it is a Stage exit condition evaluated against real Gate
+       Evidence, which artifact readiness deliberately does not consider. */
+    await write(root, `${base}/${CONSTITUTION_CHECK_PATH}`, await constitutionLedger(root));
     expect((await resolveChangeState(project, 'tiny-fix')).state.archive.ready).toBe(true);
   });
 

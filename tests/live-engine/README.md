@@ -69,6 +69,36 @@ already validated against an independent reference implementation before
 being committed — the model is expected to satisfy that suite, not to be
 trusted to have specified it correctly itself.
 
+### Scenarios are not Flows, and they are scored by intent
+
+A directory under `scenarios/` holds fixtures and prompts; a *scenario* is an
+entry in `run-matrix.mjs`'s table, naming the Flow to drive and what the run
+must show. More than one scenario can drive the same Flow, so `--scenario`
+selects the entry and `--flow` remains an alias for the three whose names
+coincide. Every path a run writes is keyed by the scenario, so two can run at
+once.
+
+| scenario | flow | intent | must show |
+| --- | --- | --- | --- |
+| `quick` | quick | happy-path | archived, **exactly 0 reworks** |
+| `solid` | solid | happy-path | archived, **exactly 0 reworks** |
+| `solid-rework` | solid | rework | archived, **exactly 1 rework** |
+| `major` | major | adversarial | archived **or** `stopped-at-check` |
+
+The rework count is asserted, not tolerated. `maxReworks` only ever bounded
+oscillation, so a scenario meant to prove the rework path worked passed
+identically when it never reworked — a live Solid run did exactly that. A
+happy-path scenario now fails if anything sends work back, and `solid-rework`
+fails if nothing does.
+
+`solid-rework` walks the same Stage graph as `solid` and differs in one thing:
+after Design, the harness appends a claim to `design.md` that contradicts the
+seeded acceptance suite (the suite asserts a corrupt store exits non-zero; the
+planted Design says it exits 0). Check is expected to find that contradiction,
+block, and send the work back to `design`, which is what `check.reworkTo` lists
+it for — and the second pass must clear it. Unlike Major's, this rework is
+constructed, so the expectation can be exact.
+
 ### Major's expected outcome: often stops at Check, and that is a pass, not a failure
 
 Unlike quick/solid, a major (`credential-store`) run reaching `verify`/archive
@@ -100,6 +130,17 @@ the question "did the pass-through governance chain work?" this way, not by
    or blocked with a finding that cites real Artifact/test evidence — not
    prose the model could have fabricated.
 
+**These three points are now checked by the harness, not by you.** They used to
+live only in this section, so a correct Major run exited non-zero and read as a
+crash until someone came and applied them by hand. When Major exhausts its
+reworks at Check, `run-matrix.mjs` verifies each point against the project on
+disk — every Stage up to Check produced its declared Artifacts, the Approval
+policy holds as many distinct-role receipts as it demands, and every open
+blocker cites a path that exists — and reports `outcome: "stopped-at-check"`
+with exit code 0 when they hold. If any point fails, the run fails and says
+which. The acceptance suite is not run for this outcome: Apply never happened,
+so there is no implementation for it to judge.
+
 If a future run needs major to reach `apply`/`verify`/archive specifically
 (e.g. to test *those* stages, which quick/solid's own successful runs
 already exercise via the same underlying mechanisms), the acceptance suite
@@ -122,6 +163,7 @@ node tests/live-engine/check-coverage.mjs
 node tests/live-engine/run-matrix.mjs --flow quick --cli-source npm
 node tests/live-engine/run-matrix.mjs --flow solid --cli-source npm
 node tests/live-engine/run-matrix.mjs --flow major --cli-source npm
+node tests/live-engine/run-matrix.mjs --scenario solid-rework --cli-source npm
 ```
 
 Use `--cli-source local` for same-day regression testing of a local,
@@ -132,11 +174,59 @@ per-call budget capped to the remainder, 2 attempts per stage, 900 second
 timeout). Missing provider cost accounting blocks all later calls in that
 run instead of treating the cost as zero.
 
+## Recording and replaying a run
+
+A live run costs real money and real minutes, which makes it a poor loop to
+iterate the *tooling* in. Recording one lets the CLI, the Gates, the control
+plane, the Approval and work-package protocols, archive, and this harness be
+regression-tested for free.
+
+```bash
+# 1. Record: run the scenario live, then package the run it left behind.
+node tests/live-engine/run-matrix.mjs --scenario solid --cli-source local
+node tests/live-engine/record-cassette.mjs --scenario solid
+
+# 2. Replay: no model calls, no API key needed, seconds instead of minutes.
+node tests/live-engine/run-matrix.mjs --scenario solid --replay solid --cli-source local
+```
+
+**What is recorded is the project's Git history, not the model's responses.**
+That is forced by what exists: every call passes `--no-session-persistence`, so
+no tool-call transcript is written anywhere, and a recorded response could not
+reproduce file-system state even if one were. What the model *did* is already
+recorded exactly — the harness commits after every Stage — so a cassette is a
+`git bundle` of the isolated project plus a manifest saying which commits were
+the Agent's.
+
+On replay, only the Agent's own contribution is applied: the diff between a
+recorded Stage commit and its parent. Everything else genuinely re-executes —
+approvals are re-signed, Gates re-run, work packages re-dispatched, the archive
+transaction performed again. Restoring whole trees would reinstate their outputs
+instead of testing them.
+
+Each Stage is then checked against the recording's `contentRevision`.
+`core/revision.ts` derives that value from governed content and the policy
+snapshot, with no commit id or timestamp in it, so identical trees must produce
+an identical revision — and any drift in how content is digested fails
+immediately, at the Stage that caused it.
+
+**A replay cannot tell you whether a Skill is comprehensible or whether an Agent
+obeys it.** Four of the defects the 2026-08-13 runs found were model-behaviour
+defects that no replay would have caught. So a cassette records the fingerprint
+of the Scaffold it was made against, and replaying against a changed Scaffold is
+**refused**, with the re-record commands printed. Change a Skill, Flow, Gate,
+Rule or policy, and you owe a live run — enforced rather than remembered.
+
 `run-matrix.mjs` prints a pass/fail summary (acceptance exit code, spend,
 budget accounting) when it finishes. Per-stage engine output — cost, tokens,
-turns, the model's own JSON result — is written to
-`tests/.tmp/live-engine-results/<flow>-<stage>.json`, redacted of the auth
-token and base URL; prompts and model prose are never written there.
+turns, and the engine's own JSON result envelope — is written to
+`tests/.tmp/live-engine-results/<scenario>-<stage>.json`, redacted of the auth
+token and base URL. Prompts are never written there. The model's **final
+response is**, in that envelope's `result` field, because it is what the engine
+returns; a stage's closing report therefore lands on disk and these files should
+be treated as run output, not as anonymous telemetry. The turn-by-turn
+transcript is not written anywhere: every call passes
+`--no-session-persistence`, so no tool-call history survives the run.
 
 For an OS-enforced boundary, `run-engine.mjs` (called internally by
 `run-matrix.mjs`) accepts `--sandbox-launcher /absolute/path/to/launcher`;

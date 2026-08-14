@@ -11,12 +11,12 @@ resources:
     kind: agent
     license: project
     version: 2
-  - digest: aed9b631e40a883e3c46e4a4fe33f73dba0d85658c8788bb4b1a3634ffafd441
+  - digest: 9fa2e8d3de88c1b5c5f2b31ef818be955dc873b343a1f4324189502216283b58
     id: reviewer
     kind: agent
     license: project
-    version: 2
-  - digest: 7330d2ccdedd911340b966cdfcac8f194796ecfabfeeb4df06a9d829047ea8d9
+    version: 3
+  - digest: 8a89a541d97d63bbb5beb723552ffdc4d875ed889ff6b0ac4896a09c08dc4ca6
     id: worker
     kind: agent
     license: project
@@ -31,23 +31,28 @@ resources:
     kind: gate
     license: project
     version: 1
-  - digest: 7dfb319028245e821ced590de5896da9835a325265ef9f5254c40ad37ea1a696
+  - digest: 365a677fd481d8ab4e5a67f16f9b71b38d534e6bbec0137522846f631e162cd9
     id: security-scan
     kind: gate
     license: project
-    version: 1
+    version: 2
   - digest: 39a4adc3ccd641cbd900d17d3a4abaac397f30730de1d58bee86f0bf2d66e853
     id: structure
     kind: gate
     license: project
     version: 1
-  - digest: cf4a1fde192a9643dfbb585f3a3e5f8a1156bd068cf61ad637905c518eaf8bde
+  - digest: f16fe2b054ff046e5b0555158b1fd92c414f2d3632ba9c8dc839293d6e6c25e7
     id: unit-tests
     kind: gate
     license: project
-    version: 1
-  - digest: 46d4f648ece14f385a136a4bca43f78d47488100317cdc3e637298388afaab1d
+    version: 2
+  - digest: 990f970191c3e163e4b76e4cb89aaad7e26853bb735eb3d4b64d24dee0c89dcf
     id: protected-files
+    kind: permission-policy
+    license: project
+    version: 1
+  - digest: e17df0fe5384399d0eae56515ff66a8e970134315b2c603a94db6f2c6a6145ef
+    id: protected-manifest
     kind: permission-policy
     license: project
     version: 1
@@ -56,7 +61,7 @@ resources:
     kind: rule
     license: project
     version: 1
-  - digest: 1a28cf4dec56b3cfed60295e63aa97ceef5c78e5153408435ee9f3d68a760b70
+  - digest: c0aba0ed91ef29e744f19ee9f93a374d4b73dd2d7f6518368ed1ce1836b8baba
     id: governance-assets-are-integrator-only
     kind: rule
     license: project
@@ -76,67 +81,67 @@ resources:
     kind: script
     license: project
     version: 1
-  - digest: bff41510c46c027f9205aeac99da16d1ef965b0bfedf3c4b92ddc18ae74aed0b
+  - digest: 6e0e8c2e28e499f79d2f51b3a4af5fe36f7ee77710cd882e7e646d253b2deaff
     id: xforge-apply
     kind: skill
     license: project
     version: "1"
-  - digest: e1aab3bea3823d8a009f56d6a03631d916f628213d8a0298786a622de8d113c7
+  - digest: 59671a1f6ff2ca1598808653c6db94e549e1593b48a24fb13eb009cfc7eea155
     id: xforge-archive
     kind: skill
     license: project
     version: "1"
-  - digest: 06faefbb5b20313dd3b987ab172ee64ebde45245c4289d4cc472fee65cc9df97
+  - digest: 48d47732225f728571b83b1ed0f2ec0959ec092b0cb975c3440347c3c151f859
     id: xforge-check
     kind: skill
     license: project
     version: "1"
-  - digest: 1455ffe85ef2bcc40e6c396d65304e9ee04f1adae20423ba2b97279aab61faef
+  - digest: da400dcfb840be51ffe6356012d53b99462095a17d9c8081f21f057540540dcd
     id: xforge-clarify
     kind: skill
     license: project
     version: "1"
-  - digest: b007a5e208ab21e1352ed623a5d8b6c27911e83294033cb76aaf69b4c23f437c
+  - digest: 4f0a5116f5624c418bd1b6f56ef4706f15a70717d783c760bc917b18b0bc821b
     id: xforge-continue
     kind: skill
     license: project
     version: "1"
-  - digest: 4747f31efdc0b6b5d4c9be512943a1d15aec496e2041ca77879667e5ec040700
+  - digest: 32e9f277b8603e92821e718d9a295baf1c3b63f8fc6683a236313be84411a816
     id: xforge-design
     kind: skill
     license: project
     version: "1"
-  - digest: 1c9592f50c4be310bafc09b538f73945213b98c607f59dfa809fb4a9df5413ba
+  - digest: 59ec79e94eef5813d2bd54ad7184c5f8104f02adfc09e314838c5ba5853db8fa
     id: xforge-explore
     kind: skill
     license: project
     version: "1"
-  - digest: 1b4f563b098f0274e805ba58f1b002a258b2c6640b76bd24e6c47f35696ce404
+  - digest: c9fefaa7407299a569496a88fff73f45fc4a6ba88dec5fa98c313f2042ba00fd
     id: xforge-kanban
     kind: skill
     license: project
     version: "1"
-  - digest: d462df03d3e776ee2e39dc7257865bf3a65f849df9564f11c3b0c3533b562613
+  - digest: 91207d7c7e8325dac6d90bb2425f4011c46829c16720ee2c8f8e76fc24bdddc4
     id: xforge-propose
     kind: skill
     license: project
     version: "1"
-  - digest: c23a17063aa8c5a0cec89b6af65c2cdd9d275f324e48ac0be5b4047bdafe0756
+  - digest: f0ca1065ee5ee36fa2dcdbf05fc925897d7cbc12dde490924d0816eab5d08c72
     id: xforge-revise
     kind: skill
     license: project
     version: "1"
-  - digest: 366239f4cf21afc7921d616c0637bb23d8287156e40f0f961f12ec6547cd6050
+  - digest: 6a467665936cffbe75e5367c734cd73716f8819ad39ab39995dc6d74b425cd62
     id: xforge-scaffold
     kind: skill
     license: project
     version: "1"
-  - digest: de496625bc53e7086cd41e734b845b4463a372d698743dfa6c67b847f91bfa93
+  - digest: 6825ef4d65ccae5f35c004d28135eed17127369db8e6a09823cfc8ac485a665c
     id: xforge-status
     kind: skill
     license: project
     version: "1"
-  - digest: aff5b693366da51a0e14b022ec48af2adf0c63c61d92d2f934a5554f40b55f59
+  - digest: 2055350c2eee739461ddf91e64765e0a027c5354e579b9d53aa23406fd35b9e4
     id: xforge-verify
     kind: skill
     license: project
@@ -155,7 +160,7 @@ targets:
   - opencode
   - github-copilot
 xforge:
-  integrity: sha256:4d74572c480aa5fc836e21c352fbc80f4e16ab55eb07acd1ea93864727ea89af
+  integrity: sha256:2b6fe1e4e4111eecf9374f64eb3a3c37881cca055c37240a023d08dcaa861aaa
   package: "@xforge/cli"
   protocol: "2"
   source: npm

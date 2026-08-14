@@ -1,8 +1,15 @@
 import { randomUUID } from 'node:crypto';
-import { rm } from 'node:fs/promises';
+import { link, rm, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import type { Diagnostic, FileChange, NextAction, ProjectContext, TransitionReceipt } from '../types.js';
 import { readChangeAuditEvents, readTransitionAttestations, recordAudit, transitionAttestationDigest, verifyAudit } from '../core/audit.js';
-import { blockRemedy, resolveControlPlane } from '../core/control-plane.js';
+import {
+  TRANSITION_RECEIPTS_RELATIVE,
+  blockRemedy,
+  readTransitionReceiptFiles,
+  resolveControlPlane,
+  transitionReceiptFileName,
+} from '../core/control-plane.js';
 import { XForgeError, diagnostic } from '../core/errors.js';
 import { atomicWrite } from '../core/files.js';
 import { flowEligibilityDiagnostics } from '../core/checker.js';
@@ -35,6 +42,27 @@ import { resolveWorkPackages } from '../core/work-packages.js';
  *   an accusation. This also means the loud warning fires while it matters — before anything is
  *   built on the remnant — and quiets down to a note once a later, attested receipt exists.
  */
+/**
+ * Creates a file at exactly one path, or fails because somebody was already there.
+ *
+ * `atomicWrite` (core/files.ts) is temp-file + rename, and rename replaces silently — it cannot
+ * express "only if nobody got here first", which is the whole requirement for a Transition receipt:
+ * the receipt at sequence N *is* the record that the Change moved once at that point, so a second
+ * one is never a write to merge, it is a conflict to report. `link()` says both things at once: it
+ * is atomic, so the content is complete before the name exists, and it fails with `EEXIST` rather
+ * than overwriting a receipt the rest of the chain already hashes.
+ */
+async function createExclusive(root: string, relative: string, content: string): Promise<void> {
+  const destination = await safeResolve(root, relative, { createParent: true });
+  const temporary = path.join(path.dirname(destination), `.${path.basename(destination)}.xforge-${randomUUID()}.tmp`);
+  try {
+    await writeFile(temporary, content, { mode: 0o600, flag: 'wx' });
+    await link(temporary, destination);
+  } finally {
+    await rm(temporary, { force: true }).catch(() => undefined);
+  }
+}
+
 async function unattestedReceipts(
   project: ProjectContext,
   changeId: string,
@@ -90,7 +118,7 @@ export async function executeTransition(project: ProjectContext, options: { chan
   const diagnostics = [...eligibility, ...resources.diagnostics, ...workPackages.diagnostics, ...control.diagnostics];
   for (const block of requirement.blockedBy) diagnostics.push(diagnostic('XFORGE_TRANSITION_BLOCKED', `Transition is blocked by ${block}.`, `${project.changesPath}/${options.change}`));
   const remedy = blockRemedy(requirement.blockedBy, options.change);
-  if (remedy) diagnostics.push(diagnostic('XFORGE_GATE_EVIDENCE_STALE_REMEDY', remedy, `${project.changesPath}/${options.change}`, 'info'));
+  if (remedy) diagnostics.push(diagnostic(remedy.code, remedy.message, `${project.changesPath}/${options.change}`, 'info'));
 
   /*
    * Surfaced as a warning, not a block, and deliberately: the Stage this remnant advanced to is
@@ -100,7 +128,7 @@ export async function executeTransition(project: ProjectContext, options: { chan
    * receipt. A loud, repeated warning that names the receipt and the missing event leaves the
    * evidence intact and the decision with a human.
    */
-  const receiptsPath = `${project.changesPath}/${options.change}/evidence/receipts/transitions`;
+  const receiptsPath = `${project.changesPath}/${options.change}/${TRANSITION_RECEIPTS_RELATIVE}`;
   const nextActions: NextAction[] = [];
   const unattested = await unattestedReceipts(project, options.change, control.governance.transitions);
   if (unattested.orphans.length > 0) {
@@ -151,7 +179,14 @@ export async function executeTransition(project: ProjectContext, options: { chan
       'warning',
     ));
   }
-  const sequence = control.governance.transitions.length + 1;
+  /*
+   * Derived from the highest sequence on disk, not from how many receipts there are. Counting made
+   * the number a function of the *set*, so a Change whose chain had a gap — or that had just been
+   * repaired — reissued a sequence some receipt already used, and two receipts at the same sequence
+   * is the one shape the chain cannot resolve. `max + 1` is a function of the history instead, which
+   * is what a sequence is supposed to be.
+   */
+  const sequence = Math.max(0, ...control.governance.transitions.map((receipt) => receipt.sequence)) + 1;
   const unsigned = {
     apiVersion: 'xforge.dev/v1alpha2' as const, kind: 'TransitionReceipt' as const, receiptId: randomUUID(), sequence, change: options.change,
     flow: resolved.flow.metadata.name, from: control.governance.currentStage, to: options.to, contentRevision: control.governance.revision.contentRevision,
@@ -161,9 +196,24 @@ export async function executeTransition(project: ProjectContext, options: { chan
     approvals: requirement.approvals.map((item) => item.digest).sort(), gates: requirement.gates.map((item) => item.digest).sort(), auditHead: ownAudit.chain.head,
   };
   const receipt: TransitionReceipt = { ...unsigned, digest: sha256(stableStringify(unsigned)) };
-  const target = `${project.changesPath}/${options.change}/evidence/receipts/transitions/${String(sequence).padStart(4, '0')}-${receipt.receiptId}.json`;
+  const target = `${receiptsPath}/${transitionReceiptFileName(sequence)}`;
   const content = `${JSON.stringify(receipt, null, 2)}\n`;
-  await atomicWrite(project.root, target, content);
+  try {
+    await createExclusive(project.root, target, content);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    /*
+     * The receipt name no longer carries a UUID, so this is where a second writer for the same
+     * sequence lands instead of quietly forking the chain — another process racing this one, or a
+     * branch that already recorded this transition. Refusing here leaves the Change exactly as it
+     * was; the `stage.entering` event above records the attempt, which is what it is for.
+     */
+    throw new XForgeError(diagnostic(
+      'XFORGE_TRANSITION_RECEIPT_EXISTS',
+      `A Transition receipt for sequence ${sequence} already exists at ${target}, so this Stage transition has already been recorded. Re-read the Change with \`xforge state --change ${options.change}\` before transitioning again; do not delete the existing receipt, every later receipt chains to its digest.`,
+      target,
+    ));
+  }
   try {
     const nextResolved = await resolveChangeState(project, options.change);
     const nextControl = await resolveControlPlane(project, options.change, nextResolved.flow as typeof resolved.flow, nextResolved.state, resources, nextResolved.config);
@@ -182,4 +232,107 @@ export async function executeTransition(project: ProjectContext, options: { chan
   }
   const change: FileChange = { action: 'create', path: target, digest: sha256(content), source: `transition:${receipt.from}:${receipt.to}` };
   return { data: { change: options.change, from: receipt.from, to: receipt.to, ready: true, receipt, dryRun: false }, diagnostics, changes: [change], nextActions };
+}
+
+/**
+ * The way out of a broken Transition chain, without deleting evidence blind.
+ *
+ * A forked chain used to have no exit at all: every command on the Change failed, and the tool's own
+ * guidance for a receipt anomaly is "do not delete the receipt", correctly, because the current
+ * Stage is derived from the last receipt and every later receipt hashes the one before it. The
+ * chain-invalid diagnostic is a targeted block now (see `core/control-plane.ts`), which makes a
+ * repair both possible and necessary — this is it.
+ *
+ * The rule that keeps it honest is that only a *leaf* may go: a receipt whose digest appears as some
+ * other receipt's `previousReceiptDigest` is load-bearing, and removing it would orphan work that
+ * was recorded on top of it. Choosing between two leaves is a judgement about which history actually
+ * happened, so the caller names the receipt; this function refuses everything else and records what
+ * it did in the audit chain, because a repair is itself a governance act.
+ */
+export async function repairTransitionChain(project: ProjectContext, options: { change: string; receiptId: string; dryRun: boolean }): Promise<{
+  data: { change: string; dropped: TransitionReceipt | null; renumbered: Array<{ receiptId: string; from: number; to: number }>; dryRun: boolean };
+  diagnostics: Diagnostic[];
+  changes: FileChange[];
+}> {
+  assertManaged(project, 'transition repair');
+  const resolved = await resolveChangeState(project, options.change);
+  if (!isStageFlow(resolved.flow) || !resolved.flow.governance) {
+    throw new XForgeError(diagnostic('XFORGE_GOVERNANCE_FLOW_REQUIRED', 'transition repair requires a Protocol 2 governed Flow.'));
+  }
+  const loaded = await readTransitionReceiptFiles(project, options.change, resolved.flow);
+  const receiptsPath = `${project.changesPath}/${options.change}/${TRANSITION_RECEIPTS_RELATIVE}`;
+  const target = loaded.files.find((file) => file.receipt.receiptId === options.receiptId);
+  if (!target) {
+    throw new XForgeError(diagnostic(
+      'XFORGE_TRANSITION_REPAIR_UNKNOWN_RECEIPT',
+      `No Transition receipt with receiptId ${options.receiptId} exists for Change ${options.change}. \`xforge state --change ${options.change}\` lists the chain, and the XFORGE_TRANSITION_CHAIN_INVALID diagnostic names which receipts can be dropped.`,
+      receiptsPath,
+    ));
+  }
+  const dependent = loaded.files.filter((file) => file.receipt.previousReceiptDigest === target.receipt.digest);
+  if (dependent.length > 0) {
+    throw new XForgeError(diagnostic(
+      'XFORGE_TRANSITION_REPAIR_RECEIPT_REFERENCED',
+      `Transition receipt ${options.receiptId} cannot be dropped: ${dependent.map((file) => `${file.receipt.receiptId} (sequence ${file.receipt.sequence})`).join(', ')} chain${dependent.length === 1 ? 's' : ''} to its digest. Drop the leaf of the branch you are discarding, not the receipt the surviving history was built on.`,
+      target.relative,
+    ));
+  }
+
+  const diagnostics: Diagnostic[] = [...loaded.diagnostics];
+  const remaining = loaded.files.filter((file) => file !== target);
+  /*
+   * Renumbering exists for the gap a drop can leave, and is done only when there is one: rewriting a
+   * receipt changes its digest, which invalidates the `stage.entered` attestation recorded for it
+   * and every `previousReceiptDigest` after it. Dropping a fork's leaf normally leaves the surviving
+   * branch already contiguous, so the common repair rewrites nothing at all.
+   */
+  const rewrites: Array<{ file: typeof loaded.files[number]; receipt: TransitionReceipt; relative: string }> = [];
+  const renumbered: Array<{ receiptId: string; from: number; to: number }> = [];
+  let previousDigest: string | null = null;
+  for (const [index, file] of remaining.entries()) {
+    const sequence = index + 1;
+    if (file.receipt.sequence === sequence && file.receipt.previousReceiptDigest === previousDigest) {
+      previousDigest = file.receipt.digest;
+      continue;
+    }
+    const { digest: _digest, ...unsigned } = { ...file.receipt, sequence, previousReceiptDigest: previousDigest };
+    const receipt: TransitionReceipt = { ...unsigned, digest: sha256(stableStringify(unsigned)) };
+    rewrites.push({ file, receipt, relative: `${receiptsPath}/${transitionReceiptFileName(sequence)}` });
+    if (file.receipt.sequence !== sequence) renumbered.push({ receiptId: receipt.receiptId, from: file.receipt.sequence, to: sequence });
+    previousDigest = receipt.digest;
+  }
+  if (rewrites.length > 0) {
+    diagnostics.push(diagnostic(
+      'XFORGE_TRANSITION_CHAIN_RENUMBERED',
+      `Repairing the chain rewrites ${rewrites.length} later receipt(s) so the sequence stays contiguous. Their digests change, so the stage.entered audit events recorded for them no longer attest them and the orphan scan will report them as unattested until the audit data is reconciled.`,
+      receiptsPath, 'warning',
+      { receipts: rewrites.map((item) => ({ receiptId: item.receipt.receiptId, sequence: item.receipt.sequence, previousDigest: item.file.receipt.digest, digest: item.receipt.digest })) },
+    ));
+  }
+
+  const changes: FileChange[] = [
+    { action: 'delete', path: target.relative, digest: target.receipt.digest, source: `transition-repair:${target.receipt.from}:${target.receipt.to}` },
+    ...rewrites.map((item): FileChange => ({ action: 'move', path: item.relative, from: item.file.relative, digest: item.receipt.digest, source: `transition-repair:renumber:${item.receipt.sequence}` })),
+  ];
+  if (options.dryRun) return { data: { change: options.change, dropped: target.receipt, renumbered, dryRun: true }, diagnostics, changes };
+
+  /* The dropped file goes first, and it has to: a renumbered receipt can land on exactly the path
+     the dropped one occupied, and removing that path afterwards would delete the rewrite instead.
+     Ascending order then keeps the rewrites from colliding — a repair only ever shrinks sequences,
+     so each destination is vacated by the receipt handled before it. */
+  await rm(await safeResolve(project.root, target.relative), { force: true });
+  for (const item of rewrites) {
+    await atomicWrite(project.root, item.relative, `${JSON.stringify(item.receipt, null, 2)}\n`);
+    if (item.file.relative !== item.relative) await rm(await safeResolve(project.root, item.file.relative), { force: true });
+  }
+  /* A repair is a governance act, so it leaves a record of exactly what was discarded — otherwise
+     the only trace of the dropped receipt is its absence, which is indistinguishable from tampering. */
+  await recordAudit(project, {
+    eventType: 'transition.repaired', change: options.change, flow: resolved.flow.metadata.name,
+    stage: remaining.at(-1)?.receipt.to ?? resolved.flow.stages[0]?.id ?? null,
+    decision: `drop:${target.receipt.receiptId}`, outcome: 'succeeded',
+    inputDigest: transitionAttestationDigest(target.receipt.digest),
+    output: { dropped: target.receipt.digest, from: target.receipt.from, to: target.receipt.to, sequence: target.receipt.sequence, renumbered },
+  });
+  return { data: { change: options.change, dropped: target.receipt, renumbered, dryRun: false }, diagnostics, changes };
 }

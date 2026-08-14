@@ -1,7 +1,7 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { fixture, runCli, updateYaml, yamlFile } from '../helpers.js';
+import { createCompleteSolidChange, fixture, runCli, updateYaml, yamlFile } from '../helpers.js';
 
 describe('CLI protocol', () => {
   it('emits exactly one JSON document on stdout and nothing on stderr', async () => {
@@ -40,6 +40,31 @@ describe('CLI protocol', () => {
     expect(result.code).toBe(1);
     expect(result.json.command).toBe('frobnicate');
     expect(result.json.diagnostics[0].code).toBe('XFORGE_COMMAND_UNKNOWN');
+  });
+
+  /*
+   * `nextActions` used to stamp `authority: 'planning-write'` on every create-artifact Action, so a
+   * check-stage Artifact was advertised under the wrong authority while its Stage declares
+   * assurance-write. The xforge-continue Skill tells the Agent to match an Action's authority before
+   * acting on it, which against a constant is not a match at all. The value now comes from the Flow
+   * Stage that produces the Artifact.
+   */
+  it('reads a create-artifact Action authority from the Stage that produces the Artifact', async () => {
+    async function nextArtifactAction(remove: string[]): Promise<any> {
+      const root = await fixture();
+      await createCompleteSolidChange(root);
+      for (const relative of remove) await rm(path.join(root, 'xforge', 'changes', 'add-feature', relative));
+      expect((await runCli(root, ['install'])).code).toBe(0);
+      const state = await runCli(root, ['state', '--change', 'add-feature']);
+      return state.json.nextActions.find((item: any) => item.action === 'create-artifact');
+    }
+
+    const planning = await nextArtifactAction(['design.md', 'check-report.md']);
+    expect(planning).toMatchObject({ id: 'design', authority: 'planning-write' });
+
+    /* Same Action shape, same Flow, different Stage — so a different authority. */
+    const assurance = await nextArtifactAction(['check-report.md']);
+    expect(assurance).toMatchObject({ id: 'check-report', authority: 'assurance-write' });
   });
 
   it('reports Portable state and blocks writes when CLI identity mismatches', async () => {

@@ -10,7 +10,6 @@ policy:
     risk: [low]
     criticalImpacts: forbidden
     maxModules: 1
-  onUncertain: escalate
 artifacts:
   - id: proposal
     generates: proposal.md
@@ -43,11 +42,6 @@ artifacts:
       ## Coherence
       ## Gates and evidence
       ## Findings
-  - id: verification-receipt
-    generates: evidence/verification-receipt.yaml
-    description: Bind a verification receipt to the current revision and Gate Evidence
-    instruction: Record only the current Change revision, Git HEAD, Flow version, input digest, and passed Evidence references.
-    outline: ''
 governance:
   approvalPolicies:
     - id: quick-close
@@ -55,8 +49,12 @@ governance:
       roles: [owner, maintainer]
       separationOfDuties: false
       providers: [local, enterprise-approvals]
+  # Kept identical to `terminal.archive.auditPolicy` below. `xforge audit verify` reads this block
+  # while archive resolves `terminal.archive.auditPolicy ?? governance.audit`; when the two disagree
+  # the command reports a Change as audit-complete that archive then rejects. Quick's archive needs
+  # a `quick-close` approval, so `approval.decided` belongs in both.
   audit:
-    requiredEventTypes: [gate.after, stage.entered]
+    requiredEventTypes: [gate.after, stage.entered, approval.decided]
     runtimeCoverage: optional
     remoteDelivery: optional
 stages:
@@ -73,23 +71,27 @@ stages:
     requires: [propose]
     produces: []
     reworkTo: [propose]
-    execution:
-      planning: just-in-time
-      workPackages: internal
+  # Quick has no Constitution ledger. It is the Flow for a trivial, single-module, low-risk Change,
+  # and it has no Check Stage to answer the ledger before implementation; requiring it at Verify
+  # bought a per-principle certification on Changes whose whole point is that they carry no
+  # principle-level risk. Solid and Major both keep it, at Check, where a Change large enough to
+  # need it is designed before it is certified.
   - id: verify
     skill: xforge-verify
     authority: assurance-write
     requires: [apply]
-    produces: [assurance, verification-receipt]
+    produces: [assurance]
     gates: [structure, unit-tests]
     reworkTo: [apply]
+    exit:
+      conditions:
+        verificationReceipt: passed
 terminal:
   archive:
     handler: xforge-verify
     authority: archive-write
     requires: [verify]
     syncSpecs: true
-    evidencePolicy: current-revision
     approvals: [quick-close]
     auditPolicy:
       requiredEventTypes: [gate.after, stage.entered, approval.decided]

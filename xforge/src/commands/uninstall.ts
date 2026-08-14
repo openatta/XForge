@@ -7,7 +7,7 @@ import { XForgeError, diagnostic } from '../core/errors.js';
 import { sha256 } from '../core/hash.js';
 import { safeResolve } from '../core/path-safety.js';
 import { installedTargets, readOwnership, toOwnershipV2 } from '../install/ownership.js';
-import { FragmentParseError, fragmentDrifted, removeFragment } from '../install/fragments.js';
+import { FragmentParseError, fragmentDrifted, normalizeEol, removeFragment } from '../install/fragments.js';
 import { applyManagedTransaction } from '../install/writer.js';
 
 const CLEANUP_COMPATIBILITY_IGNORED = new Set([
@@ -15,16 +15,34 @@ const CLEANUP_COMPATIBILITY_IGNORED = new Set([
   'XFORGE_LOCK_CLI_MISMATCH',
 ]);
 
-async function currentFile(project: ProjectContext, relative: string): Promise<{ digest: string; invalidType: boolean } | null> {
+interface CurrentFile {
+  digest: string;
+  /**
+   * Digest of the same bytes with CRLF folded to LF. A Windows clone made with git's default
+   * `core.autocrlf=true` differs from every recorded digest, and `uninstall` refuses on a digest
+   * mismatch — so without this a project could not even be cleanly removed. Line endings are not a
+   * user edit; the byte-exact digest still decides everything else.
+   */
+  normalizedDigest: string;
+  invalidType: boolean;
+}
+
+async function currentFile(project: ProjectContext, relative: string): Promise<CurrentFile | null> {
   try {
     const absolute = await safeResolve(project.root, relative);
     const stat = await lstat(absolute);
-    if (stat.isSymbolicLink() || !stat.isFile()) return { digest: '', invalidType: true };
-    return { digest: sha256(await readFile(absolute)), invalidType: false };
+    if (stat.isSymbolicLink() || !stat.isFile()) return { digest: '', normalizedDigest: '', invalidType: true };
+    const content = await readFile(absolute);
+    return { digest: sha256(content), normalizedDigest: sha256(normalizeEol(content.toString('utf8'))), invalidType: false };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw error;
   }
+}
+
+/** True when the destination is still the recorded content, ignoring line endings alone. */
+function matchesRecord(current: CurrentFile, recordedDigest: string): boolean {
+  return current.digest === recordedDigest || current.normalizedDigest === recordedDigest;
 }
 
 async function pruneEmptyParents(project: ProjectContext, deleted: string[]): Promise<void> {
@@ -43,7 +61,15 @@ async function pruneEmptyParents(project: ProjectContext, deleted: string[]): Pr
 
 export async function executeUninstall(
   project: ProjectContext,
-  options: { target?: TargetId; dryRun: boolean },
+  /*
+   * `force`: remove managed destinations whose content no longer matches the installation record.
+   * They are still structurally XForge's — every one of them is named by the record — and refusing
+   * on a digest mismatch is what leaves a project unable to remove an installation it no longer
+   * wants. It never widens *what* is touched: a destination that is not in the record is still
+   * never read, a symlink or directory in a managed path is still refused, and a partially owned
+   * file still loses exactly the recorded material and nothing else.
+   */
+  options: { target?: TargetId; dryRun: boolean; force?: boolean },
 ): Promise<{ data: Record<string, unknown>; diagnostics: Diagnostic[]; changes: FileChange[] }> {
   const previous = await readOwnership(project);
   const installed = installedTargets(previous);
@@ -74,7 +100,10 @@ export async function executeUninstall(
         const text = await readFile(await safeResolve(project.root, relative), 'utf8');
         let remainder: string | null = null;
         try {
-          if (fragmentDrifted(text, record.fragment, relative)) throw new FragmentParseError('XForge-owned keys differ from the installation record.');
+          // Under `--force` the subtraction runs anyway. It is safe by construction: an owned value
+          // the user rewrote no longer matches the record, so `removeFragment` leaves it in place
+          // rather than deleting it, and only a marker block is removed wholesale.
+          if (!options.force && fragmentDrifted(text, record.fragment, relative)) throw new FragmentParseError('XForge-owned keys differ from the installation record.');
           remainder = removeFragment(text, record.fragment, relative);
         } catch (error) {
           if (!(error instanceof FragmentParseError)) throw error;
@@ -91,10 +120,15 @@ export async function executeUninstall(
         }
         continue;
       }
-      if (current.invalidType || current.digest !== record.lastInstalledDigest) {
+      // A symlink or directory in a managed path is refused even under `--force`: the record says
+      // nothing about what is on the other side of it, so removing it is not a bounded operation.
+      if (current.invalidType || (!matchesRecord(current, record.lastInstalledDigest) && !options.force)) {
         changes.push({ action: 'conflict', path: relative, digest: current.digest, source: record.source, target, reason: 'Managed file differs from its installation record.' });
         diagnostics.push(diagnostic('XFORGE_UNINSTALL_CONFLICT', 'Modified or non-file managed destination cannot be uninstalled.', relative));
         continue;
+      }
+      if (!matchesRecord(current, record.lastInstalledDigest)) {
+        diagnostics.push(diagnostic('XFORGE_UNINSTALL_FORCED', 'Managed destination differed from its installation record and was removed by --force.', relative, 'warning'));
       }
       changes.push({ action: 'delete', path: relative, digest: current.digest, source: record.source, target });
       writes.set(relative, null);

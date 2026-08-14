@@ -1,7 +1,7 @@
 ---
 name: xforge-check
 description: Perform a pre-implementation semantic review across Major Change Artifacts for completeness, consistency, testability, risk, and feasibility; use for a ready Check Action or a formal Major planning quality gate.
-allowed-tools: Read Grep Glob Write Edit Bash(npx:*)
+allowed-tools: Read, Grep, Glob, Write, Edit, Bash(npx:*)
 ---
 
 # Invariants
@@ -14,8 +14,9 @@ allowed-tools: Read Grep Glob Write Edit Bash(npx:*)
 
 # Authority
 
-- Write only the Action-authorized `check-report` and CLI-generated check Evidence.
-- Do not write product code, Proposal/Specs/Clarifications/Design, work packages, Gate Evidence, or Archive.
+- Write exactly the three Artifacts the Check Stage `produces`: `check-report.md`, `evidence/check-findings.yaml`, and `evidence/constitution-check.yaml`. Both ledgers are Agent-authored — no CLI command writes them, and the Stage cannot exit without them.
+- Do not write product code, Proposal/Specs/Clarifications/Design, work packages, or Archive.
+- "Gate Evidence" means the `evidence/*.json` files that only `npx --no-install xforge check` writes (`structure.json`, `check-findings.json`, `constitution-check.json`, …). Never hand-write or edit those. The two YAML ledgers above are Artifacts the Gates read, not Gate Evidence.
 
 # Execution
 
@@ -23,9 +24,10 @@ allowed-tools: Read Grep Glob Write Edit Bash(npx:*)
 2. Check Design coverage of Requirements, constraints, trust boundaries, failure cases, compatibility, migration, and rollback.
 3. Verify that tests, rollout, monitoring, stop signals, owners, path scope, dependencies, and parallel boundaries match the critical impact.
 4. Run `npx --no-install xforge check --change <id>` and use deterministic diagnostics as evidence input.
-5. Write blocker, warning, and suggestion findings with Artifact/Requirement location, reason, and `reworkTo` Stage.
-6. With `check-report.md` and every Evidence ledger written, run `npx --no-install xforge check --change <id>` once more; it re-runs and refreshes the whole current-Stage Gate set against the final content. `--all-gates` also runs Gates belonging to Stages the Change has not reached yet, which cannot pass and is rarely what you want mid-Stage.
-7. Refresh State. Request the State-specified rework transition for blockers; without blockers, let CLI Gates and Approval determine whether transition to Apply is ready.
+5. Write `evidence/check-findings.yaml`: blocker, warning, and suggestion findings, each with Artifact/Requirement location, reason, `refs`, and a `reworkTo` Stage while a blocker is open. Record an explicit empty list when the review found nothing.
+6. Write `evidence/constitution-check.yaml`: one entry per `## ` heading of `xforge/constitution.md`, in document order, each with a `status` of `compliant`, `violation`, or `not-applicable` and at least one machine-locatable `references` entry — a Requirement id from this Change's delta Specs, a path that exists, or `gate:<name>` for a Gate this Change has passing Evidence for. A `violation` also needs a `justification` and a named `approvedBy` (a real approver or Git author, and once this Change holds approval receipts, someone named on one); `not-applicable` needs a `justification`. A bare `compliant` with nothing cited is the blanket claim the Gate exists to reject. Write every `justification` as a block scalar (`justification: >-`, prose indented beneath it): a plain scalar breaks on a colon-and-space or a leading `[`/`{`.
+7. With `check-report.md` and both ledgers written, run `npx --no-install xforge check --change <id>` once more; it re-runs and refreshes the whole current-Stage Gate set against the final content. `--all-gates` also runs Gates belonging to Stages the Change has not reached yet, which cannot pass and is rarely what you want mid-Stage.
+8. Refresh State. Request the State-specified rework transition for blockers; without blockers, let CLI Gates and Approval determine whether `npx --no-install xforge transition --change <id> --to apply` is ready.
 
 # Evidence
 

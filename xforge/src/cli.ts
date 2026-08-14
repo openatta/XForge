@@ -23,7 +23,7 @@ import { actualGitIdentity, runtimeCliIntegrity } from './core/identity.js';
 import { loadProject } from './core/project-loader.js';
 import { detectScaffoldLanguage, parseScaffoldLanguage } from './core/language.js';
 import { envelope, present } from './protocol/envelope.js';
-import type { Diagnostic, Envelope, NextAction, ScaffoldLanguage } from './types.js';
+import type { Diagnostic, Envelope, FlowAuthority, NextAction, ScaffoldLanguage } from './types.js';
 
 type CommandName = 'help' | 'version' | 'init' | 'state' | 'install' | 'sync' | 'update' | 'uninstall' | 'check' | 'transition' | 'approve' | 'audit' | 'work-package' | 'hook' | 'archive' | 'doctor';
 
@@ -35,6 +35,7 @@ interface ParsedArguments {
   strict: boolean;
   allGates: boolean;
   force: boolean;
+  adopt: boolean;
   root?: string;
   stage?: string;
   helpCommand?: string;
@@ -117,10 +118,10 @@ const HELP: Record<CommandName, { usage: string; description: string; options: s
   version: { usage: 'xforge version [--text]', description: 'Show CLI, protocol, runtime, and build identity.', options: ['--text'] },
   init: { usage: 'xforge [--root <path>] init [--language <en|zh-CN>] [--target <target>] [--dry-run] [--text]', description: 'Initialize the bundled npm Scaffold and optionally project it into one Agent tool.', options: ['--root', '--language', '--target', '--dry-run', '--text'] },
   state: { usage: 'xforge [--root <path>] state [--change <id>] [--kind <kind>] [--target <target>] [--text]', description: 'Read resolved project and Change state.', options: ['--root', '--change', '--kind', '--target', '--text'] },
-  install: { usage: 'xforge [--root <path>] install [--target <target>] [--dry-run] [--text]', description: 'Install or idempotently reconcile selected project assets.', options: ['--root', '--target', '--dry-run', '--text'] },
-  sync: { usage: 'xforge [--root <path>] sync [--target <target>] [--dry-run] [--verify-digests] [--text]', description: 'Incrementally sync localized Scaffold changes to installed targets.', options: ['--root', '--target', '--dry-run', '--verify-digests', '--text'] },
-  update: { usage: 'xforge [--root <path>] update [--target <target>] [--dry-run] [--text]', description: 'Fully reconcile installed targets, identities, and Adapter output.', options: ['--root', '--target', '--dry-run', '--text'] },
-  uninstall: { usage: 'xforge [--root <path>] uninstall [--target <target>] [--dry-run] [--text]', description: 'Safely remove digest-matching managed target files.', options: ['--root', '--target', '--dry-run', '--text'] },
+  install: { usage: 'xforge [--root <path>] install [--target <target>] [--adopt] [--dry-run] [--text]', description: 'Install or idempotently reconcile selected project assets.', options: ['--root', '--target', '--adopt', '--dry-run', '--text'] },
+  sync: { usage: 'xforge [--root <path>] sync [--target <target>] [--adopt] [--dry-run] [--verify-digests] [--text]', description: 'Incrementally sync localized Scaffold changes to installed targets.', options: ['--root', '--target', '--adopt', '--dry-run', '--verify-digests', '--text'] },
+  update: { usage: 'xforge [--root <path>] update [--target <target>] [--adopt] [--dry-run] [--text]', description: 'Fully reconcile installed targets, identities, and Adapter output.', options: ['--root', '--target', '--adopt', '--dry-run', '--text'] },
+  uninstall: { usage: 'xforge [--root <path>] uninstall [--target <target>] [--force] [--dry-run] [--text]', description: 'Remove managed target files, refusing on a digest mismatch unless --force.', options: ['--root', '--target', '--force', '--dry-run', '--text'] },
   check: { usage: 'xforge [--root <path>] check [--change <id>] [--gate <id>] [--stage <id> | --all-gates] [--force] [--text]', description: 'Validate project structure, deliveries, and the Gates the current Stage requires.', options: ['--root', '--change', '--gate', '--stage', '--all-gates', '--force', '--text'] },
   transition: { usage: 'xforge [--root <path>] transition --change <id> --to <stage> [--dry-run] [--text]', description: 'Evaluate and record a governed Stage transition.', options: ['--root', '--change', '--to', '--dry-run', '--text'] },
   approve: { usage: 'xforge [--root <path>] approve --change <id> --for <stage|archive> [--policy <id>] [--provider <mcp-provider-id> | local fields] [--dry-run] [--text]', description: 'Record an interactive human approval at the terminal, or submit/poll an mcp provider. There is no other approval mechanism.', options: ['--root', '--change', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--provider', '--dry-run', '--text'] },
@@ -132,7 +133,7 @@ const HELP: Record<CommandName, { usage: string; description: string; options: s
 };
 
 function parseArguments(argv: string[]): ParsedArguments {
-  const parsed: ParsedArguments = { command: '', text: false, dryRun: false, verifyDigests: false, strict: false, allGates: false, force: false };
+  const parsed: ParsedArguments = { command: '', text: false, dryRun: false, verifyDigests: false, strict: false, allGates: false, force: false, adopt: false };
   const seen = new Set<string>();
   const positionals: string[] = [];
   let helpShortcut = false;
@@ -154,6 +155,7 @@ function parseArguments(argv: string[]): ParsedArguments {
     if (token === '--strict') { parsed.strict = true; continue; }
     if (token === '--all-gates') { parsed.allGates = true; continue; }
     if (token === '--force') { parsed.force = true; continue; }
+    if (token === '--adopt') { parsed.adopt = true; continue; }
     if (!isValueOption(token)) {
       throw new XForgeError(diagnostic('XFORGE_OPTION_UNKNOWN', `Unknown option: ${token}`));
     }
@@ -323,6 +325,29 @@ function versionEnvelope(): Envelope {
   });
 }
 
+/** A Flow Stage exactly as `readState` summarises it (see core/state-reader.ts). */
+interface StageSummary {
+  id: string;
+  authority?: FlowAuthority;
+  produces?: string[];
+}
+
+/**
+ * The Stages of the Flow the selected Change is running, taken from the state read that was just
+ * performed rather than re-resolved.
+ *
+ * `nextActions` used to stamp a hardcoded `authority` on the Actions it emits, which made
+ * `create-artifact` announce `planning-write` for every Artifact — including the ones whose Stage
+ * declares `assurance-write`. Nothing in XForge compares an authority against an operation today, so
+ * a hardcoded value cannot restrict anything; all it can do is misinform a reader who believes it,
+ * and the Skill text does tell the Agent to match on it. The value therefore comes from the Flow
+ * Stage that actually produces the Artifact, or is omitted when no Stage answers for the Action.
+ */
+function flowStages(data: Record<string, unknown>, flowId: string | undefined): StageSummary[] {
+  const flows = (data.flows ?? []) as Array<{ id?: string; stages?: StageSummary[] | null }>;
+  return flows.find((flow) => flow.id === flowId)?.stages ?? [];
+}
+
 async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
   if (parsed.command === 'help') return helpEnvelope(parsed.helpCommand);
   if (parsed.command === 'version') return versionEnvelope();
@@ -342,32 +367,44 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
     const nextActions: NextAction[] = [];
     if (project.compatibility.mode === 'portable') nextActions.push({ action: 'resolve-declared-xforge', reason: 'Managed operations require the exact declared CLI identity.' });
     const stateChange = (result.data.change ?? null) as {
+      flow?: string;
       nextArtifact?: { id?: string; outputPaths?: string[]; writePath?: string; missingDependencies?: string[] } | null;
       workPackages?: { packages?: Array<{ id: string; inputs: string[]; write_paths: string[]; done_when: string[] }> } | null;
     } | null;
-    if (stateChange?.nextArtifact?.id && parsed.change) nextActions.push({
-      action: 'create-artifact',
-      type: 'artifact',
-      id: stateChange.nextArtifact.id,
-      actor: 'main',
-      authority: 'planning-write',
-      status: 'ready',
-      inputs: stateChange.nextArtifact.missingDependencies ?? [],
-      /* A not-yet-written Artifact has no outputPaths, which used to leave `writes` empty and the
-         destination for the Agent to guess. State the project-relative path instead. */
-      writes: stateChange.nextArtifact.outputPaths?.length
-        ? stateChange.nextArtifact.outputPaths
-        : [stateChange.nextArtifact.writePath].filter((item): item is string => Boolean(item)),
-      doneWhen: [`Artifact ${stateChange.nextArtifact.id} exists and satisfies the active Flow instructions.`],
-      requiredEvidence: ['xforge state reports the artifact as done for the current Change revision.'],
-      reason: `Next Flow Artifact is ${stateChange.nextArtifact.id}.`,
-    });
+    const stages = flowStages(result.data, stateChange?.flow);
+    if (stateChange?.nextArtifact?.id && parsed.change) {
+      const artifactId = stateChange.nextArtifact.id;
+      /* From the Stage that produces this Artifact, never a constant: a Flow is free to produce a
+         check-stage Artifact under assurance-write. A Flow that declares no producing Stage for it
+         leaves the field off rather than inventing a level. */
+      const authority = stages.find((stage) => (stage.produces ?? []).includes(artifactId))?.authority;
+      nextActions.push({
+        action: 'create-artifact',
+        type: 'artifact',
+        id: artifactId,
+        actor: 'main',
+        ...(authority ? { authority } : {}),
+        status: 'ready',
+        inputs: stateChange.nextArtifact.missingDependencies ?? [],
+        /* A not-yet-written Artifact has no outputPaths, which used to leave `writes` empty and the
+           destination for the Agent to guess. State the project-relative path instead. */
+        writes: stateChange.nextArtifact.outputPaths?.length
+          ? stateChange.nextArtifact.outputPaths
+          : [stateChange.nextArtifact.writePath].filter((item): item is string => Boolean(item)),
+        doneWhen: [`Artifact ${artifactId} exists and satisfies the active Flow instructions.`],
+        requiredEvidence: ['xforge state reports the artifact as done for the current Change revision.'],
+        reason: `Next Flow Artifact is ${artifactId}.`,
+      });
+    }
     const governance = (stateChange as any)?.governance;
     if (governance?.currentStage === 'apply') {
+      /* The dispatch happens in the Stage the Change is in, so that Stage's declared authority is
+         the one that applies — `implementation-write` only because the shipped Flows say so. */
+      const applyAuthority = stages.find((stage) => stage.id === governance.currentStage)?.authority;
       for (const packageId of (stateChange as any)?.workPackages?.ready ?? []) {
         const workPackage = stateChange?.workPackages?.packages?.find((item) => item.id === packageId);
         nextActions.push({
-          action: 'dispatch-work-package', type: 'governance', id: packageId, actor: 'main', authority: 'implementation-write', status: 'ready',
+          action: 'dispatch-work-package', type: 'governance', id: packageId, actor: 'main', ...(applyAuthority ? { authority: applyAuthority } : {}), status: 'ready',
           inputs: workPackage?.inputs ?? [], writes: workPackage?.write_paths ?? [], doneWhen: workPackage?.done_when ?? [],
           requiredEvidence: ['revision-bound dispatch receipt', 'Git delivery diff', 'verify command evidence', 'done_when evidence mapping'],
           reworkTo: ['apply'],
@@ -390,6 +427,10 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
       reason: transition.ready ? `Transition to ${transition.to} is ready.` : `Transition to ${transition.to} is blocked.`, blockedBy: transition.blockedBy,
       command: ['xforge', 'transition', '--change', parsed.change!, '--to', transition.to],
     });
+    /* `ready-to-archive` is a synthetic terminal Stage, not one of `flow.stages`, so there is no
+       Stage to read here. The archive authority comes from `flow.terminal.archive.authority`, which
+       flow.schema.json pins to the const `archive-write` — this literal is the schema's only legal
+       value for it, not a level invented at this call site. */
     if (governance?.currentStage === 'ready-to-archive') nextActions.push({
       action: 'archive', type: 'archive', actor: 'main', authority: 'archive-write', status: (governance.pendingApprovals ?? []).some((item: any) => item.transition === 'archive') ? 'blocked' : 'ready',
       inputs: ['current-revision verification, approval, gate, and audit evidence'], writes: ['canonical Specs', 'archived Change'],
@@ -399,19 +440,19 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
     return envelope({ command, root: project.root, data: result.data, diagnostics: result.diagnostics, nextActions });
   }
   if (command === 'install') {
-    const result = await executeInstall(project, { target: parsed.target, dryRun: parsed.dryRun });
+    const result = await executeInstall(project, { target: parsed.target, dryRun: parsed.dryRun, adopt: parsed.adopt });
     return envelope({ command, root: project.root, ...result });
   }
   if (command === 'sync') {
-    const result = await executeSync(project, { target: parsed.target, dryRun: parsed.dryRun, verifyDigests: parsed.verifyDigests });
+    const result = await executeSync(project, { target: parsed.target, dryRun: parsed.dryRun, verifyDigests: parsed.verifyDigests, adopt: parsed.adopt });
     return envelope({ command, root: project.root, ...result });
   }
   if (command === 'update') {
-    const result = await executeUpdate(project, { target: parsed.target, dryRun: parsed.dryRun });
+    const result = await executeUpdate(project, { target: parsed.target, dryRun: parsed.dryRun, adopt: parsed.adopt });
     return envelope({ command, root: project.root, ...result });
   }
   if (command === 'uninstall') {
-    const result = await executeUninstall(project, { target: parsed.target, dryRun: parsed.dryRun });
+    const result = await executeUninstall(project, { target: parsed.target, dryRun: parsed.dryRun, force: parsed.force });
     return envelope({ command, root: project.root, ...result });
   }
   if (command === 'check') {
@@ -423,11 +464,24 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
     return envelope({ command, root: project.root, ...result });
   }
   if (command === 'approve') {
-    const requireTty = project.manifest.approvals?.local?.requireTty ?? true;
-    const interactive = requireTty ? process.stdin.isTTY === true && process.stdout.isTTY === true : true;
-    /* Only the local path prompts; --provider never touches the terminal. The decision word is read
-       from the live terminal here and is never taken from argv, so an Agent running inside a TTY
-       session cannot approve its own Change. */
+    /*
+     * The local approval path requires this process to be attached to a terminal on both ends, and
+     * reads the decision word from that terminal rather than from argv. Be precise about what that
+     * establishes: an interactive session existed and something answered the prompts. It is not
+     * proof of human identity. A pty (`script -q`, `expect`, node-pty) satisfies both isTTY checks
+     * and can answer the questions, and the receipt it produces is indistinguishable from one a
+     * person typed — so this check raises the cost of a self-approval and makes it a deliberate,
+     * recorded act; it does not make one impossible. XForge's default posture is honest-agent
+     * governance: the local path is trustworthy to exactly the degree the operator's environment is.
+     *
+     * There is deliberately no manifest switch to relax this. Any such switch would live inside the
+     * tree the governed Agent writes, which makes it the Agent's own decision whether governance
+     * applies to it. A policy that needs a stronger property than "an interactive session made this
+     * call" should require an mcp provider whose secret and endpoint live outside the Agent's reach;
+     * only there is the decision made somewhere the Agent cannot write.
+     */
+    const interactive = process.stdin.isTTY === true && process.stdout.isTTY === true;
+    /* Only the local path prompts; --provider never touches the terminal. */
     const wantsLocal = !parsed.provider;
     let terminal: ApprovalTerminal | undefined;
     let close: (() => void) | undefined;
@@ -522,7 +576,12 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
     }
     const target = parsed?.target ?? recoveredHookTarget(argv);
     const event = parsed?.event ?? recoveredHookEvent(argv);
-    process.stdout.write(`${JSON.stringify(hookFailureOutput(target, event))}\n`);
+    /* The deny is all the host renders, so the diagnostic's own message — which names the file at
+       fault and the command that fixes it — has to ride along. Dropping it is what turns a
+       one-command configuration problem into "every tool call is refused and nobody knows why". */
+    const reason = result.diagnostics.find((item) => item.severity === 'error')?.message
+      ?? result.diagnostics[0]?.message;
+    process.stdout.write(`${JSON.stringify(hookFailureOutput(target, event, reason))}\n`);
     return event.includes('after') ? 0 : 2;
   }
   const textMode = parsed?.text ?? argv.some((item) => ['--text', '--help', '--version'].includes(item));

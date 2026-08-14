@@ -53,6 +53,7 @@ export function createLiveEnginePolicy({
     maxAttemptsPerStage: positiveInteger(maxAttemptsPerStage, 'maxAttemptsPerStage'),
     timeoutSeconds: positiveInteger(timeoutSeconds, 'timeoutSeconds'),
     spentUsd: 0,
+    tokens: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, total: 0 },
     budgetAccountingComplete: true,
     stages: Object.fromEntries(stages.map((stage) => [stage, { attempts: 0, runs: [] }])),
   };
@@ -108,27 +109,60 @@ export function reserveLiveEngineAttempt(policy, { stage, requestedBudgetUsd, is
   return { attempt, effectiveBudgetUsd, remainingBeforeUsd: remainingUsd };
 }
 
+/**
+ * Reopens the attempt budget for Stages a rework sent the Flow back through.
+ *
+ * `maxAttemptsPerStage` bounds retries of a call that failed, but the counter is keyed by Stage id
+ * alone, so a re-traversal spends the same budget: a live Major run reworked check -> propose, which
+ * was propose's second visit and therefore its last attempt, and the first provider stall on it
+ * ended the Flow with no retry available. A Stage entered again after a rework is a new visit, not a
+ * retry of the visit before it. Every completed run stays in `runs` — this resets what may still be
+ * spent, and hides nothing that was.
+ */
+export function resetLiveEngineStageAttempts(policy, stages) {
+  assertLiveEnginePolicy(policy);
+  for (const stage of stages) {
+    const entry = policy.stages?.[stage];
+    if (!entry || entry.runs.some((run) => run.status === 'running')) continue;
+    entry.attempts = 0;
+  }
+}
+
 export function completeLiveEngineAttempt(policy, {
-  stage, attempt, costUsd, exitCode, timedOut, classification, output, finishedAt,
+  stage, attempt, costUsd, tokens, exitCode, timedOut, classification, output, finishedAt,
 }) {
   assertLiveEnginePolicy(policy);
   const entry = stageEntry(policy, stage);
-  const run = entry.runs.find((candidate) => candidate.attempt === attempt);
-  if (!run || run.status !== 'running') {
+  /* Matched on `status` as well as `attempt`, because a rework reopens the counter and a Stage's
+     second visit numbers its attempts from 1 again. Looking up by number alone found the completed
+     run from the visit before and rejected a call that had just succeeded. Only one run is ever
+     `running` — `reserveLiveEngineAttempt` refuses to start a second — so this is unambiguous. */
+  const run = entry.runs.find((candidate) => candidate.attempt === attempt && candidate.status === 'running');
+  if (!run) {
     throw new LiveEnginePolicyError('LIVE_ATTEMPT_INVALID', `Stage ${stage} attempt ${attempt} is not running.`);
   }
   const numericCost = Number(costUsd);
   const knownCost = costUsd !== null && costUsd !== undefined && Number.isFinite(numericCost) && numericCost >= 0;
   if (knownCost) policy.spentUsd = rounded(policy.spentUsd + numericCost);
   else policy.budgetAccountingComplete = false;
+  /* Cost still drives the budget stop — that is the guardrail — but tokens are what a reader can
+     actually compare, since the dollar figure depends on whichever engine and rate card produced
+     it. Both are recorded; only tokens are reported. */
+  if (tokens) {
+    policy.tokens ??= { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, total: 0 };
+    for (const key of ['input', 'output', 'cacheRead', 'cacheCreation', 'total']) {
+      policy.tokens[key] += Number(tokens[key] ?? 0);
+    }
+  }
   Object.assign(run, {
     status: exitCode === 0 && !timedOut ? 'completed' : 'failed',
     costUsd: knownCost ? numericCost : null,
+    tokens: tokens ?? null,
     exitCode,
     timedOut,
     classification,
     output,
     finishedAt,
   });
-  return { spentUsd: policy.spentUsd, budgetAccountingComplete: policy.budgetAccountingComplete };
+  return { spentUsd: policy.spentUsd, tokens: policy.tokens ?? null, budgetAccountingComplete: policy.budgetAccountingComplete };
 }

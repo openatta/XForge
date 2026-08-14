@@ -24,7 +24,11 @@ function options(argv) {
     if (!key?.startsWith('--') || value === undefined) throw new Error('Expected --scenario and optional --cli-source key/value options.');
     result[key.slice(2)] = value;
   }
-  if (!result.scenario) throw new Error('--scenario is required (a directory name under tests/live-engine/scenarios).');
+  if (!result.scenario) throw new Error('--scenario is required (it names the isolated project this run owns).');
+  /* The scenario names the project; the seed names the directory its fixtures come from. They are
+     the same for a scenario that owns its fixtures, and differ for one that shares another's -- so
+     `solid-rework` seeds from `solid` while keeping a project, temp root and results of its own. */
+  result.seed ??= result.scenario;
   if (!['npm', 'local'].includes(result['cli-source'])) throw new Error('--cli-source must be npm or local.');
   return result;
 }
@@ -66,28 +70,29 @@ async function mergeGitignore(projectRoot, seedGitignorePath) {
  * Wires the shipped scaffold's approval mechanisms to something the harness can actually decide
  * against, without touching any Flow's policy definitions (`major.yaml` etc. are exercised exactly
  * as shipped):
- *  - `approvals.local.requireTty: false` lets `approval-provider.mjs` drive a local approval by
- *    spawning `xforge approve` with piped stdin instead of a real controlling terminal — the CLI
- *    still requires the decision to be typed into that stream, it just accepts a piped one here.
  *  - The scaffold ships `enterprise-approvals` as a deliberately-broken placeholder McpServer
  *    (`command` points at a binary that does not exist) so a real deployment fails loudly instead
  *    of silently working. The harness is exactly the "real approval system" an adopting org is
  *    meant to point that placeholder at, so it overwrites `command` to the MCP test fixture already
- *    used by the internal test suite (`xforge/test/fixtures/mcp-approval-server.mjs`) — needed for
- *    Major, whose implementation-major/closing-major policies do not allow `local` at all.
+ *    used by the internal test suite (`xforge/test/fixtures/mcp-approval-server.mjs`).
+ *
+ * This is now the *only* mechanism the harness drives. The manifest switch that used to let a piped
+ * stdin substitute for a controlling terminal was removed from the product — a switch that relaxes
+ * governance while living inside the tree the governed Agent writes lets the Agent decide whether
+ * governance applies to it — so `approval-provider.mjs` prefers mcp for every policy that offers it,
+ * which the shipped policies all do.
  */
 async function enableApprovalHarness(projectRoot) {
-  const manifestPath = path.join(projectRoot, 'xforge', 'manifest.yaml');
-  const manifest = parseYaml(await readFile(manifestPath, 'utf8'));
-  manifest.approvals ??= { providers: [] };
-  manifest.approvals.local = { ...manifest.approvals.local, requireTty: false };
-  await writeFile(manifestPath, stringifyYaml(manifest));
-
   const mcpServerPath = path.join(projectRoot, 'xforge', 'scaffold', 'mcp-servers', 'enterprise-approvals.yaml');
   if (await exists(mcpServerPath)) {
     const server = parseYaml(await readFile(mcpServerPath, 'utf8'));
     const fixture = path.join(repositoryRoot, 'xforge', 'test', 'fixtures', 'mcp-approval-server.mjs');
     server.spec.command = [process.execPath, fixture];
+    /* core/mcp-approval.ts hands the provider subprocess a filtered environment, not `process.env`,
+       so the fixture's XFORGE_TEST_MCP_* controls have to be declared here or they are stripped and
+       the fixture silently falls back to its `pending` default. That filtering is the product
+       behaving correctly; it only surfaced once the harness started preferring the mcp mechanism. */
+    server.spec.env = { ...server.spec.env, allowPrefixes: ['XFORGE_TEST_MCP_'] };
     await writeFile(mcpServerPath, stringifyYaml(server));
   }
 }
@@ -105,8 +110,8 @@ async function overlaySeed(projectRoot, seedRoot) {
 }
 
 const selected = options(process.argv.slice(2));
-const scenarioRoot = path.join(scenariosRoot, selected.scenario);
-if (!await exists(scenarioRoot)) throw new Error(`Unknown scenario: ${selected.scenario} (expected ${scenarioRoot}).`);
+const scenarioRoot = path.join(scenariosRoot, selected.seed);
+if (!await exists(scenarioRoot)) throw new Error(`Unknown seed: ${selected.seed} (expected ${scenarioRoot}).`);
 const projectRoot = path.join(temporaryRoot, `live-engine-${selected.scenario}`);
 
 await rm(projectRoot, { recursive: true, force: true });

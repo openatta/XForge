@@ -12,6 +12,22 @@ import { loadSelectedResources } from '../core/resource-loader.js';
 import { resolveWorkPackages } from '../core/work-packages.js';
 import { normalizeRelative, safeResolve } from '../core/path-safety.js';
 
+/**
+ * A forked transition chain (two receipts at one sequence, which an ordinary `git merge` produces
+ * without a conflict) makes `currentStage` arbitrary — it is whichever receipt sorts last. The
+ * control plane reports that as a warning plus a `transition-chain:invalid` block on every
+ * transition, deliberately, so `state` and `check` keep working and the chain can be repaired.
+ * Dispatch and acknowledge are not covered by that block, and both write receipts that bind to the
+ * Stage, so they must refuse explicitly rather than build on a stage nobody can determine.
+ */
+function assertTransitionChain(control: { transitionChainValid: boolean; governance: { currentStage: string } }): void {
+  if (control.transitionChainValid) return;
+  throw new XForgeError(diagnostic(
+    'XFORGE_TRANSITION_CHAIN_INVALID',
+    `The Change's transition receipts fork, so its current Stage (${control.governance.currentStage}) is not determinable. Repair the chain before dispatching or acknowledging work.`,
+  ));
+}
+
 export async function executeWorkPackageDispatch(project: ProjectContext, options: { change: string; packageId: string; dryRun: boolean }): Promise<{
   data: { change: string; packageId: string; receipt: WorkPackageDispatchReceipt; dryRun: boolean };
   diagnostics: Diagnostic[];
@@ -25,6 +41,7 @@ export async function executeWorkPackageDispatch(project: ProjectContext, option
   if (!workPackages.state) throw new XForgeError(diagnostic('XFORGE_WORK_PACKAGE_PLAN_REQUIRED', 'The Change does not contain work-packages.yaml.'));
   resolved.state.workPackages = workPackages.state;
   const control = await resolveControlPlane(project, options.change, resolved.flow, resolved.state, resources, resolved.config);
+  assertTransitionChain(control);
   if (control.governance.currentStage !== 'apply') throw new XForgeError(diagnostic('XFORGE_WORK_PACKAGE_STAGE_FORBIDDEN', `Work packages may only be dispatched in apply; current Stage is ${control.governance.currentStage}.`));
   const selected = workPackages.state.packages.find((item) => item.id === options.packageId);
   if (!selected) throw new XForgeError(diagnostic('XFORGE_WORK_PACKAGE_UNKNOWN', `Unknown work package: ${options.packageId}.`));
@@ -106,6 +123,7 @@ export async function executeWorkPackageAcknowledge(project: ProjectContext, opt
   if (!workPackages.state) throw new XForgeError(diagnostic('XFORGE_WORK_PACKAGE_PLAN_REQUIRED', 'The Change does not contain work-packages.yaml.'));
   resolved.state.workPackages = workPackages.state;
   const control = await resolveControlPlane(project, options.change, resolved.flow, resolved.state, resources, resolved.config);
+  assertTransitionChain(control);
   const diagnostics = [...resolved.diagnostics, ...resources.diagnostics, ...workPackages.diagnostics, ...control.diagnostics];
   if (diagnostics.some((item) => item.severity === 'error')) throw new XForgeError(diagnostics, { root: project.root });
   const selected = workPackages.state.packages.find((item) => item.id === options.packageId);

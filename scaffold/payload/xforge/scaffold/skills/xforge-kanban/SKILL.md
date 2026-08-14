@@ -1,7 +1,7 @@
 ---
 name: xforge-kanban
 description: Generate a Git-history activity dashboard for this repository — per-contributor activity and code volume, a commit-time heatmap, and a feature/fix/other breakdown — derived only from Git commit metadata; use when the user asks for a project dashboard, contribution report, activity heatmap, or commit history summary.
-allowed-tools: Read Grep Glob Write Bash(git:*) Bash(node:*)
+allowed-tools: Read, Grep, Glob, Write, Bash(git:*), Bash(node:*)
 ---
 
 # Invariants

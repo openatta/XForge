@@ -21,9 +21,13 @@ wrapper). The package has the eight canonical fields: `id`, `goal`,
 `depends_on`, `inputs`, `write_paths`, `skills`, `verify`, and `done_when`.
 Its ID is `T001`, write path is `src/**`, inputs include the delta Spec and
 Design, skill is `xforge-apply`, and verify is the one-element array
-`[npm test]` (`verify` is a list of commands, not a single string).
+`[npm test]` (`verify` is a list of commands, not a single string). Every path
+inside the plan is project-relative, exactly as `xforge state` prints it —
+`xforge/changes/task-ledger/design.md`, never `design.md`.
 
-Run `xforge state --change task-ledger` at the end. Stop with the planning
+Run `xforge state --change task-ledger` at the end and read its diagnostics.
+It must come back with no `error` diagnostic; if it reports one against
+anything you wrote, fix that file and run it again until it is clean. Stop with the planning
 Approval still pending — do not attempt to approve or transition past Design
 yourself. Do not commit. In your final response report files changed,
 commands run, current Stage, blockers, and no claim unsupported by CLI

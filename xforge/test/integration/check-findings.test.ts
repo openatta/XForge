@@ -231,7 +231,7 @@ describe('Constitution ledger', () => {
       `  - principle: ${JSON.stringify(first)}`,
       '    status: violation',
       violation,
-      ...rest.map((name) => `  - principle: ${JSON.stringify(name)}\n    status: compliant`),
+      ...rest.map((name) => `  - principle: ${JSON.stringify(name)}\n    status: compliant\n    references: [proposal.md]`),
       '',
     ].join('\n');
 
@@ -261,7 +261,7 @@ describe('Ledger identity', () => {
       '    status: violation',
       '    justification: Legacy module cannot be split in this Change.',
       `    approvedBy: ${JSON.stringify(approver)}`,
-      ...rest.map((name) => `  - principle: ${JSON.stringify(name)}\n    status: compliant`),
+      ...rest.map((name) => `  - principle: ${JSON.stringify(name)}\n    status: compliant\n    references: [proposal.md]`),
       '',
     ].join('\n');
     const path2 = `xforge/changes/${CHANGE}/${CONSTITUTION_CHECK_PATH}`;

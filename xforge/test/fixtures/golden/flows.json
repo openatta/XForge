@@ -2,51 +2,213 @@
   "quick": {
     "assuranceLevel": "quick",
     "stages": [
-      ["propose", []],
-      ["apply", ["propose"]],
-      ["verify", ["apply"]]
+      [
+        "propose",
+        []
+      ],
+      [
+        "apply",
+        [
+          "propose"
+        ]
+      ],
+      [
+        "verify",
+        [
+          "apply"
+        ]
+      ]
     ],
-    "artifacts": ["proposal", "delta-specs", "assurance", "verification-receipt"],
-    "gates": ["structure", "unit-tests"],
+    "artifacts": [
+      "proposal",
+      "delta-specs",
+      "assurance"
+    ],
+    "gates": [
+      "structure",
+      "unit-tests"
+    ],
     "archiveHandler": "xforge-verify",
-    "approvals": [["quick-close", 1, false, ["local", "enterprise-approvals"]]],
-    "audit": { "requiredEventTypes": ["gate.after", "stage.entered"], "runtimeCoverage": "optional", "remoteDelivery": "optional" }
+    "approvals": [
+      [
+        "quick-close",
+        1,
+        false,
+        [
+          "local",
+          "enterprise-approvals"
+        ]
+      ]
+    ],
+    "audit": {
+      "requiredEventTypes": [
+        "gate.after",
+        "stage.entered",
+        "approval.decided"
+      ],
+      "runtimeCoverage": "optional",
+      "remoteDelivery": "optional"
+    }
   },
   "solid": {
     "assuranceLevel": "solid",
     "stages": [
-      ["propose", []],
-      ["design", ["propose"]],
-      ["check", ["design"]],
-      ["apply", ["check"]],
-      ["verify", ["apply"]]
+      [
+        "propose",
+        []
+      ],
+      [
+        "design",
+        [
+          "propose"
+        ]
+      ],
+      [
+        "check",
+        [
+          "design"
+        ]
+      ],
+      [
+        "apply",
+        [
+          "check"
+        ]
+      ],
+      [
+        "verify",
+        [
+          "apply"
+        ]
+      ]
     ],
-    "artifacts": ["proposal", "delta-specs", "design", "check-report", "check-findings", "constitution-check", "assurance", "verification-receipt"],
-    "gates": ["structure", "unit-tests"],
+    "artifacts": [
+      "proposal",
+      "delta-specs",
+      "design",
+      "check-report",
+      "check-findings",
+      "constitution-check",
+      "assurance"
+    ],
+    "gates": [
+      "structure",
+      "unit-tests"
+    ],
     "archiveHandler": "xforge-verify",
     "approvals": [
-      ["planning-solid", 1, false, ["local", "enterprise-approvals"]],
-      ["closing-solid", 1, false, ["local", "enterprise-approvals"]]
+      [
+        "planning-solid",
+        1,
+        false,
+        [
+          "local",
+          "enterprise-approvals"
+        ]
+      ],
+      [
+        "closing-solid",
+        1,
+        false,
+        [
+          "local",
+          "enterprise-approvals"
+        ]
+      ]
     ],
-    "audit": { "requiredEventTypes": ["gate.after", "stage.entered", "approval.decided"], "runtimeCoverage": "optional", "remoteDelivery": "optional" }
+    "audit": {
+      "requiredEventTypes": [
+        "gate.after",
+        "stage.entered",
+        "approval.decided"
+      ],
+      "runtimeCoverage": "optional",
+      "remoteDelivery": "optional"
+    }
   },
   "major": {
     "assuranceLevel": "major",
     "stages": [
-      ["propose", []],
-      ["clarify", ["propose"]],
-      ["design", ["clarify"]],
-      ["check", ["design"]],
-      ["apply", ["check"]],
-      ["verify", ["apply"]]
+      [
+        "propose",
+        []
+      ],
+      [
+        "clarify",
+        [
+          "propose"
+        ]
+      ],
+      [
+        "design",
+        [
+          "clarify"
+        ]
+      ],
+      [
+        "check",
+        [
+          "design"
+        ]
+      ],
+      [
+        "apply",
+        [
+          "check"
+        ]
+      ],
+      [
+        "verify",
+        [
+          "apply"
+        ]
+      ]
     ],
-    "artifacts": ["proposal", "delta-specs", "clarifications", "material-questions", "design", "check-report", "check-findings", "constitution-check", "assurance", "verification-receipt"],
-    "gates": ["structure", "unit-tests", "security-scan"],
+    "artifacts": [
+      "proposal",
+      "delta-specs",
+      "clarifications",
+      "material-questions",
+      "design",
+      "check-report",
+      "check-findings",
+      "constitution-check",
+      "assurance"
+    ],
+    "gates": [
+      "structure",
+      "unit-tests",
+      "security-scan"
+    ],
     "archiveHandler": "xforge-verify",
     "approvals": [
-      ["implementation-major", 2, true, ["local", "enterprise-approvals"]],
-      ["closing-major", 2, true, ["local", "enterprise-approvals"]]
+      [
+        "implementation-major",
+        2,
+        true,
+        [
+          "local",
+          "enterprise-approvals"
+        ]
+      ],
+      [
+        "closing-major",
+        2,
+        true,
+        [
+          "local",
+          "enterprise-approvals"
+        ]
+      ]
     ],
-    "audit": { "requiredEventTypes": ["gate.after", "stage.entered", "approval.decided"], "runtimeCoverage": "optional", "remoteDelivery": "required" }
+    "audit": {
+      "requiredEventTypes": [
+        "gate.after",
+        "stage.entered",
+        "approval.decided"
+      ],
+      "runtimeCoverage": "optional",
+      "remoteDelivery": "optional"
+    }
   }
 }

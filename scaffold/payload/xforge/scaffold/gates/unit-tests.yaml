@@ -1,11 +1,37 @@
+# Why this Gate is a guarded `node -e` and not a bare `npm test --if-present`.
+#
+# In a directory with no `package.json`, `npm test --if-present` exits **254**. That is neither
+# ENOENT nor 127, so `runners/gate.ts`'s "the tool is missing, this is not a failing check"
+# detection cannot see it: a non-Node project got a hard `XFORGE_GATE_FAILED` on a Gate that never
+# had anything to run, on every Change, forever.
+#
+# Marking the Gate `required: false` does not fix that. Nothing in the CLI reads `spec.required` —
+# Gate scheduling belongs to the Flow's `stage.gates`, and the control plane blocks on any Gate in
+# that list that is not `passed`. Dropping the flag would change nothing while looking like it had.
+#
+# So the Gate answers the question itself: no `package.json`, no npm test, pass with an explicit
+# statement that nothing was asserted. A pass that says so in its own Evidence is honest and
+# fixable; a permanent failure is neither. Replace the command below with this project's real test
+# command as soon as it has one — a Gate that passes without asserting anything is a placeholder,
+# not verification.
 apiVersion: xforge.dev/v1alpha1
 kind: Gate
 metadata:
   name: unit-tests
-  version: 1
+  version: 2
 spec:
   required: true
-  command: [npm, test, "--if-present"]
+  command:
+    - node
+    - -e
+    - |
+      if (!require('fs').existsSync('package.json')) {
+        console.log('unit-tests: no package.json in this working directory, so there is no `npm test` to run.');
+        console.log('unit-tests: passing WITHOUT asserting anything. Replace this Gate\'s command in xforge/scaffold/gates/unit-tests.yaml with this project\'s real test command.');
+        process.exit(0);
+      }
+      const run = require('child_process').spawnSync('npm', ['test', '--if-present'], { stdio: 'inherit', shell: process.platform === 'win32' });
+      process.exit(run.status === null ? 1 : run.status);
   workingDirectory: .
   timeoutSeconds: 900
   maxOutputBytes: 65536

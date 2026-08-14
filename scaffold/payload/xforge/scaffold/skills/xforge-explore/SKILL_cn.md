@@ -1,7 +1,7 @@
 ---
 name: xforge-explore
 description: 只读调查代码、规格、约束、缺陷或方案，并把模糊想法收敛为可提案范围；用于用户要求分析、诊断、比较方案或判断 Flow，但尚未授权创建 Change 或修改项目时。
-allowed-tools: Read Grep Glob Bash
+allowed-tools: Read, Grep, Glob, Bash(npx:*)
 ---
 
 # 不变量

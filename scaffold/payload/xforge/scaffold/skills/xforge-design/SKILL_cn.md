@@ -1,7 +1,7 @@
 ---
 name: xforge-design
 description: 为 Solid 或 Major Change 形成受治理的技术设计、替代方案、失败与验证边界；用于 State 返回 ready Design Action，且 Proposal/Specs 与所需 Clarifications 已满足时。
-allowed-tools: Read Grep Glob Write Edit Bash(npx:*)
+allowed-tools: Read, Grep, Glob, Write, Edit, Bash(npx:*)
 ---
 
 # 不变量

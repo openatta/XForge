@@ -1,7 +1,7 @@
 ---
 name: xforge-archive
 description: Compatibility entry that delegates an explicit archive request to xforge-verify archive-current mode; use only while callers still invoke the legacy Archive Skill. This Skill itself no longer synchronizes Specs or moves a Change directly — it delegates both to xforge-verify's archive-current mode, which invokes the CLI's archive engine to do so.
-allowed-tools: Read Grep Glob Bash(npx:*)
+allowed-tools: Read, Grep, Glob, Bash(npx:*)
 ---
 
 # Invariants
@@ -18,7 +18,7 @@ allowed-tools: Read Grep Glob Bash(npx:*)
 # Execution
 
 1. Query State and explain that the legacy entry is merged into `xforge-verify`.
-2. Follow `xforge-verify` archive-current: require ready-to-archive, verify Audit and current Gate/Approval/Audit receipts, preview archive, and archive only after confirmation.
+2. Follow `xforge-verify` archive-current: require Stage `ready-to-archive`, run `npx --no-install xforge audit verify --change <id>`, check current Gate/Approval/Audit receipts, run the archive dry-run, and archive only after confirmation.
 3. Refresh State and report the final result.
 
 # Evidence

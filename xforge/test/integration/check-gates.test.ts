@@ -33,10 +33,8 @@ async function initializeGit(root: string): Promise<void> {
  * A Change sitting in Apply with one work package whose `verify` command reads a committed source
  * file, in a real Git worktree — the shape every work-package verify reuse question has.
  */
-async function applyStageWithVerify(root: string, verify: string, source = 'export const refund = true;\n'): Promise<void> {
-  await createCompleteSolidChange(root);
-  await write(root, 'src/order/refund.ts', source);
-  await write(root, 'xforge/changes/add-feature/work-packages.yaml', stringify({
+function planWithVerify(verify: string | string[]): string {
+  return stringify({
     apiVersion: 'xforge.dev/v1alpha1',
     kind: 'WorkPackagePlan',
     packages: [{
@@ -49,12 +47,25 @@ async function applyStageWithVerify(root: string, verify: string, source = 'expo
       verify: [verify],
       done_when: ['T001 is covered by an automated check'],
     }],
-  }, { lineWidth: 120 }));
+  }, { lineWidth: 120 });
+}
+
+async function applyStageWithVerify(root: string, verify: string | string[], source = 'export const refund = true;\n'): Promise<void> {
+  await createCompleteSolidChange(root);
+  await write(root, 'src/order/refund.ts', source);
+  await write(root, 'xforge/changes/add-feature/work-packages.yaml', planWithVerify(verify));
   await initializeGit(root);
   await advanceSolidToApply(root);
 }
 
 const VERIFY_EVIDENCE = ['xforge', 'changes', 'add-feature', 'evidence', 'agents', 'T001', 'verify-1.json'];
+
+/** Mirrors `shellLabel` in core/work-packages.ts: how an argv verify entry is named back. */
+function verifyLabel(argv: string[]): string {
+  return argv
+    .map((token) => (/^[A-Za-z0-9_@%+=:,./-]+$/.test(token) ? token : `'${token.split("'").join("'\\''")}'`))
+    .join(' ');
+}
 
 describe('check and Gate evidence', () => {
   it('runs only the current Stage Gates, not the verify Stage set', async () => {
@@ -261,13 +272,13 @@ describe('check and Gate evidence', () => {
    */
   it('re-runs a work-package verify after an uncommitted source edit instead of reusing its Evidence', async () => {
     const root = await fixture();
-    const verify = `${process.execPath} -e "process.exit(require('node:fs').readFileSync('src/order/refund.ts','utf8').includes('BROKEN') ? 1 : 0)"`;
+    const verify = [process.execPath, '-e', "process.exit(require('node:fs').readFileSync('src/order/refund.ts','utf8').includes('BROKEN') ? 1 : 0)"];
     await applyStageWithVerify(root, verify);
 
     const first = await runCli(root, ['check', '--change', 'add-feature']);
     expect(first.code, JSON.stringify(first.json?.diagnostics, null, 2)).toBe(0);
     expect(first.json.data.workPackages).toEqual([
-      expect.objectContaining({ packageId: 'T001', command: verify, status: 'passed', cached: false }),
+      expect.objectContaining({ packageId: 'T001', command: verifyLabel(verify), status: 'passed', cached: false }),
     ]);
 
     /* The edit that would now fail the verify. Nothing is committed, so HEAD, the Change's
@@ -282,9 +293,99 @@ describe('check and Gate evidence', () => {
     expect(JSON.parse(await readFile(path.join(root, ...VERIFY_EVIDENCE), 'utf8'))).toMatchObject({ status: 'failed', exitCode: 1 });
   });
 
+  /*
+   * The reachability that made this urgent: work-package plans live under `xforge/changes/**`, which
+   * the shipped protected-files policy deliberately leaves writable (lifecycle Skills write Change
+   * content there) and which `core/lockfile.ts` does not digest. So editing a plan trips no policy,
+   * staleness check, or structure error — and the synthesized verify Gate carried `shell: true`,
+   * putting the plan's own text on the far side of `/bin/sh -c` at the next check past Apply.
+   */
+  it('never executes a legacy verify string that would compose commands in a shell', async () => {
+    const root = await fixture();
+    const marker = path.join(root, 'shell-was-invoked');
+    await applyStageWithVerify(root, [process.execPath, '-e', 'process.exit(0)']);
+    /* Edited after the Change was approved into Apply, which nothing prevents: the plan is Change
+       content, so no protected-files policy covers it and no lock digest goes stale. Two commands
+       joined by `;` — harmless as argv (there is no `;` operator without a shell) and a file write
+       under `sh -c`. The marker is the whole difference, so it is what this reads. */
+    const verify = `${process.execPath} -e "process.exit(0)" ; ${process.execPath} -e "require('node:fs').writeFileSync('shell-was-invoked','yes')"`;
+    await write(root, 'xforge/changes/add-feature/work-packages.yaml', planWithVerify(verify));
+
+    const result = await runCli(root, ['check', '--change', 'add-feature']);
+    expect(result.code).toBe(1);
+    expect(result.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_WORK_PACKAGE_VERIFY_UNSAFE');
+    expect(existsSync(marker)).toBe(false);
+    /* And it never ran at all: refusing at the structural pass means no Gate, no Evidence. */
+    expect(existsSync(path.join(root, ...VERIFY_EVIDENCE))).toBe(false);
+  });
+
+  it('runs an argv verify entry directly, passing shell metacharacters through as literal arguments', async () => {
+    const root = await fixture();
+    const marker = path.join(root, 'shell-was-invoked');
+    /* The verify passes only if the whole `; ...` word arrived as one literal argv entry, which is
+       true exactly when no shell parsed it. If a shell had, it would have written the marker. */
+    const hostile = `; ${process.execPath} -e "require('node:fs').writeFileSync('shell-was-invoked','yes')"`;
+    const verify = [process.execPath, '-e', `process.exit(process.argv[1] === ${JSON.stringify(hostile)} ? 0 : 1)`, hostile];
+    await applyStageWithVerify(root, verify);
+
+    const result = await runCli(root, ['check', '--change', 'add-feature']);
+    expect(result.code, JSON.stringify(result.json.diagnostics, null, 2)).toBe(0);
+    expect(result.json.data.workPackages[0]).toMatchObject({ packageId: 'T001', command: verifyLabel(verify), status: 'passed' });
+    expect(existsSync(marker)).toBe(false);
+    const evidence = JSON.parse(await readFile(path.join(root, ...VERIFY_EVIDENCE), 'utf8'));
+    /* Evidence records the argv it spawned, not a command line, and says it used no shell. */
+    expect(evidence).toMatchObject({ status: 'passed', shell: false, command: verify });
+  });
+
+  /*
+   * `unit-tests` is `npm test --if-present` and `security-scan` is `npm audit --offline`, both
+   * required, both gating the verify Stage of all three Flows. In a project with no Node toolchain
+   * the executable is simply absent, and mapping that to XFORGE_GATE_FAILED told the reader their
+   * tests failed — a report about code that was never run. It still blocks (an unrunnable required
+   * Gate is not a pass); it just has to say what is actually wrong.
+   */
+  it('reports a Gate whose executable is missing as unavailable tooling, not as a failing check', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await updateYaml(root, 'xforge/scaffold/gates/unit-tests.yaml', (gate) => {
+      gate.spec.command = ['xforge-no-such-executable-anywhere', 'test', '--if-present'];
+    });
+    expect((await runCli(root, ['install'])).code).toBe(0);
+
+    const result = await runCli(root, ['check', '--change', 'add-feature', '--gate', 'all']);
+    expect(result.code).toBe(1);
+    const codes = result.json.diagnostics.map((item: any) => item.code);
+    expect(codes).toContain('XFORGE_GATE_COMMAND_UNAVAILABLE');
+    expect(codes).not.toContain('XFORGE_GATE_FAILED');
+    const unavailable = result.json.diagnostics.find((item: any) => item.code === 'XFORGE_GATE_COMMAND_UNAVAILABLE');
+    expect(unavailable.severity).toBe('error');
+    /* Names the executable and points at the Gate, which is the thing the reader can change. */
+    expect(unavailable.message).toContain('xforge-no-such-executable-anywhere');
+    expect(unavailable.message).toContain('Gate');
+    expect(unavailable.details).toMatchObject({ gate: 'unit-tests', executable: 'xforge-no-such-executable-anywhere' });
+
+    /* Still blocking: the Evidence says failed, so every transition it guards stays closed. */
+    const evidence = JSON.parse(await readFile(path.join(root, 'xforge', 'changes', 'add-feature', 'evidence', 'tests.json'), 'utf8'));
+    expect(evidence).toMatchObject({ status: 'failed' });
+  });
+
+  it('still reports a command that ran and failed as a Gate failure', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await updateYaml(root, 'xforge/scaffold/gates/unit-tests.yaml', (gate) => {
+      gate.spec.command = [process.execPath, '-e', 'process.exit(1)'];
+    });
+    expect((await runCli(root, ['install'])).code).toBe(0);
+    const result = await runCli(root, ['check', '--change', 'add-feature', '--gate', 'all']);
+    expect(result.code).toBe(1);
+    const codes = result.json.diagnostics.map((item: any) => item.code);
+    expect(codes).toContain('XFORGE_GATE_FAILED');
+    expect(codes).not.toContain('XFORGE_GATE_COMMAND_UNAVAILABLE');
+  });
+
   it('reuses passed work-package verify Evidence when nothing in the tree moved', async () => {
     const root = await fixture();
-    const verify = `${process.execPath} -e "process.exit(0)"`;
+    const verify = [process.execPath, '-e', 'process.exit(0)'];
     await applyStageWithVerify(root, verify);
     const evidencePath = path.join(root, ...VERIFY_EVIDENCE);
 
@@ -304,7 +405,7 @@ describe('check and Gate evidence', () => {
 
   it('re-runs a reusable work-package verify when --force is given', async () => {
     const root = await fixture();
-    const verify = `${process.execPath} -e "process.exit(0)"`;
+    const verify = [process.execPath, '-e', 'process.exit(0)'];
     await applyStageWithVerify(root, verify);
     const evidencePath = path.join(root, ...VERIFY_EVIDENCE);
 

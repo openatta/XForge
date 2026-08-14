@@ -203,6 +203,7 @@
     "approvals": {
       "type": "object",
       "additionalProperties": false,
+      "description": "Approval configuration. The local mechanism is deliberately not configurable from here: this file lives inside the tree the governed Agent writes, so a switch that relaxed the local path's terminal requirement would let the Agent decide whether that requirement applies to it. A policy needing a property stronger than \"an interactive session made this call\" must name an mcp provider, whose secret and endpoint live outside the Agent's reach.",
       "required": [
         "providers"
       ],
@@ -238,15 +239,6 @@
                   "$ref": "#/$defs/id"
                 }
               }
-            }
-          }
-        },
-        "local": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "requireTty": {
-              "type": "boolean"
             }
           }
         }
@@ -329,6 +321,19 @@
         "localRetentionEnforce": {
           "type": "boolean",
           "description": "Enable destructive pruning of audit events older than localRetentionDays. Pruning moves the per-Change chain anchor forward so the retained chain still verifies. Default false."
+        },
+        "chain": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Opt-in HMAC over the local audit chain and the committed index. Absent (the default) leaves the chain unkeyed: it detects corruption and accidental rewrites, but not an actor who rewrites the chain and its artifacts together, since every input to the hash is public and lives in this repository. Declaring a secret sourced from outside the repository is what makes the chain tamper-evident rather than corruption-evident.",
+          "required": [
+            "hmacSecretEnv"
+          ],
+          "properties": {
+            "hmacSecretEnv": {
+              "$ref": "#/$defs/env"
+            }
+          }
         }
       }
     },
@@ -420,7 +425,7 @@
     },
     "semver": {
       "type": "string",
-      "description": "Shared by every field that pins an npm-published @xforge/cli release: xforge.version, scaffold.version, and scaffold.source.version. All three are written from the same CLI_VERSION by `xforge update`'s declared-version reconciliation, so they must accept the same shape — including prereleases, which the CLI does publish.",
+      "description": "Shared by every field that pins an npm-published @xforge/cli release: xforge.version, scaffold.version, and scaffold.source.version. All three are written from the same CLI_VERSION by `xforge update`'s declared-version reconciliation, so they must accept the same shape \u2014 including prereleases, which the CLI does publish.",
       "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$"
     },
     "npmScaffoldSource": {

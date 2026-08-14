@@ -1,7 +1,7 @@
 ---
 name: xforge-scaffold
 description: Customize project-canonical XForge agents, skills, rules, permission policies, hooks, and gates and project them safely into target tools; use when the user asks to add, change, enable, disable, or install project Agent capabilities.
-allowed-tools: Read Grep Glob Write Edit Bash(npx:*)
+allowed-tools: Read, Grep, Glob, Write, Edit, Bash(npx:*)
 ---
 
 # Invariants
@@ -13,7 +13,7 @@ allowed-tools: Read Grep Glob Write Edit Bash(npx:*)
 
 # Authority
 
-- Modify `xforge/scaffold/**` and minimally update Manifest scaffold selection only when adding, removing, enabling, or disabling resources.
+- Modify `xforge/scaffold/**` and minimally update Manifest scaffold selection only when adding, removing, enabling, or disabling resources. `xforge/manifest.yaml` is covered by the `protected-manifest` PermissionPolicy, whose effect is `ask`, not `deny`: expect a confirmation prompt on that write and show the user the exact selection diff before answering it.
 - Do not modify product code, Specs, Changes, Flow business state, or generated directories.
 - Show and confirm Hooks, PermissionPolicy, network, secrets, tool-permission expansion, and destructive commands before install. Installed, platform-trusted, and runtime-active are distinct states.
 

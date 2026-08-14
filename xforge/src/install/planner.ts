@@ -23,10 +23,14 @@ import {
   FragmentParseError,
   adoptWholeFileAsFragment,
   applyFragment,
+  createdByXForge,
   fragmentDigest,
   fragmentDrifted,
+  normalizeEol,
+  recordedFragment,
   removeFragment,
   type Fragment,
+  type RecordedFragment,
 } from './fragments.js';
 import {
   declaredCliIdentity,
@@ -297,12 +301,44 @@ async function buildDesired(
   return { desired, diagnostics };
 }
 
-async function currentFile(project: ProjectContext, relative: string): Promise<{ digest: string; symlink: boolean } | null> {
+interface CurrentFile {
+  digest: string;
+  /** Digest of the same bytes with CRLF folded to LF; see {@link normalizeEol}. */
+  normalizedDigest: string;
+  symlink: boolean;
+}
+
+function normalizedDigest(content: Buffer | string): string {
+  return sha256(normalizeEol(typeof content === 'string' ? content : content.toString('utf8')));
+}
+
+/**
+ * Whether the destination carries `expected`, ignoring line endings alone.
+ *
+ * Both digests are kept and both are consulted rather than normalizing outright: the byte-exact
+ * comparison still decides every ordinary case, and the normalized one only rescues a file whose
+ * sole difference from XForge's own output is CRLF. Without it a Windows clone with git's default
+ * `core.autocrlf=true` reads as fully modified, every conflict is error severity, and
+ * `commands/projection.ts` then applies nothing at all while `uninstall` refuses too — a project
+ * locked out of its own tooling by line endings. `expectedNormalized` defaults to `expected`
+ * because a recorded digest is a digest of LF content XForge generated.
+ */
+function sameFile(current: CurrentFile, expected: string, expectedNormalized: string = expected): boolean {
+  return current.digest === expected || current.normalizedDigest === expectedNormalized;
+}
+
+/** {@link sameFile} for content already in hand rather than a destination on disk. */
+function sameText(text: string, expected: string): boolean {
+  return sha256(Buffer.from(text)) === expected || normalizedDigest(text) === expected;
+}
+
+async function currentFile(project: ProjectContext, relative: string): Promise<CurrentFile | null> {
   const absolute = await safeResolve(project.root, relative);
   try {
     const stat = await lstat(absolute);
-    if (stat.isSymbolicLink() || !stat.isFile()) return { digest: '', symlink: true };
-    return { digest: sha256(await readFile(absolute)), symlink: false };
+    if (stat.isSymbolicLink() || !stat.isFile()) return { digest: '', normalizedDigest: '', symlink: true };
+    const content = await readFile(absolute);
+    return { digest: sha256(content), normalizedDigest: normalizedDigest(content), symlink: false };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw error;
@@ -326,10 +362,15 @@ interface FragmentPlan {
   merged: string;
   /** Digest of the owned material only, so unrelated user edits never churn the record. */
   ownedDigest: string;
+  /** The material to persist, carrying the provenance `uninstall` needs (see `RecordedFragment`). */
+  record: RecordedFragment;
   /** The user removed or rewrote material XForge previously installed. */
   drifted: boolean;
-  /** The destination exists but cannot be parsed in the fragment's format. */
-  parseError: string | null;
+  /**
+   * The destination cannot receive this fragment: unparsable in the fragment's format, or holding
+   * a value at an owned address that XForge did not write and will not overwrite.
+   */
+  conflict: string | null;
 }
 
 /**
@@ -350,19 +391,34 @@ async function planFragments(
     const old = previous.targets[file.target]?.files[file.path];
     let recorded: Fragment | null = old?.fragment ?? null;
     let drifted = false;
+    /*
+     * Provenance is decided once, here, where the answer is actually known, and then carried in the
+     * record for every later run to read (`removeFragment` used to re-derive it from the seed, and
+     * got it wrong for exactly the files most likely to be committed — see `RecordedFragment`).
+     *
+     * The three cases, in the order they can be told apart:
+     *  - a fragment record exists     — trust what it already says, so a re-install never relabels
+     *                                   a file whose provenance was settled at first install.
+     *  - a whole-file record exists   — that ownership model refused to install onto a destination
+     *                                   it had not created, so XForge created this one.
+     *  - no record at all             — first plan for this destination: ours only if it is absent.
+     */
+    const created = recorded ? createdByXForge(recorded) : old ? true : text === null;
+    const record = recordedFragment(file.fragment, created);
+    const ownedDigest = fragmentDigest(file.fragment);
     try {
       if (old && !recorded) {
-        if (text !== null && sha256(Buffer.from(text)) === old.lastInstalledDigest) recorded = adoptWholeFileAsFragment(text, file.fragment, file.path);
+        if (text !== null && sameText(text, old.lastInstalledDigest)) recorded = adoptWholeFileAsFragment(text, file.fragment, file.path);
         else drifted = true;
       } else if (old && recorded) {
         drifted = fragmentDrifted(text, recorded, file.path);
       }
       const merged = applyFragment(text, file.fragment, recorded, file.path);
       file.content = Buffer.from(merged);
-      result.set(file.path, { merged, ownedDigest: fragmentDigest(file.fragment), drifted, parseError: null });
+      result.set(file.path, { merged, ownedDigest, record, drifted, conflict: null });
     } catch (error) {
       if (!(error instanceof FragmentParseError)) throw error;
-      result.set(file.path, { merged: text ?? '', ownedDigest: fragmentDigest(file.fragment), drifted, parseError: error.message });
+      result.set(file.path, { merged: text ?? '', ownedDigest, record, drifted, conflict: error.message });
     }
   }
   return result;
@@ -444,6 +500,15 @@ export interface ProjectionOptions {
   mode: ProjectionMode;
   target?: TargetId;
   verifyDigests?: boolean;
+  /**
+   * Re-baseline managed destinations that drifted from their installation record: write the
+   * generated content over them and repair the record, instead of raising the `error`-severity
+   * conflict that blocks the *entire* plan in `commands/projection.ts`. Without it a single
+   * hand-edited managed file stops all the others from syncing, with no way out short of restoring
+   * that file by hand. It is deliberately opt-in and deliberately narrow: it covers destinations
+   * XForge already owns, and never adopts a file that is not in the record.
+   */
+  adopt?: boolean;
 }
 
 function notInstalled(project: ProjectContext, command: ProjectionMode): never {
@@ -596,7 +661,7 @@ export async function planProjection(project: ProjectContext, options: Projectio
         protocolVersion: PROTOCOL_VERSION,
         desiredDigest,
         lastInstalledDigest: desiredDigest,
-        ...(file.fragment ? { fragment: file.fragment } : {}),
+        ...(fragmentPlan ? { fragment: fragmentPlan.record } : {}),
       };
       if (!old
         || old.renderVersion !== file.renderVersion
@@ -610,19 +675,28 @@ export async function planProjection(project: ProjectContext, options: Projectio
         continue;
       }
       if (fragmentPlan) {
-        if (fragmentPlan.parseError) {
-          changes.push({ action: 'conflict', path: relative, digest: current?.digest, source: file.source, target: file.target, reason: fragmentPlan.parseError });
-          diagnostics.push(diagnostic('XFORGE_INSTALL_CONFLICT', `Partially managed destination cannot be parsed: ${fragmentPlan.parseError}`, relative));
+        // A destination that cannot receive the fragment stays an error even under `--adopt`:
+        // the value in the way is the project's, and there is no re-baselining that is not a
+        // silent overwrite of content XForge never wrote.
+        if (fragmentPlan.conflict) {
+          changes.push({ action: 'conflict', path: relative, digest: current?.digest, source: file.source, target: file.target, reason: fragmentPlan.conflict });
+          diagnostics.push(diagnostic('XFORGE_INSTALL_CONFLICT', `Partially managed destination cannot receive XForge's material: ${fragmentPlan.conflict}`, relative));
           continue;
         }
         if (fragmentPlan.drifted) {
-          changes.push({ action: 'conflict', path: relative, digest: current?.digest, source: file.source, target: file.target, reason: 'XForge-owned keys were modified after installation.' });
-          diagnostics.push(diagnostic('XFORGE_MANAGED_FILE_MODIFIED', 'XForge-owned keys in a partially managed destination were modified after installation.', relative));
-          continue;
+          if (!options.adopt) {
+            changes.push({ action: 'conflict', path: relative, digest: current?.digest, source: file.source, target: file.target, reason: 'XForge-owned keys were modified after installation.' });
+            diagnostics.push(diagnostic('XFORGE_MANAGED_FILE_MODIFIED', 'XForge-owned keys in a partially managed destination were modified after installation.', relative));
+            continue;
+          }
+          // `applyFragment` already merged this render's material back in around whatever the user
+          // owns, so adopting here re-baselines only the owned keys.
+          diagnostics.push(diagnostic('XFORGE_MANAGED_FILE_ADOPTED', 'Modified XForge-owned keys were re-baselined to the generated material by --adopt.', relative, 'info'));
         }
         const mergedDigest = sha256(Buffer.from(fragmentPlan.merged));
+        const mergedNormalized = normalizedDigest(fragmentPlan.merged);
         if (!current) changes.push({ action: 'create', path: relative, digest: mergedDigest, source: file.source, target: file.target });
-        else if (current.digest === mergedDigest) changes.push({ action: 'skip', path: relative, digest: mergedDigest, source: file.source, target: file.target, reason: 'Already current.' });
+        else if (sameFile(current, mergedDigest, mergedNormalized)) changes.push({ action: 'skip', path: relative, digest: mergedDigest, source: file.source, target: file.target, reason: 'Already current.' });
         else changes.push({ action: 'modify', path: relative, digest: mergedDigest, source: file.source, target: file.target });
         working.files[relative] = record;
         continue;
@@ -632,17 +706,37 @@ export async function planProjection(project: ProjectContext, options: Projectio
         working.files[relative] = record;
         continue;
       }
+      const desiredNormalized = normalizedDigest(file.content);
       if (!old) {
+        /*
+         * An unrecorded destination whose bytes are already exactly what XForge would write is not
+         * a file to protect — it is XForge's own output with the record missing, which is precisely
+         * what an interrupted first install leaves behind. `writer.ts` writes the generated files
+         * before `xforge/.state.json`, so a Ctrl-C, an OOM kill or a full disk part-way through
+         * leaves dozens of correct files and no record at all: every one of them then reported
+         * "Existing file is not XForge-managed", all at error severity, so install applied nothing,
+         * `uninstall` refused with XFORGE_NOT_INSTALLED, and the project had no way forward but
+         * deleting those files by hand. Adopting on an identical digest costs nothing (there is no
+         * user content to lose when the bytes match) and makes the interrupted install resumable.
+         */
+        if (sameFile(current, desiredDigest, desiredNormalized)) {
+          changes.push({ action: 'skip', path: relative, digest: current.digest, source: file.source, target: file.target, reason: 'Already matches the generated content; adopted into the installation record.' });
+          working.files[relative] = record;
+          continue;
+        }
         changes.push({ action: 'conflict', path: relative, digest: current.digest, source: file.source, target: file.target, reason: 'Existing file is not XForge-managed.' });
         diagnostics.push(diagnostic('XFORGE_INSTALL_CONFLICT', 'Existing destination is not owned by XForge.', relative));
         continue;
       }
-      if (current.digest !== old.lastInstalledDigest) {
-        changes.push({ action: 'conflict', path: relative, digest: current.digest, source: file.source, target: file.target, reason: 'Managed file was modified after installation.' });
-        diagnostics.push(diagnostic('XFORGE_MANAGED_FILE_MODIFIED', 'Managed destination differs from its last installed digest.', relative));
-        continue;
+      if (!sameFile(current, old.lastInstalledDigest)) {
+        if (!options.adopt) {
+          changes.push({ action: 'conflict', path: relative, digest: current.digest, source: file.source, target: file.target, reason: 'Managed file was modified after installation.' });
+          diagnostics.push(diagnostic('XFORGE_MANAGED_FILE_MODIFIED', 'Managed destination differs from its last installed digest.', relative));
+          continue;
+        }
+        diagnostics.push(diagnostic('XFORGE_MANAGED_FILE_ADOPTED', 'Modified managed destination was re-baselined to the generated content by --adopt.', relative, 'info'));
       }
-      if (current.digest === desiredDigest) changes.push({ action: 'skip', path: relative, digest: desiredDigest, source: file.source, target: file.target, reason: 'Already current.' });
+      if (sameFile(current, desiredDigest, desiredNormalized)) changes.push({ action: 'skip', path: relative, digest: desiredDigest, source: file.source, target: file.target, reason: 'Already current.' });
       else changes.push({ action: 'modify', path: relative, digest: desiredDigest, source: file.source, target: file.target });
       working.files[relative] = record;
     }
@@ -679,7 +773,10 @@ export async function planProjection(project: ProjectContext, options: Projectio
         delete working.files[relative];
         continue;
       }
-      if (current.symlink || current.digest !== owned.lastInstalledDigest) {
+      // Not covered by `--adopt`: the desired state of a pruned file is "absent", so re-baselining
+      // it would mean deleting content the user wrote, which is the opposite of what adopting a
+      // drifted file does everywhere else. `uninstall --force` is the deliberate way to say that.
+      if (current.symlink || !sameFile(current, owned.lastInstalledDigest)) {
         changes.push({ action: 'conflict', path: relative, digest: current.digest, source: owned.source, target: owned.target, reason: 'Disabled managed file was modified and cannot be pruned.' });
         diagnostics.push(diagnostic('XFORGE_MANAGED_FILE_MODIFIED', 'Modified managed file cannot be removed by managed-only pruning.', relative));
         continue;
