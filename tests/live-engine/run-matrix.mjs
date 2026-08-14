@@ -590,6 +590,9 @@ let mutated = false;
 const allowedOutcomes = [scenarioConfig.expect?.outcome ?? 'archived'].flat();
 let outcome = 'archived';
 let stoppedAtCheck = null;
+/* The Transition receipt already attributed to a rework, so the next iteration does not count the
+   same one again while the Flow sits on the Stage it was sent back to. */
+let countedReceipt = null;
 
 for (let index = 0; index < stages.length; ) {
   if (++steps > stepBudget) {
@@ -717,6 +720,7 @@ for (let index = 0; index < stages.length; ) {
       runXforgeJson(projectRoot, ['transition', '--change', scenarioConfig.changeId, '--to', target]);
       process.stdout.write(`${JSON.stringify({ rework: reworks, from: stage.id, to: target, cause: 'blocking-finding' })}\n`);
       commit(projectRoot, `Reworked ${stage.id} -> ${target} on a blocking finding`);
+      countedReceipt = (changeState(projectRoot).governance.transitions ?? []).at(-1)?.digest ?? countedReceipt;
       index = stages.findIndex((candidate) => candidate.id === target);
       await reopenStageAttempts(policyPath, stages.slice(index).map((candidate) => candidate.id));
       continue;
@@ -741,9 +745,20 @@ for (let index = 0; index < stages.length; ) {
       const receipts = changeState(projectRoot).governance.transitions ?? [];
       const backward = receipts.at(-1);
       const origin = backward && stages.find((candidate) => candidate.id === backward.from);
+      /*
+       * One receipt is one rework, however many Stages later it is still the newest one.
+       *
+       * This branch recognises a rework by the last Transition receipt pointing backwards, which is
+       * sound only until the Flow stands still afterwards: the same receipt is then the newest one
+       * on the next iteration too, and gets counted again. A replay of Major hit it immediately —
+       * the harness performs the rework itself, lands on the target Stage, finds no forward move to
+       * attribute, and re-read its own receipt as a second rework. A live run can reach it just as
+       * well: `solid-rework` once had Check record its blocker and stop without transitioning.
+       */
       const isDeclaredRework = target >= 0 && target <= index
         && Boolean(backward) && backward.to === current
-        && (origin?.reworkTo ?? []).includes(current);
+        && (origin?.reworkTo ?? []).includes(current)
+        && backward.digest !== countedReceipt;
       /*
        * Standing still is not the same as failing to act. A Stage held by an open blocker is a
        * Change the Flow is refusing to advance, and the Agent that recorded that blocker is right
@@ -802,6 +817,7 @@ for (let index = 0; index < stages.length; ) {
       }
       process.stdout.write(`${JSON.stringify({ rework: reworks, from: reworkFrom, to: reworkTo, cause: isDeclaredRework ? 'agent-transition' : 'blocking-finding' })}\n`);
       commit(projectRoot, `Reworked ${reworkFrom} -> ${reworkTo}`);
+      countedReceipt = (changeState(projectRoot).governance.transitions ?? []).at(-1)?.digest ?? countedReceipt;
       index = stages.findIndex((candidate) => candidate.id === reworkTo);
       await reopenStageAttempts(policyPath, stages.slice(index).map((candidate) => candidate.id));
       advanced = false;
