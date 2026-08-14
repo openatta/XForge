@@ -328,6 +328,30 @@ async function appendRequirementToTaskLedgerRequest(projectRoot) {
 }
 
 /**
+ * Whether a Stage produced the Artifact its Flow declares, allowing for the ones declared as a glob.
+ *
+ * `delta-specs` generates `specs/**\/*.md` — a pattern, not a filename — because a Change may carry
+ * several delta Specs and cannot know their names in advance. Treating that string as a path made
+ * the Major criterion report that Propose "never produced specs/**\/*.md" on a run whose Spec was
+ * sitting right there, which is the wrong answer to the right question: what matters is that the
+ * Stage left something behind, not what it happened to call it.
+ */
+function producedArtifact(projectRoot, generates) {
+  const target = path.join(projectRoot, changePath(scenarioConfig.changeId, generates));
+  if (!generates.includes('*')) return existsSync(target);
+  const root = path.join(projectRoot, changePath(scenarioConfig.changeId, generates.split('*')[0]));
+  const extension = path.extname(generates) || '';
+  const walk = (directory) => {
+    let entries = [];
+    try { entries = readdirSync(directory, { withFileTypes: true }); } catch { return false; }
+    return entries.some((entry) => (entry.isDirectory()
+      ? walk(path.join(directory, entry.name))
+      : entry.name.endsWith(extension)));
+  };
+  return walk(root);
+}
+
+/**
  * Decides whether a Flow that ran out of reworks at Check earned that verdict, point by point.
  *
  * `tests/live-engine/README.md` states the criterion in prose and a human had to apply it, which is
@@ -355,8 +379,9 @@ function assertStoppedAtCheck(projectRoot, flowDefinition, checkStage) {
     for (const artifactId of stage.produces ?? []) {
       const artifact = flowDefinition.artifacts.find((entry) => entry.id === artifactId);
       if (!artifact) continue;
-      const file = path.join(projectRoot, changePath(scenarioConfig.changeId, artifact.generates));
-      if (!existsSync(file)) problems.push(`${stage.id} never produced ${artifact.generates}.`);
+      if (!producedArtifact(projectRoot, artifact.generates)) {
+        problems.push(`${stage.id} never produced ${artifact.generates}.`);
+      }
     }
   }
 
