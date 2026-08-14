@@ -35,25 +35,27 @@ export async function resolveInstallSpec({ mode, packRoot }) {
   const version = await cliPackageVersion();
   if (mode === 'npm') return { spec: `@xforge/cli@${version}`, version, source: 'npm' };
 
-  await mkdir(packRoot, { recursive: true });
   /*
-   * Reuse an already-packed tarball for this version when one is here. Building and packing is the
+   * The tarball is shared across scenarios, not packed per scenario. Building and packing is the
    * only step of a `--cli-source local` run that touches the shared repository rather than the
-   * isolated project, so three Flows starting at once used to run three `npm run build`s against
-   * one `xforge/dist` — whose `clean` step deletes it — and knock each other over before a single
-   * model call was made. With the pack reused, the Flows share one artifact and can genuinely run
-   * in parallel. Delete `tests/.tmp/live-engine-npm-pack` (or run one Flow at a time) to force a
-   * rebuild after changing the CLI.
+   * isolated project: `npm run build`'s clean step deletes `xforge/dist`, so three Flows starting
+   * together used to delete each other's build and fail before a single model call was made — one
+   * of them installing a tarball packed from a half-empty dist. Packing once into a shared
+   * location and reusing it makes the Flows genuinely parallelizable, and `packRoot` stays a
+   * parameter only so a caller can isolate it. Delete the directory to force a rebuild after
+   * changing the CLI; `run-matrix.mjs` does that on a single-Flow run.
    */
-  const existing = path.join(packRoot, `xforge-cli-${version}.tgz`);
+  const sharedPackRoot = path.join(repositoryRoot, 'tests', '.tmp', 'live-engine-npm-pack');
+  await mkdir(sharedPackRoot, { recursive: true });
+  const existing = path.join(sharedPackRoot, `xforge-cli-${version}.tgz`);
   if (await readFile(existing).then(() => true, () => false)) {
     return { spec: existing, version, source: 'local-tarball' };
   }
   run('npm', ['run', 'build', '--prefix', 'xforge'], repositoryRoot);
   const packed = JSON.parse(run('npm', [
-    'pack', './xforge', '--json', '--ignore-scripts', '--pack-destination', packRoot,
+    'pack', './xforge', '--json', '--ignore-scripts', '--pack-destination', sharedPackRoot,
   ], repositoryRoot));
-  const tarball = path.join(packRoot, packed[0]?.filename ?? 'missing.tgz');
+  const tarball = path.join(sharedPackRoot, packed[0]?.filename ?? 'missing.tgz');
   return { spec: tarball, version, source: 'local-tarball' };
 }
 

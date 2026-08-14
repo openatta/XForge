@@ -20,10 +20,13 @@ import { loadYaml } from './yaml.js';
  *   that has since been edited is a receipt for a different Change.
  * - Every Gate Evidence the Stage actually produced must be cited, by its own `digest`, and nothing
  *   else may be. Citing a digest requires having run the Gate; omitting one hides a Gate that ran.
- * - `gitHead` must be the commit the cited Evidence was produced at. It is checked against the
- *   Evidence rather than against the live `HEAD` deliberately: `core/revision.ts` treats gitHead as
- *   audit metadata precisely because a commit that changes no governed content is not staleness, and
- *   committing the receipt itself would otherwise invalidate it the moment it was recorded.
+ * - `gitHead` must be present, as provenance for whoever reads the receipt later. It is deliberately
+ *   *not* compared to anything. An earlier revision of this file required it to equal the commit the
+ *   cited Evidence ran at, which a live run showed to be unsatisfiable: the Evidence is regenerated
+ *   after the Stage's work is committed, so the receipt's HEAD is always the parent of the
+ *   Evidence's. The same is true of any integrator merge. `core/revision.ts` already treats gitHead
+ *   as audit metadata precisely because a commit that changes no governed content is not staleness —
+ *   `contentRevision` above is the binding that carries the weight, and it is commit-independent.
  *
  * One thing this file cannot fix on its own, and the reason it does not compare against a
  * self-declared revision: while `evidence/verification-receipt.yaml` is a declared Flow Artifact,
@@ -143,9 +146,6 @@ function evaluate(
      */
     const status = text(citation.status);
     if (status && status !== 'passed') problems.push(`${relative}: Gate ${gate} is cited as "${status}"; only a passed Gate belongs in a verification receipt.`);
-    if (evidence.gitHead !== gitHead) {
-      problems.push(`${relative}: gitHead ${gitHead} does not match the commit Gate ${gate} ran at (${evidence.gitHead}).`);
-    }
   }
 
   for (const evidence of expected.gates) {

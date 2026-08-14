@@ -75,6 +75,33 @@ async function exists(filePath: string): Promise<boolean> {
 }
 
 describe('work-package protocol', () => {
+  /*
+   * A live Solid run stopped dead at apply -> verify on `work-package:T001:ready` with an empty
+   * `nextActions` and no remedy: the Design Agent had authored a plan, nothing had dispatched it,
+   * and the only signal was the word "ready". No Flow field declares a Stage work-package-driven —
+   * `resolveControlPlane` blocks on the plan existing — so an Agent that writes a plan and then
+   * means to work the packages itself has no way to learn that dispatch is the missing step.
+   */
+  it('names dispatch as the way out of an undispatched work package, and says nothing once it is dispatched', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([workPackage('T001')]));
+    await initializeGit(root);
+    await advanceSolidToApply(root);
+
+    const blocked = await runCli(root, ['transition', '--change', 'add-feature', '--to', 'verify']);
+    expect(blocked.json.diagnostics.some((item: any) => item.message === 'Transition is blocked by work-package:T001:ready.')).toBe(true);
+    const remedy = blocked.json.diagnostics.find((item: any) => item.code === 'XFORGE_WORK_PACKAGE_UNDISPATCHED_REMEDY');
+    expect(remedy?.message).toContain('xforge work-package dispatch --change add-feature --package T001');
+
+    /* Dispatched but not yet delivered is a Worker owing work, not a command anyone can name, so
+       the block stays and the remedy goes quiet rather than repeating advice already taken. */
+    expect((await runCli(root, ['work-package', 'dispatch', '--change', 'add-feature', '--package', 'T001'])).code).toBe(0);
+    const dispatched = await runCli(root, ['transition', '--change', 'add-feature', '--to', 'verify']);
+    expect(dispatched.json.diagnostics.some((item: any) => item.message.startsWith('Transition is blocked by work-package:T001:'))).toBe(true);
+    expect(dispatched.json.diagnostics.some((item: any) => item.code === 'XFORGE_WORK_PACKAGE_UNDISPATCHED_REMEDY')).toBe(false);
+  });
+
   it('accepts only the eight canonical work-package fields', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);

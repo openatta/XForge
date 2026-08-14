@@ -611,19 +611,42 @@ export function gateBlockReason(evidence: GateEvidence | null | undefined, conte
 }
 
 /**
- * The way out of a `gate:<id>:stale` block, spelled out.
+ * The way out of a block, spelled out, for the blocks where naming a command is the whole fix.
  *
  * Gate Evidence binds to the content revision at the moment the Gate runs, so an Agent that runs
  * one Gate, edits an Artifact, then runs the next has silently invalidated the first — every Gate
  * reports `passed` and the Stage still will not close. Naming the remedy turns that dead end into
  * one command. Only `stale` earns it: `failed` needs the finding fixed, and `missing` needs the
  * Gate run for the first time, neither of which this sentence describes.
+ *
+ * `work-package:<id>:ready` earns one for the same reason, found the same way — a live run of the
+ * Solid Flow stopped dead at apply -> verify because the Change carried a work-package plan nobody
+ * had dispatched. The plan's mere existence is what `resolveControlPlane` blocks on; no Flow field
+ * declares a Stage work-package-driven, so an Agent that authors a plan at Design and then works
+ * the packages itself hits a block whose only clue was the word "ready".
  */
-export function blockRemedy(blocks: readonly string[], changeId: string): string | null {
-  if (!blocks.some((block) => /^gate:.+:stale$/.test(block))) return null;
-  /* Plain `check` runs the current Stage's whole Gate set. `--all-gates` would also run Gates
-     belonging to Stages the Change has not reached, which cannot pass yet and is not the advice. */
-  return `Gate Evidence is bound to the content revision, so editing any Artifact after a Gate ran makes that Gate stale. Run \`xforge check --change ${changeId}\` after your last write to re-run this Stage's Gates against the current content.`;
+export function blockRemedy(blocks: readonly string[], changeId: string): { code: string; message: string } | null {
+  if (blocks.some((block) => /^gate:.+:stale$/.test(block))) {
+    /* Plain `check` runs the current Stage's whole Gate set. `--all-gates` would also run Gates
+       belonging to Stages the Change has not reached, which cannot pass yet and is not the advice. */
+    return {
+      code: 'XFORGE_GATE_EVIDENCE_STALE_REMEDY',
+      message: `Gate Evidence is bound to the content revision, so editing any Artifact after a Gate ran makes that Gate stale. Run \`xforge check --change ${changeId}\` after your last write to re-run this Stage's Gates against the current content.`,
+    };
+  }
+
+  const undispatched = blocks.flatMap((block) => /^work-package:(.+):ready$/.exec(block)?.[1] ?? []);
+  if (undispatched.length > 0) {
+    const packages = undispatched.map((id) => `\`xforge work-package dispatch --change ${changeId} --package ${id}\``).join(', ');
+    return {
+      code: 'XFORGE_WORK_PACKAGE_UNDISPATCHED_REMEDY',
+      message: `Apply cannot close while a package in this Change's work-package plan has never been dispatched. Dispatch each one, have its Worker record a delivery, then run \`xforge check --change ${changeId}\` to bind the deliveries: ${packages}.`,
+    };
+  }
+
+  /* Every later status — dispatched, in-progress, failed — is waiting on the Worker's delivery or
+     on a fix to it, which is work, not a command this sentence could name. */
+  return null;
 }
 
 export async function terminalGovernanceBlocks(

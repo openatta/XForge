@@ -84,6 +84,11 @@ async function enableApprovalHarness(projectRoot) {
     const server = parseYaml(await readFile(mcpServerPath, 'utf8'));
     const fixture = path.join(repositoryRoot, 'xforge', 'test', 'fixtures', 'mcp-approval-server.mjs');
     server.spec.command = [process.execPath, fixture];
+    /* core/mcp-approval.ts hands the provider subprocess a filtered environment, not `process.env`,
+       so the fixture's XFORGE_TEST_MCP_* controls have to be declared here or they are stripped and
+       the fixture silently falls back to its `pending` default. That filtering is the product
+       behaving correctly; it only surfaced once the harness started preferring the mcp mechanism. */
+    server.spec.env = { ...server.spec.env, allowPrefixes: ['XFORGE_TEST_MCP_'] };
     await writeFile(mcpServerPath, stringifyYaml(server));
   }
 }

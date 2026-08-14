@@ -27,9 +27,13 @@ wrapper). The package has the eight canonical fields: `id`, `goal`,
 Its ID is `T001`, write path is `src/**`, inputs include the delta Spec,
 Clarifications, and Design, skill is `xforge-apply`, and verify is the
 one-element array `[npm test]` (`verify` is a list of commands, not a
-single string).
+single string). Every path inside the plan is project-relative, exactly as
+`xforge state` prints it — `xforge/changes/credential-store/design.md`, never
+`design.md`.
 
-Run `xforge state --change credential-store` at the end. Major has no
+Run `xforge state --change credential-store` at the end and read its
+diagnostics. It must come back with no `error` diagnostic; if it reports one
+against anything you wrote, fix that file and run it again until it is clean. Major has no
 Approval gate at Design itself — once ready, transition into Check. Confirm
 the current Stage is Check. Do not commit. In your final response report
 files changed, commands run, current Stage, blockers, and no claim

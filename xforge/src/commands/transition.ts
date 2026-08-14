@@ -118,7 +118,7 @@ export async function executeTransition(project: ProjectContext, options: { chan
   const diagnostics = [...eligibility, ...resources.diagnostics, ...workPackages.diagnostics, ...control.diagnostics];
   for (const block of requirement.blockedBy) diagnostics.push(diagnostic('XFORGE_TRANSITION_BLOCKED', `Transition is blocked by ${block}.`, `${project.changesPath}/${options.change}`));
   const remedy = blockRemedy(requirement.blockedBy, options.change);
-  if (remedy) diagnostics.push(diagnostic('XFORGE_GATE_EVIDENCE_STALE_REMEDY', remedy, `${project.changesPath}/${options.change}`, 'info'));
+  if (remedy) diagnostics.push(diagnostic(remedy.code, remedy.message, `${project.changesPath}/${options.change}`, 'info'));
 
   /*
    * Surfaced as a warning, not a block, and deliberately: the Stage this remnant advanced to is
