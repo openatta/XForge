@@ -1,6 +1,6 @@
 # XForge File Protocol 2
 
-> **Implementation status:** implemented by `@xforge/cli 0.7.8` (`xforge.dev/v1alpha2`). Protocol 1 projects remain readable in Portable mode, but Protocol 2 managed writes require an exact CLI/Lock identity.
+> **Implementation status:** implemented by `@xforge/cli 0.7.9` (`xforge.dev/v1alpha2`). Protocol 1 projects remain readable in Portable mode, but Protocol 2 managed writes require an exact CLI/Lock identity.
 
 Protocol 2 separates guidance, enforcement and evidence. Markdown remains the human/Agent planning surface; YAML/JSON resources and CLI receipts are the machine authority.
 
@@ -40,7 +40,7 @@ xforge/
 
 - CLI envelope: `protocolVersion: "2"`.
 - current resources: `apiVersion: xforge.dev/v1alpha2`.
-- CLI declaration and Lock: version `0.7.8`, protocol `"2"`, exact runtime integrity.
+- CLI declaration and Lock: version `0.7.9`, protocol `"2"`, exact runtime integrity.
 - CLI 和 Scaffold source 都固定为 `@xforge/cli` npm 精确版本。Protocol 2 不接受
   Git checkout、HTTP Scaffold 或 source-built installation identity。
 - Protocol 1 Flow/Rule/Agent resources can be read during migration. A Protocol 1 project whose declared CLI identity does not match runs in Portable mode; managed install/check/transition/approval/archive writes are rejected.
