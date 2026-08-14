@@ -1,0 +1,105 @@
+{
+  "apiVersion": "xforge-live-engine/v1",
+  "kind": "Cassette",
+  "scenario": "major",
+  "flow": "major",
+  "changeId": "credential-store",
+  "recordedAt": "2026-08-14T09:38:21.720Z",
+  "scaffold": "sha256:150b38de2f6586a6ff0b9063cb02c7155aeac01c525e6592b004ca1610bfcc48",
+  "cli": null,
+  "outcome": "stopped-at-check",
+  "reworks": 2,
+  "steps": [
+    {
+      "stage": "propose",
+      "commit": "c4749ac5026f18fa750bfc5581bf23facf39fd81",
+      "parent": "14b1da67add2a5b33c5b7f136b18ac09cbc94416",
+      "subject": "Live engine stage complete: major:propose",
+      "files": 6
+    },
+    {
+      "stage": "clarify",
+      "commit": "a0825086aaf8da0ade224e682618007867d3dfa5",
+      "parent": "c4749ac5026f18fa750bfc5581bf23facf39fd81",
+      "subject": "Live engine stage complete: major:clarify",
+      "files": 6
+    },
+    {
+      "stage": "design",
+      "commit": "3f3cf93fd2a5033429353808496bc85349e2593b",
+      "parent": "a0825086aaf8da0ade224e682618007867d3dfa5",
+      "subject": "Live engine stage complete: major:design",
+      "files": 4
+    },
+    {
+      "stage": "check",
+      "commit": "9d450541096aad231d57929130cdf0b46d61ec35",
+      "parent": "3f3cf93fd2a5033429353808496bc85349e2593b",
+      "subject": "Live engine stage complete: major:check",
+      "files": 7
+    },
+    {
+      "stage": "clarify",
+      "commit": "7f034f6a54a26692860816c9877d825ab199cd2e",
+      "parent": "a0a0f186dcc9c571939c2087a02b426742ba38de",
+      "subject": "Live engine stage complete: major:clarify",
+      "files": 6
+    },
+    {
+      "stage": "design",
+      "commit": "2681ad1382efbda3ddffb9c610584e30dbfd627a",
+      "parent": "7f034f6a54a26692860816c9877d825ab199cd2e",
+      "subject": "Live engine stage complete: major:design",
+      "files": 3
+    },
+    {
+      "stage": "check",
+      "commit": "8460e78a37706984daf4addaf69da1a02548c79b",
+      "parent": "2681ad1382efbda3ddffb9c610584e30dbfd627a",
+      "subject": "Live engine stage complete: major:check",
+      "files": 7
+    }
+  ],
+  "stages": [
+    {
+      "stage": "propose",
+      "contentRevision": "1720bf92b503bc9776e1598fe77954efd91a98cad39cd626d8625de149f0ec13",
+      "currentStage": "clarify"
+    },
+    {
+      "stage": "clarify",
+      "contentRevision": "e12a32671e1dc44f4a7c843064c5ef9f275ed7edee628dfb8fb40c97084159fa",
+      "currentStage": "design"
+    },
+    {
+      "stage": "design",
+      "contentRevision": "dfaa6288377f5e260df71b1332c10eaa9be79f372ca530330ece9174fc8dea5a",
+      "currentStage": "check"
+    },
+    {
+      "stage": "check",
+      "contentRevision": "dd7085c04b3da6d2dc7e83bcca40c4309c3e3492b04fdca00414e1355d65ea1a",
+      "currentStage": "check"
+    },
+    {
+      "stage": "standalone-continue",
+      "contentRevision": "dd7085c04b3da6d2dc7e83bcca40c4309c3e3492b04fdca00414e1355d65ea1a",
+      "currentStage": "check"
+    },
+    {
+      "stage": "clarify",
+      "contentRevision": "50323b0b891a771b34f0747d08545c50776463f2ddc52350d2280831be88b491",
+      "currentStage": "design"
+    },
+    {
+      "stage": "design",
+      "contentRevision": "af1aed7615368cc58dd8a5eebdd82ed734d56e0b63c2ccd0c3686e435582656f",
+      "currentStage": "check"
+    },
+    {
+      "stage": "check",
+      "contentRevision": "33b3a6a2240b4224a073b958284002c17ef76a4eca3abfaee2d50dc355ccb413",
+      "currentStage": "check"
+    }
+  ]
+}
