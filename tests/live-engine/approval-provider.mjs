@@ -139,6 +139,13 @@ for (const approver of planApprovers(definition)) {
     changeId: selected.change, transition: selected.transition, policyId: selected.policy, mechanism,
     approver, decision: 'approve', reason: 'Approved by the isolated live-engine governance drill.',
   });
+  /* `approve` reports an undecided external provider as a successful envelope carrying
+     `status: pending` and no receipt, so dereferencing the receipt blind turns a provider
+     misconfiguration into an opaque TypeError several frames from the cause. */
+  if (!approved.data.receipt) {
+    throw new Error(`Approval for policy ${selected.policy} came back "${approved.data.status ?? 'receiptless'}" `
+      + `for approver ${approver.id} via ${mechanism.kind}: the provider never returned a decision.`);
+  }
   decisions.push({ approver, decision: 'approve', receiptId: approved.data.receipt.receiptId, mechanism: mechanism.kind });
 }
 

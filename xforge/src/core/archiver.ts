@@ -74,7 +74,7 @@ export async function planArchive(project: ProjectContext, changeId: string, opt
       const governanceBlocks = await terminalGovernanceBlocks(project, control, { auditFacts: options.auditFacts });
       for (const block of governanceBlocks) diagnostics.push(diagnostic('XFORGE_ARCHIVE_GOVERNANCE_BLOCKED', `Archive governance is blocked by ${block}.`, `${project.changesPath}/${changeId}`));
       const remedy = blockRemedy(governanceBlocks, changeId);
-      if (remedy) diagnostics.push(diagnostic('XFORGE_GATE_EVIDENCE_STALE_REMEDY', remedy, `${project.changesPath}/${changeId}`, 'info'));
+      if (remedy) diagnostics.push(diagnostic(remedy.code, remedy.message, `${project.changesPath}/${changeId}`, 'info'));
     }
     const tracker = structure.change.apply.tracks;
     if (tracker) {

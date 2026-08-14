@@ -108,15 +108,23 @@ describe('verification receipt ledger', () => {
     expect((await evaluateVerificationReceipt(context, CHANGE, expected)).reason).toBe('gate-unverifiable-security-scan');
   });
 
-  it('checks gitHead against the Evidence, not against the live HEAD', async () => {
+  it('requires gitHead but does not compare it, because every commit moves it', async () => {
     const { project: context, root } = await project();
     const expected = { contentRevision: CONTENT_REVISION, gates };
-    /* `core/revision.ts` treats gitHead as audit metadata precisely because a commit that changes no
-       governed content is not staleness; committing the receipt must not invalidate it. */
+
+    await write(root, RECEIPT, receiptYaml({ gitHead: '' }));
+    expect((await evaluateVerificationReceipt(context, CHANGE, expected)).reason).toBe('git-head-missing');
+
+    /*
+     * A live run established that requiring the receipt's gitHead to equal the commit the Evidence
+     * ran at is unsatisfiable in the ordinary sequence: the Stage's work is committed and only then
+     * are the Gates regenerated, so the receipt's HEAD is the parent of the Evidence's. An
+     * integrator merge does the same. `core/revision.ts` treats gitHead as audit metadata for
+     * exactly this reason — a commit that changes no governed content is not staleness — and
+     * `contentRevision`, checked above, is the commit-independent binding that carries the weight.
+     */
     await write(root, RECEIPT, receiptYaml({ gitHead: 'deadbeef' }));
-    const mismatched = await evaluateVerificationReceipt(context, CHANGE, expected);
-    expect(mismatched.status).toBe('failed');
-    expect(mismatched.problems.join('\n')).toContain('does not match the commit Gate');
+    expect((await evaluateVerificationReceipt(context, CHANGE, expected)).status).toBe('passed');
   });
 });
 

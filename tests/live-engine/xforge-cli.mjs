@@ -25,6 +25,19 @@ export function runXforgeJson(projectRoot, args, env = {}) {
 }
 
 /**
+ * The same call for a command whose refusal is a governed outcome rather than a harness error — a
+ * Transition the control plane blocks, most of all. Those still exit non-zero, but they print a
+ * complete `ok: false` envelope naming what blocked, and a caller that means to read that envelope
+ * should not have to catch a string-formatted throw to reach it. A command that produced no JSON at
+ * all is still a harness error and still throws.
+ */
+export function tryXforgeJson(projectRoot, args, env = {}) {
+  const result = spawnXforge(projectRoot, args, { env });
+  try { return JSON.parse(result.stdout); } catch {}
+  throw new Error(`xforge ${args.join(' ')} produced no JSON envelope: ${result.stdout || result.stderr}`);
+}
+
+/**
  * Drives an interactive `xforge` command (currently only local Approval's terminal dialogue) by
  * waiting for each expected prompt to actually appear on stderr before answering it.
  *

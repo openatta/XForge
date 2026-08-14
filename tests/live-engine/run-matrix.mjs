@@ -1,10 +1,11 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { parse } from '../../xforge/node_modules/yaml/dist/index.js';
-import { spawnXforge, runXforgeJson } from './xforge-cli.mjs';
-import { assertLiveEnginePolicy, createLiveEnginePolicy } from './policy.mjs';
+import { spawnXforge, runXforgeJson, tryXforgeJson } from './xforge-cli.mjs';
+import { assertLiveEnginePolicy, createLiveEnginePolicy, resetLiveEngineStageAttempts } from './policy.mjs';
 
 /**
  * Data-driven live-engine matrix runner. For a Flow scenario (quick/solid/major), this reads
@@ -50,6 +51,12 @@ const SCENARIOS = {
   },
   major: {
     changeId: 'credential-store',
+    /* Major is not the deterministic single-path baseline it was assumed to be. Its delta Spec is
+       written by this run's Propose Agent while `test/**` is seeded and immutable, so a Spec that
+       reaches past the acceptance suite is a real, correctly-found blocker — a live run recorded
+       exactly that (`F-001`, reworkTo: clarify) and the run was scored as a crash for it. One
+       rework lets the Flow follow its own remedy; a second would mean the rework did not land. */
+    maxReworks: 1,
     inject: { afterStage: 'check', prompt: 'standalone/continue.md', stageLabel: 'standalone-continue' },
   },
 };
@@ -83,6 +90,48 @@ function changePath(changeId, generates) {
   return path.posix.join('xforge', 'changes', changeId, generates);
 }
 
+/**
+ * Where a Transition the control plane refused should send the work back to — read off the Change's
+ * own findings ledger rather than chosen here. Each finding carries `reworkTo`, and the Flow's
+ * `reworkTo` on the Stage being left says which of those the model actually permits; a target that
+ * satisfies neither is not a rework the harness may invent, so this returns null and the caller
+ * fails with the block spelled out.
+ */
+function declaredReworkTarget(projectRoot, envelope, stage) {
+  if (!(envelope.diagnostics ?? []).some((item) => item.code === 'XFORGE_TRANSITION_BLOCKED')) return null;
+  const ledger = path.join(projectRoot, changePath(scenarioConfig.changeId, 'evidence/check-findings.yaml'));
+  let findings;
+  try { findings = parse(readFileSync(ledger, 'utf8'))?.findings ?? []; } catch { return null; }
+  const permitted = stage.reworkTo ?? [];
+  for (const finding of findings) {
+    if (finding?.status !== 'open' || finding?.severity !== 'blocker') continue;
+    if (permitted.includes(finding.reworkTo)) return finding.reworkTo;
+  }
+  return null;
+}
+
+/**
+ * Reads the Change's State without treating a governed refusal as a harness error.
+ *
+ * `state` exits non-zero whenever it has an `error` diagnostic to report — an Agent that wrote an
+ * invalid `work-packages.yaml`, say — and that is the command working: the envelope is complete and
+ * the diagnostics are the answer. Reading it through the throwing helper turned a finding the Flow
+ * was about to act on into a stack trace one call earlier, and lost the diagnostics with it.
+ */
+function changeState(projectRoot) {
+  return tryXforgeJson(projectRoot, ['state', '--change', scenarioConfig.changeId]).data.change;
+}
+
+/**
+ * Gives every Stage the Flow is about to walk again its attempt budget back. Called only on a
+ * rework, where re-entering a Stage is a fresh visit rather than a retry of the failed one.
+ */
+async function reopenStageAttempts(policyPath, stageIds) {
+  const policy = JSON.parse(await readFile(policyPath, 'utf8'));
+  resetLiveEngineStageAttempts(policy, stageIds);
+  await writeFile(policyPath, `${JSON.stringify(policy, null, 2)}\n`);
+}
+
 async function runEngine({ projectRoot, scenario, stageId, promptRelative, policyPath, options: cliOptions }) {
   const promptPath = path.join(scenariosRoot, promptRelative);
   const outputPath = path.join(resultsRoot, `${scenario}-${stageId}.json`);
@@ -98,10 +147,29 @@ async function runEngine({ projectRoot, scenario, stageId, promptRelative, polic
     '--timeout-seconds', cliOptions['timeout-seconds'],
     '--allow-behavioral-isolation', 'true',
   ];
-  const result = spawnSync(process.execPath, [path.join(scriptsRoot, 'run-engine.mjs'), ...args], {
-    encoding: 'utf8', stdio: 'inherit',
-  });
-  if (result.status !== 0) throw new Error(`Live engine call failed for ${scenario}:${stageId}. See ${outputPath}.`);
+  /*
+   * `maxAttemptsPerStage` was only ever a budget cap: the policy reserved a second attempt that
+   * nothing then took, because one non-zero engine exit threw and ended the Flow. A live run lost
+   * two Flows to a single provider stall that way, several Stages deep, with the granted attempt
+   * unused. Only a failure the model did not cause is retried — a provider stall or a stage the
+   * watchdog killed. `provider_failure` covers a real refusal too, but a refusal reproduces on the
+   * retry and fails the same way one attempt later, whereas a stall usually does not. The policy
+   * stays the authority on how many attempts exist; this only stops leaving one on the table.
+   */
+  const transient = new Set(['provider_failure', 'environment_blocked']);
+  for (let attempt = 1; ; attempt += 1) {
+    const result = spawnSync(process.execPath, [path.join(scriptsRoot, 'run-engine.mjs'), ...args], {
+      encoding: 'utf8', stdio: 'inherit',
+    });
+    if (result.status === 0) return;
+    const policy = JSON.parse(readFileSync(policyPath, 'utf8'));
+    const classification = policy.stages?.[stageId]?.runs?.at(-1)?.classification;
+    const exhausted = (policy.stages?.[stageId]?.attempts ?? attempt) >= policy.maxAttemptsPerStage;
+    if (!transient.has(classification) || exhausted) {
+      throw new Error(`Live engine call failed for ${scenario}:${stageId} (${classification ?? 'unclassified'}, attempt ${attempt}). See ${outputPath}.`);
+    }
+    process.stdout.write(`${JSON.stringify({ retry: attempt + 1, stage: stageId, cause: classification })}\n`);
+  }
 }
 
 function assertArtifactOutline({ projectRoot, flowName, artifactId, file, mode }) {
@@ -159,9 +227,11 @@ let policy = createLiveEnginePolicy({
   timeoutSeconds: Number(selected['timeout-seconds']),
   stages: [
     ...stages.map((stage) => stage.id),
-    /* Every execution Stage gets a continuation turn after its delivery is recorded, and the
-       budget policy rejects any stage id it was not told about up front. */
-    ...stages.filter((stage) => stage.execution && stage.execution.workPackages !== 'internal').map((stage) => `${stage.id}-delivered`),
+    /* Any Stage can turn out to owe a delivery — whether one does is a fact about the Change the
+       Agents write, not about the Flow, which declares nothing on the subject. The budget policy
+       rejects a stage id it was not told about up front, so every Stage is declared with its
+       continuation turn; the unused ones simply never run. */
+    ...stages.map((stage) => `${stage.id}-delivered`),
     ...(scenarioConfig.inject ? [scenarioConfig.inject.stageLabel] : []),
     'archive',
   ],
@@ -210,18 +280,27 @@ for (let index = 0; index < stages.length; ) {
    * the deadlock surfaced — and it must run *after* the Stage commit above, or the Agent's
    * implementation is still uncommitted and the delivery diff contains nothing but the dispatch
    * receipt XForge wrote itself.
+   *
+   * Which packages owe a delivery is read off the Change, for the same reason dispatch below is: no
+   * Flow declares `execution.workPackages`, so the field this was once gated on is never present and
+   * this whole block never ran. Gating dispatch on real state while leaving delivery on the dead
+   * field just moves the deadlock one step later — a live Solid run dispatched T001 and then blocked
+   * on `work-package:T001:running`, with the Agent's turn already over.
    */
-  if (stage.execution && stage.execution.workPackages !== 'internal') {
-    const recorded = spawnSync(process.execPath, [
-      path.join(scriptsRoot, 'record-delivery.mjs'), '--root', projectRoot,
-      '--change', scenarioConfig.changeId, '--package', 'T001',
-    ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-    if (recorded.status !== 0) throw new Error(`Recording work-package delivery failed: ${recorded.stderr || recorded.stdout}`);
-    commit(projectRoot, 'Recorded work package T001 delivery');
+  const owed = changeState(projectRoot).workPackages?.packages?.filter((entry) => entry.status === 'running' && !entry.delivery) ?? [];
+  if (owed.length > 0) {
+    for (const owedPackage of owed) {
+      const recorded = spawnSync(process.execPath, [
+        path.join(scriptsRoot, 'record-delivery.mjs'), '--root', projectRoot,
+        '--change', scenarioConfig.changeId, '--package', owedPackage.id,
+      ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+      if (recorded.status !== 0) throw new Error(`Recording work-package delivery failed for ${owedPackage.id}: ${recorded.stderr || recorded.stdout}`);
+    }
+    commit(projectRoot, `Recorded work package delivery for ${owed.map((entry) => entry.id).join(', ')}`);
     /*
      * The Agent's turn is over by the time the delivery exists, so it never had a legal moment to
-     * leave Apply. While it was running, T001 was `running` and `apply -> verify` was correctly
-     * blocked; the delivery only lands here, one step later. Without a second turn the Stage is
+     * leave Apply. While it was running, the package was `running` and `apply -> verify` was
+     * correctly blocked; the delivery only lands here, one step later. Without a second turn the Stage is
      * deadlocked for a reason that is an artifact of the harness playing Worker, not a governance
      * fact — the harness waits for a transition the Agent was never able to make.
      *
@@ -250,11 +329,33 @@ for (let index = 0; index < stages.length; ) {
     await runApprovals({
       projectRoot, policyIds: stage.exit.approvals, transition: nextStage?.id ?? 'verify', changeId: scenarioConfig.changeId,
     });
-    runXforgeJson(projectRoot, ['transition', '--change', scenarioConfig.changeId, '--to', nextStage.id]);
-    commit(projectRoot, `Approved and transitioned into ${nextStage.id}`);
+    const moved = tryXforgeJson(projectRoot, ['transition', '--change', scenarioConfig.changeId, '--to', nextStage.id]);
+    if (moved.ok) {
+      commit(projectRoot, `Approved and transitioned into ${nextStage.id}`);
+    } else {
+      /*
+       * A Stage whose Gates hold it back is the model working, not the run failing: a live Major
+       * run reached check -> apply with `gate:check-findings:failed` because the Check Agent had
+       * recorded an open blocker naming the Stage to go back to. Forcing the Transition here would
+       * have thrown away the one path the Flow defines for that finding — and the rework arm below
+       * never sees it, because it only recognises a backward move the Agent made itself.
+       */
+      const target = declaredReworkTarget(projectRoot, moved, stage);
+      if (!target) {
+        const blocks = moved.diagnostics?.filter((item) => item.severity === 'error').map((item) => item.message).join(' ');
+        throw new Error(`Transition ${stage.id} -> ${nextStage.id} was blocked with no declared rework target: ${blocks || 'no error diagnostic'}`);
+      }
+      reworks += 1;
+      if (reworks > maxReworks) throw new Error(`${selected.flow} reworked ${reworks} times (limit ${maxReworks}); last was ${stage.id} -> ${target} on a blocking finding.`);
+      runXforgeJson(projectRoot, ['transition', '--change', scenarioConfig.changeId, '--to', target]);
+      process.stdout.write(`${JSON.stringify({ rework: reworks, from: stage.id, to: target, cause: 'blocking-finding' })}\n`);
+      commit(projectRoot, `Reworked ${stage.id} -> ${target} on a blocking finding`);
+      index = stages.findIndex((candidate) => candidate.id === target);
+      await reopenStageAttempts(policyPath, stages.slice(index).map((candidate) => candidate.id));
+      continue;
+    }
   } else if (nextStage) {
-    const current = runXforgeJson(projectRoot, ['state', '--change', scenarioConfig.changeId])
-      .data.change.governance.currentStage;
+    const current = changeState(projectRoot).governance.currentStage;
     if (current !== nextStage.id) {
       /*
        * The Agent sent the work back, which is what a Stage that found a real problem is supposed
@@ -270,8 +371,7 @@ for (let index = 0; index < stages.length; ) {
        * driving. Landing back on the current Stage (`target === index`) is a rework too.
        */
       const target = stages.findIndex((candidate) => candidate.id === current);
-      const receipts = runXforgeJson(projectRoot, ['state', '--change', scenarioConfig.changeId])
-        .data.change.governance.transitions ?? [];
+      const receipts = changeState(projectRoot).governance.transitions ?? [];
       const backward = receipts.at(-1);
       const origin = backward && stages.find((candidate) => candidate.id === backward.from);
       const isDeclaredRework = target >= 0 && target <= index
@@ -287,14 +387,29 @@ for (let index = 0; index < stages.length; ) {
       process.stdout.write(`${JSON.stringify({ rework: reworks, from: backward.from, to: current, receipt: backward.digest })}\n`);
       commit(projectRoot, `Reworked ${backward.from} -> ${current}`);
       index = target;
+      await reopenStageAttempts(policyPath, stages.slice(index).map((candidate) => candidate.id));
       advanced = false;
     }
   }
 
-  if (advanced && nextStage?.execution && nextStage.execution.workPackages !== 'internal') {
-    const dispatched = runXforgeJson(projectRoot, ['work-package', 'dispatch', '--change', scenarioConfig.changeId, '--package', 'T001']);
-    if (!dispatched.ok) throw new Error('Work-package dispatch failed after transitioning into Apply.');
-    commit(projectRoot, 'Dispatched work package T001');
+  /*
+   * Dispatch whatever the Change actually says is undispatched, rather than a hardcoded T001 gated
+   * on a Flow field. `core/control-plane.ts` blocks apply -> verify on the existence of a
+   * work-package plan and nothing else — no Flow declares a Stage work-package-driven, and the
+   * `execution.workPackages` key this once keyed on was never read by the product at all. Keying
+   * the harness on a field the product ignores is how a live Solid run reached apply -> verify with
+   * a package still `ready` and no dispatch anywhere in its history.
+   */
+  if (advanced) {
+    const entered = changeState(projectRoot);
+    /* `commands/work-package.ts` refuses to dispatch outside apply, so this is the product's own
+       rule read back rather than a second copy of it kept in step by hand. */
+    const ready = entered.governance.currentStage === 'apply' ? entered.workPackages?.ready ?? [] : [];
+    for (const packageId of ready) {
+      const dispatched = runXforgeJson(projectRoot, ['work-package', 'dispatch', '--change', scenarioConfig.changeId, '--package', packageId]);
+      if (!dispatched.ok) throw new Error(`Work-package dispatch failed for ${packageId} after entering ${nextStage?.id ?? 'the next Stage'}.`);
+    }
+    if (ready.length > 0) commit(projectRoot, `Dispatched work packages ${ready.join(', ')}`);
   }
   if (advanced) index += 1;
 }

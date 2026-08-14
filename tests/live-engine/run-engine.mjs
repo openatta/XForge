@@ -169,17 +169,29 @@ let code = 1;
 if (child) {
   child.stdout.on('data', (chunk) => stdout.push(chunk));
   child.stderr.on('data', (chunk) => stderr.push(chunk));
+  /*
+   * The deadline is polled against the clock rather than armed as one `setTimeout(timeoutSeconds)`,
+   * and the poll is deliberately not unref'd. A live run had two stages sit on hung provider streams
+   * — sockets ESTABLISHED, no bytes, 6 seconds of CPU across 28 minutes — and the single one-shot
+   * timer never fired, so a call with no upper bound at all took the whole suite down with it. The
+   * mechanism was never identified, and that is the point: a watchdog that re-checks the wall clock
+   * every 15 seconds cannot be defeated by one lost or deferred timer, and holding a ref keeps the
+   * loop awake to run it. The kill still happens here, in the process that owns the child, so
+   * SIGTERM -> SIGKILL escalates against the right pid instead of orphaning `claude`.
+   */
   code = await new Promise((resolve) => {
+    const deadline = Date.now() + policy.timeoutSeconds * 1_000;
     let forceTimer;
-    const timeout = setTimeout(() => {
+    const watchdog = setInterval(() => {
+      if (Date.now() < deadline) return;
       timedOut = true;
+      clearInterval(watchdog);
       child.kill('SIGTERM');
       forceTimer = setTimeout(() => child.kill('SIGKILL'), 5_000);
-      forceTimer.unref();
-    }, policy.timeoutSeconds * 1_000);
-    timeout.unref();
-    child.on('error', (error) => { spawnError = error; clearTimeout(timeout); if (forceTimer) clearTimeout(forceTimer); resolve(1); });
-    child.on('close', (status) => { clearTimeout(timeout); if (forceTimer) clearTimeout(forceTimer); resolve(status ?? 1); });
+    }, 15_000);
+    const settle = (value) => { clearInterval(watchdog); if (forceTimer) clearTimeout(forceTimer); resolve(value); };
+    child.on('error', (error) => { spawnError = error; settle(1); });
+    child.on('close', (status) => settle(status ?? 1));
   });
 }
 
