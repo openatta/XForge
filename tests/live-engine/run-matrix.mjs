@@ -785,7 +785,20 @@ for (let index = 0; index < stages.length; ) {
       if (!movedForward) {
       reworks += 1;
       if (reworks > maxReworks) {
-        throw new Error(`${scenarioName} reworked ${reworks} times (limit ${maxReworks}); last was ${reworkFrom} -> ${reworkTo}.`);
+        /* The same verdict the Approval-gated arm reaches, and reachable from here too: whether a
+           Stage's exit is gated decides which branch notices the block, not whether running out of
+           reworks at Check is a governance result. Major replays through this arm and was failing on
+           an outcome its live run had earned through the other. */
+        /* Judged by where the rework came *from*, not by the loop's cursor: an Agent can move
+           forward and back inside one turn, so the Stage that declared the rework is the one the
+           receipt names, and that is what "ran out of reworks at Check" means. */
+        const origin = stages.find((candidate) => candidate.id === reworkFrom) ?? stage;
+        if (allowedOutcomes.includes('stopped-at-check') && origin.id === 'check') {
+          outcome = 'stopped-at-check';
+          stoppedAtCheck = assertStoppedAtCheck(projectRoot, flow, origin);
+          break;
+        }
+        throw new Error(`${scenarioName} reworked ${reworks} times (limit ${maxReworks}); last was ${reworkFrom} -> ${reworkTo} (loop at ${stage.id}).`);
       }
       process.stdout.write(`${JSON.stringify({ rework: reworks, from: reworkFrom, to: reworkTo, cause: isDeclaredRework ? 'agent-transition' : 'blocking-finding' })}\n`);
       commit(projectRoot, `Reworked ${reworkFrom} -> ${reworkTo}`);
