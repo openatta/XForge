@@ -22,13 +22,11 @@
     "artifacts": [
       "proposal",
       "delta-specs",
-      "constitution-check",
       "assurance"
     ],
     "gates": [
       "structure",
-      "unit-tests",
-      "constitution-check"
+      "unit-tests"
     ],
     "archiveHandler": "xforge-verify",
     "approvals": [

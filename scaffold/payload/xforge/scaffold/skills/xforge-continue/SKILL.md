@@ -33,4 +33,4 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash
 
 - Stop on material ambiguity, scope or permission expansion, failed Gate, stale revision, external side effect, or no ready Action.
 - Follow State `reworkTo`; never choose a later Stage to bypass a problem.
-- When an Approval Action fails or blocks because the configured provider is missing, unreachable, or not permitted by policy (for example `XFORGE_APPROVAL_PROVIDER_FORBIDDEN`) — as opposed to a `status: pending` Action genuinely awaiting a human decision — this is a configuration gap, not ordinary pending review. Stop, do not retry, and tell the user the approval provider needs to be configured: point at manifest.yaml `approvals.providers` and the Flow's `approvalPolicies`.
+- An Approval Action that fails because the provider is missing, unreachable, or forbidden by policy (e.g. `XFORGE_APPROVAL_PROVIDER_FORBIDDEN`) is a configuration gap, not a `status: pending` Action awaiting a human. Stop, do not retry, and tell the user to configure the provider: manifest.yaml `approvals.providers` and the Flow's `approvalPolicies`.
