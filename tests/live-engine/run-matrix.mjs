@@ -223,7 +223,16 @@ function isAgentAuthored(file) {
  * checkout would restore their outputs instead of testing them.
  */
 function applyRecordedStage(projectRoot, stageId) {
-  const step = replay.steps.find((candidate) => candidate.stage === stageId);
+  /*
+   * The nth visit to a Stage takes the nth recording of it. A Flow that reworks walks the same Stage
+   * more than once and each visit produced different content — `solid-rework` records `design`
+   * twice, the second time with the planted contradiction removed. Looking a Stage up by name alone
+   * replayed the first visit both times and put the defect back, which the `contentRevision`
+   * assertion then caught. Nothing else in the cassette is positional, so the counter lives here.
+   */
+  const occurrence = (replayVisits.get(stageId) ?? 0);
+  replayVisits.set(stageId, occurrence + 1);
+  const step = replay.steps.filter((candidate) => candidate.stage === stageId)[occurrence];
   if (!step) {
     /*
      * A Stage the recording walked but committed nothing for wrote nothing, and replaying it is
@@ -492,6 +501,10 @@ await mkdir(resultsRoot, { recursive: true });
  * replay a regression test of the tooling rather than a re-enactment of a recording.
  */
 const replay = selected.replay ? readCassette(selected.replay) : null;
+/* How many times each Stage has been replayed / asserted, so a reworked Flow takes the nth
+   recording of its nth visit rather than the first one every time. */
+const replayVisits = new Map();
+const timelineVisits = new Map();
 let cassetteRepo = null;
 if (replay) {
   if (replay.scenario !== scenarioName) {
@@ -522,7 +535,9 @@ function timelineStep(projectRoot, stageId) {
     currentStage: change.governance?.currentStage ?? null,
   };
   if (!replay) { timeline.stages.push(entry); return; }
-  const recorded = replay.stages?.find((candidate) => candidate.stage === stageId);
+  const visit = (timelineVisits.get(stageId) ?? 0);
+  timelineVisits.set(stageId, visit + 1);
+  const recorded = (replay.stages ?? []).filter((candidate) => candidate.stage === stageId)[visit];
   if (!recorded) return;
   if (recorded.contentRevision !== entry.contentRevision) {
     throw new Error(`Replay diverged at ${stageId}: contentRevision ${entry.contentRevision} does not match the recorded ${recorded.contentRevision}. The same content produced a different revision, so something in how governed content is digested has changed.`);
