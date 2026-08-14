@@ -81,6 +81,19 @@ const SCENARIOS = {
      */
     maxReworks: 1,
     expect: { reworks: 1, outcome: 'archived' },
+    /*
+     * The same upstream requirement edit `solid` performs, and for the same reason: the shared seed's
+     * acceptance suite asserts `list --limit` and names it REQ-TASK-006, a Requirement that only
+     * enters the Change through this injection. Omitting it left the suite testing behaviour no
+     * delta Spec declared, and Verify correctly refused to call that archive-ready — a scenario
+     * built on another's fixtures inherits what those fixtures assume.
+     */
+    inject: {
+      afterStage: 'propose',
+      prompt: 'standalone/revise.md',
+      stageLabel: 'standalone-revise',
+      beforeInject: appendRequirementToTaskLedgerRequest,
+    },
     mutate: { afterStage: 'design', apply: contradictTaskLedgerDesign },
   },
   major: {
