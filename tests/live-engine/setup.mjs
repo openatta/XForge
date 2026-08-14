@@ -24,7 +24,11 @@ function options(argv) {
     if (!key?.startsWith('--') || value === undefined) throw new Error('Expected --scenario and optional --cli-source key/value options.');
     result[key.slice(2)] = value;
   }
-  if (!result.scenario) throw new Error('--scenario is required (a directory name under tests/live-engine/scenarios).');
+  if (!result.scenario) throw new Error('--scenario is required (it names the isolated project this run owns).');
+  /* The scenario names the project; the seed names the directory its fixtures come from. They are
+     the same for a scenario that owns its fixtures, and differ for one that shares another's -- so
+     `solid-rework` seeds from `solid` while keeping a project, temp root and results of its own. */
+  result.seed ??= result.scenario;
   if (!['npm', 'local'].includes(result['cli-source'])) throw new Error('--cli-source must be npm or local.');
   return result;
 }
@@ -106,8 +110,8 @@ async function overlaySeed(projectRoot, seedRoot) {
 }
 
 const selected = options(process.argv.slice(2));
-const scenarioRoot = path.join(scenariosRoot, selected.scenario);
-if (!await exists(scenarioRoot)) throw new Error(`Unknown scenario: ${selected.scenario} (expected ${scenarioRoot}).`);
+const scenarioRoot = path.join(scenariosRoot, selected.seed);
+if (!await exists(scenarioRoot)) throw new Error(`Unknown seed: ${selected.seed} (expected ${scenarioRoot}).`);
 const projectRoot = path.join(temporaryRoot, `live-engine-${selected.scenario}`);
 
 await rm(projectRoot, { recursive: true, force: true });
