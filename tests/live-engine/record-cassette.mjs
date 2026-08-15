@@ -1,5 +1,5 @@
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -53,7 +53,25 @@ const timelinePath = path.join(temporaryRoot, 'live-engine-results', `${scenario
 if (!existsSync(timelinePath)) {
   throw new Error(`No timeline at ${timelinePath}; record from a run of the current harness, which writes one.`);
 }
+/*
+ * The run writes its timeline once, at the very end. A run that dies partway therefore leaves the
+ * *previous* run's timeline sitting at this path, and recording would pair those stale stages with
+ * the new project's Git history — a cassette that looks complete and replays against revisions the
+ * recorded commits never produced. Existence alone cannot distinguish the two; the timestamps can,
+ * because a finished run always writes its timeline after its last commit.
+ */
+const lastCommitEpoch = Number(git(['log', '-1', '--format=%ct'], projectRoot).trim()) * 1000;
+const timelineWrittenAt = statSync(timelinePath).mtimeMs;
+if (timelineWrittenAt < lastCommitEpoch) {
+  throw new Error(
+    `Timeline at ${timelinePath} predates the last commit in ${projectRoot}, so it belongs to an earlier run `
+    + '— the run you are recording did not finish. Re-run the scenario to completion before recording.',
+  );
+}
 const timeline = JSON.parse(await readFile(timelinePath, 'utf8'));
+if (timeline.scenario !== scenario) {
+  throw new Error(`Timeline at ${timelinePath} records scenario "${timeline.scenario}", not "${scenario}".`);
+}
 
 /* `--reverse` so the steps read in the order they happened; the separator is a tab because a commit
    subject may contain anything else, including the colons the step names use. */

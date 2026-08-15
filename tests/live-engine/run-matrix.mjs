@@ -866,14 +866,6 @@ await runApprovals({
 runXforgeJson(projectRoot, ['audit', 'verify', '--change', scenarioConfig.changeId]);
 runXforgeJson(projectRoot, ['archive', '--change', scenarioConfig.changeId, '--dry-run']);
 
-if (scenarioConfig.archiveVia) {
-  await runEngine({
-    projectRoot, scenario: scenarioName, stageId: 'archive', promptRelative: scenarioConfig.archiveVia, policyPath, options: selected,
-  });
-  /* Recorded even though the Stage is expected to write nothing, so a replay can tell "this step
-     happened and produced no change" from "the Flow went somewhere the recording never did". */
-  timelineStep(projectRoot, 'archive');
-}
 /*
  * Archive is the Flow's terminal operation, and it was the one step nothing asserted: `passed`
  * below only looked at the acceptance suite and the budget, so a run where the Change never left
