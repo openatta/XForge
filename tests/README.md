@@ -15,7 +15,11 @@ versions, and generated files so sync/update/uninstall are exercised through
 real project transitions rather than mocked planner results.
 
 Run through `npm run test:product` or the complete `npm run verify` at the
-repository root.
+repository root. **[RUNBOOK.md](RUNBOOK.md) is the operational companion**: what
+to run after a given kind of change, why a Scaffold edit needs `npm run relock`
+before anything will build, how to run and re-record the live-engine suite, and
+how to tell an external provider failure from a scenario that is asserting
+something it cannot hold.
 
 `npm run verify` also collects V8 coverage from the compiled CLI subprocesses
 used by the implementation suite and enforces global thresholds. The separate
