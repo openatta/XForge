@@ -37,7 +37,8 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(npx:*)
 # 停止与返工
 
 - 在材料性遗漏、矛盾、范围漂移、不可测试 Requirement、缺少 rollback 或路径/owner 冲突时停止。
-- 按最早受影响点返回 Propose、Clarify 或 Design，不检查不存在的长期任务计划。
+- 按最早受影响点返回 Propose、Clarify 或 Design，**经由 `xforge-revise`**——它是修改上游 Artifact 的正规路径：一致地修订受影响的 Artifact，并让 digest 链使依赖它们的 Evidence 失效。直接改上游 Artifact 会让 Change 的其余部分静默地与它不一致。
+- 不检查不存在的长期任务计划。
 
 # 判断要点
 

@@ -45,9 +45,9 @@ describe('CLI protocol', () => {
   /*
    * `nextActions` used to stamp `authority: 'planning-write'` on every create-artifact Action, so a
    * check-stage Artifact was advertised under the wrong authority while its Stage declares
-   * assurance-write. The xforge-continue Skill tells the Agent to match an Action's authority before
-   * acting on it, which against a constant is not a match at all. The value now comes from the Flow
-   * Stage that produces the Artifact.
+   * assurance-write. The Stage Skills tell the Agent to match an Action's authority before acting on
+   * it, which against a constant is not a match at all. The value now comes from the Flow Stage that
+   * produces the Artifact.
    */
   it('reads a create-artifact Action authority from the Stage that produces the Artifact', async () => {
     async function nextArtifactAction(remove: string[]): Promise<any> {

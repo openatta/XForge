@@ -35,7 +35,7 @@ describe('Scaffold language resolution', () => {
     const fileSet = new Set(files);
 
     const skillDefaults = files.filter((file) => /(^|\/)skills\/[^/]+\/SKILL\.md$/.test(file));
-    expect(skillDefaults).toHaveLength(13);
+    expect(skillDefaults).toHaveLength(10);
     for (const file of skillDefaults) expect(fileSet.has(localizedVariant(file))).toBe(true);
 
     const agentDefaults = files.filter((file) => /^agents\/[^/]+\.md$/.test(file) && !file.endsWith('_cn.md'));

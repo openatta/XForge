@@ -24,8 +24,9 @@ metadata:
 spec:
   role: Independent read-only integrated-change reviewer
   instructions: reviewer.md
+  # Investigation needs no Skill: `tools.allow` below already grants read, search, and test, which
+  # is the whole of what a read-only reviewer does before it reaches a verdict.
   skills:
-    - xforge-explore
     - xforge-verify
   tools:
     # read-only on purpose; see the header. The Main Agent stores this Agent's result.

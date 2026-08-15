@@ -51,7 +51,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(npx:*)
 - Stop on incomplete implementation, failed Gate, invalid delivery, stale receipt, Spec conflict, path-safety issue, target collision, or unauthorized archive.
 - Stop on an approval-provider configuration failure (`XFORGE_APPROVAL_PROVIDER_FORBIDDEN`, `XFORGE_APPROVAL_MCP_SERVER_MISSING`, `XFORGE_APPROVAL_MCP_TOKEN_MISSING`, `XFORGE_APPROVAL_MCP_CONNECTION_FAILED`): the provider is unconfigured, not a decision still pending. Tell the user to configure its McpServer and token (see `scaffold/mcp-servers/`) or to approve locally; never retry the same provider in a loop.
 - Stop on `audit:remote-pending` at archive: remote audit delivery is required while `XFORGE_AUDIT_ENDPOINT` is unset or unreachable, so `audit retry` has nowhere to send the queue. Tell the user to configure the endpoint (and its token/HMAC env vars) or to stop requiring remote delivery at this assurance level; never loop on retry.
-- Return Verify failures to Apply; return contradictions in governing Artifacts to the earlier Stage named by `reworkTo`.
+- Return Verify failures to Apply; return contradictions in governing Artifacts to the earlier Stage named by `reworkTo`, **through `xforge-revise`** — it revises the affected Artifacts consistently and lets the digest chain invalidate the Evidence that relied on them. Editing a governing Artifact directly leaves the rest of the Change silently disagreeing with it.
 
 # Judgment calls
 

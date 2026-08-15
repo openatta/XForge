@@ -127,12 +127,16 @@ the degradation is reported.
 
 ### Read-only Skills outside the Change lifecycle
 
-Not every Skill touches Change/Flow/Gate state. `xforge-explore` investigates
-code, Specs, Rules, and options without writing, narrowing an ambiguous idea
-into a proposal-ready scope. `xforge-kanban` turns plain `git log` into a
-Markdown activity dashboard: per-contributor commits, lines, and active days,
-a weekday x hour heatmap, a feat/fix/other breakdown, and a per-module split
-for multi-module projects. Both are read-only and safe to run at any time.
+Not every Skill touches Change/Flow/Gate state. `xforge-kanban` turns plain
+`git log` into a Markdown activity dashboard: per-contributor commits, lines,
+and active days, a weekday x hour heatmap, a feat/fix/other breakdown, and a
+per-module split for multi-module projects. It is read-only and safe to run at
+any time.
+
+Investigating code, Specs, and options before proposing needs no Skill of its
+own — reading and search are native to every coding tool XForge projects into.
+Narrowing an ambiguous idea into a proposal-ready scope is the first step of
+`xforge-propose`.
 
 ### Portable and Managed operation
 
@@ -224,8 +228,9 @@ Use the xforge-propose Skill to create a Change for <goal>.
 Choose the weakest Flow that is safe and explain the classification.
 ```
 
-From there, `xforge-status` explains current state, `xforge-continue` performs
-the next legal action, and the lifecycle Skills handle the active stage:
+From there, `xforge-status` reports the portfolio of in-flight Changes and the
+Stage each sits at, explains one Change in depth, and names the next legal
+action without taking it; the lifecycle Skills handle the active stage:
 `xforge-clarify`, `xforge-design`, `xforge-check`, `xforge-apply`, and
 `xforge-verify`. `xforge-revise` updates planning artifacts while preserving
 their consistency, and `xforge-scaffold` customizes the project-owned Agent

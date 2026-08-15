@@ -44,7 +44,7 @@ describe('npm-bundled project initialization', () => {
 
     const installed = await runCli(root, ['install', '--target', 'codex']);
     expect(installed.code).toBe(0);
-    expect(await exists(path.join(root, '.agents', 'skills', 'xforge-explore', 'SKILL.md'))).toBe(true);
+    expect(await exists(path.join(root, '.agents', 'skills', 'xforge-kanban', 'SKILL.md'))).toBe(true);
   });
 
   it('combines initialization and one target projection', async () => {
@@ -53,7 +53,7 @@ describe('npm-bundled project initialization', () => {
     expect(result.code).toBe(0);
     expect(result.json.data.projection.targets).toEqual(['claude']);
     expect(await exists(path.join(root, 'xforge', 'manifest.yaml'))).toBe(true);
-    expect(await exists(path.join(root, '.claude', 'skills', 'xforge-explore', 'SKILL.md'))).toBe(true);
+    expect(await exists(path.join(root, '.claude', 'skills', 'xforge-kanban', 'SKILL.md'))).toBe(true);
     expect(await exists(path.join(root, 'xforge', '.state.json'))).toBe(true);
   });
 
@@ -84,7 +84,7 @@ describe('npm-bundled project initialization', () => {
 
   it('preflights target conflicts before writing the Scaffold', async () => {
     const root = await emptyProject();
-    const destination = path.join(root, '.agents', 'skills', 'xforge-explore', 'SKILL.md');
+    const destination = path.join(root, '.agents', 'skills', 'xforge-kanban', 'SKILL.md');
     await writeFile(path.join(root, 'placeholder'), 'project\n');
     const { mkdir } = await import('node:fs/promises');
     await mkdir(path.dirname(destination), { recursive: true });
@@ -233,6 +233,6 @@ describe('AGENTS.md marker-block merge', () => {
     const merged = await readFile(path.join(root, 'AGENTS.md'), 'utf8');
     expect(merged.startsWith(original)).toBe(true);
     expect(merged).toContain(BEGIN);
-    expect(await exists(path.join(root, '.agents', 'skills', 'xforge-explore', 'SKILL.md'))).toBe(true);
+    expect(await exists(path.join(root, '.agents', 'skills', 'xforge-kanban', 'SKILL.md'))).toBe(true);
   });
 });

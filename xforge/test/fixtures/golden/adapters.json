@@ -1,22 +1,22 @@
 {
   "claude": {
-    "skill": ".claude/skills/xforge-explore/SKILL.md", "command": ".claude/commands/xforge/explore.md",
+    "skill": ".claude/skills/xforge-kanban/SKILL.md", "command": ".claude/commands/xforge/kanban.md",
     "capability": {"skills":"native","commands":"native","agents":"native","rules":"native","hooks":"native","guidance":"native","permissionPolicy":"native","runtimeHook":{"events":["agent.session.start","agent.session.end","agent.prompt.submit","agent.tool.before","agent.tool.after","agent.permission.request","agent.subagent.start","agent.subagent.stop","agent.turn.stop"],"blocking":"native","managed":"degraded","local":"native","cloud":"degraded","trust":"platform-review","bypasses":[]},"auditDelivery":"native","subagent":"native","permissionPolicyScopes":{"capabilities":["fs.read","fs.write","shell","network","subagent","mcp"],"actorScoped":false,"stageScoped":false}}
   },
   "codex": {
-    "skill": ".agents/skills/xforge-explore/SKILL.md", "command": null,
+    "skill": ".agents/skills/xforge-kanban/SKILL.md", "command": null,
     "capability": {"skills":"native","commands":"unsupported","agents":"native","rules":"degraded","hooks":"native","guidance":"degraded","permissionPolicy":"degraded","runtimeHook":{"events":["agent.session.start","agent.session.end","agent.prompt.submit","agent.tool.before","agent.tool.after","agent.permission.request","agent.subagent.start","agent.subagent.stop","agent.turn.stop"],"blocking":"native","managed":"native","local":"native","cloud":"unsupported","trust":"platform-review","bypasses":["hosted tools","specialized opt-out tool paths"]},"auditDelivery":"native","subagent":"native","permissionPolicyScopes":{"capabilities":["shell"],"actorScoped":false,"stageScoped":false}}
   },
   "cursor": {
-    "skill": ".cursor/skills/xforge-explore/SKILL.md", "command": ".cursor/commands/xforge-explore.md",
+    "skill": ".cursor/skills/xforge-kanban/SKILL.md", "command": ".cursor/commands/xforge-kanban.md",
     "capability": {"skills":"native","commands":"native","agents":"native","rules":"native","hooks":"native","guidance":"native","permissionPolicy":"degraded","runtimeHook":{"events":["agent.session.start","agent.session.end","agent.prompt.submit","agent.tool.before","agent.tool.after","agent.turn.stop"],"blocking":"native","managed":"native","local":"native","cloud":"native","trust":"platform-review","bypasses":["events not exposed by Cursor"]},"auditDelivery":"native","subagent":"degraded","permissionPolicyScopes":{"capabilities":[],"actorScoped":false,"stageScoped":false}}
   },
   "opencode": {
-    "skill": ".opencode/skills/xforge-explore/SKILL.md", "command": ".opencode/commands/xforge-explore.md",
+    "skill": ".opencode/skills/xforge-kanban/SKILL.md", "command": ".opencode/commands/xforge-kanban.md",
     "capability": {"skills":"native","commands":"native","agents":"native","rules":"degraded","hooks":"native","guidance":"degraded","permissionPolicy":"degraded","runtimeHook":{"events":["agent.tool.before","agent.tool.after","agent.permission.request"],"blocking":"degraded","managed":"degraded","local":"native","cloud":"degraded","trust":"none","bypasses":["events not emitted by the plugin API"]},"auditDelivery":"native","subagent":"native","permissionPolicyScopes":{"capabilities":["fs.read","fs.write","shell","network","subagent","external.write"],"actorScoped":false,"stageScoped":false}}
   },
   "github-copilot": {
-    "skill": ".github/skills/xforge-explore/SKILL.md", "command": ".github/prompts/xforge-explore.prompt.md",
+    "skill": ".github/skills/xforge-kanban/SKILL.md", "command": ".github/prompts/xforge-kanban.prompt.md",
     "capability": {"skills":"native","commands":"native","agents":"native","rules":"native","hooks":"native","guidance":"native","permissionPolicy":"degraded","runtimeHook":{"events":["agent.session.start","agent.session.end","agent.prompt.submit","agent.tool.before","agent.tool.after","agent.turn.stop"],"blocking":"degraded","managed":"degraded","local":"native","cloud":"degraded","trust":"platform-review","bypasses":["events not exposed by Copilot hooks"]},"auditDelivery":"native","subagent":"degraded","permissionPolicyScopes":{"capabilities":[],"actorScoped":false,"stageScoped":false}}
   }
 }

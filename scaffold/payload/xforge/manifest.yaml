@@ -19,7 +19,6 @@ scaffold:
     package: "@xforge/cli"
     version: 0.7.9
   skills:
-    - xforge-explore
     - xforge-propose
     - xforge-clarify
     - xforge-design
@@ -27,10 +26,8 @@ scaffold:
     - xforge-apply
     - xforge-verify
     - xforge-status
-    - xforge-continue
     - xforge-revise
     - xforge-scaffold
-    - xforge-archive
     - xforge-kanban
   agents:
     - worker

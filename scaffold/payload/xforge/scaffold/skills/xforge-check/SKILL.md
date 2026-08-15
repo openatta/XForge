@@ -37,7 +37,8 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(npx:*)
 # Stop and rework
 
 - Stop on material omissions, contradictions, scope drift, untestable Requirements, missing rollback, or path/owner conflicts.
-- Return to the earliest affected Propose, Clarify, or Design Stage; do not inspect a nonexistent persistent task plan.
+- Return to the earliest affected Propose, Clarify, or Design Stage **through `xforge-revise`**, which is the sanctioned way to change an upstream Artifact: it revises the affected Artifacts consistently and lets the digest chain invalidate the downstream Evidence that relied on them. Editing an upstream Artifact directly leaves the rest of the Change silently disagreeing with it.
+- Do not inspect a nonexistent persistent task plan.
 
 # Judgment calls
 

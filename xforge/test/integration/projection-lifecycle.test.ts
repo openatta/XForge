@@ -19,14 +19,14 @@ describe('projection lifecycle v2', () => {
     expect(state.version).toBe(2);
     expect(state.protocolVersion).toBe('2');
     expect(state.targets.codex.adapterVersion).toBe('3');
-    const record = state.targets.codex.files['.agents/skills/xforge-explore/SKILL.md'];
+    const record = state.targets.codex.files['.agents/skills/xforge-kanban/SKILL.md'];
     expect(record).toMatchObject({
       target: 'codex',
-      resource: { kind: 'skill', id: 'xforge-explore' },
+      resource: { kind: 'skill', id: 'xforge-kanban' },
       renderVersion: 'codex:skill:3',
       cliVersion: '0.7.9',
     });
-    expect(record.sources[0]).toMatchObject({ path: 'xforge/scaffold/skills/xforge-explore/SKILL.md' });
+    expect(record.sources[0]).toMatchObject({ path: 'xforge/scaffold/skills/xforge-kanban/SKILL.md' });
     expect(record.sources[0].mtimeMs).toEqual(expect.any(Number));
     expect(record.sources[0].digest).toMatch(/^[a-f0-9]{64}$/);
   });
@@ -34,8 +34,8 @@ describe('projection lifecycle v2', () => {
   it('dry-runs and incrementally syncs a customized Skill with Lock and record updates', async () => {
     const root = await fixture();
     expect((await runCli(root, ['install', '--target', 'codex'])).code).toBe(0);
-    const sourcePath = 'xforge/scaffold/skills/xforge-explore/SKILL.md';
-    const targetPath = '.agents/skills/xforge-explore/SKILL.md';
+    const sourcePath = 'xforge/scaffold/skills/xforge-kanban/SKILL.md';
+    const targetPath = '.agents/skills/xforge-kanban/SKILL.md';
     const source = await readFile(path.join(root, ...sourcePath.split('/')), 'utf8');
     const stateBefore = await readFile(path.join(root, 'xforge', '.state.json'), 'utf8');
     const lockBefore = await readFile(path.join(root, 'xforge', 'lock.yaml'), 'utf8');
@@ -79,12 +79,12 @@ describe('projection lifecycle v2', () => {
   it('refuses to sync or uninstall a generated file modified by a user', async () => {
     const syncRoot = await fixture();
     expect((await runCli(syncRoot, ['install', '--target', 'codex'])).code).toBe(0);
-    await write(syncRoot, 'xforge/scaffold/skills/xforge-explore/SKILL.md', 'canonical changed\n');
-    await write(syncRoot, '.agents/skills/xforge-explore/SKILL.md', 'human target change\n');
+    await write(syncRoot, 'xforge/scaffold/skills/xforge-kanban/SKILL.md', 'canonical changed\n');
+    await write(syncRoot, '.agents/skills/xforge-kanban/SKILL.md', 'human target change\n');
     const sync = await runCli(syncRoot, ['sync', '--target', 'codex']);
     expect(sync.code).toBe(1);
     expect(sync.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_MANAGED_FILE_MODIFIED');
-    expect(await readFile(path.join(syncRoot, '.agents', 'skills', 'xforge-explore', 'SKILL.md'), 'utf8')).toBe('human target change\n');
+    expect(await readFile(path.join(syncRoot, '.agents', 'skills', 'xforge-kanban', 'SKILL.md'), 'utf8')).toBe('human target change\n');
 
     const uninstall = await runCli(syncRoot, ['uninstall', '--target', 'codex']);
     expect(uninstall.code).toBe(1);
@@ -104,11 +104,11 @@ describe('projection lifecycle v2', () => {
 
     const dry = await runCli(root, ['update', '--dry-run']);
     expect(dry.code).toBe(0);
-    expect(dry.json.changes).toContainEqual(expect.objectContaining({ action: 'create', path: '.claude/skills/xforge-explore/SKILL.md' }));
-    expect(await exists(path.join(root, '.claude', 'skills', 'xforge-explore', 'SKILL.md'))).toBe(false);
+    expect(dry.json.changes).toContainEqual(expect.objectContaining({ action: 'create', path: '.claude/skills/xforge-kanban/SKILL.md' }));
+    expect(await exists(path.join(root, '.claude', 'skills', 'xforge-kanban', 'SKILL.md'))).toBe(false);
 
     expect((await runCli(root, ['update'])).code).toBe(0);
-    expect(await exists(path.join(root, '.claude', 'skills', 'xforge-explore', 'SKILL.md'))).toBe(true);
+    expect(await exists(path.join(root, '.claude', 'skills', 'xforge-kanban', 'SKILL.md'))).toBe(true);
     expect(Object.keys((await ownership(root)).targets).sort()).toEqual(['claude', 'codex']);
   });
 
@@ -172,13 +172,13 @@ describe('projection lifecycle v2', () => {
     const root = await fixture();
     await updateYaml(root, 'xforge/manifest.yaml', (manifest) => { manifest.targets = ['codex', 'claude']; });
     expect((await runCli(root, ['install'])).code).toBe(0);
-    expect(await exists(path.join(root, '.claude', 'skills', 'xforge-explore', 'SKILL.md'))).toBe(true);
+    expect(await exists(path.join(root, '.claude', 'skills', 'xforge-kanban', 'SKILL.md'))).toBe(true);
     await updateYaml(root, 'xforge/manifest.yaml', (manifest) => { manifest.targets = ['codex']; });
 
     const result = await runCli(root, ['update']);
     expect(result.code).toBe(0);
-    expect(result.json.changes).toContainEqual(expect.objectContaining({ action: 'delete', path: '.claude/skills/xforge-explore/SKILL.md' }));
-    expect(await exists(path.join(root, '.claude', 'skills', 'xforge-explore', 'SKILL.md'))).toBe(false);
+    expect(result.json.changes).toContainEqual(expect.objectContaining({ action: 'delete', path: '.claude/skills/xforge-kanban/SKILL.md' }));
+    expect(await exists(path.join(root, '.claude', 'skills', 'xforge-kanban', 'SKILL.md'))).toBe(false);
     expect(Object.keys((await ownership(root)).targets)).toEqual(['codex']);
   });
 
@@ -186,8 +186,8 @@ describe('projection lifecycle v2', () => {
     const root = await fixture();
     expect((await runCli(root, ['install', '--target', 'codex'])).code).toBe(0);
     expect((await runCli(root, ['install', '--target', 'claude'])).code).toBe(0);
-    const codexPath = path.join(root, '.agents', 'skills', 'xforge-explore', 'SKILL.md');
-    const claudePath = path.join(root, '.claude', 'skills', 'xforge-explore', 'SKILL.md');
+    const codexPath = path.join(root, '.agents', 'skills', 'xforge-kanban', 'SKILL.md');
+    const claudePath = path.join(root, '.claude', 'skills', 'xforge-kanban', 'SKILL.md');
 
     const dry = await runCli(root, ['uninstall', '--target', 'codex', '--dry-run']);
     expect(dry.code).toBe(0);

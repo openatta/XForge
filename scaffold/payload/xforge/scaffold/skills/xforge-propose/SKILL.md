@@ -20,6 +20,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(npx:*)
 
 # Execution
 
+0. **When the idea is still vague, narrow it before creating anything.** Read the code, Specs, and constraints needed to state one objective, its boundaries, and what would make it done. Investigation itself needs no Skill — use ordinary reading and search. What this step owes the user is a decision: one bounded objective, or an explicit report that the idea is not yet separable into one. **Do not create a Change to hold an idea you cannot yet bound** — an unbounded Change costs more to unwind than a question costs to ask.
 1. Resolve one objective and check whether an active Change already covers it.
 2. Set `flow` to the State-resolved manifest default unless the user explicitly requests a different Flow. Only deviate on your own initiative when classification (risk/security/privacy/publicApi/dataMigration) plainly conflicts with that default per Invariant 3 — then escalate or request a decision rather than silently overriding. Complete classification, modules, and a bounded project-relative path scope; note the Flow choice in the Proposal only when it was overridden or escalated, not when it simply inherited the default.
 3. Create the minimum `change.yaml`, then run `npx --no-install xforge state --change <id>`. Preserve this unwrapped shape and replace values from project facts:

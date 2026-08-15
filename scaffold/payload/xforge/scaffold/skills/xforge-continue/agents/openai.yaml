@@ -1,4 +1,0 @@
-interface:
-  display_name: "XForge Continue"
-  short_description: "Resume and advance the legal next action from XForge machine state"
-  default_prompt: "Use $xforge-continue to resume and advance the current Change from machine state."

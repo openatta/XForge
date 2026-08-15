@@ -28,7 +28,7 @@ const reviewer: AgentResource = {
   spec: {
     role: 'Independent read-only integrated-change reviewer',
     instructions: 'reviewer.md',
-    skills: ['xforge-explore'],
+    skills: ['xforge-kanban'],
     tools: { allow: ['read', 'search', 'test'] },
     delegation: { callableBy: ['main'], maxConcurrency: 1 },
     model: { class: 'reasoning', fallback: 'default' },
@@ -62,9 +62,9 @@ describe('Adapter golden mapping', () => {
     const golden = JSON.parse(await readFile(path.join(xforgeRoot, 'test', 'fixtures', 'golden', 'adapters.json'), 'utf8'));
     const actual = Object.fromEntries(TARGETS.map((target) => {
       const adapter = getAdapter(target);
-      const commandPath = adapter.commandPath('xforge-explore');
+      const commandPath = adapter.commandPath('xforge-kanban');
       return [target, {
-        skill: `${adapter.skillDirectory('xforge-explore')}/SKILL.md`,
+        skill: `${adapter.skillDirectory('xforge-kanban')}/SKILL.md`,
         command: commandPath,
         capability: adapter.capability,
       }];
@@ -89,9 +89,9 @@ describe('Adapter golden mapping', () => {
     for (const target of TARGETS) {
       const adapter = getAdapter(target);
       expect(adapter.version).toBe('3');
-      expect(adapter.trace('skill', 'xforge-explore', ['xforge/scaffold/skills/xforge-explore/SKILL.md'])).toEqual({
-        resource: { kind: 'skill', id: 'xforge-explore' },
-        sourcePaths: ['xforge/scaffold/skills/xforge-explore/SKILL.md'],
+      expect(adapter.trace('skill', 'xforge-kanban', ['xforge/scaffold/skills/xforge-kanban/SKILL.md'])).toEqual({
+        resource: { kind: 'skill', id: 'xforge-kanban' },
+        sourcePaths: ['xforge/scaffold/skills/xforge-kanban/SKILL.md'],
         renderVersion: `${target}:skill:3`,
       });
     }

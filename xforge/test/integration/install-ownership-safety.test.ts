@@ -171,7 +171,7 @@ describe('a value XForge did not write is never overwritten', () => {
 // `uninstall` refused, leaving the project unable to even remove itself.
 describe('line endings are not a user edit', () => {
   const managed = [
-    '.agents/skills/xforge-explore/SKILL.md',
+    '.agents/skills/xforge-kanban/SKILL.md',
     '.claude/rules/xforge-bootstrap.md',
     'CLAUDE.md',
   ];
@@ -198,14 +198,14 @@ describe('line endings are not a user edit', () => {
     const removed = await uninstall(root);
     expect(removed.errors).toEqual([]);
     expect(await exists(path.join(root, '.claude', 'rules', 'xforge-bootstrap.md'))).toBe(false);
-    expect(await exists(path.join(root, '.agents', 'skills', 'xforge-explore', 'SKILL.md'))).toBe(false);
+    expect(await exists(path.join(root, '.agents', 'skills', 'xforge-kanban', 'SKILL.md'))).toBe(false);
     expect(await exists(path.join(root, 'CLAUDE.md'))).toBe(false);
   });
 });
 
 describe('re-baselining drifted managed files', () => {
   const edited = '.claude/rules/xforge-bootstrap.md';
-  const untouched = '.claude/skills/xforge-explore/SKILL.md';
+  const untouched = '.claude/skills/xforge-kanban/SKILL.md';
 
   it('refuses by default, re-baselines under --adopt, and unblocks every other file with it', async () => {
     const root = await fixture();
@@ -213,7 +213,7 @@ describe('re-baselining drifted managed files', () => {
     const generated = await readFile(path.join(root, ...edited.split('/')), 'utf8');
     await write(root, edited, 'hand-edited\n');
     // A second file that has something to say, so "one edit blocks everything" is observable.
-    await write(root, 'xforge/scaffold/skills/xforge-explore/SKILL.md', `${await readFile(path.join(root, 'xforge', 'scaffold', 'skills', 'xforge-explore', 'SKILL.md'), 'utf8')}\n<!-- project customization -->\n`);
+    await write(root, 'xforge/scaffold/skills/xforge-kanban/SKILL.md', `${await readFile(path.join(root, 'xforge', 'scaffold', 'skills', 'xforge-kanban', 'SKILL.md'), 'utf8')}\n<!-- project customization -->\n`);
 
     const refused = await install(root, { target: 'claude' });
     expect(refused.codes).toContain('XFORGE_MANAGED_FILE_MODIFIED');
@@ -276,27 +276,27 @@ describe('an interrupted first install', () => {
   it('adopts files whose bytes are already exactly what XForge would write', async () => {
     const root = await fixture();
     expect((await install(root, { target: 'claude' })).errors).toEqual([]);
-    const before = await readFile(path.join(root, '.claude', 'skills', 'xforge-explore', 'SKILL.md'), 'utf8');
+    const before = await readFile(path.join(root, '.claude', 'skills', 'xforge-kanban', 'SKILL.md'), 'utf8');
     // Everything written, no record: exactly the state a Ctrl-C between the two leaves behind.
     await rm(path.join(root, 'xforge', '.state.json'));
 
     const resumed = await install(root, { target: 'claude' });
     expect(resumed.errors).toEqual([]);
-    expect(resumed.action('.claude/skills/xforge-explore/SKILL.md')).toBe('skip');
-    expect(await readFile(path.join(root, '.claude', 'skills', 'xforge-explore', 'SKILL.md'), 'utf8')).toBe(before);
+    expect(resumed.action('.claude/skills/xforge-kanban/SKILL.md')).toBe('skip');
+    expect(await readFile(path.join(root, '.claude', 'skills', 'xforge-kanban', 'SKILL.md'), 'utf8')).toBe(before);
     expect(await exists(path.join(root, 'xforge', '.state.json'))).toBe(true);
 
     // Adopted for real: the installation is removable again.
     const removed = await uninstall(root, { target: 'claude' });
     expect(removed.errors).toEqual([]);
-    expect(await exists(path.join(root, '.claude', 'skills', 'xforge-explore', 'SKILL.md'))).toBe(false);
+    expect(await exists(path.join(root, '.claude', 'skills', 'xforge-kanban', 'SKILL.md'))).toBe(false);
   });
 
   it('still refuses a file whose bytes are not XForge\'s output', async () => {
     const root = await fixture();
-    await write(root, '.claude/skills/xforge-explore/SKILL.md', 'human-owned\n');
+    await write(root, '.claude/skills/xforge-kanban/SKILL.md', 'human-owned\n');
     const result = await install(root, { target: 'claude' });
     expect(result.codes).toContain('XFORGE_INSTALL_CONFLICT');
-    expect(await readFile(path.join(root, '.claude', 'skills', 'xforge-explore', 'SKILL.md'), 'utf8')).toBe('human-owned\n');
+    expect(await readFile(path.join(root, '.claude', 'skills', 'xforge-kanban', 'SKILL.md'), 'utf8')).toBe('human-owned\n');
   });
 });

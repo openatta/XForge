@@ -32,11 +32,11 @@ describe('install lifecycle', () => {
 
     const first = await runCli(root, ['install']);
     expect(first.code).toBe(0);
-    expect(await exists(path.join(root, '.agents', 'skills', 'xforge-explore', 'SKILL.md'))).toBe(true);
-    expect(await exists(path.join(root, '.claude', 'commands', 'xforge', 'explore.md'))).toBe(true);
-    expect(await exists(path.join(root, '.cursor', 'commands', 'xforge-explore.md'))).toBe(true);
-    expect(await exists(path.join(root, '.opencode', 'commands', 'xforge-explore.md'))).toBe(true);
-    expect(await exists(path.join(root, '.github', 'prompts', 'xforge-explore.prompt.md'))).toBe(true);
+    expect(await exists(path.join(root, '.agents', 'skills', 'xforge-kanban', 'SKILL.md'))).toBe(true);
+    expect(await exists(path.join(root, '.claude', 'commands', 'xforge', 'kanban.md'))).toBe(true);
+    expect(await exists(path.join(root, '.cursor', 'commands', 'xforge-kanban.md'))).toBe(true);
+    expect(await exists(path.join(root, '.opencode', 'commands', 'xforge-kanban.md'))).toBe(true);
+    expect(await exists(path.join(root, '.github', 'prompts', 'xforge-kanban.prompt.md'))).toBe(true);
     expect(await exists(path.join(root, '.claude', 'agents', 'worker.md'))).toBe(true);
     expect(await exists(path.join(root, '.claude', 'agents', 'integrator.md'))).toBe(true);
     expect(await exists(path.join(root, '.claude', 'agents', 'reviewer.md'))).toBe(true);
@@ -53,7 +53,7 @@ describe('install lifecycle', () => {
 
   it('does not overwrite an unknown destination', async () => {
     const root = await fixture();
-    const destination = '.agents/skills/xforge-explore/SKILL.md';
+    const destination = '.agents/skills/xforge-kanban/SKILL.md';
     await write(root, destination, 'human-owned\n');
     const result = await runCli(root, ['install', '--target', 'codex']);
     expect(result.code).toBe(1);
@@ -65,7 +65,7 @@ describe('install lifecycle', () => {
   it('protects human modifications and only prunes digest-matching managed files', async () => {
     const root = await fixture();
     expect((await runCli(root, ['install', '--target', 'codex'])).code).toBe(0);
-    const modified = '.agents/skills/xforge-explore/SKILL.md';
+    const modified = '.agents/skills/xforge-kanban/SKILL.md';
     await write(root, modified, 'human-modified\n');
     const conflict = await runCli(root, ['install', '--target', 'codex']);
     expect(conflict.code).toBe(1);
@@ -75,13 +75,13 @@ describe('install lifecycle', () => {
     const cleanRoot = await fixture();
     expect((await runCli(cleanRoot, ['install', '--target', 'codex'])).code).toBe(0);
     await updateYaml(cleanRoot, 'xforge/manifest.yaml', (manifest) => {
-      manifest.scaffold.skills = manifest.scaffold.skills.filter((id: string) => id !== 'xforge-explore');
+      manifest.scaffold.skills = manifest.scaffold.skills.filter((id: string) => id !== 'xforge-kanban');
       manifest.scaffold.agents = [];
     });
     const prune = await runCli(cleanRoot, ['install', '--target', 'codex']);
     expect(prune.code).toBe(0);
-    expect(prune.json.changes).toContainEqual(expect.objectContaining({ action: 'delete', path: '.agents/skills/xforge-explore/SKILL.md' }));
-    expect(await exists(path.join(cleanRoot, '.agents', 'skills', 'xforge-explore', 'SKILL.md'))).toBe(false);
+    expect(prune.json.changes).toContainEqual(expect.objectContaining({ action: 'delete', path: '.agents/skills/xforge-kanban/SKILL.md' }));
+    expect(await exists(path.join(cleanRoot, '.agents', 'skills', 'xforge-kanban', 'SKILL.md'))).toBe(false);
   });
 
   // Cursor and Copilot declare an empty `permissionPolicyScopes.capabilities`, so the shipped
@@ -124,9 +124,9 @@ describe('install lifecycle', () => {
     // Exactly three summaries for the whole install: codex commands, codex rules, opencode rules.
     expect(gaps.map((item: any) => `${item.details.target}:${item.details.dimension}`).sort())
       .toEqual(['codex:commands', 'codex:rules', 'opencode:rules']);
-    // 13 shipped Skills and 4 shipped Rules today; the ids are cross-checked against the manifest
+    // 10 shipped Skills and 4 shipped Rules today; the ids are cross-checked against the manifest
     // so a scaffold change moves both numbers together instead of quietly shrinking coverage.
-    expect(gap('codex', 'commands').details.count).toBe(13);
+    expect(gap('codex', 'commands').details.count).toBe(10);
     expect(ids(gap('codex', 'commands')).sort()).toEqual([...manifest.scaffold.skills].sort());
     expect(gap('codex', 'rules').details.count).toBe(4);
     expect(ids(gap('codex', 'rules')).sort()).toEqual([...manifest.scaffold.rules].sort());

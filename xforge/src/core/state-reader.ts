@@ -4,7 +4,7 @@ import fg from 'fast-glob';
 import type { TargetId } from '../constants.js';
 import { TARGETS } from '../constants.js';
 import { capabilityMatrix } from '../adapters/index.js';
-import type { ChangeState, Diagnostic, ProjectContext } from '../types.js';
+import type { ChangeState, Diagnostic, Flow, ProjectContext } from '../types.js';
 import { diagnostic } from './errors.js';
 import { flowEligibilityDiagnostics } from './checker.js';
 import { flowApplyOperation, flowArchiveOperation, flowArtifacts, isStageFlow, loadFlows, resolveChangeState } from './flow-resolver.js';
@@ -14,7 +14,7 @@ import { resolvedResourceEntries } from './lockfile.js';
 import { stableStringify } from './hash.js';
 import { resolveWorkPackages } from './work-packages.js';
 import { installationSummary, readOwnership } from '../install/ownership.js';
-import { resolveControlPlane } from './control-plane.js';
+import { loadTransitionReceipts, resolveControlPlane } from './control-plane.js';
 import { normalizeRule, ruleApplies } from './governance.js';
 
 async function exists(filePath: string): Promise<boolean> {
@@ -30,6 +30,47 @@ async function directoriesAt(root: string): Promise<string[]> {
   } catch {
     return [];
   }
+}
+
+interface ActiveChangeSummary {
+  id: string;
+  flow: string | null;
+  stage: string | null;
+  risk: string | null;
+}
+
+/**
+ * One line per un-archived Change: which Flow it runs and the Stage it currently sits at.
+ *
+ * `changes` alone answers "what exists". Once Changes run in parallel the question becomes "what is
+ * in flight and where is each one stuck", and answering that used to cost one
+ * `state --change <id>` process per Change — so nobody asked it.
+ *
+ * Stage comes from the last Transition receipt (the same derivation `resolveControlPlane` uses at
+ * `control-plane.ts:489`) rather than from a full control-plane resolve: a listing needs each
+ * Change's position, not its governance verdict, and computing revisions for every Change to print
+ * one column would make the common call the expensive one.
+ *
+ * A Change whose config or Flow will not resolve is still listed, with nulls — dropping it would
+ * hide exactly the Change most likely to need attention.
+ */
+async function activeChangeSummaries(
+  project: ProjectContext,
+  changeIds: readonly string[],
+  flows: Map<string, Flow>,
+): Promise<ActiveChangeSummary[]> {
+  return Promise.all(changeIds.map(async (id): Promise<ActiveChangeSummary> => {
+    try {
+      const resolved = await resolveChangeState(project, id, flows);
+      const flow = resolved.flow.metadata.name;
+      const risk = resolved.config.classification?.risk ?? null;
+      if (!isStageFlow(resolved.flow)) return { id, flow, stage: null, risk };
+      const transitions = await loadTransitionReceipts(project, id, resolved.flow);
+      return { id, flow, stage: transitions.receipts.at(-1)?.to ?? resolved.flow.stages[0]?.id ?? null, risk };
+    } catch {
+      return { id, flow: null, stage: null, risk: null };
+    }
+  }));
 }
 
 export interface StateOptions {
@@ -61,6 +102,7 @@ export async function readState(project: ProjectContext, options: StateOptions):
     ? (await fg('**/*.md', { cwd: specsAbsolute, onlyFiles: true, followSymbolicLinks: false })).sort()
     : [];
   const changes = await directoriesAt(changesAbsolute);
+  const activeChanges = await activeChangeSummaries(project, changes, flowResult.flows);
   const flowSummaries = [...flowResult.flows.values()].map((flow) => {
     const apply = flowApplyOperation(flow);
     const archive = flowArchiveOperation(flow);
@@ -163,6 +205,7 @@ export async function readState(project: ProjectContext, options: StateOptions):
       },
       specs,
       changes,
+      activeChanges,
       flows: flowSummaries,
       resources: filteredResources,
       targets: capabilityMatrix(targetList),
