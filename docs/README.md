@@ -111,11 +111,12 @@ Apply 可以生成带依赖关系、且写入路径互不重叠的 work packages
 
 ### 独立于 Change 生命周期的只读 Skills
 
-不是所有 Skill 都会读写 Change/Flow/Gate 状态。`xforge-explore` 在不写入的前提下
-调查代码、Specs、Rules 和方案，把模糊想法收敛成可 Propose 的范围；`xforge-kanban`
-把纯 `git log` 转成 Markdown 活动看板：按贡献者统计 commit、代码行数与活跃天数、
-按星期几 x 小时的活动热力图、feat/fix/其他分类，以及多模块项目的按模块拆分。两者都
-是只读的，随时可以运行。
+不是所有 Skill 都会读写 Change/Flow/Gate 状态。`xforge-kanban` 把纯 `git log` 转成
+Markdown 活动看板：按贡献者统计 commit、代码行数与活跃天数、按星期几 x 小时的活动
+热力图、feat/fix/其他分类，以及多模块项目的按模块拆分。它是只读的，随时可以运行。
+
+提案之前调查代码、Specs 与方案不需要单独的 Skill——阅读与检索是 XForge 投影到的每个
+编程工具的原生能力；把模糊想法收敛成可 Propose 的范围，是 `xforge-propose` 的第一步。
 
 ### Portable 与 Managed 两种模式
 
@@ -191,8 +192,8 @@ npx --no-install xforge check --text
 选择足够安全的最轻量 Flow，并解释 classification。
 ```
 
-随后可使用 `xforge-status` 解释当前状态，或使用 `xforge-continue` 执行下一项合法
-Action。生命周期 Skills 包括 `xforge-clarify`、`xforge-design`、
+随后可使用 `xforge-status` 报告在飞 Change 的全局清单与各自所处阶段、解释单个 Change
+的详情，并指出下一项合法 Action 而不代为执行。生命周期 Skills 包括 `xforge-clarify`、`xforge-design`、
 `xforge-check`、`xforge-apply` 和 `xforge-verify`；`xforge-revise` 用于在保持
 一致性的前提下修改规划产物，`xforge-scaffold` 用于定制项目所有的 Agent 资产。
 `xforge-kanban` 完全独立于该生命周期，按需报告 Git 历史活动，不读取也不依赖任何

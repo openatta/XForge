@@ -62,7 +62,7 @@ describe('black-box security boundaries', () => {
 
   it('blocks secret-like material before copying a Skill into generated targets', async () => {
     const root = await fixture();
-    const skillPath = 'xforge/scaffold/skills/xforge-explore/SKILL.md';
+    const skillPath = 'xforge/scaffold/skills/xforge-kanban/SKILL.md';
     const source = await readFile(path.join(root, ...skillPath.split('/')), 'utf8');
     await write(root, skillPath, `${source}\napi_key=supersecretvalue\n`);
     const result = await runCli(root, ['install', '--target', 'codex']);

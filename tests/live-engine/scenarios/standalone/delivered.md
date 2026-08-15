@@ -8,7 +8,7 @@ Work only inside the current project. Never search parent directories, read
 environment variables, inspect `.env`, create or fabricate an Approval, edit
 `test/**`, write product code, or commit.
 
-Read `AGENTS.md` and the installed `xforge-continue` Skill. Run
+Read `AGENTS.md` and the installed Stage Skills. Run
 `npx --no-install xforge state` to find the active Change, then
 `npx --no-install xforge state --change <id>` and confirm from CLI output that
 every work package in this Change's plan is `succeeded`. Without being told

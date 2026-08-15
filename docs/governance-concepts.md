@@ -57,11 +57,10 @@ The Agent-facing interface. Each Skill is `SKILL.md` (+ `SKILL_cn.md`) with
 five fixed sections — Invariants, Authority, Execution, Evidence, Stop and
 rework. A Skill consumes the current ready Action from `xforge state` and
 follows that Action's data (instruction/outline), never hardcodes another
-Skill's steps or a Flow's name. 13 ship by default: the lifecycle ones
+Skill's steps or a Flow's name. 10 ship by default: the lifecycle ones
 (`xforge-propose`/`clarify`/`design`/`check`/`apply`/`verify`), governance
-utilities (`xforge-revise`, `xforge-scaffold`), and Skills entirely outside
-the Change lifecycle (`xforge-explore`, `xforge-kanban`, `xforge-status`,
-`xforge-continue`, plus the legacy `xforge-archive` shim).
+utilities (`xforge-revise`, `xforge-scaffold`), and read-only reporting
+(`xforge-status`, `xforge-kanban`).
 
 ## Flows
 

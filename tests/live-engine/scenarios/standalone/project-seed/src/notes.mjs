@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// Minimal existing "notes" CLI, seeded only as exploration material for the
-// standalone xforge-explore live-engine scenario. It intentionally has no
-// "recently completed" view yet — that gap is what the Explore prompt asks
-// the model to investigate and scope, without implementing it.
+// Minimal existing "notes" CLI, seeded as read-only material for the
+// standalone live-engine scenarios (kanban, scaffold). It intentionally has no
+// "recently completed" view: the gap gives a fresh project something real to
+// read without giving any standalone prompt something to implement.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 

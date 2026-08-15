@@ -53,11 +53,10 @@ Approval 在背后撑着）或者 `uncovered`（一条 `must` 级别的 Rule，�
 章节——Invariants、Authority、Execution、Evidence、Stop and rework。Skill 消费
 `xforge state` 返回的当前 ready Action，并跟着这个 Action 自带的数据（
 instruction/outline）走，不硬编码另一个 Skill 的步骤，也不写死某个 Flow 的
-名字。默认自带 13 个：生命周期类的
+名字。默认自带 10 个：生命周期类的
 （`xforge-propose`/`clarify`/`design`/`check`/`apply`/`verify`）、治理工具类
-的（`xforge-revise`、`xforge-scaffold`），以及完全在 Change 生命周期之外的
-（`xforge-explore`、`xforge-kanban`、`xforge-status`、`xforge-continue`，
-再加上遗留兼容用的 `xforge-archive` shim）。
+的（`xforge-revise`、`xforge-scaffold`），以及只读报告类的
+（`xforge-status`、`xforge-kanban`）。
 
 ## Flows
 

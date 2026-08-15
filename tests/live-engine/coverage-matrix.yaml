@@ -33,24 +33,16 @@ entries:
       - { scenario: quick, flow: quick, stage: verify }
       - { scenario: solid, flow: solid, stage: verify }
       - { scenario: major, flow: major, stage: verify }
-  - skill: xforge-explore
-    scenarios:
-      - { scenario: standalone-explore, flow: null, stage: null, note: "runs against a fresh project, no active Change" }
   - skill: xforge-kanban
     scenarios:
       - { scenario: standalone-kanban, flow: null, stage: null, note: "runs against a fresh project, no active Change" }
   - skill: xforge-status
     scenarios:
-      - { scenario: standalone-status, flow: null, stage: null, note: "injected into the quick run between apply and verify" }
+      - { scenario: standalone-status, flow: null, stage: null, note: "injected into the quick run between apply and verify; covers the portfolio view and the single-Change view" }
+      - { scenario: standalone-status-blocked, flow: null, stage: null, note: "injected into the major run right after check stops for implementation-major Approval; covers naming the next Action without performing it" }
   - skill: xforge-scaffold
     scenarios:
       - { scenario: standalone-scaffold, flow: null, stage: null, note: "runs against a fresh project, no active Change" }
   - skill: xforge-revise
     scenarios:
       - { scenario: standalone-revise, flow: null, stage: null, note: "injected into the solid run between propose and design, after the harness edits TEST_REQUEST.md" }
-  - skill: xforge-continue
-    scenarios:
-      - { scenario: standalone-continue, flow: null, stage: null, note: "injected into the major run right after check stops for implementation-major Approval" }
-  - skill: xforge-archive
-    scenarios:
-      - { scenario: standalone-archive, flow: null, stage: null, note: "runs as the quick run's terminal archive step instead of a raw CLI call" }

@@ -49,7 +49,6 @@ const SCENARIOS = {
     intent: 'happy-path',
     expect: { reworks: 0, outcome: 'archived' },
     inject: { afterStage: 'apply', prompt: 'standalone/status.md', stageLabel: 'standalone-status' },
-    archiveVia: 'standalone/archive.md',
   },
   solid: {
     flow: 'solid',
@@ -110,7 +109,7 @@ const SCENARIOS = {
      */
     maxReworks: 1,
     expect: { outcome: ['archived', 'stopped-at-check'] },
-    inject: { afterStage: 'check', prompt: 'standalone/continue.md', stageLabel: 'standalone-continue' },
+    inject: { afterStage: 'check', prompt: 'standalone/status-blocked.md', stageLabel: 'standalone-status-blocked' },
   },
 };
 
@@ -878,11 +877,14 @@ if (scenarioConfig.archiveVia) {
 /*
  * Archive is the Flow's terminal operation, and it was the one step nothing asserted: `passed`
  * below only looked at the acceptance suite and the budget, so a run where the Change never left
- * the active set still reported ok:true. It also cannot always be the Agent's job — closing
- * Approvals are externally signed, and an Agent must never hold the provider secret, so
- * `xforge archive` legitimately refuses in the Agent's environment. The standalone prompt still
- * exercises the archive Skill and must surface that block honestly; the authoritative archive then
- * runs here, where the secret exists.
+ * the active set still reported ok:true. It also cannot be the Agent's job — closing Approvals are
+ * externally signed, and an Agent must never hold the provider secret, so `xforge archive`
+ * legitimately refuses in the Agent's environment. The authoritative archive therefore runs here,
+ * where the secret exists.
+ *
+ * A Quick run used to drive this step through a `xforge-archive` Skill prompt to prove that shim
+ * still delegated to `xforge-verify`. The shim is gone, so the step that was only ever testing the
+ * shim goes with it: nothing about the archive transaction itself needed a model in the loop.
  */
 const activeAfterAgent = runXforgeJson(projectRoot, ['state']).data.changes ?? [];
 if (activeAfterAgent.includes(scenarioConfig.changeId)) {

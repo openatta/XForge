@@ -35,7 +35,7 @@ the sample project.
   exit, and each stage's work-package execution mode — and drives the run
   from that data. Adding a Flow or changing its stages does not require a new
   imperative script.
-- **Coverage across all 13 `xforge-*` Skills**, not just the ones a single
+- **Coverage across all 10 `xforge-*` Skills**, not just the ones a single
   Change walkthrough happens to touch. See `coverage-matrix.yaml`.
 - **Enterprise-shaped multi-approver governance**, not one bare signature.
   `approval-provider.mjs` reads the Flow's `governance.approvalPolicies`
@@ -58,8 +58,8 @@ tests/live-engine/scenarios/
   major/        propose -> clarify -> design -> check -> apply -> verify (credential-store:
                 risk high, security + dataMigration impact, a deliberately unresolved
                 material question for Clarify to formally resolve)
-  standalone/   explore, kanban, scaffold (fresh project, no active Change) and
-                status, continue, revise, archive (piggyback on an in-progress
+  standalone/   kanban, scaffold (fresh project, no active Change) and
+                status, status-blocked, revise (piggyback on an in-progress
                 quick/solid/major run — see coverage-matrix.yaml's notes for exactly where)
 ```
 

@@ -34,10 +34,17 @@ describe('XForge product contract', () => {
     expect(await exists(path.join(scaffold, 'payload', 'xforge', 'src'))).toBe(false);
     expect(await exists(path.join(scaffold, 'payload', '.git'))).toBe(false);
 
-    const ids = ['explore', 'propose', 'clarify', 'design', 'check', 'apply', 'verify', 'status', 'continue', 'revise', 'scaffold', 'archive'];
+    /* Derived from the manifest the runtime itself reads, not a hand-maintained list: the literal
+       list had drifted to twelve entries — three Skills that no longer ship and none for
+       xforge-kanban — so it asserted the shape of a Scaffold that did not exist while leaving a
+       shipped Skill unchecked. Reading the manifest makes adding or removing a Skill move this
+       assertion with it. */
+    const manifest = await readFile(path.join(scaffold, 'payload', 'xforge', 'manifest.yaml'), 'utf8');
+    const ids = [...manifest.matchAll(/^\s+- (xforge-[a-z-]+)$/gm)].map((match) => match[1]);
+    expect(ids.length).toBeGreaterThan(0);
     for (const id of ids) {
-      const skill = await readFile(path.join(scaffold, 'payload', 'xforge', 'scaffold', 'skills', `xforge-${id}`, 'SKILL.md'), 'utf8');
-      const chinese = await readFile(path.join(scaffold, 'payload', 'xforge', 'scaffold', 'skills', `xforge-${id}`, 'SKILL_cn.md'), 'utf8');
+      const skill = await readFile(path.join(scaffold, 'payload', 'xforge', 'scaffold', 'skills', id, 'SKILL.md'), 'utf8');
+      const chinese = await readFile(path.join(scaffold, 'payload', 'xforge', 'scaffold', 'skills', id, 'SKILL_cn.md'), 'utf8');
       for (const heading of ['# Invariants', '# Authority', '# Execution', '# Evidence', '# Stop and rework']) expect(skill).toContain(heading);
       for (const heading of ['# 不变量', '# 权限', '# 执行', '# 证据', '# 停止与返工']) expect(chinese).toContain(heading);
       for (const variant of [skill, chinese]) {
