@@ -211,8 +211,17 @@ major ≈ $8.3。全套约 $30，加上一两次失败重跑要按 $45 预留。
 **`solid-rework` 可录制但不可回放。** 原因与两条修复路径都记在
 `tests/live-engine/README.md`，此处不重复。
 
-**一盘录像里，只引用了审批回执的原则会让回放必挂。** 现象是回放停在
-`check -> apply`，`gate:constitution-check:failed`，证据的 stderr 写着：
+**一盘录像里，只引用了审批回执的原则会让回放必挂——现在录制时就会判出来。**
+`record-cassette.mjs` 会读录制下来的 `constitution-check.yaml`，命中就往 manifest
+写 `unreplayableReason`，`--replay` 随即在安装项目之前直接拒绝并说明原因：
+
+```
+Error: Cassette "solid" is record-only and cannot be replayed.
+  ...principle "Governance" cites an approval receipt and nothing else...
+```
+
+**看到这条不要重录**，录像本身是有效的。下面是它的来历（历史上它表现为回放停在
+`check -> apply` 的 `gate:constitution-check:failed`，证据 stderr 写着）：
 
 ```
 principle "Governance" cites only references this project cannot locate

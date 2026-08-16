@@ -3,6 +3,7 @@ import { existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { parse } from '../../xforge/node_modules/yaml/dist/index.js';
 import { cassetteFiles, cassettesRoot, modelStepFromSubject, scaffoldFingerprint } from './cassette.mjs';
 
 /**
@@ -96,6 +97,52 @@ for (const line of log) {
 }
 if (steps.length === 0) throw new Error(`No model steps found in ${projectRoot}; is ${scenario} the scenario that produced it?`);
 
+/*
+ * Decide here, for free, whether this recording can be replayed at all.
+ *
+ * A replay re-signs approvals, so its receipts land at freshly minted UUIDs. A Constitution
+ * principle that cites an approval receipt and nothing else therefore points at a file the replay
+ * never creates, and `constitution-check` refuses it — correctly, since a citation nobody can
+ * follow is not evidence. That surfaces at replay time as a gate failure deep inside the Flow,
+ * which reads exactly like a product defect and costs a full diagnosis every time it recurs. It
+ * recurs because it is not bad luck: for a principle about governance, an approval receipt is the
+ * evidence a Check Agent naturally reaches for.
+ *
+ * This was known and written down in README.md, and written down was not enough — nothing in the
+ * harness acted on it. So the recording states it, the way a cassette already states the Scaffold
+ * it was made against: enforced rather than remembered. It is a property of this recording, not of
+ * the scenario, so a later run that cites a Requirement id alongside the receipt records as
+ * replayable with no change here.
+ */
+const APPROVAL_RECEIPT = /(?:^|\/)approvals\/[^/]+\/[0-9a-f-]{36}\.json$/;
+function unreplayableReason() {
+  const touched = new Set(
+    git(['log', '--all', '--pretty=format:', '--name-only'], projectRoot)
+      .split('\n').map((line) => line.trim())
+      .filter((line) => line.endsWith('evidence/constitution-check.yaml')),
+  );
+  for (const file of touched) {
+    const commit = git(['log', '-1', '--format=%H', '--', file], projectRoot).trim();
+    if (!commit) continue;
+    let ledger;
+    try {
+      ledger = parse(git(['show', `${commit}:${file}`], projectRoot));
+    } catch { continue; }
+    for (const principle of ledger?.principles ?? []) {
+      const references = principle?.references ?? [];
+      if (references.length === 0) continue;
+      if (references.every((reference) => APPROVAL_RECEIPT.test(String(reference)))) {
+        return `${file}: principle "${principle.principle}" cites an approval receipt and nothing else. `
+          + 'A replay mints its own approval UUIDs, so that citation cannot resolve and constitution-check '
+          + 'refuses it. See tests/live-engine/README.md — the fix is to constrain citations in the '
+          + 'xforge-check Skill, which invalidates every cassette, so it belongs with the next Skill change.';
+      }
+    }
+  }
+  return null;
+}
+const unreplayable = unreplayableReason();
+
 await mkdir(cassettesRoot, { recursive: true });
 const files = cassetteFiles(scenario);
 git(['bundle', 'create', files.bundle, '--all'], projectRoot);
@@ -110,6 +157,8 @@ const manifest = {
   /* Refusing a replay against a changed Scaffold is the whole reason this is here; see cassette.mjs. */
   scaffold: scaffoldFingerprint(),
   cli: timeline.cli ?? null,
+  /* Null means replayable. A reason means `--replay` refuses up front, with it. */
+  unreplayableReason: unreplayable,
   outcome: timeline.outcome,
   reworks: timeline.reworks,
   steps,
@@ -125,4 +174,6 @@ process.stdout.write(`${JSON.stringify({
   modelSteps: steps.length,
   stagesRecorded: (timeline.stages ?? []).length,
   scaffold: manifest.scaffold,
+  replayable: unreplayable === null,
+  unreplayableReason: unreplayable,
 }, null, 2)}\n`);

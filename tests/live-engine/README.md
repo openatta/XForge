@@ -223,6 +223,14 @@ cannot resolve. `constitution-check` fails a principle that cites **only**
 references it cannot locate, so this bites exactly when a Check Agent offers an
 approval receipt as a principle's sole evidence.
 
+**`record-cassette.mjs` now decides this at record time**, reading the recorded
+`constitution-check.yaml` and writing `unreplayableReason` into the manifest
+when a principle cites an approval receipt and nothing else. `--replay` then
+refuses up front with that reason, instead of failing as a gate error deep
+inside Check that reads like a product defect. It is a property of the
+recording, not of the scenario: a later run that cites a Requirement id
+alongside the receipt records as replayable with no code change.
+
 **As of 2026-08-16 this is what `solid` does, and the cassette is record-only.**
 Two consecutive recordings cited the receipt as the Governance principle's only
 reference, so treating it as model variance and re-recording is not worth

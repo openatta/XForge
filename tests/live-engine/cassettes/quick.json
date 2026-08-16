@@ -7,6 +7,7 @@
   "recordedAt": "2026-08-16T12:04:58.795Z",
   "scaffold": "sha256:1491ecbe16aa48641a111d0b8d1fdb7ffd93377325f2a0c460823c935ac4b757",
   "cli": null,
+  "unreplayableReason": null,
   "outcome": "archived",
   "reworks": 0,
   "steps": [

@@ -509,6 +509,18 @@ if (replay) {
   if (replay.scenario !== scenarioName) {
     throw new Error(`Cassette "${replay.scenario}" cannot drive scenario "${scenarioName}".`);
   }
+  /*
+   * A recording can be valid and still not replayable, and the recording is where that was decided
+   * — see `unreplayableReason` in record-cassette.mjs. Refusing here, before a project is installed
+   * and a Flow is walked, turns what used to be a gate failure deep inside Check into one line
+   * naming the cause. Older cassettes carry no such field and are replayed as before.
+   */
+  if (replay.unreplayableReason) {
+    throw new Error(
+      `Cassette "${replay.scenario}" is record-only and cannot be replayed.\n  ${replay.unreplayableReason}\n`
+      + 'The recording itself is valid — it captured a real, complete run — so do not re-record to work around this.',
+    );
+  }
   assertCassetteStillApplies(replay);
   cassetteRepo = path.join(temporaryRoot, `live-engine-${scenarioName}-cassette`);
   rmSync(cassetteRepo, { recursive: true, force: true });
