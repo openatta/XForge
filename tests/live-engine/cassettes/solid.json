@@ -4,58 +4,58 @@
   "scenario": "solid",
   "flow": "solid",
   "changeId": "task-ledger",
-  "recordedAt": "2026-08-15T16:53:03.365Z",
-  "scaffold": "sha256:48d6cf2e10913db664720a68e1a09e950d432a45f200aa6b7c29c45e985c8893",
+  "recordedAt": "2026-08-16T08:57:09.442Z",
+  "scaffold": "sha256:3a3457f71e70c4f66aa0b2396512cf90cf05a49e138f755e5274ddb4952d5d85",
   "cli": null,
   "outcome": "archived",
   "reworks": 0,
   "steps": [
     {
       "stage": "propose",
-      "commit": "5898584e42d082a7fcf4c28b19d24b3bdfd70725",
-      "parent": "c5ec59a892b7b430ec7418349820389391edb9bd",
+      "commit": "6744104494dd9f32469a1b21c6838149989a9d2e",
+      "parent": "12f69326ffaacb80af5496320aa4741fedf54a13",
       "subject": "Live engine stage complete: solid:propose",
       "files": 6
     },
     {
       "stage": "standalone-revise",
-      "commit": "757a0383a4e6a392b7d0dc1dee40d1077a035fd5",
-      "parent": "1fa201a203ec1e8fbc7c2216d9493a657e477be4",
+      "commit": "a6461f0d7550e029c242b43f7156a8d8740e290e",
+      "parent": "ffbcc72cc38de4602a13b5457a4507ba10f5524d",
       "subject": "Live engine standalone checkpoint: standalone-revise",
-      "files": 4
+      "files": 2
     },
     {
       "stage": "design",
-      "commit": "0ac2601516328f8632bbc3862e3cf866d3c7dfcb",
-      "parent": "757a0383a4e6a392b7d0dc1dee40d1077a035fd5",
+      "commit": "a53e4f9b87e605f856646e6726cede60bf06d06a",
+      "parent": "a6461f0d7550e029c242b43f7156a8d8740e290e",
       "subject": "Live engine stage complete: solid:design",
       "files": 2
     },
     {
       "stage": "check",
-      "commit": "fe2f168fe3fb587d1fc0466367f4ff4e65229485",
-      "parent": "e9b0a67e4e66bf39db34d2bafeea0a2dc4404411",
+      "commit": "49ebf05a40df723f6094fe4f20f2a4e004abf199",
+      "parent": "04c28424a1bf5ae4a7d648eca41bf725245d82fc",
       "subject": "Live engine stage complete: solid:check",
       "files": 8
     },
     {
       "stage": "apply",
-      "commit": "fdb156d5b359ec4b833a653277c108209a8a5490",
-      "parent": "41fc084bfd15eeb629e0438fbfd327a9b2c2d0f1",
+      "commit": "b83eb0557de7c46f875bc470fce6c8810115c2f3",
+      "parent": "69b65b4fea9e5ed793a485e89226d44afd7b9a67",
       "subject": "Live engine stage complete: solid:apply",
-      "files": 1
+      "files": 2
     },
     {
       "stage": "apply-delivered",
-      "commit": "7ac44de17cb1fb8c55c4a3c85f50b1633dbe5873",
-      "parent": "62ece27e11ca1b0d8c955abc55c55366f4668d45",
+      "commit": "11882b23d4a935616376756246da4daaf12f1d1b",
+      "parent": "55276ffd70144f710d552d4a871d86b4c09eefc9",
       "subject": "Live engine continuation: apply delivery observed",
-      "files": 3
+      "files": 2
     },
     {
       "stage": "verify",
-      "commit": "1c49218b850c5255eef241f22a9e73744c2654d2",
-      "parent": "7ac44de17cb1fb8c55c4a3c85f50b1633dbe5873",
+      "commit": "8e920f837c52609c004bd83f9ab5e50afef68a56",
+      "parent": "11882b23d4a935616376756246da4daaf12f1d1b",
       "subject": "Live engine stage complete: solid:verify",
       "files": 6
     }
@@ -63,37 +63,37 @@
   "stages": [
     {
       "stage": "propose",
-      "contentRevision": "fba6ba8dcc070233fb6bdfec5025d8ac5526e17342d794348f38d8b4ae7b4cba",
+      "contentRevision": "8ad5206bde9ea008fcb1d6ce72309cadaa6b0a57045648e9231132a2068356e6",
       "currentStage": "design"
     },
     {
       "stage": "standalone-revise",
-      "contentRevision": "3a360766238f3a8f330481fa2bd6061de5fc817b9d5b3fe63a50f43095263436",
+      "contentRevision": "8ad5206bde9ea008fcb1d6ce72309cadaa6b0a57045648e9231132a2068356e6",
       "currentStage": "design"
     },
     {
       "stage": "design",
-      "contentRevision": "c20dbb04f8ad239c0fec1ce2f594e58595f90a824320b9f80be3540f730bf745",
+      "contentRevision": "2a4f53ca0d8e37a748cc3675689bd1970ee74e4b0e5fb5bf1420b738e03fffed",
       "currentStage": "design"
     },
     {
       "stage": "check",
-      "contentRevision": "8449369cf21c4f6491daa94032e8aeaa565175ac77cda13230c5546b86c5432a",
+      "contentRevision": "db49106f3596c71cb4e98316e7e26956b9a65fc7fdfad3489016a08f5599325d",
       "currentStage": "apply"
     },
     {
       "stage": "apply",
-      "contentRevision": "8449369cf21c4f6491daa94032e8aeaa565175ac77cda13230c5546b86c5432a",
+      "contentRevision": "db49106f3596c71cb4e98316e7e26956b9a65fc7fdfad3489016a08f5599325d",
       "currentStage": "apply"
     },
     {
       "stage": "apply-delivered",
-      "contentRevision": "8449369cf21c4f6491daa94032e8aeaa565175ac77cda13230c5546b86c5432a",
+      "contentRevision": "db49106f3596c71cb4e98316e7e26956b9a65fc7fdfad3489016a08f5599325d",
       "currentStage": "verify"
     },
     {
       "stage": "verify",
-      "contentRevision": "f90dc1689ab6fd670434ffa6b10ea7b57f73d92b048ef687deb64cda821f0a63",
+      "contentRevision": "0d105579ba9f78013807885498576f3315e29a4b3c82e02d5b993404e51889d7",
       "currentStage": "verify"
     }
   ]

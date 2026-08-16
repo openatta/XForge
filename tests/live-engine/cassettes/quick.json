@@ -4,30 +4,30 @@
   "scenario": "quick",
   "flow": "quick",
   "changeId": "greeter",
-  "recordedAt": "2026-08-15T15:58:41.285Z",
-  "scaffold": "sha256:48d6cf2e10913db664720a68e1a09e950d432a45f200aa6b7c29c45e985c8893",
+  "recordedAt": "2026-08-16T08:37:51.855Z",
+  "scaffold": "sha256:3a3457f71e70c4f66aa0b2396512cf90cf05a49e138f755e5274ddb4952d5d85",
   "cli": null,
   "outcome": "archived",
   "reworks": 0,
   "steps": [
     {
       "stage": "propose",
-      "commit": "bb5c4475d14b01a74bacd27fff91d068eb222a9e",
-      "parent": "68f8b80d565ad8d9a2e72cc7cec5174c1d2443ac",
+      "commit": "e2036d51e4c387e5afbbe628f476e4c75039b82d",
+      "parent": "b210d2204fdc2c579f179033fe6a3f008207a41d",
       "subject": "Live engine stage complete: quick:propose",
       "files": 6
     },
     {
       "stage": "apply",
-      "commit": "c001d1b9b2d199f5fb64ac122ec71d7312294c93",
-      "parent": "bb5c4475d14b01a74bacd27fff91d068eb222a9e",
+      "commit": "73eee47616e3eb405523cc6fe4957966be4b16c7",
+      "parent": "e2036d51e4c387e5afbbe628f476e4c75039b82d",
       "subject": "Live engine stage complete: quick:apply",
       "files": 3
     },
     {
       "stage": "verify",
-      "commit": "b26a3ef205793c94dbec71c54635037a81f50360",
-      "parent": "c001d1b9b2d199f5fb64ac122ec71d7312294c93",
+      "commit": "e06edd99678b4079c4bde79851c58cd2c9aed1d8",
+      "parent": "73eee47616e3eb405523cc6fe4957966be4b16c7",
       "subject": "Live engine stage complete: quick:verify",
       "files": 5
     }
@@ -35,22 +35,22 @@
   "stages": [
     {
       "stage": "propose",
-      "contentRevision": "c9a6245c937f16e2bf8e6908d12761988ae91c7bb6e6b0220bb02897e6e38b49",
+      "contentRevision": "e011b7d6753acc42e1b00337cc3d851eaae12a9f37c116295481e03d06e704f0",
       "currentStage": "apply"
     },
     {
       "stage": "apply",
-      "contentRevision": "c9a6245c937f16e2bf8e6908d12761988ae91c7bb6e6b0220bb02897e6e38b49",
+      "contentRevision": "e011b7d6753acc42e1b00337cc3d851eaae12a9f37c116295481e03d06e704f0",
       "currentStage": "verify"
     },
     {
       "stage": "standalone-status",
-      "contentRevision": "c9a6245c937f16e2bf8e6908d12761988ae91c7bb6e6b0220bb02897e6e38b49",
+      "contentRevision": "e011b7d6753acc42e1b00337cc3d851eaae12a9f37c116295481e03d06e704f0",
       "currentStage": "verify"
     },
     {
       "stage": "verify",
-      "contentRevision": "b65edf30e093263c06d6578dc72a6114416a6b9620a3270b1e83eb38e26a61e8",
+      "contentRevision": "b54a1a2e455c886a6388a2fecb8d07bc86ae805a4406bea91a6db18fe67eb897",
       "currentStage": "verify"
     }
   ]
