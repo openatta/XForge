@@ -4,72 +4,72 @@
   "scenario": "solid-rework",
   "flow": "solid",
   "changeId": "task-ledger",
-  "recordedAt": "2026-08-16T09:08:18.772Z",
-  "scaffold": "sha256:3a3457f71e70c4f66aa0b2396512cf90cf05a49e138f755e5274ddb4952d5d85",
+  "recordedAt": "2026-08-16T12:04:59.603Z",
+  "scaffold": "sha256:1491ecbe16aa48641a111d0b8d1fdb7ffd93377325f2a0c460823c935ac4b757",
   "cli": null,
   "outcome": "archived",
   "reworks": 1,
   "steps": [
     {
       "stage": "propose",
-      "commit": "87e398383aae5e32d6f1937431ff3ea4fd4772b9",
-      "parent": "224a4271eb05f06246edfef64b28e44649fea19d",
+      "commit": "40a782ba476e5dbe657548abe1dee9dbffc36397",
+      "parent": "38981a65087632ca62d4ed0df67d06b42f4ad8d3",
       "subject": "Live engine stage complete: solid-rework:propose",
       "files": 6
     },
     {
       "stage": "standalone-revise",
-      "commit": "9876c82c318fd0f434c9c3cb31f9837ee8bb366f",
-      "parent": "e43a8128e30bd7ca90ec8d45319d26c768ea737c",
+      "commit": "36686f4b656822024b78c1dd4a352dc3ec244107",
+      "parent": "5d5a4f73baf507889b9458496d037bd38e6d6e4d",
       "subject": "Live engine standalone checkpoint: standalone-revise",
-      "files": 4
+      "files": 2
     },
     {
       "stage": "design",
-      "commit": "f0f8d3ebdfda321d8a71b0a3c50ba30bc0fdcba7",
-      "parent": "9876c82c318fd0f434c9c3cb31f9837ee8bb366f",
+      "commit": "89e004eba19880c0f50b0760b5b775af1341b8ed",
+      "parent": "36686f4b656822024b78c1dd4a352dc3ec244107",
       "subject": "Live engine stage complete: solid-rework:design",
       "files": 2
     },
     {
       "stage": "check",
-      "commit": "78fb58c04cdf6fa6405afa35f4821e570e383edf",
-      "parent": "578d6e87d5e419cf6dd4f461c5bd48bc159525e5",
+      "commit": "ddeb78d31100e0ca0e35c629d41fc62eab00b273",
+      "parent": "e4c4f2ba5b58e97f16ddd44331b0a1a2584f938f",
       "subject": "Live engine stage complete: solid-rework:check",
       "files": 7
     },
     {
       "stage": "design",
-      "commit": "d9270a6001b0155290327b48dfb07e51d3e40d26",
-      "parent": "4b86db78c035bc9ac888fd3590ec0daa8434566b",
+      "commit": "bb4ca8619e971766533f7937342606bc0de9e965",
+      "parent": "d54b616d4b9f4564ccb0d29800652f0bbd5e4a8e",
       "subject": "Live engine stage complete: solid-rework:design",
       "files": 1
     },
     {
       "stage": "check",
-      "commit": "dcf91a34688d850f09210999a30b891e76bf072a",
-      "parent": "cb5aa1877aaf8964aaa7e08584b021e52a958442",
+      "commit": "5eaeb375133ad0ffad9d4ef3b7c9e955ac74b634",
+      "parent": "689a377856ca3c13c09fe60fb4e16545b856d388",
       "subject": "Live engine stage complete: solid-rework:check",
       "files": 8
     },
     {
       "stage": "apply",
-      "commit": "96b873a75bf84258181aacd1432fec0d339d7d94",
-      "parent": "6ebc77598fd62048d156c589f0417aae8fcda396",
+      "commit": "ecafd5858d091c9dd5744e5a5e49c85bd2af2727",
+      "parent": "5fae944800013304e6051979f7f57d5c933bcaa1",
       "subject": "Live engine stage complete: solid-rework:apply",
       "files": 1
     },
     {
       "stage": "apply-delivered",
-      "commit": "855a0abb29648717cdd2fd5c3710310f3a2c0161",
-      "parent": "3cf70e31d7134e41842f4807f13fa30d42a89c7a",
+      "commit": "2cf70b7d9dd1c96cc75ef5eb77c462b4bf651726",
+      "parent": "8eb9201cb7e55b27c747ee55e30567d9d215e063",
       "subject": "Live engine continuation: apply delivery observed",
-      "files": 2
+      "files": 3
     },
     {
       "stage": "verify",
-      "commit": "f110be51337a8292b135f85f2db48ee096016ee0",
-      "parent": "855a0abb29648717cdd2fd5c3710310f3a2c0161",
+      "commit": "d5ad61f08bf4ab1f25674a58c3ec158f3c600424",
+      "parent": "2cf70b7d9dd1c96cc75ef5eb77c462b4bf651726",
       "subject": "Live engine stage complete: solid-rework:verify",
       "files": 6
     }
@@ -77,47 +77,47 @@
   "stages": [
     {
       "stage": "propose",
-      "contentRevision": "9df40adc096f7bf34c4404864f91aadea9587c368ec6b6ee77f02461bd939412",
+      "contentRevision": "fe17e63b9833c025c8578c024c6d47456294ef8d8c50b98d13b1db5d893d42e4",
       "currentStage": "design"
     },
     {
       "stage": "standalone-revise",
-      "contentRevision": "cd20b36a27f0be3a86db620999c8b3a927e61d3495bf759882e2a992a32692d1",
+      "contentRevision": "180452359c6d683fd7afca4eb6b85dda158608ad5767c6a902927b4383f65de3",
       "currentStage": "design"
     },
     {
       "stage": "design",
-      "contentRevision": "b5963bc7f908779ca2e0fe5588a55dbf9c89ff838b9e0d7ec890337c6f74c033",
+      "contentRevision": "47551c9afd51b6d22d5b732291d292d38f45cb70b9b7646a5d2c1949443f0867",
       "currentStage": "design"
     },
     {
       "stage": "check",
-      "contentRevision": "afc4649a8c2a7e052f5083ae9003734679f14359da96698c25a05eef1fbe8ff6",
+      "contentRevision": "f7dc486e4ce997db9f7f3709ea859f910f03480587e7ba5e2830c63abc3c55e5",
       "currentStage": "check"
     },
     {
       "stage": "design",
-      "contentRevision": "1b7cdd549f1f0c1965cae40120f486ec96756288969de6b7e6a01c28bbee2aca",
+      "contentRevision": "c4e89cedc51249d38f671e25997903da9c182118565f098bb99f7213245f80e9",
       "currentStage": "design"
     },
     {
       "stage": "check",
-      "contentRevision": "5b2f9193125c7395713b257043b506af80e54d4522443c9aa90fbb7ea66093e9",
+      "contentRevision": "aa8709e1a9ba0e7da5dc39ee56a89b6490e38e9474d8519d704837417a43fe00",
       "currentStage": "apply"
     },
     {
       "stage": "apply",
-      "contentRevision": "5b2f9193125c7395713b257043b506af80e54d4522443c9aa90fbb7ea66093e9",
+      "contentRevision": "aa8709e1a9ba0e7da5dc39ee56a89b6490e38e9474d8519d704837417a43fe00",
       "currentStage": "apply"
     },
     {
       "stage": "apply-delivered",
-      "contentRevision": "5b2f9193125c7395713b257043b506af80e54d4522443c9aa90fbb7ea66093e9",
+      "contentRevision": "aa8709e1a9ba0e7da5dc39ee56a89b6490e38e9474d8519d704837417a43fe00",
       "currentStage": "verify"
     },
     {
       "stage": "verify",
-      "contentRevision": "de3cb4d320aa48e6ad918ffd9dfa829f369c7fad609a181d8c7a267800c0b7bc",
+      "contentRevision": "5ea0fb4ed154b3acdaf721e3bc6cb1d73c81a66d47e3f10c6e69f27460b14ab8",
       "currentStage": "verify"
     }
   ]

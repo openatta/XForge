@@ -211,6 +211,44 @@ major ≈ $8.3。全套约 $30，加上一两次失败重跑要按 $45 预留。
 **`solid-rework` 可录制但不可回放。** 原因与两条修复路径都记在
 `tests/live-engine/README.md`，此处不重复。
 
+**一盘录像里，只引用了审批回执的原则会让回放必挂。** 现象是回放停在
+`check -> apply`，`gate:constitution-check:failed`，证据的 stderr 写着：
+
+```
+principle "Governance" cites only references this project cannot locate
+(approvals/<gate>/<uuid>.json)
+```
+
+**这不是产品缺陷，实跑当时是通过的。** 回放会重新签发审批，UUID 随之改变；而
+`approvals/` 不在 Agent 的 stage diff 里，录像根本没记过这个路径，回放无从还原它。
+于是 Agent 在 `constitution-check.yaml` 里写下的那个 UUID 永远指不到东西。
+
+判据：只有当某条原则**除它之外没有别的引用**时才会挂。同一条原则若同时引用了
+Requirement id、真实路径或 `gate:<name>`，回放正常。
+
+**不要重录来赌它。** 2026-08-16 连录两盘 `solid`，Agent 两次都把审批回执写成
+Governance 这条原则的唯一引用（`bc412e1c…`、`bce529bd…`）。对"治理"这条原则，
+审批回执本来就是最自然的证据，所以这是稳定选择而不是方差。
+
+**三条修不通的路，都试过了，别再试：**
+
+1. **回放时把引用重定址到本次的 UUID。** gate 确实过了，但改写 UUID 就改变了受治理
+   内容，`contentRevision` 断言随即失败。
+2. **只对发生重定址的那个 Stage 豁免 `contentRevision`。** 豁免不住：
+   `constitution-check.yaml` 此后一直属于受治理内容，**divergence 会传播到 check
+   之后的每一个 Stage**，豁免范围等于废掉整个断言。
+3. **让回放把审批写成录制时的 UUID。** `receiptId` 在回执内部且被审计哈希链绑定，
+   改名就是伪造，`audit verify` 理应拒绝它。
+
+**结论：`solid` 目前与 `solid-rework` 同级——可录制，不可回放。** 录像本身有效
+（它记录了一次真实的完整通过运行），回放回归覆盖由 `quick`（3 阶段）与
+`major`（6 阶段）承担。
+
+**真要恢复 `solid` 的回放覆盖，唯一可行的是改提示词**：引导 Agent 在引用审批回执的
+同时并列一个稳定引用（Requirement id / 路径 / `gate:<name>`）。这本身也是更好的
+治理证据——审批回执证明"有人批了"，不证明"为什么合规"。**代价是它改指纹，四盘全部
+作废，要整套重录（约 $30）**，所以应当和下一次 Skill 改动合并做，不要单独为它跑一趟。
+
 **录像的 `cli` 字段恒为 `null`。** `run-matrix.mjs` 写的是 `setup.cli ?? null`，
 而 setup 返回的对象里没有这个键。只影响"用哪个 CLI 录的"这条元信息，不影响回放断言。
 
