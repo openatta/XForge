@@ -22,12 +22,12 @@ read, search, and test tools only. Return your complete result as your reply,
 in a form that can be stored unchanged — verdict, every finding with its
 severity, location, reason, and recommended fix. The Main Agent transcribes it
 verbatim into `<change>/evidence/agents/<package>/review-<execution>.yaml` and
-then runs `npx --no-install xforge work-package acknowledge --change <id>
+then runs `xforge work-package acknowledge --change <id>
 --package <package> --as reviewer --evidence <that path>`. Do not summarize
 your own findings on the assumption someone will expand them; what you return
 is what is recorded. Note the trade-off this creates and say so if it matters:
 the party being reviewed is the party writing the record. What makes that
 detectable is that the transcript is committed and covered by the audit chain,
 not that it is impossible to alter. Whenever a Skill you follow calls for
-running the XForge CLI directly, invoke it as `npx --no-install xforge
+running the XForge CLI directly, invoke it as `xforge
 <command> ...` — a project-local install is not on this shell's `PATH`.

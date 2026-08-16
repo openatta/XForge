@@ -1,12 +1,12 @@
 ---
 name: xforge-design
 description: Produce a governed technical design for a Solid or Major Change, including alternatives, failure boundaries, and verification; use for a ready Design Action after Proposal, Specs, and required Clarifications are satisfied.
-allowed-tools: Read, Grep, Glob, Write, Edit, Bash(npx:*)
+allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 ---
 
 # Invariants
 
-- Run `npx --no-install xforge state --change <id>`, consume only the current-revision ready Design Action, and reread every Action input.
+- Run `xforge state --change <id>`, consume only the current-revision ready Design Action, and reread every Action input.
 - Design explains HOW, decisions, and boundaries. It does not repeat Proposal or become a file-by-file task list or persistent plan.
 - Constitution, Rules, current architecture, and Specs constrain the design; summarize their implications instead of copying them mechanically.
 
@@ -20,7 +20,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(npx:*)
 1. Model the current system, target behavior, integration points, data, and interface boundaries.
 2. Record major decisions, viable alternatives and rejection reasons, failure modes, compatibility, migration, and rollback.
 3. Follow the current Action's Design artifact `instruction` and outline exactly — Solid vs Major depth (e.g. Major's trust boundaries, risks and mitigations, test strategy, rollout, monitoring, stop signals, owner, and parallel boundaries) is already expressed there. Do not add or omit sections the Action does not define.
-4. Refresh State and run `npx --no-install xforge check --change <id>`; fix only Design-authorized structural issues. Stop for human Approval and invoke only a typed ready Transition after the receipt is satisfied.
+4. Refresh State and run `xforge check --change <id>`; fix only Design-authorized structural issues. Stop for human Approval and invoke only a typed ready Transition after the receipt is satisfied.
 
 # Evidence
 

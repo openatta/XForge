@@ -1,12 +1,12 @@
 ---
 name: xforge-status
 description: Explain xforge state as readable progress — either the portfolio of in-flight Changes and the Stage each sits at, or one Change in depth; use when the user asks what is in flight, what is done, why work is blocked, which packages remain, whether Evidence is current, or whether Verify/Archive is ready.
-allowed-tools: Read, Grep, Glob, Bash(npx:*)
+allowed-tools: Read, Grep, Glob, Bash(xforge:*)
 ---
 
 # Invariants
 
-- Run `npx --no-install xforge state` for the portfolio view, and `npx --no-install xforge state --change <id>` for one Change in depth. State is the only progress source of truth.
+- Run `xforge state` for the portfolio view, and `xforge state --change <id>` for one Change in depth. State is the only progress source of truth.
 - Read the in-flight list from `activeChanges`; it already excludes archived Changes. Never rebuild that list by walking `xforge/changes` yourself, and never infer a Stage from directory contents, commit messages, or chat memory — the Stage of record is the one State reports.
 - A Change listed with a null Flow or Stage failed to resolve. **Report it as unresolved rather than omitting it** — a Change that will not load is the one most likely to need attention, and a listing that silently drops it is worse than one that shows a gap.
 - Remain strictly read-only; do not maintain a second progress ledger or continue/fix/check off work incidentally.

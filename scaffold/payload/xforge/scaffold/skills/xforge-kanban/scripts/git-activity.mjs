@@ -33,16 +33,26 @@ function fail(message) {
 // single implicit root module when XForge is unavailable or this is not an XForge project,
 // so the script keeps working standalone and single-module output stays unchanged.
 function resolveModules(root) {
-  try {
-    const output = execFileSync('npx', ['--no-install', 'xforge', 'state'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
-    const parsed = JSON.parse(output);
-    const modules = parsed?.data?.project?.modules;
-    if (Array.isArray(modules) && modules.length > 0 && modules.every((module) => module && typeof module.id === 'string' && typeof module.path === 'string')) {
-      return { modules: modules.map((module) => ({ id: module.id, path: module.path, kind: module.kind ?? null })), source: 'xforge-state' };
+  // Try the globally installed CLI first, then the project-local pin: a project may use
+  // either, and `npx --no-install` is the only way to reach a binary that lives in
+  // node_modules/.bin rather than on PATH.
+  const invocations = [
+    ['xforge', ['state']],
+    ['npx', ['--no-install', 'xforge', 'state']],
+  ];
+  for (const [command, args] of invocations) {
+    try {
+      const output = execFileSync(command, args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+      const parsed = JSON.parse(output);
+      const modules = parsed?.data?.project?.modules;
+      if (Array.isArray(modules) && modules.length > 0 && modules.every((module) => module && typeof module.id === 'string' && typeof module.path === 'string')) {
+        return { modules: modules.map((module) => ({ id: module.id, path: module.path, kind: module.kind ?? null })), source: 'xforge-state' };
+      }
+    } catch {
+      // This invocation form is unavailable — try the next one.
     }
-  } catch {
-    // XForge CLI unavailable, not an XForge-managed project, or unparsable output — degrade.
   }
+  // XForge CLI unavailable, not an XForge-managed project, or unparsable output — degrade.
   return { modules: [{ id: 'root', path: '.', kind: null }], source: 'implicit-root' };
 }
 

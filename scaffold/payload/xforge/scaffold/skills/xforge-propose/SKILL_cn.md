@@ -1,12 +1,12 @@
 ---
 name: xforge-propose
 description: 创建受治理的 Change，并仅生成 Propose Stage 允许的 change.yaml、proposal 与 delta Specs；用于用户要求把已足够明确的想法、缺陷或功能正式规格化，但尚未授权实现时。
-allowed-tools: Read, Grep, Glob, Write, Edit, Bash(npx:*)
+allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 ---
 
 # 不变量
 
-- 先运行 `npx --no-install xforge state`，从 State 读取 Changes 路径、Flows、policy、Constitution、Rules、Specs 和项目模块。
+- 先运行 `xforge state`，从 State 读取 Changes 路径、Flows、policy、Constitution、Rules、Specs 和项目模块。
 - 只消费 `xforge-propose` 对应的 ready Action；每次写入前重读 Action inputs，写入后刷新 State。
 - Flow 表达交付侧重点与治理量级：Quick 强调快速，限低风险、单模块、易回滚且无关键影响；Solid 强调稳定，适合常规产品与工程变更；Major 强调重大影响治理，用于高风险、跨系统或关键影响变更。不确定时升级或请求决定。
 - 三个 Flow 都要回答 Constitution 台账，只是时点不同：Solid 与 Major 在 Check（实现之前）回答，Quick 没有 Check Stage，改在 Verify 针对最终 diff 回答。选择 Quick 不会跳过 Constitution，只会改变提问的时点。
@@ -23,7 +23,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(npx:*)
 0. **想法仍然模糊时，先把它收敛，再创建任何东西。** 读代码、Spec 与约束，直到能陈述一个目标、它的边界、以及"做完"的判据。**调查本身不需要 Skill**，用普通的阅读与检索即可。这一步欠用户的是一个结论：要么给出一个有边界的目标，要么明确报告这个想法尚不可分离成一个目标。**不要为一个还界定不了的想法创建 Change**——一个没有边界的 Change，拆解它的代价远高于问一个问题的代价。
 1. 解析唯一目标；若要新建 Change，检查是否已有覆盖同一问题的 active Change。
 2. 将 `flow` 设为 State 解析出的 manifest 默认值，除非用户明确要求使用其他 Flow。仅当 classification（risk/security/privacy/publicApi/dataMigration）与该默认值明显冲突时才可主动偏离——此时应升级或请求决定，而不是静默改写。完整填写 classification、modules 和有边界的项目相对 path scope；仅当 Flow 被覆盖或被升级处理时才在 Proposal 中说明 Flow 选择，单纯继承默认值时无需说明。
-3. 创建最小 `change.yaml` 后运行 `npx --no-install xforge state --change <id>`；该文件使用下列无包装对象结构，字段名和层级必须保持一致，再按项目事实替换值：
+3. 创建最小 `change.yaml` 后运行 `xforge state --change <id>`；该文件使用下列无包装对象结构，字段名和层级必须保持一致，再按项目事实替换值：
 
    ```yaml
    flow: solid
@@ -41,7 +41,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(npx:*)
    只处理 State 返回给 Propose 的 ready Artifact/Action；Schema 诊断未清零前不得继续写 Artifact。
 4. 从磁盘重读依赖，写 Why、Scope、Non-goals、Actors、Success criteria，并生成带稳定 Requirement ID 的成功、失败、边界和兼容性场景。不可把来源未声明的精确契约猜测写成规范事实；已有不可修改的验收测试定义了字段、输出形状或退出行为时必须逐项保持一致，测试与需求冲突则作为材料性歧义停止。
 5. 每完成一个 Artifact 都刷新 State；当下一 Action 属于 Clarify、Design、Apply 或其他 Skill 时停止。
-6. 运行 `npx --no-install xforge check --change <id>`，修复本 Stage 的结构问题，不把提示性文本称为已通过 Gate；只在 CLI 返回 ready Transition 时调用 `npx --no-install xforge transition --change <id> --to <stage>`。
+6. 运行 `xforge check --change <id>`，修复本 Stage 的结构问题，不把提示性文本称为已通过 Gate；只在 CLI 返回 ready Transition 时调用 `xforge transition --change <id> --to <stage>`。
 
 # 证据
 

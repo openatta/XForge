@@ -1,12 +1,12 @@
 ---
 name: xforge-status
 description: 把 xforge state 的机器状态解释为可读进度——既可以是"在飞的 Change 有哪些、各自到了哪个 Stage"的全局视图，也可以是单个 Change 的详情；用于用户询问在飞情况、做到哪、为何阻塞、剩余工作包、Evidence 是否当前或能否 Verify/Archive 时。
-allowed-tools: Read, Grep, Glob, Bash(npx:*)
+allowed-tools: Read, Grep, Glob, Bash(xforge:*)
 ---
 
 # 不变量
 
-- 全局视图运行 `npx --no-install xforge state`；单个 Change 详情运行 `npx --no-install xforge state --change <id>`。State 是唯一状态事实源。
+- 全局视图运行 `xforge state`；单个 Change 详情运行 `xforge state --change <id>`。State 是唯一状态事实源。
 - 在飞清单从 `activeChanges` 读取，它已排除归档 Change。**不得自己遍历 `xforge/changes` 重建这份清单**，也不得从目录内容、提交信息或会话记忆推断 Stage——记录在案的 Stage 只有 State 报告的那个。
 - Flow 或 Stage 为 null 的 Change 表示解析失败，**必须作为"无法解析"报出来，不得省略**——加载不了的 Change 恰恰最需要被注意，静默丢掉它比露出一个缺口更糟。
 - 严格只读，不维护第二份进度，不顺便继续、修复或勾选任务。

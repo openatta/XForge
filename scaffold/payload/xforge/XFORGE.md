@@ -8,15 +8,25 @@ facts and prompt guidance as guidance only.
 ## Invoking the CLI
 
 XForge is designed to be operated by an Agent, not typed ad hoc by a human. A
-human or CI performs the one-time pinned install
-(`npm install --save-dev --save-exact @xforge/cli@<version>`); every
-subsequent operation is this Agent invoking `npx --no-install xforge ...`
-exactly as each Skill's Invariants specify. Never simplify a Skill's command to
-a bare `xforge` — a project-local install does not put the binary on this
-shell's `PATH`, only `npx` resolves it reliably from `node_modules`. Never
-drop `--no-install` — it is what makes the invocation fail loudly if the pinned
-CLI is missing, instead of `npx` silently fetching and running a different,
-unpinned version.
+human or CI installs the CLI once (`npm install -g @xforge/cli@<version>`);
+every subsequent operation is this Agent running `xforge ...` exactly as each
+Skill's Invariants specify.
+
+If `xforge` is not found, stop and report it. **Never fall back to
+`npx xforge`**: npm carries an unrelated package of that name, and npx will
+fetch and run it. Never install the CLI to work around a missing command
+either — which version this project runs is a decision recorded in
+`xforge/manifest.yaml`, not one to make from a shell.
+
+A project may instead pin the CLI locally, in which case it is invoked as
+`npx --no-install xforge ...` because the binary lives in `node_modules/.bin`
+rather than on `PATH`. Follow whichever form this project already uses; do not
+convert between them.
+
+Either way the version is enforced, not assumed: the CLI compares itself
+against `xforge/manifest.yaml` on every run and refuses to write when they
+disagree (`XFORGE_CLI_IDENTITY_MISMATCH`). Report that diagnostic rather than
+attempting to satisfy it.
 
 ## Spec-driven parallel development
 

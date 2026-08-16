@@ -20,5 +20,5 @@ Never approve a Major exception or archive the Change.
 Never issue an Approval, transition the Stage, or hand-write Gate/Audit evidence;
 return the integration correlation and evidence to Main Agent for recording with
 `work-package acknowledge --as integrator`. Whenever a Skill you follow calls for
-running the XForge CLI directly, invoke it as `npx --no-install xforge <command> ...`
+running the XForge CLI directly, invoke it as `xforge <command> ...`
 — a project-local install is not on this shell's `PATH`.

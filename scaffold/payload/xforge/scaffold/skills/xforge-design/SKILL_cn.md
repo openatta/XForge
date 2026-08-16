@@ -1,12 +1,12 @@
 ---
 name: xforge-design
 description: 为 Solid 或 Major Change 形成受治理的技术设计、替代方案、失败与验证边界；用于 State 返回 ready Design Action，且 Proposal/Specs 与所需 Clarifications 已满足时。
-allowed-tools: Read, Grep, Glob, Write, Edit, Bash(npx:*)
+allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 ---
 
 # 不变量
 
-- 先运行 `npx --no-install xforge state --change <id>`，只消费当前 revision 的 ready Design Action，并重读全部 Action inputs。
+- 先运行 `xforge state --change <id>`，只消费当前 revision 的 ready Design Action，并重读全部 Action inputs。
 - Design 解释 HOW、决策与边界，不重复 Proposal，不退化为逐文件任务列表或长期 Plan。
 - Constitution、Rules、现有架构和 Specs 是约束；不把约束原文机械复制进设计。
 
@@ -20,7 +20,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(npx:*)
 1. 建模当前系统、目标行为、集成点、数据与接口边界。
 2. 记录主要决策、可行替代方案及拒绝理由，覆盖失败模式、兼容性、迁移和回滚。
 3. 严格按照当前 Action 的 Design artifact `instruction` 与 outline 执行——Solid 与 Major 的深度差异（例如 Major 的 trust boundaries、风险与缓解、测试策略、rollout、monitoring、stop signals、owner 和并行边界）已经在其中表达，不要补充或省略 Action 未定义的章节。
-4. 刷新 State 并运行 `npx --no-install xforge check --change <id>`；只修复 Design 权限内的结构问题。若下一步需要 Approval，停止并请求人类决定；receipt 满足后才调用 typed nextAction 中的 Transition。
+4. 刷新 State 并运行 `xforge check --change <id>`；只修复 Design 权限内的结构问题。若下一步需要 Approval，停止并请求人类决定；receipt 满足后才调用 typed nextAction 中的 Transition。
 
 # 证据
 

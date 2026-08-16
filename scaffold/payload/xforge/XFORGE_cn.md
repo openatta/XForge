@@ -7,13 +7,22 @@
 
 ## 调用 CLI
 
-XForge 的设计是由 Agent 操作，而不是由人临时敲命令。人或 CI 只做一次性的固定
-版本安装（`npm install --save-dev --save-exact @xforge/cli@<version>`）；此后
-每一次操作都是本 Agent 按各 Skill 的 Invariants 所写，调用
-`npx --no-install xforge ...`。**绝不要**把 Skill 里的命令简化成裸 `xforge`——
-项目本地安装不会把可执行文件放进当前 shell 的 `PATH`，只有 `npx` 才能可靠地从
-`node_modules` 解析到它。**绝不要**去掉 `--no-install`——正是它让"固定版本的 CLI
-不存在"这件事立刻大声失败，而不是让 `npx` 静默拉取并运行另一个未固定的版本。
+XForge 的设计是由 Agent 操作，而不是由人临时敲命令。人或 CI 只做一次性安装
+（`npm install -g @xforge/cli@<version>`）；此后每一次操作都是本 Agent 按各
+Skill 的 Invariants 所写，运行 `xforge ...`。
+
+若找不到 `xforge` 命令，停下并报告。**绝不要**退回到 `npx xforge`——npm 上有一
+个同名的无关包，npx 会把它拉下来运行。也不要为了绕过"命令不存在"而自行安装
+CLI：本项目运行哪个版本，是记录在 `xforge/manifest.yaml` 里的决定，不是在 shell
+里临时做的决定。
+
+项目也可以改为在本地固定 CLI 版本，此时调用形式是
+`npx --no-install xforge ...`，因为可执行文件在 `node_modules/.bin` 而不在
+`PATH` 上。沿用本项目已经在用的那一种形式，不要在两者之间互相改写。
+
+无论哪种形式，版本都是被强制而不是被假定的：CLI 每次运行都会与
+`xforge/manifest.yaml` 比对，不一致时拒绝写入（`XFORGE_CLI_IDENTITY_MISMATCH`）。
+遇到该诊断应如实报告，而不是设法把它绕过去。
 
 ## 规格驱动的并行开发
 
