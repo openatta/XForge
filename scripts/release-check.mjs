@@ -1,13 +1,24 @@
 #!/usr/bin/env node
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 
 const requireTag = process.argv.includes('--require-tag');
+/*
+ * Own the cache only when we minted it, exactly as package-smoke.mjs does — a caller that supplies
+ * XFORGE_RELEASE_NPM_CACHE is reusing a warm cache across runs and would not thank us for emptying
+ * it. Removing it on `exit` rather than at the end of the happy path is the point: this script ends
+ * through `fail()` far more often than it reaches the bottom, and every one of those exits used to
+ * leave a populated npm cache behind. Thirty of them had accumulated to most of a gigabyte.
+ */
+const ownsNpmCache = !process.env.XFORGE_RELEASE_NPM_CACHE;
 const npmCache = process.env.XFORGE_RELEASE_NPM_CACHE
   ?? mkdtempSync(path.join(tmpdir(), 'xforge-release-npm-'));
+process.on('exit', () => {
+  if (ownsNpmCache) rmSync(npmCache, { recursive: true, force: true });
+});
 for (const argument of process.argv.slice(2)) {
   if (argument !== '--require-tag') fail(`Unknown option: ${argument}`);
 }

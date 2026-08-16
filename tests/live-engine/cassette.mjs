@@ -154,3 +154,47 @@ export function assertCassetteStillApplies(cassette) {
     );
   }
 }
+
+/*
+ * A replay re-signs approvals, so its receipts land at freshly minted UUID filenames. A Constitution
+ * principle that cites an approval receipt and nothing else therefore points at a file the replay
+ * never creates, `constitution-check` refuses the citation — correctly, since a citation nobody can
+ * follow is not evidence — and the replay dies as a Gate failure deep inside Check that reads
+ * exactly like a product defect.
+ *
+ * That hazard was known and written down in this directory's README, and written down was not
+ * enough: nothing acted on it, so it cost a full re-diagnosis every time it recurred. It recurs
+ * because it is not bad luck — for a principle about governance, an approval receipt is the evidence
+ * a Check Agent naturally reaches for, and two consecutive `solid` recordings cited only that.
+ *
+ * So the recording decides it, at record time, for free, and `--replay` refuses up front with the
+ * reason. It is a property of the recording rather than of the scenario: a later run citing a
+ * Requirement id alongside the receipt records as replayable with no code change here.
+ */
+export const APPROVAL_RECEIPT_PATH = /(?:^|\/)approvals\/[^/]+\/[0-9a-f-]{36}\.json$/;
+
+export function unreplayableReason(ledger, file) {
+  for (const principle of ledger?.principles ?? []) {
+    const references = principle?.references ?? [];
+    if (references.length === 0) continue;
+    if (references.every((reference) => APPROVAL_RECEIPT_PATH.test(String(reference)))) {
+      return `${file}: principle "${principle.principle}" cites an approval receipt and nothing else. `
+        + 'A replay mints its own approval UUIDs, so that citation cannot resolve and constitution-check '
+        + 'refuses it. See tests/live-engine/README.md — the fix is to constrain citations in the '
+        + 'xforge-check Skill, which invalidates every cassette, so it belongs with the next Skill change.';
+    }
+  }
+  return null;
+}
+
+/*
+ * Refused here rather than at the Gate, so the cause is one line at the start instead of a Gate
+ * failure fifteen minutes in. Older cassettes carry no such field and replay exactly as before.
+ */
+export function assertCassetteReplayable(cassette) {
+  if (!cassette.unreplayableReason) return;
+  throw new Error(
+    `Cassette "${cassette.scenario}" is record-only and cannot be replayed.\n  ${cassette.unreplayableReason}\n`
+    + 'The recording itself is valid — it captured a real, complete run — so do not re-record to work around this.',
+  );
+}

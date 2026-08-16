@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { parse } from '../../xforge/node_modules/yaml/dist/index.js';
-import { cassetteFiles, cassettesRoot, modelStepFromSubject, scaffoldFingerprint } from './cassette.mjs';
+import { cassetteFiles, cassettesRoot, modelStepFromSubject, scaffoldFingerprint, unreplayableReason as ledgerUnreplayableReason } from './cassette.mjs';
 
 /**
  * Packages a finished live run into a cassette that `run-matrix.mjs --replay` can drive.
@@ -114,7 +114,6 @@ if (steps.length === 0) throw new Error(`No model steps found in ${projectRoot};
  * the scenario, so a later run that cites a Requirement id alongside the receipt records as
  * replayable with no change here.
  */
-const APPROVAL_RECEIPT = /(?:^|\/)approvals\/[^/]+\/[0-9a-f-]{36}\.json$/;
 function unreplayableReason() {
   const touched = new Set(
     git(['log', '--all', '--pretty=format:', '--name-only'], projectRoot)
@@ -128,16 +127,8 @@ function unreplayableReason() {
     try {
       ledger = parse(git(['show', `${commit}:${file}`], projectRoot));
     } catch { continue; }
-    for (const principle of ledger?.principles ?? []) {
-      const references = principle?.references ?? [];
-      if (references.length === 0) continue;
-      if (references.every((reference) => APPROVAL_RECEIPT.test(String(reference)))) {
-        return `${file}: principle "${principle.principle}" cites an approval receipt and nothing else. `
-          + 'A replay mints its own approval UUIDs, so that citation cannot resolve and constitution-check '
-          + 'refuses it. See tests/live-engine/README.md — the fix is to constrain citations in the '
-          + 'xforge-check Skill, which invalidates every cassette, so it belongs with the next Skill change.';
-      }
-    }
+    const reason = ledgerUnreplayableReason(ledger, file);
+    if (reason) return reason;
   }
   return null;
 }

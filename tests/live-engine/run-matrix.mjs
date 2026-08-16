@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { parse } from '../../xforge/node_modules/yaml/dist/index.js';
 import { spawnXforge, runXforgeJson, tryXforgeJson } from './xforge-cli.mjs';
 import { assertLiveEnginePolicy, createLiveEnginePolicy, resetLiveEngineStageAttempts } from './policy.mjs';
-import { assertCassetteStillApplies, readCassette } from './cassette.mjs';
+import { assertCassetteReplayable, assertCassetteStillApplies, readCassette } from './cassette.mjs';
 
 /**
  * Data-driven live-engine matrix runner. For a Flow scenario (quick/solid/major), this reads
@@ -515,12 +515,7 @@ if (replay) {
    * and a Flow is walked, turns what used to be a gate failure deep inside Check into one line
    * naming the cause. Older cassettes carry no such field and are replayed as before.
    */
-  if (replay.unreplayableReason) {
-    throw new Error(
-      `Cassette "${replay.scenario}" is record-only and cannot be replayed.\n  ${replay.unreplayableReason}\n`
-      + 'The recording itself is valid — it captured a real, complete run — so do not re-record to work around this.',
-    );
-  }
+  assertCassetteReplayable(replay);
   assertCassetteStillApplies(replay);
   cassetteRepo = path.join(temporaryRoot, `live-engine-${scenarioName}-cassette`);
   rmSync(cassetteRepo, { recursive: true, force: true });
