@@ -34,7 +34,7 @@ describe('CLI protocol', () => {
     expect(help.json.data.commandHelp.usage).toContain('sync');
     const version = await runCli(root, ['version']);
     expect(version.code).toBe(0);
-    expect(version.json.data).toMatchObject({ name: '@xforge/cli', version: '0.7.10', protocolVersion: '2' });
+    expect(version.json.data).toMatchObject({ name: '@xforge/cli', version: '0.7.11', protocolVersion: '2' });
 
     const result = await runCli(root, ['frobnicate']);
     expect(result.code).toBe(1);
@@ -121,11 +121,11 @@ describe('CLI protocol', () => {
 
     const update = await runCli(root, ['update']);
     expect(update.code, JSON.stringify(update.json.diagnostics)).toBe(0);
-    expect(update.json.changes).toContainEqual(expect.objectContaining({ action: 'modify', path: 'xforge/manifest.yaml', source: 'xforge:declared-version-upgrade:0.7.7->0.7.10' }));
+    expect(update.json.changes).toContainEqual(expect.objectContaining({ action: 'modify', path: 'xforge/manifest.yaml', source: 'xforge:declared-version-upgrade:0.7.7->0.7.11' }));
     const manifest = await yamlFile(root, 'xforge/manifest.yaml');
-    expect(manifest.xforge.version).toBe('0.7.10');
-    expect(manifest.scaffold.version).toBe('0.7.10');
-    expect(manifest.scaffold.source.version).toBe('0.7.10');
+    expect(manifest.xforge.version).toBe('0.7.11');
+    expect(manifest.scaffold.version).toBe('0.7.11');
+    expect(manifest.scaffold.source.version).toBe('0.7.11');
 
     const state = await runCli(root, ['state']);
     expect(state.code).toBe(0);
