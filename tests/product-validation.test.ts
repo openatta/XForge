@@ -74,7 +74,20 @@ describe('XForge product contract', () => {
     expect(await exists(path.join(scaffold, 'payload', 'xforge', 'scaffold', 'agents', 'primary.yaml'))).toBe(false);
     expect(await exists(path.join(scaffold, 'payload', 'xforge', 'scaffold', 'agents', 'tester.yaml'))).toBe(false);
     expect(await readFile(path.join(scaffold, 'payload', 'xforge', 'constitution.md'), 'utf8')).toContain('## Parallel Development');
-    expect(await readFile(path.join(scaffold, 'payload', 'AGENTS.md'), 'utf8')).toContain('work-packages.yaml');
+    /*
+     * The bootstrap text lives in `xforge/XFORGE.md` now, bilingual like every other document the
+     * Agent reads. `AGENTS.md` keeps only a pointer to it, so a repository that already maintains
+     * its own `AGENTS.md` receives four lines rather than thirty-five, and XForge can revise the
+     * bootstrap without editing a file the project owns.
+     */
+    const agents = await readFile(path.join(scaffold, 'payload', 'AGENTS.md'), 'utf8');
+    expect(agents).toContain('xforge/XFORGE.md');
+    expect(agents).not.toContain('work-packages.yaml');
+    for (const variant of ['XFORGE.md', 'XFORGE_cn.md']) {
+      const bootstrap = await readFile(path.join(scaffold, 'payload', 'xforge', variant), 'utf8');
+      expect(bootstrap).toContain('work-packages.yaml');
+      expect(bootstrap).toContain('--no-install');
+    }
   });
 
   it('bundles the exact verified Scaffold inside the npm CLI package', async () => {

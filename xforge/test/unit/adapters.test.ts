@@ -284,10 +284,16 @@ describe('PermissionPolicy projection', () => {
 // P0-4: Claude Code reads CLAUDE.md, not AGENTS.md, and the CLI invocation contract lives only in
 // AGENTS.md.
 describe('Claude memory bootstrap', () => {
-  it('projects a marker-owned CLAUDE.md that imports AGENTS.md', () => {
+  /*
+   * CLAUDE.md used to import AGENTS.md so the two could not fork. Both now point at
+   * xforge/XFORGE.md, which drops a dependency that only held by accident: a Claude-only project
+   * need not have an AGENTS.md, and the import was dangling whenever it did not.
+   */
+  it('projects a marker-owned CLAUDE.md that points at xforge/XFORGE.md, not at AGENTS.md', () => {
     const file = getAdapter('claude').bootstrap().find((item) => item.path === 'CLAUDE.md')!;
     const body = file.content.toString('utf8');
-    expect(body).toContain('@AGENTS.md');
+    expect(body).toContain('xforge/XFORGE.md');
+    expect(body).not.toContain('@AGENTS.md');
     expect(body).toContain('<!-- XFORGE:BEGIN -->');
     expect(body).toContain('<!-- XFORGE:END -->');
     expect(file.fragment).toMatchObject({ format: 'markers' });

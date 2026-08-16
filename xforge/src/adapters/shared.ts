@@ -145,24 +145,24 @@ export function rulePaths(rule: RuleResource): string[] {
   return normalizeRule(rule).paths;
 }
 
-export const BOOTSTRAP_BODY = `# XForge bootstrap\n\nBefore project work, read \`xforge/manifest.yaml\`, \`xforge/constitution.md\`, and the active Change under the resolved logical Changes path. Use installed \`xforge-*\` Skills and treat only matching CLI/Gate evidence as enforced facts.\n`;
+export const BOOTSTRAP_BODY = `# XForge bootstrap\n\nBefore project work, read \`xforge/XFORGE.md\`, then \`xforge/manifest.yaml\`, \`xforge/constitution.md\`, and the active Change under the resolved logical Changes path. Use installed \`xforge-*\` Skills and treat only matching CLI/Gate evidence as enforced facts.\n`;
 
 /**
- * Claude Code loads `CLAUDE.md`, never `AGENTS.md`. The CLI invocation contract
- * (`npx --no-install xforge`) and the parallel-development policy live in `AGENTS.md`, so Claude
- * users would otherwise never see them. The documented fix is a `CLAUDE.md` that imports
- * `AGENTS.md`, which keeps both tools on one source instead of forking the text.
+ * Claude Code loads `CLAUDE.md`, never `AGENTS.md`, so its block used to import `AGENTS.md` to
+ * avoid forking the text. Both now point at `xforge/XFORGE.md` instead, which removes a dependency
+ * that only held by accident: a project using Claude alone need not have an `AGENTS.md` at all, and
+ * that import was dangling whenever it did not.
+ *
+ * A plain path, not an `@` import: `@file` is Claude-specific, and the same sentence has to work in
+ * `AGENTS.md`, which Codex, Cursor and Copilot read literally.
  */
 export const CLAUDE_MEMORY_BEGIN = '<!-- XFORGE:BEGIN -->';
 export const CLAUDE_MEMORY_END = '<!-- XFORGE:END -->';
 export const CLAUDE_MEMORY_BODY = [
-  '# XForge',
+  '## XForge',
   '',
-  'The XForge project bootstrap, the CLI invocation contract, and the spec-driven parallel',
-  'development policy are maintained in one place and imported here:',
+  'Before project work, read `xforge/XFORGE.md`. It carries the project bootstrap,',
+  'the CLI invocation contract, and the spec-driven parallel development policy.',
   '',
-  '@AGENTS.md',
-  '',
-  'Claude Code reads `CLAUDE.md`, not `AGENTS.md`; this import keeps both on the same source.',
   'Per-topic XForge guidance is installed under `.claude/rules/`.',
 ].join('\n');

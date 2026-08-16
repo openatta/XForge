@@ -7,6 +7,7 @@ import { loadBundledScaffold, type BundledScaffold } from '../core/bundled-scaff
 import { XForgeError, diagnostic } from '../core/errors.js';
 import { atomicWrite } from '../core/files.js';
 import { sha256 } from '../core/hash.js';
+import { localizedVariant } from '../core/language.js';
 import { loadProject } from '../core/project-loader.js';
 import { safeResolve } from '../core/path-safety.js';
 import { applyManagedTransaction } from '../install/writer.js';
@@ -29,6 +30,15 @@ async function exists(filePath: string): Promise<boolean> {
   try { await lstat(filePath); return true; } catch { return false; }
 }
 
+/**
+ * Documents the Agent reads that live at the `xforge/` root, shipped as an English default plus an
+ * optional `_cn` variant. Skills already collapse to one file per project at install time; these
+ * did not, so a zh-CN project got both and the canonical name held the English text — a reader
+ * opening `xforge/constitution.md` reasonably concluded there was no Chinese version, and an edit
+ * to the file they were looking at did nothing.
+ */
+const COLLAPSED_DOCUMENTS = ['xforge/constitution.md', 'xforge/XFORGE.md'];
+
 function pinBundleLanguage(bundle: BundledScaffold, language: ScaffoldLanguage): BundledScaffold {
   const files = new Map(bundle.files);
   for (const relative of ['xforge/manifest.yaml', 'xforge/lock.yaml']) {
@@ -40,6 +50,18 @@ function pinBundleLanguage(bundle: BundledScaffold, language: ScaffoldLanguage):
       throw new XForgeError(diagnostic('XFORGE_BUNDLED_SCAFFOLD_INVALID', `Bundled Scaffold cannot pin language in ${relative}.`, relative));
     }
     files.set(relative, Buffer.from(localized));
+  }
+  /*
+   * Collapse to exactly one file under the canonical name, the way `install` already does for
+   * Skills. The `_cn` source never lands in a project: a project has one language, so a second
+   * copy in the other one is a file nobody maintains and everybody has to reason about.
+   */
+  for (const relative of COLLAPSED_DOCUMENTS) {
+    const localizedRelative = localizedVariant(relative);
+    const localized = files.get(localizedRelative);
+    if (!localized) continue;
+    if (language === 'zh-CN') files.set(relative, localized);
+    files.delete(localizedRelative);
   }
   return { ...bundle, files };
 }

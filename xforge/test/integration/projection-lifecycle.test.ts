@@ -136,36 +136,37 @@ describe('projection lifecycle v2', () => {
     expect((await yamlFile<any>(root, 'xforge/lock.yaml')).xforge.version).toBe('0.7.10');
   });
 
-  it('seeds a Constitution locale variant missing from a project initialized on an older CLI, without touching an existing one', async () => {
+  /*
+   * `init` seeds the `xforge/`-root documents once and target projection never revisits them, so a
+   * project initialized on an older CLI never gains a document a newer CLI now bundles. `XFORGE.md`
+   * is exactly that case rather than a simulation of one.
+   *
+   * The seed lands under the canonical name in the project's own language. It used to seed the
+   * `_cn` variant alongside, which would now re-create on every update the two-file layout `init`
+   * collapses — an English `constitution.md` sitting next to the Chinese one a zh-CN project is
+   * actually reading.
+   */
+  it('seeds a root document missing from a project initialized on an older CLI, in the project language, without touching an existing one', async () => {
     const root = await fixture();
-    await rm(path.join(root, 'xforge', 'constitution_cn.md'));
+    await rm(path.join(root, 'xforge', 'XFORGE.md'));
     expect((await runCli(root, ['install', '--target', 'codex'])).code).toBe(0);
 
     const dry = await runCli(root, ['update', '--dry-run']);
     expect(dry.code).toBe(0);
-    expect(dry.json.changes).toContainEqual(expect.objectContaining({ action: 'create', path: 'xforge/constitution_cn.md' }));
-    expect(await exists(path.join(root, 'xforge', 'constitution_cn.md'))).toBe(false);
+    expect(dry.json.changes).toContainEqual(expect.objectContaining({ action: 'create', path: 'xforge/XFORGE.md' }));
+    expect(await exists(path.join(root, 'xforge', 'XFORGE.md'))).toBe(false);
 
     const result = await runCli(root, ['update']);
     expect(result.code).toBe(0);
-    expect(result.json.changes).toContainEqual(expect.objectContaining({ action: 'create', path: 'xforge/constitution_cn.md' }));
-    expect(await exists(path.join(root, 'xforge', 'constitution_cn.md'))).toBe(true);
+    expect(result.json.changes).toContainEqual(expect.objectContaining({ action: 'create', path: 'xforge/XFORGE.md' }));
+    expect(await readFile(path.join(root, 'xforge', 'XFORGE.md'), 'utf8')).toContain('# XForge project bootstrap');
 
-    const customized = [
-      '---', 'version: 1.1.0', 'ratified: 2026-08-08', 'lastAmended: 2026-08-08', '---', '',
-      '# 项目宪法（项目定制）', '',
-      '## 使命与边界', '', '定制内容。', '',
-      '## 架构原则', '', '定制内容。', '',
-      '## 安全、隐私与合规', '', '定制内容。', '',
-      '## 质量与可观测性', '', '定制内容。', '',
-      '## 兼容性与版本管理', '', '定制内容。', '',
-      '## 治理', '', '定制内容。', '',
-    ].join('\n');
-    await write(root, 'xforge/constitution_cn.md', customized);
+    const customized = '# Our own bootstrap\n\nRead the team handbook first.\n';
+    await write(root, 'xforge/XFORGE.md', customized);
     const again = await runCli(root, ['update']);
     expect(again.code).toBe(0);
-    expect(again.json.changes).not.toContainEqual(expect.objectContaining({ path: 'xforge/constitution_cn.md' }));
-    expect(await readFile(path.join(root, 'xforge', 'constitution_cn.md'), 'utf8')).toBe(customized);
+    expect(again.json.changes).not.toContainEqual(expect.objectContaining({ path: 'xforge/XFORGE.md' }));
+    expect(await readFile(path.join(root, 'xforge', 'XFORGE.md'), 'utf8')).toBe(customized);
   });
 
   it('uses update to prune a Target removed from the Manifest', async () => {

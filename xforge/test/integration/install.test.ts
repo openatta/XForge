@@ -225,7 +225,7 @@ describe('partially owned host configuration', () => {
 
   // P0-4: Claude Code loads CLAUDE.md, never AGENTS.md, so the `npx --no-install` invocation
   // contract never reached Claude users.
-  it('merges an XForge block into an existing CLAUDE.md that imports AGENTS.md', async () => {
+  it('merges an XForge block into an existing CLAUDE.md, pointing at xforge/XFORGE.md', async () => {
     const root = await fixture();
     await write(root, 'CLAUDE.md', '# Our project\n\nRun `make dev` first.\n');
     expect((await runCli(root, ['install', '--target', 'claude'])).code).toBe(0);
@@ -233,13 +233,14 @@ describe('partially owned host configuration', () => {
     const memory = await readFile(path.join(root, 'CLAUDE.md'), 'utf8');
     expect(memory).toContain('# Our project');
     expect(memory).toContain('Run `make dev` first.');
-    expect(memory).toContain('@AGENTS.md');
-    expect(memory.indexOf('# Our project')).toBeLessThan(memory.indexOf('@AGENTS.md'));
+    expect(memory).toContain('xforge/XFORGE.md');
+    expect(memory).not.toContain('@AGENTS.md');
+    expect(memory.indexOf('# Our project')).toBeLessThan(memory.indexOf('xforge/XFORGE.md'));
   });
 
   it('creates CLAUDE.md from scratch when the repository has none', async () => {
     const root = await fixture();
     expect((await runCli(root, ['install', '--target', 'claude'])).code).toBe(0);
-    expect(await readFile(path.join(root, 'CLAUDE.md'), 'utf8')).toContain('@AGENTS.md');
+    expect(await readFile(path.join(root, 'CLAUDE.md'), 'utf8')).toContain('xforge/XFORGE.md');
   });
 });

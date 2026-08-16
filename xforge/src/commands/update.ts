@@ -15,28 +15,30 @@ async function exists(filePath: string): Promise<boolean> {
 }
 
 /**
- * `xforge init` seeds xforge/constitution.md (+ constitution_cn.md, once a project's language
- * is zh-CN) once, from whatever the pinned CLI bundled at the time. A project that initialized
- * on an older CLI never gets a localized variant a newer CLI now bundles, and update/sync's
- * target-projection logic never looks at xforge/-root files to notice. This adds exactly that
- * one missing-file catch-up, seeding only files that do not exist yet — an already-customized
+ * `xforge init` seeds the `xforge/`-root Agent documents once, from whatever the pinned CLI bundled
+ * at the time, and update/sync's target-projection logic never looks at those files afterwards. A
+ * project initialized on an older CLI therefore never gains a document a newer CLI now bundles.
+ * This is exactly that catch-up: it seeds only files that do not exist, so an already-customized
  * Constitution is never touched.
+ *
+ * It seeds the canonical name only. Seeding `_cn` alongside would re-create the two-file layout
+ * `init` now collapses, and would do it on every update — putting an English `constitution.md`
+ * next to the Chinese one a zh-CN project is actually reading, which is the confusion the collapse
+ * exists to remove. A project that already has the legacy pair keeps it: both names exist, so
+ * nothing here is missing and nothing is written.
  */
-async function seedMissingConstitutionFiles(project: ProjectContext, dryRun: boolean): Promise<FileChange[]> {
-  const relative = 'xforge/constitution.md';
-  const localized = localizedVariant(relative);
-  const missing: string[] = [];
-  for (const candidate of [relative, localized]) {
-    if (!await exists(path.join(project.root, ...candidate.split('/')))) missing.push(candidate);
-  }
-  if (missing.length === 0) return [];
+async function seedMissingRootDocuments(project: ProjectContext, dryRun: boolean): Promise<FileChange[]> {
+  const language = project.manifest.scaffold?.language;
   const bundle = await loadBundledScaffold();
   const changes: FileChange[] = [];
-  for (const candidate of missing) {
-    const content = bundle.files.get(candidate);
+  for (const relative of ['xforge/constitution.md', 'xforge/XFORGE.md']) {
+    if (await exists(path.join(project.root, ...relative.split('/')))) continue;
+    /* A zh-CN project reads the canonical name, so the canonical name has to receive zh-CN text. */
+    const source = language === 'zh-CN' ? localizedVariant(relative) : relative;
+    const content = bundle.files.get(source) ?? bundle.files.get(relative);
     if (!content) continue;
-    if (!dryRun) await atomicWrite(project.root, candidate, content);
-    changes.push({ action: 'create', path: candidate, digest: sha256(content), source: `npm:${bundle.package}@${bundle.version}:scaffold` });
+    if (!dryRun) await atomicWrite(project.root, relative, content);
+    changes.push({ action: 'create', path: relative, digest: sha256(content), source: `npm:${bundle.package}@${bundle.version}:scaffold` });
   }
   return changes;
 }
@@ -68,6 +70,6 @@ export async function executeUpdate(project: ProjectContext, options: { target?:
   const versionChanges = await reconcileDeclaredCliVersion(project, options.dryRun);
   const result = await executeProjection(project, 'update', options);
   if (result.diagnostics.some((item) => item.severity === 'error')) return { ...result, changes: [...versionChanges, ...result.changes] };
-  const seeded = await seedMissingConstitutionFiles(project, options.dryRun);
+  const seeded = await seedMissingRootDocuments(project, options.dryRun);
   return { ...result, changes: [...versionChanges, ...seeded, ...result.changes] };
 }

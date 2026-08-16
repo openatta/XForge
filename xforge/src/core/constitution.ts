@@ -25,9 +25,16 @@ const REQUIRED_SECTIONS_ZH = [
 ];
 
 /**
- * Like Skills, the Constitution ships an English default and an optional `_cn` variant; unlike
- * Skills it has no per-target projection step, so the locale-appropriate file is selected here,
- * at read time, rather than at `xforge install`/`sync`.
+ * `init` now collapses the Constitution to one file per project, the way Skills already installed:
+ * a zh-CN project gets Chinese text under the canonical `xforge/constitution.md`, and no `_cn`
+ * file at all. Language therefore no longer selects a *file* — it selects which section headings
+ * this file is required to carry.
+ *
+ * The `_cn` lookup stays for projects initialized before that change, which have both files and a
+ * Chinese Constitution only under the `_cn` name. Reading the canonical file for them would
+ * silently swap a customized Chinese Constitution for the English default it sits beside, so the
+ * legacy layout keeps working rather than being migrated out from under a project that may have
+ * edited it.
  */
 export async function readConstitution(root: string, language?: ScaffoldLanguage): Promise<{ constitution: Constitution; diagnostics: Diagnostic[] }> {
   const defaultRelative = 'xforge/constitution.md';
@@ -37,10 +44,9 @@ export async function readConstitution(root: string, language?: ScaffoldLanguage
     try {
       await readFile(path.join(root, ...localizedRelative.split('/')), 'utf8');
       relative = localizedRelative;
-    } catch { /* no zh-CN variant present; fall back to the default */ }
+    } catch { /* collapsed layout: the canonical file already holds the zh-CN text */ }
   }
   const filePath = path.join(root, ...relative.split('/'));
-  const requiredSections = relative === localizedRelative ? REQUIRED_SECTIONS_ZH : REQUIRED_SECTIONS_EN;
   let source: string;
   try {
     source = await readFile(filePath, 'utf8');
@@ -81,6 +87,21 @@ export async function readConstitution(root: string, language?: ScaffoldLanguage
     content: source,
     path: relative,
   };
+  /*
+   * Which heading set to require is decided by the document, not by the Manifest's language. The
+   * filename used to answer this — `constitution.md` meant English, `_cn` meant Chinese — and the
+   * collapse removed that signal without removing the question.
+   *
+   * Trusting the Manifest instead would fail a project that set `language: zh-CN` while keeping a
+   * complete English Constitution: every principle is present and answerable, so reporting them as
+   * missing is friction without safety. Preferring the declared language keeps its error message
+   * when neither set matches, which is the case actually worth reporting.
+   */
+  const declared = language === 'zh-CN' ? REQUIRED_SECTIONS_ZH : REQUIRED_SECTIONS_EN;
+  const other = declared === REQUIRED_SECTIONS_ZH ? REQUIRED_SECTIONS_EN : REQUIRED_SECTIONS_ZH;
+  const satisfies = (sections: readonly string[]): boolean => sections.every((section) => source.includes(`## ${section}`));
+  const requiredSections = satisfies(declared) || !satisfies(other) ? declared : other;
+
   const diagnostics: Diagnostic[] = [];
   if (!/^\d+\.\d+\.\d+$/.test(constitution.version)) {
     diagnostics.push(diagnostic('XFORGE_CONSTITUTION_VERSION_INVALID', 'Constitution version must be semantic MAJOR.MINOR.PATCH.', relative));

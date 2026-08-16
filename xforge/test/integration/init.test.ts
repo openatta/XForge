@@ -73,6 +73,28 @@ describe('npm-bundled project initialization', () => {
     expect(installedWorker).toContain('只执行一个已分配的 XForge 工作包');
   });
 
+  /*
+   * The `xforge/`-root documents an Agent reads collapse to one file per project, the way Skills
+   * already installed. They used to land as a pair, with the canonical name holding English text
+   * even in a zh-CN project — so a reader opening `xforge/constitution.md` reasonably concluded
+   * there was no Chinese version, and editing the file in front of them changed nothing.
+   */
+  it('collapses the xforge-root documents to one file in the project language', async () => {
+    const chinese = await emptyProject();
+    expect((await runCli(chinese, ['init', '--language', 'zh-CN'])).code).toBe(0);
+    for (const [relative, heading] of [['constitution.md', '# 项目宪法'], ['XFORGE.md', '# XForge 项目引导']] as const) {
+      expect(await readFile(path.join(chinese, 'xforge', relative), 'utf8')).toContain(heading);
+      expect(await exists(path.join(chinese, 'xforge', relative.replace('.md', '_cn.md')))).toBe(false);
+    }
+
+    const english = await emptyProject();
+    expect((await runCli(english, ['init', '--language', 'en'])).code).toBe(0);
+    for (const [relative, heading] of [['constitution.md', '# Project Constitution'], ['XFORGE.md', '# XForge project bootstrap']] as const) {
+      expect(await readFile(path.join(english, 'xforge', relative), 'utf8')).toContain(heading);
+      expect(await exists(path.join(english, 'xforge', relative.replace('.md', '_cn.md')))).toBe(false);
+    }
+  });
+
   it('requires an explicit choice when locale detection is unavailable non-interactively', async () => {
     const root = await emptyProject();
     const result = await runCli(root, ['init'], { XFORGE_LANGUAGE: '', LC_ALL: '', LC_MESSAGES: '', LANG: 'C' });
@@ -118,7 +140,9 @@ describe('AGENTS.md marker-block merge', () => {
     expect(written).toBe(await bundledAgents());
     expect(written).toContain(BEGIN);
     expect(written).toContain(END);
-    expect(written).toContain('work-packages.yaml');
+    /* The block is a pointer now; the bootstrap text it used to inline lives in xforge/XFORGE.md. */
+    expect(written).toContain('xforge/XFORGE.md');
+    expect(await readFile(path.join(root, 'xforge', 'XFORGE.md'), 'utf8')).toContain('work-packages.yaml');
   });
 
   it('preserves an existing markerless AGENTS.md verbatim and appends the managed block', async () => {
