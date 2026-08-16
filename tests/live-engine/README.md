@@ -217,23 +217,23 @@ of the Scaffold it was made against, and replaying against a changed Scaffold is
 **refused**, with the re-record commands printed. Change a Skill, Flow, Gate,
 Rule or policy, and you owe a live run — enforced rather than remembered.
 
-**Known limitation — `solid-rework` records but does not replay.** Replay
-re-signs approvals, so each replayed receipt lands at a fresh UUID filename.
-When a Check Agent cites an approval receipt by that filename as its evidence
-for the Constitution's Governance principle — which the `solid-rework` Agent
-did on two consecutive live runs, because a reworked run has more approvals in
-view by its second Check — the citation resolves during the live run and cannot
-resolve during replay, and `constitution-check` fails the Stage it had passed.
-The recording is still a faithful record of a correct run; it is the replay that
-cannot reproduce it. `quick`, `solid` and `major` are unaffected: their Agents
-cited Requirement ids, Change-relative paths and `gate:<name>` instead.
+**One recording hazard worth knowing.** Replay re-signs approvals, so a replayed
+receipt lands at a fresh UUID filename and a citation of the recorded filename
+cannot resolve. `constitution-check` fails a principle that cites **only**
+references it cannot locate, so this bites exactly when a Check Agent offers an
+approval receipt as a principle's sole evidence. Two `solid-rework` recordings
+did that and could not be replayed; the current one cites the receipt alongside
+`REQ-TASK-005`, which still resolves, so the principle passes and the cassette
+replays like the others.
 
-Fixing this is not a one-line change. Preserving the recorded filename is not
-available to the harness, because the receipt id is minted by `xforge approve`
-itself, and restoring the recorded receipts instead of re-signing would remove
-the approval path from what replay actually exercises. Constraining citations
-to stable identifiers belongs in the shipped `xforge-check` Skill, which changes
-the Scaffold fingerprint and so invalidates every cassette at once.
+Nothing prevents it recurring, because it depends on what the model chose to
+cite. If a recording turns out not to replay, check the Governance principle's
+`references` first. Fixing it properly is not a one-line change: the receipt id
+is minted by `xforge approve`, so the harness cannot preserve the recorded
+filename; restoring the recorded receipts instead of re-signing would remove the
+approval path from what replay exercises; and constraining citations to stable
+identifiers belongs in the shipped `xforge-check` Skill, which changes the
+Scaffold fingerprint and so invalidates every cassette at once.
 
 `run-matrix.mjs` prints a pass/fail summary (acceptance exit code, spend,
 budget accounting) when it finishes. Per-stage engine output — cost, tokens,
