@@ -40,22 +40,53 @@ is legal, and what evidence is required before the change can advance or close.
 
 ## How it fits together
 
+XForge is two things that meet in your repository: a **CLI** that decides what
+is true and legal, and a **Scaffold** that tells an Agent how to work. Knowing
+which is which explains almost every rule below.
+
 ```text
-Canonical, project-owned sources
-  AGENTS.md + xforge/{manifest,constitution,specs,changes,flows,scaffold}
-                              |
-                              v
-                    @xforge/cli (Protocol 2)
-                    /                       \
-     deterministic workflow state       Adapter projections
-     Gates / approvals / receipts        Skills / agents / policies / hooks
-     audit / atomic archive              for supported coding tools
+  @xforge/cli (npm, pinned exactly)
+  └── carries a verified Scaffold payload
+                    │
+                    │  xforge init          ── once per project
+                    ▼
+  xforge/                                      ← canonical, project-owned, in Git
+  ├── manifest.yaml · constitution.md · XFORGE.md
+  ├── specs/ · changes/ · flows/
+  └── scaffold/  skills · agents · rules · policies · hooks · gates
+                    │
+                    │  xforge install / sync / update
+                    ▼
+  .claude/ · .agents/ · .codex/ · .cursor/ · .opencode/ · .github/
+                                               ← generated projections, not sources
+
+  The Agent reads the projections.     The CLI reads xforge/ and answers with
+  It follows Skills.                   state, Gates, receipts, approvals, audit.
 ```
 
-Files under `xforge/` are the source of truth. Directories such as `.agents/`,
-`.codex/`, `.claude/`, `.cursor/`, `.opencode/`, and selected `.github/` files
-are generated projections; edit the canonical assets and run `xforge sync` or
-`xforge update` instead of hand-editing generated output.
+**The Scaffold is what an Agent reads; the CLI is what tells the truth.** A
+Skill can instruct, a PermissionPolicy can guard, a Gate can prove — XForge
+never lets one stand in for another, and only the CLI's JSON output and Gate
+evidence count as facts.
+
+Three consequences follow, and they explain most of what surprises newcomers:
+
+- **Projection is one-way and recomputable.** `xforge/scaffold/**` is the
+  source; the tool directories are output. Edit the source and run
+  `xforge sync`. Hand-editing generated output is refused rather than merged,
+  because the next projection would silently overwrite it.
+- **The npm package is the only supported input.** The Scaffold ships inside
+  the pinned CLI and is verified against a checksum manifest before it is
+  written. Source checkouts, local tarballs, and separate archives are not
+  installation inputs, so a project can always say exactly which bytes it runs.
+- **Your customizations survive upgrades.** `xforge/scaffold/**` is yours to
+  edit once initialized; the CLI reconciles rather than replaces, and refuses
+  when it cannot tell your change from its own.
+
+Files XForge co-owns with you — `AGENTS.md`, `CLAUDE.md` — are merged through a
+marker block. Everything outside `<!-- XFORGE:BEGIN -->` … `<!-- XFORGE:END -->`
+is preserved byte for byte, and re-running installation replaces the block in
+place instead of appending a second one.
 
 ## Main features
 
@@ -159,53 +190,82 @@ install does not put the binary on an Agent's shell `PATH`) and never drop
 `--no-install` (it makes the invocation fail loudly on a missing pinned CLI
 instead of letting `npx` silently fetch a different, unpinned version).
 
-Install the exact npm package in the target project, then let that CLI verify
-and initialize its bundled Scaffold:
+### Fastest path: hand it to the Agent
 
-```bash
-npm install --save-dev --save-exact @xforge/cli@0.7.11
-npx --no-install xforge init --dry-run
-npx --no-install xforge init
+Open your project in an AI coding tool and paste this into the session. It
+installs the package, initializes the project, and projects the Scaffold — and
+it asks you the two questions no tool can answer for you before it writes
+anything.
+
+```text
+Set up XForge in this repository.
+
+First ask me two questions and wait for my answers:
+  1. Scaffold language — `en` or `zh-CN`?
+  2. Which AI coding tool should XForge project into — codex, claude,
+     cursor, opencode, or github-copilot?
+
+Then, using my answers as <LANG> and <TOOL>:
+  1. npm install --save-dev --save-exact @xforge/cli
+  2. npx --no-install xforge init --language <LANG> --target <TOOL> --dry-run
+  3. Show me that plan, then run the same command without --dry-run.
+  4. npx --no-install xforge state --text
+
+Rules: always invoke through `npx --no-install`, never a bare `xforge`.
+Never overwrite an existing file and never commit. If any step reports a
+conflict or a diagnostic, stop and show me the JSON instead of working
+around it.
 ```
 
-On first initialization, `--language en|zh-CN` overrides locale detection. If
-no language can be detected, an interactive terminal asks the user to choose;
-non-interactive initialization fails with an actionable `--language` command.
-Skills, sub-Agent instructions, and the Constitution are localized. English is
-the default, Chinese source variants use the `_cn` suffix, and all other
-Scaffold assets remain English.
+**Why it must ask first.** The language cannot be guessed in a non-interactive
+session: initialization fails closed with `XFORGE_LANGUAGE_REQUIRED` rather than
+picking one for you, because the Constitution and every Skill an Agent reads are
+written in the language you choose here. The target decides which tool
+directory receives the projection.
 
-Project the canonical Skills, agents, Rules, permission/MCP policies, Hooks, and
-other supported assets into one Agent tool:
-
-```bash
-npx --no-install xforge install --target codex --dry-run
-npx --no-install xforge install --target codex
-```
-
-For a new project whose default Scaffold needs no customization, combine both
-steps:
-
-```bash
-npx --no-install xforge init --target codex --dry-run
-npx --no-install xforge init --target codex
-```
-
-Omit `--target` from `install` to project every target enabled in the Manifest.
-Source checkouts, locally packed tarballs, Git sparse checkouts, and separate
-HTTP Scaffold archives are not supported installation inputs.
-
-For a coding Agent, provide the root-level [Agent installation
-runbook](AGENT_INSTALL.md):
+For a deeper, checklist-driven installation — adapting modules, targets and
+Gates to an existing repository — point the Agent at the root-level
+[Agent installation runbook](AGENT_INSTALL.md) instead:
 
 ```text
 Install XForge into this repository by following AGENT_INSTALL.md exactly.
 Do not overwrite existing files or commit changes. Stop and report conflicts.
 ```
 
-The runbook requires the Agent to use the exact npm package, verify the bundled
-Scaffold, adapt modules/targets/Gates, preserve existing files, review every dry
-run, and confirm Managed mode and platform trust.
+### Manual path
+
+Install the exact npm package in the target project, then let that CLI verify
+and initialize its bundled Scaffold:
+
+```bash
+npm install --save-dev --save-exact @xforge/cli@0.7.11
+npx --no-install xforge init --language en --dry-run
+npx --no-install xforge init --language en
+```
+
+`--language en|zh-CN` overrides locale detection. Omit it only in an
+interactive terminal, which will ask; a non-interactive run fails with an
+actionable command rather than choosing for you. The Constitution, `XFORGE.md`,
+Skills and sub-Agent instructions are installed in that language — one file per
+document, under its canonical name — and every other Scaffold asset stays
+English.
+
+Then project the canonical Skills, agents, Rules, permission/MCP policies,
+Hooks, and other supported assets into one tool:
+
+```bash
+npx --no-install xforge install --target codex --dry-run
+npx --no-install xforge install --target codex
+```
+
+Use `init` for a project that has no `xforge/` yet, and `install` for one that
+already does — `install` on an uninitialized directory reports
+`XFORGE_PROJECT_NOT_FOUND`. Both take options only: the project root comes from
+`--root <path>`, never as a positional argument.
+
+`init --target <tool>` does both steps at once for a new project whose default
+Scaffold needs no customization. Omitting `--target` from `install` projects
+every target enabled in the Manifest.
 
 After installation, verify the project from its root:
 

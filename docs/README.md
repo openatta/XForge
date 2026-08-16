@@ -32,21 +32,48 @@ XForge 负责定义什么是当前事实、下一次状态转换是否合法，�
 
 ## 整体模型
 
+XForge 由两样东西构成，它们在你的仓库里汇合：一个**命令行**，负责判定什么是
+事实、哪个转换合法；一套**脚手架**，负责告诉 Agent 该怎么做事。分清这两者，
+下面几乎所有规则都不言自明。
+
 ```text
-项目所有的规范事实
-  AGENTS.md + xforge/{manifest,constitution,specs,changes,flows,scaffold}
-                              |
-                              v
-                    @xforge/cli（Protocol 2）
-                    /                         \
-       确定性流程状态与治理证据              Agent 工具 Adapter 投影
-       Gate / Approval / Receipt            Skills / Agents / Policy / Hook
-       Audit / 原子 Archive                 投影到各类编程工具
+  @xforge/cli（npm，固定精确版本）
+  └── 内含经过校验的脚手架 payload
+                    │
+                    │  xforge init          ── 每个项目一次
+                    ▼
+  xforge/                                      ← 规范来源，项目所有，纳入 Git
+  ├── manifest.yaml · constitution.md · XFORGE.md
+  ├── specs/ · changes/ · flows/
+  └── scaffold/  skills · agents · rules · policies · hooks · gates
+                    │
+                    │  xforge install / sync / update
+                    ▼
+  .claude/ · .agents/ · .codex/ · .cursor/ · .opencode/ · .github/
+                                               ← 生成的投影，不是来源
+
+  Agent 读投影出来的内容，遵循 Skills。   CLI 读 xforge/，给出状态、Gate、
+                                          receipt、审批与审计。
 ```
 
-`xforge/` 下的文件是事实来源；`.agents/`、`.codex/`、`.claude/`、
-`.cursor/`、`.opencode/` 以及部分 `.github/` 文件是生成结果。需要修改时应编辑
-规范资产，再运行 `xforge sync` 或 `xforge update`，不要手改生成文件。
+**脚手架是 Agent 读的东西，命令行是说出事实的东西。** Skill 能指导、
+PermissionPolicy 能拦截、Gate 能证明——XForge 从不让其中一个冒充另一个，
+且只有 CLI 的 JSON 输出与 Gate 证据算作事实。
+
+由此推出三条结论，新用户遇到的意外多半出自这里：
+
+- **投影是单向且可重算的。** `xforge/scaffold/**` 是来源，工具目录是产物。要改
+  就改来源，再运行 `xforge sync`。手改生成文件会被**拒绝**而不是合并——因为下
+  一次投影会静默覆盖它。
+- **npm 包是唯一受支持的输入。** 脚手架随固定版本的 CLI 一起发布，写入前会对
+  照校验清单验证。源码检出、本地 tarball、独立压缩包都不是安装输入，所以任何
+  项目都能准确说出自己跑的是哪些字节。
+- **你的定制能扛过升级。** 初始化之后 `xforge/scaffold/**` 归你编辑；CLI 做的是
+  调和而非替换，分不清哪些改动是你的时会拒绝操作而不是猜。
+
+与你共有的文件——`AGENTS.md`、`CLAUDE.md`——采用标记块合并。
+`<!-- XFORGE:BEGIN -->` 与 `<!-- XFORGE:END -->` 之外的内容逐字节保留，重复安装
+会**原地替换**该块，不会追加第二份。
 
 ## 主要特性
 
@@ -135,43 +162,70 @@ XForge 命令的正常调用方是 AI Agent，不是人类临时手敲。人类�
 `PATH`），也不要去掉 `--no-install`（它保证找不到锁定版本时命令直接报错退出，
 而不是让 `npx` 静默拉取并运行另一个未锁定的版本）。
 
-先在目标项目中安装精确 npm 包，再由 CLI 校验并初始化包内置的 Scaffold：
+### 最快的路径：交给 Agent
 
-```bash
-npm install --save-dev --save-exact @xforge/cli@0.7.11
-npx --no-install xforge init --dry-run
-npx --no-install xforge init
+在 AI 编程工具里打开你的项目，把下面这段粘进会话。它会完成装包、初始化项目、
+投影脚手架——并且在动手写任何文件之前，**先问你两个工具替你回答不了的问题**。
+
+```text
+在这个仓库里安装配置 XForge。
+
+先问我两个问题并等我回答：
+  1. 脚手架语言——`en` 还是 `zh-CN`？
+  2. XForge 要投影到哪个 AI 编程工具——codex、claude、cursor、
+     opencode 还是 github-copilot？
+
+拿到我的答复后，以它们作为 <LANG> 与 <TOOL>：
+  1. npm install --save-dev --save-exact @xforge/cli
+  2. npx --no-install xforge init --language <LANG> --target <TOOL> --dry-run
+  3. 把这份计划给我看，确认后再执行去掉 --dry-run 的同一条命令。
+  4. npx --no-install xforge state --text
+
+规则：一律通过 `npx --no-install` 调用，绝不用裸的 `xforge`。
+不要覆盖任何已有文件，不要提交 Git。任何一步报出冲突或诊断信息时，
+停下来把 JSON 原样给我看，不要绕过去。
 ```
 
-把规范 Skills、Agents、Rules、权限/MCP Policies、Hooks 等资产投影到指定工具：
+**为什么必须先问。** 语言在非交互会话里无法推断：初始化会以
+`XFORGE_LANGUAGE_REQUIRED` 直接失败而不是替你选一个——因为宪法和 Agent 会读到的
+每一个 Skill 都用你在这里选定的语言书写。目标工具则决定投影落到哪个目录。
 
-```bash
-npx --no-install xforge install --target codex --dry-run
-npx --no-install xforge install --target codex
-```
-
-新项目无需先调整默认 Scaffold 时，可以合并初始化和单 Target 投影：
-
-```bash
-npx --no-install xforge init --target codex --dry-run
-npx --no-install xforge init --target codex
-```
-
-`install` 不指定 `--target` 时会安装 Manifest 启用的全部 Target。源码 checkout、
-本地打包 tarball、Git sparse checkout 和独立 HTTP Scaffold 制品都不再是受支持的安装
-输入。
-
-交给编程 Agent 安装时，让它严格执行根目录中的
-[Agent 安装手册](../AGENT_INSTALL.md)：
+需要更细致、按检查清单推进的安装（调整既有仓库的 modules、targets、Gates），
+就让 Agent 执行根目录的 [Agent 安装手册](../AGENT_INSTALL.md)：
 
 ```text
 请严格按照 AGENT_INSTALL.md 把 XForge 安装到当前仓库。
 不要覆盖已有文件，不要提交 Git；遇到冲突时停止并报告。
 ```
 
-该手册要求 Agent 只使用精确 npm 包，校验内置 Scaffold，调整
-modules/targets/Gates，保留已有文件，审查全部 dry run，并确认 Managed mode 与平台
-信任状态。
+### 手动路径
+
+先在目标项目中安装精确 npm 包，再由 CLI 校验并初始化包内置的 Scaffold：
+
+```bash
+npm install --save-dev --save-exact @xforge/cli@0.7.11
+npx --no-install xforge init --language zh-CN --dry-run
+npx --no-install xforge init --language zh-CN
+```
+
+`--language en|zh-CN` 覆盖语言自动检测。只有在交互式终端里才可以省略它（终端会
+询问）；非交互执行会失败并给出可直接使用的命令，而不是替你选。宪法、`XFORGE.md`、
+Skills 与子 Agent 指令都会按该语言安装——**每份文档只落地一个文件，用规范文件名**
+——其余脚手架资产保持英文。
+
+再把规范 Skills、Agents、Rules、权限/MCP Policies、Hooks 等资产投影到指定工具：
+
+```bash
+npx --no-install xforge install --target codex --dry-run
+npx --no-install xforge install --target codex
+```
+
+**没有 `xforge/` 的项目用 `init`，已经有的用 `install`**——对未初始化的目录执行
+`install` 会报 `XFORGE_PROJECT_NOT_FOUND`。两个命令都只接受选项：项目根目录通过
+`--root <path>` 指定，**不能作为位置参数**传入。
+
+`init --target <工具>` 可以把两步合并，适用于无需调整默认脚手架的新项目。
+`install` 不指定 `--target` 时会投影 Manifest 里启用的全部 Target。
 
 安装完成后，在目标项目根目录执行：
 
