@@ -12,7 +12,7 @@ XForge is not another Agent runtime. Models and coding tools still explore,
 design, and implement the change; XForge defines what is true, which transition
 is legal, and what evidence is required before the change can advance or close.
 
-> **Current release:** `@xforge/cli 0.7.11`, Protocol 2, Node.js 20 or newer.
+> **Current release:** `@xforge/cli 0.7.12`, Protocol 2, Node.js 20 or newer.
 > Install the exact CLI version from npm. Source-based installation is not
 > supported. The implementation remains under active development.
 
@@ -248,7 +248,7 @@ Do not overwrite existing files or commit changes. Stop and report conflicts.
 ### 2. Manual
 
 ```bash
-npm install -g @xforge/cli@0.7.11
+npm install -g @xforge/cli@0.7.12
 xforge version                       # confirm the version and where it resolved
 xforge init --language en --dry-run
 xforge init --language en
@@ -287,7 +287,7 @@ write, with `XFORGE_CLI_IDENTITY_MISMATCH`. Install per project when that
 happens, or when a CI runner builds several projects:
 
 ```bash
-npm install --save-dev --save-exact @xforge/cli@0.7.11
+npm install --save-dev --save-exact @xforge/cli@0.7.12
 npx --no-install xforge version
 ```
 
