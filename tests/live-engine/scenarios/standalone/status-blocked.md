@@ -9,10 +9,10 @@ environment variables, inspect `.env`, create approvals, or write any file —
 
 Read `AGENTS.md` and the installed `xforge-status` Skill. Then:
 
-1. Run `npx --no-install xforge state` with no `--change` and report the
+1. Run `xforge state` with no `--change` and report the
    in-flight portfolio from `activeChanges`: every un-archived Change, its
    Flow, its current Stage, and its risk.
-2. Run `npx --no-install xforge state --change credential-store` and, without
+2. Run `xforge state --change credential-store` and, without
    being told which Skill applies, determine the next legal Action from the
    CLI's own `nextActions` — do not name a Skill from memory or guess.
 3. State whether that next Action is currently blocked on a human or external

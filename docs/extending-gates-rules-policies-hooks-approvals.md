@@ -26,7 +26,7 @@ envelope, written to `<change>/evidence/<spec.evidence>`.
    `terminal.archive.mandatoryGates`) so `checkStructure()` knows it's
    required — an unregistered or unreferenced Gate is dead weight, never run.
 3. It runs when a Skill (or you, by hand) calls
-   `npx --no-install xforge check --change <id> --gate <gate-id>`, or
+   `xforge check --change <id> --gate <gate-id>`, or
    implicitly as part of `xforge archive` for every `mandatoryGates` entry.
 4. `runGate()` spawns `spec.command` as a real child process (`spawn`, no
    shell by default), captures exit code / stdout / stderr (redacted,
@@ -153,7 +153,7 @@ optional `stages` scoping and `exceptActors`).
 Every projected coding tool has its own native "before I do this, ask
 first" hook mechanism (Claude Code's `PreToolUse`, Cursor's permission hook,
 etc.). `xforge init`/`install` writes each platform's native hook config to
-call `npx --no-install xforge hook ...` for the relevant event. That CLI
+call `xforge hook ...` for the relevant event. That CLI
 invocation runs `executeHookDispatch()`, which, per call:
 
 1. Normalizes the platform's tool name into an XForge capability (`bash`/

@@ -155,14 +155,23 @@ Markdown 活动看板：按贡献者统计 commit、代码行数与活跃天数�
 
 ## 开始使用
 
-XForge 命令的正常调用方是 AI Agent，不是人类临时手敲。人类或 CI 只负责下面这
-一次性的锁版本安装；此后的每一步——初始化、执行 Flow、Transition——都是 Agent
-按已安装的 `xforge-*` Skills 里给出的原文，发出 `npx --no-install xforge ...`。
-不要把它简化成裸的 `xforge`（项目本地安装不会把可执行文件放进 Agent shell 的
-`PATH`），也不要去掉 `--no-install`（它保证找不到锁定版本时命令直接报错退出，
-而不是让 `npx` 静默拉取并运行另一个未锁定的版本）。
+XForge 命令的正常调用方是 AI Agent，不是人类临时手敲。人类或 CI 只做一次性安装；
+此后的每一步——初始化、执行 Flow、Transition——都是 Agent 按已安装的 `xforge-*`
+Skills 里给出的原文，发出 `xforge ...`。
 
-### 最快的路径：交给 Agent
+**npm 只是分发通道。** XForge 是一个命令，不是你项目的依赖：它不会成为你构建的
+一部分，安装它也不会把一个 Python、Go 或 Rust 仓库变成 Node 项目。**全局安装之后，
+你的项目里不会出现 `package.json`，也不会出现 `node_modules`。**
+
+三种安装方式，按推荐顺序：
+
+| | 什么时候用 | 会在你项目里留下什么 |
+| --- | --- | --- |
+| [交给 Agent](#1-交给-agent) | 常规路径——你本来就在编程工具里 | `xforge/`、`AGENTS.md`、一个工具目录 |
+| [手动安装](#2-手动安装) | 你想自己敲命令 | 同上 |
+| [项目本地安装](#3-项目本地安装一个全局版本不够用时) | 多个项目锁定不同 XForge 版本，或 CI runner 需要隔离 | 同上，外加 `package.json` 与 `node_modules` |
+
+### 1. 交给 Agent
 
 在 AI 编程工具里打开你的项目，把下面这段粘进会话。它会完成装包、初始化项目、
 投影脚手架——并且在动手写任何文件之前，**先问你两个工具替你回答不了的问题**。
@@ -176,12 +185,16 @@ XForge 命令的正常调用方是 AI Agent，不是人类临时手敲。人类�
      opencode 还是 github-copilot？
 
 拿到我的答复后，以它们作为 <LANG> 与 <TOOL>：
-  1. npm install --save-dev --save-exact @xforge/cli
-  2. npx --no-install xforge init --language <LANG> --target <TOOL> --dry-run
-  3. 把这份计划给我看，确认后再执行去掉 --dry-run 的同一条命令。
-  4. npx --no-install xforge state --text
+  1. npm install -g @xforge/cli
+  2. xforge version            → 把版本与 executablePath 报给我
+  3. xforge init --language <LANG> --target <TOOL> --dry-run
+  4. 把这份计划给我看，确认后再执行去掉 --dry-run 的同一条命令。
+  5. xforge state --text       → 确认它报告 mode: managed
 
-规则：一律通过 `npx --no-install` 调用，绝不用裸的 `xforge`。
+规则：直接运行 `xforge`。如果找不到该命令，停下来告诉我——**绝不要退回用
+`npx xforge`**，那会解析到 npm 上一个同名的无关包。不要创建 package.json，
+也不要执行不带 `-g` 的 `npm install`：这个项目不是 Node 项目，XForge 是工具
+不是依赖。
 不要覆盖任何已有文件，不要提交 Git。任何一步报出冲突或诊断信息时，
 停下来把 JSON 原样给我看，不要绕过去。
 ```
@@ -198,14 +211,13 @@ XForge 命令的正常调用方是 AI Agent，不是人类临时手敲。人类�
 不要覆盖已有文件，不要提交 Git；遇到冲突时停止并报告。
 ```
 
-### 手动路径
-
-先在目标项目中安装精确 npm 包，再由 CLI 校验并初始化包内置的 Scaffold：
+### 2. 手动安装
 
 ```bash
-npm install --save-dev --save-exact @xforge/cli@0.7.11
-npx --no-install xforge init --language zh-CN --dry-run
-npx --no-install xforge init --language zh-CN
+npm install -g @xforge/cli@0.7.11
+xforge version                       # 确认版本，以及它解析到了哪个文件
+xforge init --language zh-CN --dry-run
+xforge init --language zh-CN
 ```
 
 `--language en|zh-CN` 覆盖语言自动检测。只有在交互式终端里才可以省略它（终端会
@@ -216,8 +228,8 @@ Skills 与子 Agent 指令都会按该语言安装——**每份文档只落地�
 再把规范 Skills、Agents、Rules、权限/MCP Policies、Hooks 等资产投影到指定工具：
 
 ```bash
-npx --no-install xforge install --target codex --dry-run
-npx --no-install xforge install --target codex
+xforge install --target codex --dry-run
+xforge install --target codex
 ```
 
 **没有 `xforge/` 的项目用 `init`，已经有的用 `install`**——对未初始化的目录执行
@@ -227,13 +239,36 @@ npx --no-install xforge install --target codex
 `init --target <工具>` 可以把两步合并，适用于无需调整默认脚手架的新项目。
 `install` 不指定 `--target` 时会投影 Manifest 里启用的全部 Target。
 
-安装完成后，在目标项目根目录执行：
+### 3. 项目本地安装（一个全局版本不够用时）
+
+全局安装在一台机器上只能有一个版本。而每个项目在 `xforge/manifest.yaml` 里各自
+锁定版本，所以**两个锁定不同版本的项目无法同时被一个全局安装满足**——对不上的那个
+会退出 Managed 模式并拒绝写入，报 `XFORGE_CLI_IDENTITY_MISMATCH`。出现这种情况，
+或者 CI runner 要构建多个项目时，改用项目本地安装：
 
 ```bash
-npx --no-install xforge version --text
-npx --no-install xforge state --text
-npx --no-install xforge check --text
+npm install --save-dev --save-exact @xforge/cli@0.7.11
+npx --no-install xforge version
 ```
+
+**只有在这条路径下 `npx --no-install` 才是对的**，而且两半都不可少：`npx` 负责从
+不在 `PATH` 上的 `node_modules/.bin` 里解析出可执行文件，`--no-install` 负责在本地
+没装时阻止 npm 去拉那个同名的无关包。这也是唯一会在项目里留下 `package.json` 与
+`node_modules` 的方式。
+
+### 验证，以及排查装错版本
+
+```bash
+xforge version --text                # 哪个构建在应答，来自哪个文件
+xforge state --text                  # mode: managed，declared 与 actual 是否一致
+xforge check --text
+```
+
+**项目报 `XFORGE_CLI_IDENTITY_MISMATCH` 时，说明应答的 CLI 不是该项目锁定的版本。**
+`xforge version` 会同时给出版本与 `executablePath`，这正是区分"某个旧的全局安装"
+与"项目本地安装把它盖住了"的依据。处理方式：升级项目（`xforge update`）、升级全局
+安装（`npm install -g @xforge/cli@<版本>`），或按上面第 3 种方式为该项目单独安装。
+**装错版本绝不会静默发生**——身份对不上时写操作一律被拒。
 
 给程序或 Agent 消费时应去掉 `--text`，使用默认 JSON 输出。
 
@@ -256,20 +291,20 @@ Change。
 底层 CLI 的典型闭环是：
 
 ```bash
-npx --no-install xforge state --change <change-id>
-npx --no-install xforge check --change <change-id>
-npx --no-install xforge transition --change <change-id> --to <next-stage> --dry-run
-npx --no-install xforge transition --change <change-id> --to <next-stage>
+xforge state --change <change-id>
+xforge check --change <change-id>
+xforge transition --change <change-id> --to <next-stage> --dry-run
+xforge transition --change <change-id> --to <next-stage>
 
 # state 报告 work package ready 时：
-npx --no-install xforge work-package dispatch --change <change-id> --package <package-id>
+xforge work-package dispatch --change <change-id> --package <package-id>
 
 # state 报告需要审批时：
-npx --no-install xforge approve --change <change-id> --for <stage-or-archive> ...
+xforge approve --change <change-id> --for <stage-or-archive> ...
 
-npx --no-install xforge audit verify --change <change-id>
-npx --no-install xforge archive --change <change-id> --dry-run
-npx --no-install xforge archive --change <change-id>
+xforge audit verify --change <change-id>
+xforge archive --change <change-id> --dry-run
+xforge archive --change <change-id>
 ```
 
 不要机械地一次执行完这些命令：`state.nextActions` 才是当前事实。Flow 可能要求先
@@ -281,8 +316,8 @@ rework、运行额外 Gate、取得外部签名 Approval，或清理远端 Audit
 后，运行：
 
 ```bash
-npx --no-install xforge sync --dry-run
-npx --no-install xforge sync --verify-digests
+xforge sync --dry-run
+xforge sync --verify-digests
 ```
 
 Targets、Scaffold/CLI 身份或 Adapter 输出变化时，先运行 `xforge update
@@ -295,7 +330,7 @@ uninstall --target <target> --dry-run` 查看只针对受管文件的删除计�
   配置。
 - `runtime-audit` Hook 作为未选择的示例随包提供：目前没有任何 dispatcher 会执行它的
   `builtin: audit` action，因此即使选择它也不会产生任何效果。
-- 生成的 Hook 从项目根目录调用 `npx --no-install xforge`，只解析项目本地的精确
+- 生成的 Hook 从项目根目录调用 `xforge`，只解析项目本地的精确
   npm 包，缺包时不会在线下载替代版本。
 - Gate 成功只能证明指定命令在记录的 revision 上运行成功，不能自动证明所有语义
   需求都正确。

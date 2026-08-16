@@ -280,7 +280,7 @@ async function assertEnforceableResources(project: ProjectContext, resources: Se
        that something is. */
     throw new XForgeError([diagnostic(
       'XFORGE_RESOURCE_UNENFORCEABLE',
-      `a governance resource could not be loaded, so it refuses to decide this call: ${errors[0]!.message} Every tool call stays denied until that file is fixed or restored (\`npx --no-install xforge install\` rewrites the generated ones).`,
+      `a governance resource could not be loaded, so it refuses to decide this call: ${errors[0]!.message} Every tool call stays denied until that file is fixed or restored (\`xforge install\` rewrites the generated ones).`,
       errors[0]!.path,
     ), ...errors], { root: project.root });
   }
@@ -292,7 +292,7 @@ async function assertEnforceableResources(project: ProjectContext, resources: Se
   if (stableStringify(locked) !== stableStringify(resolved)) {
     throw new XForgeError(diagnostic(
       'XFORGE_LOCK_STALE',
-      'the PermissionPolicy/Hook set on disk does not match xforge/lock.yaml, so it refuses to enforce a policy set it cannot vouch for. Every tool call stays denied until the lock is refreshed. Tell the user to run `npx --no-install xforge install` in the project root, then retry.',
+      'the PermissionPolicy/Hook set on disk does not match xforge/lock.yaml, so it refuses to enforce a policy set it cannot vouch for. Every tool call stays denied until the lock is refreshed. Tell the user to run `xforge install` in the project root, then retry.',
       'xforge/lock.yaml',
     ), { root: project.root });
   }

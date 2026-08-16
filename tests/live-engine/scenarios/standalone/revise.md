@@ -10,7 +10,7 @@ implement `src/**`, or weaken tests.
 
 Read `AGENTS.md`, the active `task-ledger` Change, the current
 `TEST_REQUEST.md`, and the installed `xforge-revise` Skill. Use
-`npx --no-install xforge` from the project root and confirm the current
+`xforge` from the project root and confirm the current
 Action is a ready Revise Action before writing anything.
 
 Diff the current `TEST_REQUEST.md` against the existing Proposal and delta

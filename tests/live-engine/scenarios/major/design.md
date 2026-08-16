@@ -5,7 +5,7 @@ implement `src/**`, or weaken tests.
 
 Read `AGENTS.md`, the active `credential-store` Change including the resolved
 `clarifications.md`, `TEST_REQUEST.md`, and the installed `xforge-design`
-Skill. Use `npx --no-install xforge` from the project root and confirm the
+Skill. Use `xforge` from the project root and confirm the
 current Action is a ready Design Action before writing anything.
 
 Produce `design.md` by following the current Action's `instruction` and

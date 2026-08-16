@@ -5,7 +5,7 @@ tests, transition Stage, archive, or commit.
 
 Read `AGENTS.md`, `TEST_REQUEST.md`, the complete active `greeter` Change, and
 the installed `xforge-verify` Skill. Confirm State shows Stage Verify. Do not
-run `npx --no-install xforge approve`, `transition`, or `archive` in this
+run `xforge approve`, `transition`, or `archive` in this
 phase, because closing Approval and Stage movement are kept outside the model
 environment; `xforge state` and `xforge check` are yours to run and the Skill
 requires them. Run `npm test` as an independent verification. If it fails,
@@ -14,8 +14,7 @@ document the failure and stop without changing implementation or tests.
 If it passes, create a complete `assurance.md` that maps every Requirement ID
 to real test evidence and discusses completeness, correctness, coherence,
 risk and findings. Write it before the receipt: it is an Artifact, so it moves
-the content revision the receipt has to name. Then run `npx --no-install
-xforge check` to produce current-revision Machine Gate Evidence, and create
+the content revision the receipt has to name. Then run `xforge check` to produce current-revision Machine Gate Evidence, and create
 `evidence/verification-receipt.yaml` recording passed status, current
 Flow/Stage, `contentRevision` from `xforge state`, Git HEAD, and test command.
 Its `gates` list carries exactly the Gates this Stage declares and nothing else;

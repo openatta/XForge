@@ -149,7 +149,7 @@ describe('XForge product contract', () => {
     expect(cliPackage.publishConfig).toEqual({ access: 'public', registry: 'https://registry.npmjs.org/' });
     expect(cliPackage.scripts.prepublishOnly).toBe('npm run verify');
     expect(packageReadme).toContain('npm install --save-dev --save-exact @xforge/cli@0.7.11');
-    expect(packageReadme).toContain('npx --no-install xforge init --target codex');
+    expect(packageReadme).toContain('xforge init --target codex');
     expect(packageReadme).not.toMatch(/npm install[^\n]*(?:file:|git\+)/);
     expect(packageReadme).toContain('/blob/v0.7.11/AGENT_INSTALL.md');
     expect(workflow).toContain('workflow_dispatch:');

@@ -9,14 +9,14 @@ environment variables, inspect `.env`, create or fabricate an Approval, edit
 `test/**`, write product code, or commit.
 
 Read `AGENTS.md` and the installed Stage Skills. Run
-`npx --no-install xforge state` to find the active Change, then
-`npx --no-install xforge state --change <id>` and confirm from CLI output that
+`xforge state` to find the active Change, then
+`xforge state --change <id>` and confirm from CLI output that
 every work package in this Change's plan is `succeeded`. Without being told
 which Skill applies, determine the next legal Action from the CLI's own
 `nextActions`.
 
 If that next Action is a Stage Transition an Agent may perform, perform it with
-`npx --no-install xforge transition --change <id> --to <stage>`. If it is
+`xforge transition --change <id> --to <stage>`. If it is
 blocked on a human or external Approval, stop without performing it and say so;
 never route around a boundary you cannot legally cross.
 

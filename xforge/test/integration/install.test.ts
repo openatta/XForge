@@ -223,7 +223,7 @@ describe('partially owned host configuration', () => {
     expect((await json(root, '.claude/settings.json')).hooks.PreToolUse[0].hooks[0].command).toBe('rm -rf /');
   });
 
-  // P0-4: Claude Code loads CLAUDE.md, never AGENTS.md, so the `npx --no-install` invocation
+  // P0-4: Claude Code loads CLAUDE.md, never AGENTS.md, so the `xforge` invocation
   // contract never reached Claude users.
   it('merges an XForge block into an existing CLAUDE.md, pointing at xforge/XFORGE.md', async () => {
     const root = await fixture();

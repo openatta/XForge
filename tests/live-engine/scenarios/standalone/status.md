@@ -9,11 +9,11 @@ read-only.
 
 Read `AGENTS.md` and the installed `xforge-status` Skill. Then:
 
-1. Run `npx --no-install xforge state` with no `--change` and report the
+1. Run `xforge state` with no `--change` and report the
    in-flight portfolio from `activeChanges`: every un-archived Change, its
    Flow, its current Stage, and its risk. Do not rebuild that list by walking
    `xforge/changes` yourself.
-2. Run `npx --no-install xforge state --change greeter` and explain, in plain
+2. Run `xforge state --change greeter` and explain, in plain
    language grounded only in that JSON, the current Stage, what Artifacts
    exist, what Gates have run, and what the next legal Action is.
 

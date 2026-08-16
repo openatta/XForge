@@ -4,7 +4,7 @@ environment variables, inspect `.env`, create approvals, archive the Change,
 implement `src/**`, or weaken tests.
 
 Read `AGENTS.md`, the active `task-ledger` Change, `TEST_REQUEST.md`, and the
-installed `xforge-design` Skill. Use `npx --no-install xforge` from the
+installed `xforge-design` Skill. Use `xforge` from the
 project root and confirm the current Action is a ready Design Action before
 writing anything.
 

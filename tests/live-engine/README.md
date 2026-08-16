@@ -19,12 +19,12 @@ the sample project.
   `npm pack`ed local tarball (`--cli-source local`, for same-day regression
   testing of an uncommitted change without a registry round-trip or a real
   publish). Every later command in this harness invokes
-  `npx --no-install xforge ...` with `cwd` set to that project — the same
+  `xforge ...` with `cwd` set to that project — the same
   invocation form documented in the project's own `AGENTS.md` — never a
   hardcoded path to this repository's `xforge/dist/cli.js`.
 - **A real `xforge init`.** `setup.mjs` does not copy `scaffold/payload` by
   hand; it installs the CLI, then runs a real
-  `npx --no-install xforge init --target claude`, so init/install projection
+  `xforge init --target claude`, so init/install projection
   itself is exercised, not bypassed.
 - **A real model reading real Skills, not scripted CLI calls standing in for
   one.** `run-engine.mjs` spawns `claude -p ...` with the isolated project as

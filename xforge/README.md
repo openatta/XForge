@@ -18,7 +18,7 @@ Install an exact version in the target project:
 
 ```bash
 npm install --save-dev --save-exact @xforge/cli@0.7.11
-npx --no-install xforge version --text
+xforge version --text
 ```
 
 The npm package contains the CLI, protocol Schemas, and its exact verified
@@ -26,8 +26,8 @@ Scaffold. Initialize a project and project one Agent-tool target in a single
 collision-safe operation:
 
 ```bash
-npx --no-install xforge init --target codex --dry-run
-npx --no-install xforge init --target codex
+xforge init --target codex --dry-run
+xforge init --target codex
 ```
 
 Use `--language en` or `--language zh-CN` to select the installed Skill and
@@ -43,7 +43,7 @@ source-built installation are not supported.
 
 Follow the [Agent installation
 runbook](https://github.com/openatta/XForge/blob/v0.7.11/AGENT_INSTALL.md) for the
-full npm-only procedure. Generated runtime Hooks invoke `npx --no-install
+full npm-only procedure. Generated runtime Hooks invoke `xforge
 xforge` from the project root, resolving the exact local package without a
 network fallback.
 
@@ -52,9 +52,9 @@ network fallback.
 From an initialized XForge project:
 
 ```bash
-npx --no-install xforge state --text
-npx --no-install xforge install --target codex --dry-run --text
-npx --no-install xforge check --text
+xforge state --text
+xforge install --target codex --dry-run --text
+xforge check --text
 ```
 
 JSON is the default output. `--text` changes presentation only; it does not

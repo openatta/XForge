@@ -2,7 +2,7 @@ import { spawn, spawnSync } from 'node:child_process';
 
 /**
  * Invokes the project-locally installed CLI the same way a real user or Agent does:
- * `npx --no-install xforge ...` with cwd set to the isolated project root. This works
+ * `xforge ...` with cwd set to the isolated project root. This works
  * identically whether that project's `node_modules/@xforge/cli` came from the real npm
  * registry or from a locally packed tarball (see cli-source.mjs) — the harness never
  * hardcodes a path to this repository's own `xforge/dist/cli.js`.

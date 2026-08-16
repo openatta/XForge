@@ -5,7 +5,7 @@ implement `src/**`, or weaken tests.
 
 Read `AGENTS.md`, the active `credential-store` Change, `TEST_REQUEST.md`, the
 immutable acceptance suite under `test/**`, and the installed `xforge-clarify`
-Skill. Use `npx --no-install xforge` from the project root and confirm the
+Skill. Use `xforge` from the project root and confirm the
 current Action is a ready Clarify Action before writing anything.
 
 The Proposal left one material question unresolved: after `rotate`, should

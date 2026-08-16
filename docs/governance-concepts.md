@@ -96,7 +96,7 @@ skips correctness checking before Archive.
 The bridge between a coding tool's native event (`PreToolUse`, a session
 start, a permission request) and XForge logic. `xforge init`/`install`/`sync`
 projects enabled Hook resources into each platform's native hook config,
-wired to call `npx --no-install xforge hook dispatch --target <platform>
+wired to call `xforge hook dispatch --target <platform>
 --event <event>`. Three things flow through that one dispatch call:
 
 1. **Live PermissionPolicy evaluation** (always runs on a relevant event —
@@ -141,10 +141,10 @@ whatever the Agent was reading or writing.
 Read this trail with:
 
 ```bash
-npx --no-install xforge audit status                 # counts by eventType, coverage gaps, remote-pending count
-npx --no-install xforge audit status --change <id>    # scoped to one Change
-npx --no-install xforge audit verify --change <id>     # hash-chain integrity + required-event-type completeness for that Change's Flow
-npx --no-install xforge audit export --change <id> --output report.json   # the full redacted event list, for external review
+xforge audit status                 # counts by eventType, coverage gaps, remote-pending count
+xforge audit status --change <id>    # scoped to one Change
+xforge audit verify --change <id>     # hash-chain integrity + required-event-type completeness for that Change's Flow
+xforge audit export --change <id> --output report.json   # the full redacted event list, for external review
 ```
 
 `audit verify` is what actually gates Archive for Flows with

@@ -5,7 +5,7 @@ implement `src/**`, or weaken tests.
 
 Read `AGENTS.md`, `xforge/manifest.yaml`, `xforge/constitution.md`,
 `TEST_REQUEST.md`, and the installed `xforge-propose` Skill. Use
-`npx --no-install xforge` from the project root exactly as `AGENTS.md`
+`xforge` from the project root exactly as `AGENTS.md`
 specifies and follow its JSON state and next actions as authoritative facts.
 
 Create Change `task-ledger` with Solid flow and medium risk, no security,

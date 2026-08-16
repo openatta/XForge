@@ -182,19 +182,28 @@ Narrowing an ambiguous idea into a proposal-ready scope is the first step of
 ## Getting started
 
 XForge commands are meant to be issued by an AI coding Agent, not typed ad hoc
-by a human. A human or CI performs the one-time pinned install below; every
-later operation — initialization, Flow execution, Transitions — is an Agent
-invoking `npx --no-install xforge ...` exactly as the installed `xforge-*`
-Skills document. Never simplify that to a bare `xforge` (a project-local
-install does not put the binary on an Agent's shell `PATH`) and never drop
-`--no-install` (it makes the invocation fail loudly on a missing pinned CLI
-instead of letting `npx` silently fetch a different, unpinned version).
+by a human. A human or CI installs the CLI once; every later operation —
+initialization, Flow execution, Transitions — is an Agent invoking
+`xforge ...` exactly as the installed `xforge-*` Skills document.
 
-### Fastest path: hand it to the Agent
+**npm is only how the tool is distributed.** XForge is a command, not a
+dependency of your project: it never becomes part of your build, and installing
+it does not make a Python, Go, or Rust repository into a Node one. Install it
+globally and your project keeps no `package.json` and no `node_modules`.
+
+Three ways to install it, in the order most people should try them:
+
+| | When to use it | What it leaves in your project |
+| --- | --- | --- |
+| [Agent](#1-let-an-agent-do-it) | The normal path — you are already in a coding tool | `xforge/`, `AGENTS.md`, one tool directory |
+| [Manual](#2-manual) | You want to run the commands yourself | the same |
+| [Project-local](#3-project-local-when-one-global-version-is-not-enough) | Several projects pinned to different XForge versions, or an isolated CI runner | the same, plus `package.json` and `node_modules` |
+
+### 1. Let an Agent do it
 
 Open your project in an AI coding tool and paste this into the session. It
-installs the package, initializes the project, and projects the Scaffold — and
-it asks you the two questions no tool can answer for you before it writes
+installs the CLI, initializes the project, and projects the Scaffold — and it
+asks you the two questions no tool can answer for you before it writes
 anything.
 
 ```text
@@ -206,22 +215,26 @@ First ask me two questions and wait for my answers:
      cursor, opencode, or github-copilot?
 
 Then, using my answers as <LANG> and <TOOL>:
-  1. npm install --save-dev --save-exact @xforge/cli
-  2. npx --no-install xforge init --language <LANG> --target <TOOL> --dry-run
-  3. Show me that plan, then run the same command without --dry-run.
-  4. npx --no-install xforge state --text
+  1. npm install -g @xforge/cli
+  2. xforge version            → report the version and executablePath to me
+  3. xforge init --language <LANG> --target <TOOL> --dry-run
+  4. Show me that plan, then run the same command without --dry-run.
+  5. xforge state --text       → confirm it reports mode: managed
 
-Rules: always invoke through `npx --no-install`, never a bare `xforge`.
-Never overwrite an existing file and never commit. If any step reports a
-conflict or a diagnostic, stop and show me the JSON instead of working
-around it.
+Rules: run `xforge` directly. If the command is not found, stop and tell me —
+never fall back to `npx xforge`, which resolves to an unrelated package of the
+same name on npm. Do not create a package.json and do not run `npm install`
+without `-g`: this project is not a Node project and XForge is a tool, not a
+dependency. Never overwrite an existing file and never commit. If any step
+reports a conflict or a diagnostic, stop and show me the JSON instead of
+working around it.
 ```
 
-**Why it must ask first.** The language cannot be guessed in a non-interactive
+**Why it asks first.** The language cannot be guessed in a non-interactive
 session: initialization fails closed with `XFORGE_LANGUAGE_REQUIRED` rather than
 picking one for you, because the Constitution and every Skill an Agent reads are
-written in the language you choose here. The target decides which tool
-directory receives the projection.
+written in the language you choose here. The target decides which tool directory
+receives the projection.
 
 For a deeper, checklist-driven installation — adapting modules, targets and
 Gates to an existing repository — point the Agent at the root-level
@@ -232,15 +245,13 @@ Install XForge into this repository by following AGENT_INSTALL.md exactly.
 Do not overwrite existing files or commit changes. Stop and report conflicts.
 ```
 
-### Manual path
-
-Install the exact npm package in the target project, then let that CLI verify
-and initialize its bundled Scaffold:
+### 2. Manual
 
 ```bash
-npm install --save-dev --save-exact @xforge/cli@0.7.11
-npx --no-install xforge init --language en --dry-run
-npx --no-install xforge init --language en
+npm install -g @xforge/cli@0.7.11
+xforge version                       # confirm the version and where it resolved
+xforge init --language en --dry-run
+xforge init --language en
 ```
 
 `--language en|zh-CN` overrides locale detection. Omit it only in an
@@ -254,8 +265,8 @@ Then project the canonical Skills, agents, Rules, permission/MCP policies,
 Hooks, and other supported assets into one tool:
 
 ```bash
-npx --no-install xforge install --target codex --dry-run
-npx --no-install xforge install --target codex
+xforge install --target codex --dry-run
+xforge install --target codex
 ```
 
 Use `init` for a project that has no `xforge/` yet, and `install` for one that
@@ -267,13 +278,41 @@ already does — `install` on an uninitialized directory reports
 Scaffold needs no customization. Omitting `--target` from `install` projects
 every target enabled in the Manifest.
 
-After installation, verify the project from its root:
+### 3. Project-local, when one global version is not enough
+
+A global install puts one version on the machine. Each project pins its own in
+`xforge/manifest.yaml`, so two projects on different XForge versions cannot both
+be satisfied by it — the mismatched one drops to Portable mode and refuses to
+write, with `XFORGE_CLI_IDENTITY_MISMATCH`. Install per project when that
+happens, or when a CI runner builds several projects:
 
 ```bash
-npx --no-install xforge version --text
-npx --no-install xforge state --text
-npx --no-install xforge check --text
+npm install --save-dev --save-exact @xforge/cli@0.7.11
+npx --no-install xforge version
 ```
+
+Only here is `npx --no-install` correct, and both halves matter: `npx` resolves
+the binary out of `node_modules/.bin`, which is not on your `PATH`, and
+`--no-install` stops npm from fetching the unrelated `xforge` package when the
+local one is missing. This is the one path that leaves `package.json` and
+`node_modules` in the project.
+
+### Verify, and diagnose a stale install
+
+```bash
+xforge version --text                # which build is answering, and from where
+xforge state --text                  # mode: managed, declared vs actual
+xforge check --text
+```
+
+**If a project reports `XFORGE_CLI_IDENTITY_MISMATCH`, the CLI answering is not
+the version that project pinned.** `xforge version` reports both the version and
+`executablePath`, which is what distinguishes an old global install from a
+project-local one that is shadowing it. Resolve it by upgrading the project
+(`xforge update`), upgrading the global install
+(`npm install -g @xforge/cli@<version>`), or installing that project locally as
+above. A stale install is never silent: writes are refused until the identities
+agree.
 
 Use the default JSON output instead of `--text` when another program or Agent
 needs to consume the result.
@@ -300,20 +339,20 @@ Git-history activity on request, without reading or requiring any Change.
 The underlying CLI loop is:
 
 ```bash
-npx --no-install xforge state --change <change-id>
-npx --no-install xforge check --change <change-id>
-npx --no-install xforge transition --change <change-id> --to <next-stage> --dry-run
-npx --no-install xforge transition --change <change-id> --to <next-stage>
+xforge state --change <change-id>
+xforge check --change <change-id>
+xforge transition --change <change-id> --to <next-stage> --dry-run
+xforge transition --change <change-id> --to <next-stage>
 
 # When state reports a ready work package:
-npx --no-install xforge work-package dispatch --change <change-id> --package <package-id>
+xforge work-package dispatch --change <change-id> --package <package-id>
 
 # When state reports a required approval:
-npx --no-install xforge approve --change <change-id> --for <stage-or-archive> ...
+xforge approve --change <change-id> --for <stage-or-archive> ...
 
-npx --no-install xforge audit verify --change <change-id>
-npx --no-install xforge archive --change <change-id> --dry-run
-npx --no-install xforge archive --change <change-id>
+xforge audit verify --change <change-id>
+xforge archive --change <change-id> --dry-run
+xforge archive --change <change-id>
 ```
 
 Do not copy this sequence blindly: `state.nextActions` is authoritative, and a
@@ -326,8 +365,8 @@ After editing canonical resources under `xforge/scaffold/` or changing the
 selected resources in `xforge/manifest.yaml`, use:
 
 ```bash
-npx --no-install xforge sync --dry-run
-npx --no-install xforge sync --verify-digests
+xforge sync --dry-run
+xforge sync --verify-digests
 ```
 
 Use `xforge update --dry-run` followed by `xforge update` when targets,
@@ -341,7 +380,7 @@ files.
   explicit project trust step in the coding tool.
 - The `runtime-audit` Hook ships as an unselected example: no dispatcher executes
   its `builtin: audit` action yet, so selecting it would have no effect.
-- Generated Hooks invoke `npx --no-install xforge` from the project root so they
+- Generated Hooks invoke `xforge` from the project root so they
   resolve the exact local package without downloading a replacement.
 - Gate success proves the configured command ran for the recorded revision; it
   does not prove every semantic requirement is correct.

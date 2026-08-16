@@ -11,7 +11,7 @@ Skill's own Execution step 2. Implement only `src/**` so the pre-existing
 black-box acceptance suite passes. Use no third-party runtime dependencies.
 
 Run `npm test`. If it fails, fix only the implementation and rerun. Once it
-passes, run `npx --no-install xforge check --change greeter` and, when the
+passes, run `xforge check --change greeter` and, when the
 CLI reports a ready Transition into Verify, invoke it. Run
 `xforge state --change greeter` at the end and confirm the current Stage is
 Verify. In your final response report files changed, test command and

@@ -432,7 +432,7 @@ preserve existing files, and stop on conflicts.
 10. npm 包不存在或版本不匹配时停止，不得回退到源码、Git、HTTP 或临时在线下载。
 
 Agent 不得静默执行全局 npm 安装、修改系统 PATH 或从未声明地址运行代码。项目本地
-命令与生成 Hook 使用 `npx --no-install xforge`，缺少精确依赖时直接失败。
+命令与生成 Hook 使用 `xforge`，缺少精确依赖时直接失败。
 
 脚手架 payload 应包含项目内的长期发现入口。推荐在根 `AGENTS.md` 中只放一个短指示，要求后续 Agent 读取 `xforge/manifest.yaml`、Constitution 和当前 Change；XForge CLI 不应反复重写用户已有的完整 `AGENTS.md`。对于不读取 `AGENTS.md` 的目标工具，首次 `install` 生成各自的最小 bootstrap 文件。
 

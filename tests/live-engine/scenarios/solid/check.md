@@ -5,7 +5,7 @@ archive the Change, implement `src/**`, or weaken tests.
 
 Read `AGENTS.md`, the complete active `task-ledger` Change (Proposal, delta
 Spec, Design), `TEST_REQUEST.md`, and the installed `xforge-check` Skill. Use
-`npx --no-install xforge` from the project root and confirm the current Action
+`xforge` from the project root and confirm the current Action
 is a ready Check Action before writing anything.
 
 Produce `check-report.md` with exactly the `##` sections the Flow's check-report
@@ -35,7 +35,7 @@ is still open does. Recording real warnings and then advancing is the correct
 outcome, not a contradiction.
 
 Run the structure, check-findings, and constitution-check Gates. Then run
-`npx --no-install xforge transition --change task-ledger --to apply` yourself
+`xforge transition --change task-ledger --to apply` yourself
 once the CLI reports that transition ready — this Stage has no human approval
 step, so nothing else will advance it for you. Run `xforge state --change task-ledger` at
 the end and confirm the current Stage is Apply. Do not commit. In your final

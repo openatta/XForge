@@ -6,7 +6,7 @@ tests, transition Stage, archive, or commit.
 Read `AGENTS.md`, `TEST_REQUEST.md`, the complete active `credential-store`
 Change, the installed `xforge-verify` Skill, work-package delivery, and the
 latest Transition receipt. Confirm the receipt shows the Verify stage. Do not
-run `npx --no-install xforge approve`, `transition`, or `archive` in this
+run `xforge approve`, `transition`, or `archive` in this
 phase, because closing Approval and Stage movement are kept outside the model
 environment; `xforge state` and `xforge check` are yours to run and the Skill
 requires them. Run `npm test` as an independent verification. If it fails,
@@ -17,7 +17,7 @@ to real test evidence, explicitly confirms the resolved rotation behavior and
 the migration requirement were both honored, and discusses completeness,
 correctness, coherence, residual security risk, and findings. Write it before
 the receipt: it is an Artifact, so it moves the content revision the receipt
-has to name. Then run `npx --no-install xforge check` to produce
+has to name. Then run `xforge check` to produce
 current-revision Machine Gate Evidence, and create
 `evidence/verification-receipt.yaml` recording passed status, current
 Flow/Stage, `contentRevision` from `xforge state`, Git HEAD, and test command.

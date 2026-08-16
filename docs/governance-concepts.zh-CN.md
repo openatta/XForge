@@ -87,7 +87,7 @@ policy 可以让某个 Flow 对某种风险/影响分类变成**必选**（不�
 
 编程工具原生事件（`PreToolUse`、会话开始、权限请求）和 XForge 逻辑之间的
 接线。`xforge init`/`install`/`sync` 会把启用的 Hook 资源投影进每个平台自己
-的原生 Hook 配置，接到调用 `npx --no-install xforge hook dispatch --target
+的原生 Hook 配置，接到调用 `xforge hook dispatch --target
 <platform> --event <event>` 上。这一次分发调用里流过三样东西：
 
 1. **实时 PermissionPolicy 评估**（相关事件发生时总会跑——见下面
@@ -131,10 +131,10 @@ policy 可以让某个 Flow 对某种风险/影响分类变成**必选**（不�
 用这些命令读这份记录：
 
 ```bash
-npx --no-install xforge audit status                 # 按 eventType 计数、覆盖缺口、待远端投递数量
-npx --no-install xforge audit status --change <id>    # 限定到某个 Change
-npx --no-install xforge audit verify --change <id>     # 哈希链完整性 + 该 Change 所属 Flow 要求的事件类型是否齐全
-npx --no-install xforge audit export --change <id> --output report.json   # 完整的脱敏事件列表，供外部审阅
+xforge audit status                 # 按 eventType 计数、覆盖缺口、待远端投递数量
+xforge audit status --change <id>    # 限定到某个 Change
+xforge audit verify --change <id>     # 哈希链完整性 + 该 Change 所属 Flow 要求的事件类型是否齐全
+xforge audit export --change <id> --output report.json   # 完整的脱敏事件列表，供外部审阅
 ```
 
 `audit verify` 是真正卡住 Archive 的那个命令——对于 `remoteDelivery:

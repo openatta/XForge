@@ -86,7 +86,7 @@ Install XForge as an exact project development dependency:
 ```bash
 cd <target-root>
 npm install --save-dev --save-exact @xforge/cli@0.7.11
-npx --no-install xforge version
+xforge version
 ```
 
 Require a successful Protocol 2 JSON envelope with:
@@ -108,8 +108,8 @@ version, Protocol, paths, and symlink boundary before planning any project write
 For Scaffold initialization only:
 
 ```bash
-npx --no-install xforge --root <target-root> init --dry-run
-npx --no-install xforge --root <target-root> init
+xforge --root <target-root> init --dry-run
+xforge --root <target-root> init
 ```
 
 Review every planned file. A conflicting `AGENTS.md` or `xforge/` file is a hard
@@ -148,8 +148,8 @@ Git and HTTP source identities are invalid in Protocol 2 installation.
 To combine initialization and one target projection in a new project, use:
 
 ```bash
-npx --no-install xforge --root <target-root> init --target <target> --dry-run
-npx --no-install xforge --root <target-root> init --target <target>
+xforge --root <target-root> init --target <target> --dry-run
+xforge --root <target-root> init --target <target>
 ```
 
 This combined form preflights both Scaffold and Adapter destinations before the
@@ -158,16 +158,16 @@ appropriate. When modules, Gates, policies, or selected resources need editing,
 initialize first, review the canonical files, then install targets separately:
 
 ```bash
-npx --no-install xforge --root <target-root> install --target <target> --dry-run
-npx --no-install xforge --root <target-root> install --target <target>
+xforge --root <target-root> install --target <target> --dry-run
+xforge --root <target-root> install --target <target>
 ```
 
 Repeat for each selected target. Omitting `--target` projects every target
 enabled in `xforge/manifest.yaml`:
 
 ```bash
-npx --no-install xforge --root <target-root> install --dry-run
-npx --no-install xforge --root <target-root> install
+xforge --root <target-root> install --dry-run
+xforge --root <target-root> install
 ```
 
 Inspect the capability matrix. Skills, agents, Rules, permission/MCP policies,
@@ -180,8 +180,8 @@ native installation.
 Run:
 
 ```bash
-npx --no-install xforge --root <target-root> state
-npx --no-install xforge --root <target-root> check
+xforge --root <target-root> state
+xforge --root <target-root> check
 ```
 
 Require:
@@ -193,7 +193,7 @@ Require:
 - expected target files recorded in `xforge/.state.json`;
 - no unexplained capability degradation.
 
-Generated runtime Hooks use `npx --no-install xforge`, so they resolve the exact
+Generated runtime Hooks use `xforge`, so they resolve the exact
 project-local package and cannot download a missing replacement. Confirm the
 selected Agent tool runs Hooks from the project root and explicitly trusts the
 generated configuration where the platform requires review.

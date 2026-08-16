@@ -210,6 +210,19 @@ function parseArguments(argv: string[]): ParsedArguments {
     if (positionals.length > 0) throw new XForgeError(diagnostic('XFORGE_ARGUMENT_UNEXPECTED', `Unexpected positional argument: ${positionals[0]}`));
     parsed.command = 'version';
     parsed.text = true;
+  } else if (positionals.length === 0 && seen.size === 0) {
+    /*
+     * A bare `xforge` used to answer with a JSON envelope whose only content was
+     * XFORGE_COMMAND_REQUIRED — a machine-readable way of saying "read the help", to somebody who
+     * had just demonstrated they were looking for it. Typing the name of a tool is how a person
+     * asks what it does, so it prints the help the same way `xforge help` does.
+     *
+     * Only when nothing else was given: `xforge --text` or `xforge --root x` are malformed
+     * invocations rather than requests for help, and still fail so a script cannot mistake one for
+     * a successful run.
+     */
+    parsed.command = 'help';
+    parsed.text = true;
   } else {
     parsed.command = positionals[0] ?? '';
     if (parsed.command === 'help') {
@@ -321,6 +334,13 @@ function versionEnvelope(): Envelope {
       nodeVersion: process.version,
       buildIdentity: actualGitIdentity(),
       integrity: runtimeCliIntegrity(),
+      /*
+       * Which file is actually answering. A global install and a project-local one resolve the
+       * same command name, so when a project reports XFORGE_CLI_IDENTITY_MISMATCH the first
+       * question is which of them ran — and every other field here describes the build rather than
+       * where it was found.
+       */
+      executablePath: process.argv[1] ?? null,
     },
   });
 }

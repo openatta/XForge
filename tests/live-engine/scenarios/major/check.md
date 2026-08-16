@@ -5,7 +5,7 @@ archive the Change, implement `src/**`, or weaken tests.
 
 Read `AGENTS.md`, the complete active `credential-store` Change (Proposal,
 delta Spec, Clarifications, Design, `work-packages.yaml`), `TEST_REQUEST.md`,
-and the installed `xforge-check` Skill. Use `npx --no-install xforge` from the
+and the installed `xforge-check` Skill. Use `xforge` from the
 project root and confirm the current Action is a ready Check Action before
 writing anything.
 

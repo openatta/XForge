@@ -24,7 +24,7 @@ Gate 是一份 YAML 资源（`kind: Gate`），要么声明一个固定的 `comm
    `terminal.archive.mandatoryGates`）里引用 `<id>`，让 `checkStructure()`
    知道它是必需的——一个没被登记或没被引用的 Gate 是死代码，永远不会跑。
 3. 触发方式：Skill（或你手动）调用
-   `npx --no-install xforge check --change <id> --gate <gate-id>`，或者作为
+   `xforge check --change <id> --gate <gate-id>`，或者作为
    `xforge archive` 的一部分，对每个 `mandatoryGates` 里的条目隐式跑一遍。
 4. `runGate()` 把 `spec.command` 当成真实子进程跑（`spawn`，默认不过
    shell），捕获退出码/stdout/stderr（脱敏、按字节数截断），原子写入
@@ -144,7 +144,7 @@ state 输出的人）一眼就能看出一条"must"级别的 Rule 到底是真�
 
 每个被投影的编程工具都有自己原生的"动手之前先问一下"钩子机制（Claude Code 的
 `PreToolUse`，Cursor 的权限钩子，等等）。`xforge init`/`install` 会给每个平台
-写入原生钩子配置，让相关事件调用 `npx --no-install xforge hook ...`。这次 CLI
+写入原生钩子配置，让相关事件调用 `xforge hook ...`。这次 CLI
 调用会跑 `executeHookDispatch()`，每次调用做的事：
 
 1. 把平台的工具名归一化成 XForge 的能力分类（`bash`/`shell`/`exec_command`

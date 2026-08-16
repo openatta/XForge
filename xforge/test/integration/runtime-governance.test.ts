@@ -82,7 +82,7 @@ describe('runtime governance adapters', () => {
     // evaluated before the PreToolUse hook, so flattening it would lock the Integrator out of the
     // writes `xforge-apply` requires. It is therefore bridge-only, and the gap is reported.
     expect(claude.permissions).toBeUndefined();
-    expect(claude.hooks.PreToolUse[0].hooks[0].command).toContain('npx --no-install xforge hook dispatch');
+    expect(claude.hooks.PreToolUse[0].hooks[0].command).toContain('xforge hook dispatch');
     expect(installed.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_POLICY_STATIC_LAYER_DEGRADED');
 
     const codex = JSON.parse(await readFile(path.join(root, '.codex', 'hooks.json'), 'utf8'));

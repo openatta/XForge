@@ -118,11 +118,11 @@ L5 失败需要区分 `product_failure`、`model_behavior_failure`、`provider_f
 - **CLI 来源双模式**（`cli-source.mjs`）：`--cli-source npm` 从真实 npm registry 精确安装
   `@xforge/cli@<version>`；`--cli-source local` 用 `npm pack ./xforge` 打包当前本地构建再
   安装，二者都落到隔离项目自己的 `node_modules`，harness 一律通过
-  `npx --no-install xforge ...`（cwd 设为项目根）调用，不再硬编码仓库路径。这样同一套脚本
+  `xforge ...`（cwd 设为项目根）调用，不再硬编码仓库路径。这样同一套脚本
   既能验证"发布到 npm 的包能不能用"，也能在日常开发时对本地未发布改动做回归，不需要两套
   实现。
 - **真实 `xforge init`**：`setup.mjs` 不再手动复制 `scaffold/payload`，而是先安装 CLI，再
-  跑真实的 `npx --no-install xforge init --target claude`，让 CLI 自己的内置 Scaffold 投影
+  跑真实的 `xforge init --target claude`，让 CLI 自己的内置 Scaffold 投影
   出 `.claude/skills/**`；这样 init/install 投影本身也被这条链路间接验证，而不是被绕过。
 - **三个 Flow，一份数据驱动的编排器**：`run-matrix.mjs --flow quick|solid|major` 读取该
   Flow 自己的 `xforge/flows/<name>.yaml`（stage 顺序、每个 stage 的 Skill、`exit.approvals`、

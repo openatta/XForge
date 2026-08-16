@@ -4,12 +4,12 @@
 
 这些命令的正常调用方是 AI Agent，不是人类临时手敲。人类或 CI 只负责一次性执行
 `npm install --save-dev --save-exact @xforge/cli@<version>`；此后每一次调用都
-是 Agent 按已安装 Skill 里给出的原文，发出 `npx --no-install xforge ...`。
+是 Agent 按已安装 Skill 里给出的原文，发出 `xforge ...`。
 
 ## 1. 基本约定
 
 ```bash
-npx --no-install xforge [--root <exact-project-root>] <command> [options] [--text]
+xforge [--root <exact-project-root>] <command> [options] [--text]
 ```
 
 - 不要把这行简化成裸的 `xforge`：项目本地安装并不会把可执行文件放进当前 shell
@@ -24,10 +24,10 @@ npx --no-install xforge [--root <exact-project-root>] <command> [options] [--tex
 ## 2. 查询状态
 
 ```bash
-npx --no-install xforge state
-npx --no-install xforge state --change add-login
-npx --no-install xforge state --kind policies
-npx --no-install xforge state --target codex --text
+xforge state
+xforge state --change add-login
+xforge state --kind policies
+xforge state --target codex --text
 ```
 
 Change 状态包括：
@@ -52,24 +52,24 @@ Change/Flow/Gate 生命周期查询。
 ```bash
 npm install --save-dev --save-exact @xforge/cli@0.7.11
 
-npx --no-install xforge init --dry-run
-npx --no-install xforge init
-npx --no-install xforge init --language en
-npx --no-install xforge init --language zh-CN
+xforge init --dry-run
+xforge init
+xforge init --language en
+xforge init --language zh-CN
 
 # 新项目可一步完成 Scaffold 初始化和单 Target 投影
-npx --no-install xforge init --target codex --dry-run
-npx --no-install xforge init --target codex
+xforge init --target codex --dry-run
+xforge init --target codex
 
 # 已初始化项目增加 Target
-npx --no-install xforge install --target claude --dry-run
-npx --no-install xforge install --target claude
+xforge install --target claude --dry-run
+xforge install --target claude
 
-npx --no-install xforge sync --dry-run
-npx --no-install xforge sync --verify-digests
-npx --no-install xforge update --dry-run
-npx --no-install xforge update
-npx --no-install xforge uninstall --target cursor --dry-run
+xforge sync --dry-run
+xforge sync --verify-digests
+xforge update --dry-run
+xforge update
+xforge uninstall --target cursor --dry-run
 ```
 
 - `init` 只从已安装 npm 包读取 Scaffold，校验 descriptor、完整 inventory、摘要、
@@ -100,15 +100,15 @@ opencode.json
 ```
 
 这些文件属于 Adapter 输出，不直接编辑。安装成功不等于平台已信任或 runtime 已激活项目 Hook。
-生成的 Hook 使用 `npx --no-install xforge`，缺少项目本地精确包时直接失败，不通过
+生成的 Hook 使用 `xforge`，缺少项目本地精确包时直接失败，不通过
 网络下载替代 CLI。
 
 ## 4. 结构检查与 Machine Gates
 
 ```bash
-npx --no-install xforge check
-npx --no-install xforge check --change add-login
-npx --no-install xforge check --change add-login --gate structure
+xforge check
+xforge check --change add-login
+xforge check --change add-login --gate structure
 ```
 
 `check` 校验 schema、引用、Flow eligibility、路径、work-package/DAG/delivery 和 Lock freshness，并运行选定或当前阶段要求的 Gates。Gate Evidence 只能由 runner 写入；命令 argv、runner identity、revision、Git HEAD、输出摘要和 digest 都被记录。
@@ -118,8 +118,8 @@ LLM 写出的 Check report 或 `PASS` 不会成为 Machine Gate Evidence。
 ## 5. Stage Transition
 
 ```bash
-npx --no-install xforge transition --change add-login --to design --dry-run
-npx --no-install xforge transition --change add-login --to design
+xforge transition --change add-login --to design --dry-run
+xforge transition --change add-login --to design
 ```
 
 CLI 只允许 Flow 声明的下一 Stage 或 rework Stage，并检查当前 revision 的 Artifact、exit condition、Gate、Approval 和 Audit chain。成功后在：
@@ -135,7 +135,7 @@ CLI 只允许 Flow 声明的下一 Stage 或 rework Stage，并检查当前 revi
 本地交互式决定，必须在真实 TTY 里运行：
 
 ```bash
-npx --no-install xforge approve \
+xforge approve \
   --change add-login \
   --for apply \
   --policy planning-solid \
@@ -154,7 +154,7 @@ npx --no-install xforge approve \
 `mcp` provider（对接外部审批平台，实时提交+轮询）：
 
 ```bash
-npx --no-install xforge approve \
+xforge approve \
   --change add-login \
   --for apply \
   --policy implementation-major \
@@ -172,12 +172,12 @@ audit hash chain 里有没有一条匹配的 `approval.decided` 事件，每次�
 ## 7. Work-package dispatch
 
 ```bash
-npx --no-install xforge work-package dispatch \
+xforge work-package dispatch \
   --change add-login \
   --package T001 \
   --dry-run
 
-npx --no-install xforge work-package dispatch --change add-login --package T001
+xforge work-package dispatch --change add-login --package T001
 ```
 
 只允许在 `apply` Stage 派发 ready package。返回 receipt 的 `executionId`、`stateRevision`、`policySnapshotDigest`、Git base/head 和 `auditCorrelationId` 必须随任务传给 Worker；delivery 必须回带对应的 snake_case 字段。静态 `work-packages.yaml` 仍只有八字段。
@@ -187,11 +187,11 @@ npx --no-install xforge work-package dispatch --change add-login --package T001
 必须分别提供范围内证据并显式确认：
 
 ```bash
-npx --no-install xforge work-package acknowledge \
+xforge work-package acknowledge \
   --change add-login --package T001 --as integrator \
   --evidence xforge/changes/add-login/evidence/agents/T001/integration.md
 
-npx --no-install xforge work-package acknowledge \
+xforge work-package acknowledge \
   --change add-login --package T001 --as reviewer \
   --evidence xforge/changes/add-login/evidence/agents/T001/review.md
 ```
@@ -203,12 +203,12 @@ npx --no-install xforge work-package acknowledge \
 ## 8. Audit
 
 ```bash
-npx --no-install xforge audit status
-npx --no-install xforge audit status --change add-login
-npx --no-install xforge audit verify --change add-login
-npx --no-install xforge audit export --change add-login
-npx --no-install xforge audit export --change add-login --output reports/add-login-audit.json
-npx --no-install xforge audit retry
+xforge audit status
+xforge audit status --change add-login
+xforge audit verify --change add-login
+xforge audit export --change add-login
+xforge audit export --change add-login --output reports/add-login-audit.json
+xforge audit retry
 ```
 
 - `status` 汇总 event classes、coverage gaps、remote pending 和本地 retention 状态。
@@ -235,8 +235,8 @@ audit:
 ## 9. Archive
 
 ```bash
-npx --no-install xforge archive --change add-login --dry-run
-npx --no-install xforge archive --change add-login
+xforge archive --change add-login --dry-run
+xforge archive --change add-login
 ```
 
 Archive 要求 Stage 已为 `ready-to-archive`，Gate/Approval/Audit/Transition receipts 均绑定当前 revision。执行时重新运行 mandatory Gates，重新规划 Specs merge 和 move，最后原子提交。任何 Gate failure、stale receipt、Spec conflict、远端审计欠账或用户文件冲突都会停止事务。
@@ -246,9 +246,9 @@ Archive 是 repository closure，不等于 deploy/release 授权。
 ## 10. 扩展健康检查
 
 ```bash
-npx --no-install xforge doctor
-npx --no-install xforge doctor --kind gates
-npx --no-install xforge doctor --strict --text
+xforge doctor
+xforge doctor --kind gates
+xforge doctor --strict --text
 ```
 
 `doctor` 是只读、advisory 命令，从不因发现问题而阻塞（除非显式加 `--strict`）：
@@ -279,7 +279,7 @@ sync/update/install 已经把用户扩展的 Skill/Rule/PermissionPolicy/Hook �
 Adapter 使用：
 
 ```bash
-npx --no-install xforge hook dispatch --target codex --event agent.tool.before
+xforge hook dispatch --target codex --event agent.tool.before
 ```
 
 事件 JSON 从 stdin 输入，stdout 只返回目标平台要求的决定 JSON。它不是普通 CRUD 接口。before/permission 处理失败时 fail closed；after/audit-only 失败按 Hook failure policy spool/warn。
