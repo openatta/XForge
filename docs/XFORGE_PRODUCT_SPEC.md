@@ -15,7 +15,7 @@
 > 本文保留最初的产品/Protocol 1 基线和历史约束。Rules、PermissionPolicy、双平面
 > Hooks、Transition、Approval、Audit 与当前 Protocol 2 实现以
 > [governance-control-plane-design.md](governance-control-plane-design.md) 和 ADR 0002
-> 为准；`@xforge/cli 0.7.9` 已完成 P0–P4，Protocol 1 仅保留 Portable-read 迁移。
+> 为准；`@xforge/cli 0.7.10` 已完成 P0–P4，Protocol 1 仅保留 Portable-read 迁移。
 >
 > 第 4.3 节的 Flow 同样是历史示例：文中的第三档 Flow ID 写作 `prime`，Schema 写作
 > `artifacts` + `operations`。当前实现的第三档 Flow ID 是 `major`，Schema 是
@@ -137,7 +137,7 @@ inventory、SHA-256、版本、Protocol、路径和符号链接边界。CLI 与 
 apiVersion: xforge.dev/v1alpha2
 kind: Scaffold
 metadata:
-  version: 0.7.9
+  version: 0.7.10
 protocol: "2"
 payload: payload
 integrity:
@@ -160,7 +160,7 @@ xforgeCompatibility:
 xforge:
   source: npm
   package: "@xforge/cli"
-  version: "0.7.9"
+  version: "0.7.10"
   protocol: "2"
 ```
 
@@ -468,11 +468,11 @@ project:
       kind: application
 
 scaffold:
-  version: 0.7.9
+  version: 0.7.10
   source:
     type: npm
     package: "@xforge/cli"
-    version: 0.7.9
+    version: 0.7.10
   skills:
     - xforge-explore
     - xforge-propose
@@ -496,7 +496,7 @@ scripts:
 xforge:
   source: npm
   package: "@xforge/cli"
-  version: "0.7.9"
+  version: "0.7.10"
   protocol: "2"
 
 flow: solid
@@ -762,7 +762,7 @@ Worker 把结构化交付返回 Main Agent，由 Main Agent 保存到 `<change>/
 
 ### 4.7 Rules
 
-本节是 Protocol-1 历史模型。vNext（Protocol 2，`@xforge/cli 0.7.9` 已完成 P0–P4）
+本节是 Protocol-1 历史模型。vNext（Protocol 2，`@xforge/cli 0.7.10` 已完成 P0–P4）
 已经把 Rule 限定为 Agent guidance，把 allow/ask/deny 运行权限迁移到独立
 PermissionPolicy，并由 `state/check` 报告
 `instructed/guarded/verified/uncovered` coverage；当前 Schema 见
@@ -788,7 +788,7 @@ XForge 不提供带业务偏好的默认规则。项目和企业必须自行编�
 
 ### 4.8 Hooks
 
-本节是 Protocol-1 历史模型。vNext（Protocol 2，`@xforge/cli 0.7.9` 已完成 P0–P4）
+本节是 Protocol-1 历史模型。vNext（Protocol 2，`@xforge/cli 0.7.10` 已完成 P0–P4）
 已经把事件拆为 Agent Runtime Plane 与 XForge Workflow Plane：前者由 Adapter 按
 事件级能力投影，后者由 CLI 跨平台执行；核心流程审计不依赖目标平台 Hook。当前
 Schema 见 `xforge/schemas/hook.schema.json` 和

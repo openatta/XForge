@@ -10,7 +10,7 @@ XForge 不是另一个 Agent Runtime。模型和编程工具仍然负责探索�
 XForge 负责定义什么是当前事实、下一次状态转换是否合法，以及一个 Change 在推进或
 关闭前必须具备哪些证据。
 
-> **当前版本：** `@xforge/cli 0.7.9`、Protocol 2，需要 Node.js 20 或更高
+> **当前版本：** `@xforge/cli 0.7.10`、Protocol 2，需要 Node.js 20 或更高
 > 版本。只支持从 npm 安装精确版本，不再支持源码安装。项目仍在积极开发中。
 
 ## 设计目标
@@ -138,7 +138,7 @@ XForge 命令的正常调用方是 AI Agent，不是人类临时手敲。人类�
 先在目标项目中安装精确 npm 包，再由 CLI 校验并初始化包内置的 Scaffold：
 
 ```bash
-npm install --save-dev --save-exact @xforge/cli@0.7.9
+npm install --save-dev --save-exact @xforge/cli@0.7.10
 npx --no-install xforge init --dry-run
 npx --no-install xforge init
 ```
