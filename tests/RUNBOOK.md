@@ -20,6 +20,10 @@
 **回放能验证工具链，验证不了"Skill 写得是否可被理解、Agent 是否遵守它"**——
 所以录像里记了它录制时的 Scaffold 指纹，指纹一变就拒绝回放。这是强制而非提醒。
 
+**发版不会作废录像。** 指纹只摘"模型会读到的内容"：整个 payload，减去 `lock.yaml`
+与 `manifest.yaml` 的版本字段。`scaffold.skills` **在摘要之内**——启用或移除一个 Skill
+仍然会、也应该让旧录像失效。`tests/live-engine-fingerprint.test.ts` 把这两半都钉住了。
+
 ---
 
 ## 2. `relock` 的两个排序约束
