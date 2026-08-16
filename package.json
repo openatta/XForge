@@ -6,6 +6,7 @@
     "build": "npm --prefix xforge run build",
     "check:privacy": "node scripts/privacy-check.mjs",
     "check:scaffold": "npm --prefix xforge run check:scaffold",
+    "doctor": "node scripts/doctor-install.mjs",
     "privacy:install-hook": "node scripts/install-git-hooks.mjs",
     "release:check": "node scripts/release-check.mjs",
     "release:prepare": "node scripts/prepare-release.mjs",

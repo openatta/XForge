@@ -74,8 +74,31 @@ npm run build                →  再构建一次；上一步改了 lock，而�
 
 - 仓库根的 `.env` 提供 `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_BASE_URL`（不经 shell 求值加载，不复制进样例项目）
 - `claude` CLI 在 PATH 上
+- `npm run doctor` 通过（见 4.2）
 
-### 4.2 命令
+### 4.2 先查环境里有没有旧版工具
+
+```sh
+npm run doctor
+```
+
+它报告一次 `xforge` 在当前目录下**实际会解析到哪个文件**，并与工作树刚构建出来的
+那一份逐项比对。
+
+> **只比版本号会漏掉最常见的那一种陈旧。** 未发布期间工作树和全局安装的版本号是
+> 同一个（都是 `0.7.11`），但 scaffold 内容已经不同。所以 doctor 比的是
+> `integrity` 与 `buildIdentity.commit`，不是 `version`。实测就是这样抓到一次：
+> 版本号一致、摘要 `927eb677…` vs `dab84093…`，全局那份来自三个提交之前。
+
+判到陈旧时按它输出的两条处理：要么从本树重装
+（`npm run build && npm install -g ./xforge`），要么直接卸掉
+（`npm uninstall -g @xforge/cli`）——live-engine 实跑不受影响，它把样例项目的
+`node_modules/.bin` 前置进 `PATH`，用的始终是自己那份隔离安装。
+
+`file unknown (pre-0.7.12 build)` 是正常的：`executablePath` 从 0.7.12 才有，
+更早的构建报不出自己的位置。
+
+### 4.3 命令
 
 ```sh
 # 实跑（改动未发布时必须用 local）
@@ -94,7 +117,7 @@ node tests/live-engine/run-matrix.mjs --scenario quick --replay quick --cli-sour
 四个场景：`quick` · `solid` · `solid-rework` · `major`。
 注意 `solid-rework` 与 `solid` 共用一个 Flow，所以**必须用 `--scenario` 而不是 `--flow`**。
 
-### 4.3 并行
+### 4.4 并行
 
 四个场景可以并行跑，temp 根按场景隔离。**但有一个脆弱前提**：
 `cli-source.mjs` 里 `resolveInstallSpec({mode, packRoot})` 解构了 `packRoot` 却从未使用，
@@ -104,10 +127,29 @@ node tests/live-engine/run-matrix.mjs --scenario quick --replay quick --cli-sour
 > 若有人"修好"这个被忽略的参数、让每个场景独立打包，
 > **三个场景同时启动会互删构建产物**——这是注释里记录过的真实故障。
 
+**⚠️ 上面那个提前返回只在 tarball 已经存在时才救得了你。** 当前版本的 tarball
+不存在（刚改过版本号、或 `tests/.tmp` 被清过）时，四个场景会**同时**进入
+`npm run build --prefix xforge`，于是撞成：
+
+```
+Error: EEXIST: file already exists, mkdir '.../xforge/scaffold'
+```
+
+失败的场景在 setup 阶段就退出，一次模型调用都没发生（所以不烧钱，但会白等）。
+**并行前先把共享 tarball 预热一次**：
+
+```sh
+# 先单独跑一个最便宜的场景把 tarball 造出来，或直接确认它在
+ls tests/.tmp/live-engine-npm-pack/xforge-cli-<version>.tgz
+```
+
+预热后再并行其余场景。判断预热出来的那份可不可信，就解开它比对 `lock.yaml`
+的 `integrity` 与 `npm run doctor` 报的 `built here` 是否一致。
+
 **并行的代价**：单阶段耗时明显变长（实测 check 从约 2 分钟涨到 7–8 分钟），
 更接近 900 秒超时线。赶时间就并行，求稳就串行。
 
-### 4.4 默认预算与重试
+### 4.5 默认预算与重试
 
 | 参数 | 默认 | 含义 |
 | --- | --- | --- |
@@ -183,6 +225,7 @@ major ≈ $8.3。全套约 $30，加上一两次失败重跑要按 $45 预留。
 4. npm run test:product      # 根级黑盒套件
 5. node tests/live-engine/check-coverage.mjs
 6. 若动了 Skill/Flow/Gate/Rule/Policy：
+     npm run doctor          # 先确认环境里没有旧版工具（§4.2）
      逐个场景实跑 → record-cassette → --replay 验收
 7. git commit
 ```
