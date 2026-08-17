@@ -4,97 +4,97 @@
   "scenario": "solid",
   "flow": "solid",
   "changeId": "task-ledger",
-  "recordedAt": "2026-08-16T12:04:59.159Z",
-  "scaffold": "sha256:1491ecbe16aa48641a111d0b8d1fdb7ffd93377325f2a0c460823c935ac4b757",
+  "recordedAt": "2026-08-17T11:54:45.285Z",
+  "scaffold": "sha256:2f44e792a6c34e56a7f18c092866f45ff24a130350aa936e39ac78e34f6e4a9e",
   "cli": null,
-  "unreplayableReason": "xforge/changes/archive/2026-08-16-task-ledger/evidence/constitution-check.yaml: principle \"Governance\" cites an approval receipt and nothing else. A replay mints its own approval UUIDs, so that citation cannot resolve and constitution-check refuses it. See tests/live-engine/README.md — the fix is to constrain citations in the xforge-check Skill, which invalidates every cassette, so it belongs with the next Skill change.",
+  "unreplayableReason": null,
   "outcome": "archived",
   "reworks": 0,
   "steps": [
     {
       "stage": "propose",
-      "commit": "66c5cbae30ea3991074851440294b8d38fc484eb",
-      "parent": "97c7a7ad4154b5f3ca95fe0acdea8f02205ad33b",
+      "commit": "b4299e41540af35eac6fe996338565ef19787ed9",
+      "parent": "f0495bae16cba383340b9cbfcba4e04a882b0772",
       "subject": "Live engine stage complete: solid:propose",
       "files": 6
     },
     {
       "stage": "standalone-revise",
-      "commit": "5fe3ab4159a5ec72bd118ce3a9f9cd37716d6bb3",
-      "parent": "4ae7e74fd043d0a8ad4c0bd4ab1960180aad91a6",
+      "commit": "8ab24deaf8822a2e4d40fc7275dad7c878e395f0",
+      "parent": "590716bea8b9dd7ebfe034d7b55369731ea2cbac",
       "subject": "Live engine standalone checkpoint: standalone-revise",
-      "files": 3
+      "files": 4
     },
     {
       "stage": "design",
-      "commit": "bb028139ae9af4b3bff966b9477d8a51f830217b",
-      "parent": "5fe3ab4159a5ec72bd118ce3a9f9cd37716d6bb3",
+      "commit": "35f2d384e25e487e101f8f412b78e42e4ad3e396",
+      "parent": "8ab24deaf8822a2e4d40fc7275dad7c878e395f0",
       "subject": "Live engine stage complete: solid:design",
       "files": 2
     },
     {
       "stage": "check",
-      "commit": "e0c470f0208b0073d0fa4f26e2aca09ce7e6b680",
-      "parent": "d0c0e002e3dae2b4b939b980f9a1e7b7f8e6359f",
+      "commit": "7b57749f62ac2b2144be982a4c148e31fc2baea9",
+      "parent": "82918773a0f53c80729b8f3792aa8ac197c7c852",
       "subject": "Live engine stage complete: solid:check",
       "files": 8
     },
     {
       "stage": "apply",
-      "commit": "562c555263b4536e8b1a3c573b9925264cd5b5b3",
-      "parent": "d9de5bebc1b3c6cdf50676277f1950a4a76a020b",
+      "commit": "0dc0fdd5b6ed1878e8f6099951a3f45035aa2d9d",
+      "parent": "35769236064b9d7bba88854d0ac33c54dce92b87",
       "subject": "Live engine stage complete: solid:apply",
       "files": 1
     },
     {
       "stage": "apply-delivered",
-      "commit": "a9b2744f2fd3189267b2ab4db8aa316e828d3174",
-      "parent": "eb07ea3708989e6b98ebe1cf48bd33c12e28e81d",
+      "commit": "c7c0b3fa8095558b755f8423ac401aa6231f89b5",
+      "parent": "06033eb9f5f8a32b46f01f5fd04f7fe70b3dba21",
       "subject": "Live engine continuation: apply delivery observed",
       "files": 2
     },
     {
       "stage": "verify",
-      "commit": "413d5ad203a2b531dd50cb6f14220fc957e5eef9",
-      "parent": "a9b2744f2fd3189267b2ab4db8aa316e828d3174",
+      "commit": "a444f3b3c4bca229523461f85f71a38dbe365551",
+      "parent": "c7c0b3fa8095558b755f8423ac401aa6231f89b5",
       "subject": "Live engine stage complete: solid:verify",
-      "files": 6
+      "files": 7
     }
   ],
   "stages": [
     {
       "stage": "propose",
-      "contentRevision": "8dd355beaa2d471deca0be3dbeab9339c6811d86d1aaf79f6032aeb84da4dc2e",
+      "contentRevision": "90ef84a8f88013407970c32e685f555e278e34bdf14e113ce5a43d02a9bd2896",
       "currentStage": "design"
     },
     {
       "stage": "standalone-revise",
-      "contentRevision": "e96524edf96b70826867b98b43c1263bd871424b10feb1342ac7143b658b1d22",
+      "contentRevision": "1030e1f377f0dfda498f3832d33403124a25d2c72fa44ab5b52c90e8ba4920ad",
       "currentStage": "design"
     },
     {
       "stage": "design",
-      "contentRevision": "283b0033a42d7e5a265efab9da772a6735f3fac488ac82d0ffcf0d121aefbabc",
+      "contentRevision": "561fe7a6e50f634b87add98fa115943fa385509346abd5dbce771aa4ff0eea21",
       "currentStage": "design"
     },
     {
       "stage": "check",
-      "contentRevision": "bec8dfc370378401049f217088abce3f73a49c3646335db840063122776f4f2b",
+      "contentRevision": "1cc4c6dde578be5358e3e91e9b30714ef8f0794492a209a42d9b3bdcaebd2662",
       "currentStage": "apply"
     },
     {
       "stage": "apply",
-      "contentRevision": "bec8dfc370378401049f217088abce3f73a49c3646335db840063122776f4f2b",
+      "contentRevision": "1cc4c6dde578be5358e3e91e9b30714ef8f0794492a209a42d9b3bdcaebd2662",
       "currentStage": "apply"
     },
     {
       "stage": "apply-delivered",
-      "contentRevision": "bec8dfc370378401049f217088abce3f73a49c3646335db840063122776f4f2b",
+      "contentRevision": "1cc4c6dde578be5358e3e91e9b30714ef8f0794492a209a42d9b3bdcaebd2662",
       "currentStage": "verify"
     },
     {
       "stage": "verify",
-      "contentRevision": "6c3c47bb417d8b5da84667a6a902bb59460bf8b5dd9a63f56e6b2eb436924eb0",
+      "contentRevision": "0eacde22db127c116f09e669299652247d51c0f560549e9c9a01e847d68098d9",
       "currentStage": "verify"
     }
   ]

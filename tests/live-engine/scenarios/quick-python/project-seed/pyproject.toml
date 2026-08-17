@@ -1,0 +1,8 @@
+# The only build-system marker this project has. There is deliberately no package.json: the CLI is
+# installed beside the project rather than inside it, so this is a genuinely non-Node project — the
+# shape in which the shipped npm Gates used to report `passed` having asserted nothing, and which
+# this harness could not construct at all until the CLI install moved out.
+[project]
+name = "xforge-live-e2e-greeter"
+version = "0.0.0"
+requires-python = ">=3.9"

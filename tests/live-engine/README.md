@@ -13,15 +13,23 @@ the sample project.
 
 ## What this validates that unit/integration tests cannot
 
-- **A real npm install, not a build artifact call.** `setup.mjs` installs
-  `@xforge/cli` into the isolated project's own `node_modules` — from the
-  real npm registry (`--cli-source npm`, the default) or from a freshly
-  `npm pack`ed local tarball (`--cli-source local`, for same-day regression
-  testing of an uncommitted change without a registry round-trip or a real
-  publish). Every later command in this harness invokes
-  `xforge ...` with `cwd` set to that project — the same
-  invocation form documented in the project's own `AGENTS.md` — never a
+- **A real npm install, not a build artifact call — and installed the way the
+  product documents.** `setup.mjs` installs `@xforge/cli` from the real npm
+  registry (`--cli-source npm`, the default) or from a freshly `npm pack`ed
+  local tarball (`--cli-source local`), into a directory *beside* the isolated
+  project, and puts its `bin` on `PATH`. Every later command invokes a bare
+  `xforge ...` with `cwd` set to the project — the global-install form v0.7.12
+  documents and the project's own `AGENTS.md` tells an Agent to use — never a
   hardcoded path to this repository's `xforge/dist/cli.js`.
+
+  It used to install into the project as a devDependency, which meant writing a
+  `package.json` there first. That made **every scenario this harness can build a
+  Node project**, and that was not a neutral detail: it is precisely the shape in
+  which the shipped npm Gates reported `passed` having asserted nothing, so no
+  number of runs here could have found that defect. A harness that cannot
+  construct the failing shape cannot see the failure. A project now starts empty
+  and receives only what its seed puts there, so a Rust, Go or Python scenario is
+  possible.
 - **A real `xforge init`.** `setup.mjs` does not copy `scaffold/payload` by
   hand; it installs the CLI, then runs a real
   `xforge init --target claude`, so init/install projection
@@ -54,6 +62,11 @@ the sample project.
 ```text
 tests/live-engine/scenarios/
   quick/        propose -> apply -> verify (greeter: trivial, single-module, low risk)
+  quick-python/ the same Flow and oracle on a genuinely non-Node project: pyproject.toml,
+                a stdlib unittest suite, and no package.json anywhere
+  quick-undeclared/
+                the quick project with the answer removed: nothing says how it runs its
+                tests and nobody is there to ask, so stopping is the pass
   solid/        propose -> design -> check -> apply -> verify (task-ledger)
   major/        propose -> clarify -> design -> check -> apply -> verify (credential-store:
                 risk high, security + dataMigration impact, a deliberately unresolved
@@ -81,6 +94,8 @@ once.
 | scenario | flow | intent | must show |
 | --- | --- | --- | --- |
 | `quick` | quick | happy-path | archived, **exactly 0 reworks** |
+| `quick-python` | quick | non-Node | archived, **exactly 0 reworks**, `unit-tests` ran the declared Python command |
+| `quick-undeclared` | quick | fail-closed | **stopped at verify**, `verification.unit-tests` still absent — inventing a command fails even if it is right |
 | `solid` | solid | happy-path | archived, **exactly 0 reworks** |
 | `solid-rework` | solid | rework | archived, **exactly 1 rework** |
 | `major` | major | adversarial | archived **or** `stopped-at-check` |
@@ -210,6 +225,19 @@ snapshot, with no commit id or timestamp in it, so identical trees must produce
 an identical revision — and any drift in how content is digested fails
 immediately, at the Stage that caused it.
 
+**Every project here was a Node project until 2026-08-17, and not by choice.**
+`setup.mjs` installed `@xforge/cli` as a devDependency, so it wrote a
+`package.json` before any seed was overlaid. That hid a real defect for as long
+as it was true: the shipped `unit-tests` and `security-scan` Gates ran npm, and
+on a project *without* a `package.json` they reported `passed` having asserted
+nothing — so a `must` Rule lost its only enforcement and an archive's mandatory
+Gate was empty. No number of runs here could have surfaced it.
+
+The CLI is now installed beside the project rather than inside it, so a seed with
+no `package.json` produces a project with none, and a non-Node scenario is
+buildable. `quick-undeclared` records the other half — whether an **Agent**
+invents an answer when none is available — which no static test can show.
+
 **A replay cannot tell you whether a Skill is comprehensible or whether an Agent
 obeys it.** Four of the defects the 2026-08-13 runs found were model-behaviour
 defects that no replay would have caught. So a cassette records the fingerprint
@@ -231,15 +259,28 @@ inside Check that reads like a product defect. It is a property of the
 recording, not of the scenario: a later run that cites a Requirement id
 alongside the receipt records as replayable with no code change.
 
-**As of 2026-08-16 this is what `solid` does, and the cassette is record-only.**
+**As of 2026-08-16 this was what `solid` did, and the cassette was record-only.**
 Two consecutive recordings cited the receipt as the Governance principle's only
-reference, so treating it as model variance and re-recording is not worth
+reference, so treating it as model variance and re-recording was not worth
 paying for: for a principle *about governance*, an approval receipt is the
-natural evidence, and the model keeps choosing it. `quick` and `major` carry the
-replay regression; `solid` joins `solid-rework` as recordable but not replayable.
+natural evidence, and the model kept choosing it.
 
-Fixing it properly is not a one-line change, and three of the four candidate
-fixes are ruled out by evidence rather than by taste:
+**Fixed 2026-08-17, at the source.** `constitution-check` now refuses a
+principle whose citations are *all* approval receipts, with a message naming
+what a receipt does prove; `xforge-check`'s `SKILL.md`/`SKILL_cn.md` and the
+`constitution-check` artifact `instruction` in `solid.yaml`/`major.yaml` say the
+same thing before the Gate has to. So the next `solid` recording should be
+replayable, and `unreplayableReason` stays as the backstop that catches it at
+record time if it is not.
+
+Note which half of that is load-bearing. This directory's own history is the
+argument: the hazard was documented here, in prose, and documenting it did not
+prevent a single recurrence. A rule an Agent is asked to remember is not the
+same rule as one the Gate applies — so the Skill text explains the reason and
+the Gate is what enforces it.
+
+Fixing it properly was not a one-line change, and three of the four candidate
+fixes were ruled out by evidence rather than by taste:
 
 - **Preserve the recorded receipt filename.** `receiptId` lives inside the
   receipt and is bound into the audit hash chain, so a renamed receipt is one
@@ -252,11 +293,12 @@ fixes are ruled out by evidence rather than by taste:
   rest of the Flow — so the divergence propagates to *every* later Stage and the
   waiver stops being narrow. It would have to disable the assertion the replay
   exists to make.
-- **Constrain citations to stable identifiers in the shipped `xforge-check`
-  Skill** — the one that works, and also better governance evidence: a receipt
-  proves someone approved, not why the Change complies. It changes the Scaffold
-  fingerprint and invalidates every cassette at once, so do it *with* the next
-  Skill change and re-record the set once, not on its own.
+- **Constrain citations to stable identifiers** — the one that works, and also
+  better governance evidence: a receipt proves someone approved, not why the
+  Change complies. This is what was done, extended from Skill wording alone to
+  Gate enforcement for the reason given above. It changes the Scaffold
+  fingerprint and invalidates every cassette at once, which is why it was done
+  *with* a Skill change so the set is re-recorded once rather than twice.
 
 `run-matrix.mjs` prints a pass/fail summary (acceptance exit code, spend,
 budget accounting) when it finishes. Per-stage engine output — cost, tokens,

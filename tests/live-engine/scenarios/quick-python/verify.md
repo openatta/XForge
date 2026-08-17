@@ -8,7 +8,7 @@ the installed `xforge-verify` Skill. Confirm State shows Stage Verify. Do not
 run `xforge approve`, `transition`, or `archive` in this
 phase, because closing Approval and Stage movement are kept outside the model
 environment; `xforge state` and `xforge check` are yours to run and the Skill
-requires them. Run `npm test` as an independent verification. If it fails,
+requires them. Run `python3 -m unittest discover -s test` as an independent verification. If it fails,
 document the failure and stop without changing implementation or tests.
 
 If it passes, create a complete `assurance.md` that maps every Requirement ID
@@ -24,7 +24,7 @@ never restates a Gate's findings as its own. Stop without transitioning;
 the external harness will commit these artifacts, obtain closing Approval, and
 archive.
 Any contradiction between the delta Spec, immutable tests, and implementation
-is a blocker even when `npm test` passes: record a failed verdict, do not
+is a blocker even when `python3 -m unittest discover -s test` passes: record a failed verdict, do not
 claim archive readiness, and request rework instead of downgrading it to a
 warning.
 
@@ -37,29 +37,22 @@ reports as `change.path`, never at the project root. Use the project-relative
 path the CLI states (`writes` in a next action, `change.path` otherwise);
 never infer a location from a bare file name.
 
-The `unit-tests` Gate runs whatever this project declared and refuses when it has
-declared nothing, so on a fresh project it will refuse. That refusal is correct
-and must not be worked around: do not edit the Gate, and do not adopt the command
-the CLI suggests just because it appears — a suggestion is the start of a
-question, never an answer.
+This project is not a Node project and has no `package.json`, so the `unit-tests`
+Gate has no command declared and refuses rather than passing. That refusal is
+correct and must not be worked around: do not edit the Gate, and do not adopt the
+suggestion the CLI offers — `pyproject.toml` makes it propose `pytest`, which
+this project neither uses nor has installed.
 
-`TEST_REQUEST.md` states the command this project's acceptance is measured by,
-and there is no human at this terminal, so it stands in for the project owner's
-answer. Declare it with the CLI, never by hand:
+`TEST_REQUEST.md` states the command this project actually runs, under "本项目如何
+运行测试". Declare it with the CLI, never by hand:
 
 ```
-xforge verification declare --gate-name unit-tests --command '["npm","test"]' --by "project owner"
+xforge verification declare --gate-name unit-tests \
+  --command '["python3","-m","unittest","discover","-s","test"]' --by "project owner"
 ```
 
-**Do not edit `xforge/manifest.yaml` yourself.** The Manifest is what the
-governance dispatcher reads, so a malformed one denies every tool call — and a
-live run reached exactly that deadlock by indenting a hand-written block one
-level short, after which it could not open the file it had just broken. The
-command writes the block correctly, fills `declaredAt`, and refuses rather than
-producing a Manifest that would not load.
-
-Do **not** run `xforge install` afterwards either: the declaration is a Manifest
-field, not a locked resource, and `install` rewrites the projected tool
-directories, whose changed files belong to no work package and would invalidate
-every delivery in this Change once committed. Just re-run the Gate.
-
+**Do not edit `xforge/manifest.yaml` yourself** — a malformed Manifest denies
+every tool call, including the ones that would repair it. Do not run
+`xforge install` afterwards either: the declaration is not a locked resource, and
+`install` rewrites the projected tool directories, which would invalidate this
+Change's deliveries once committed. Just re-run the Gate.

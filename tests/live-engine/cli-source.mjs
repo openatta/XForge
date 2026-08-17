@@ -1,4 +1,5 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -14,6 +15,43 @@ function run(command, args, cwd) {
   const result = spawnSync(command, args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   if (result.status !== 0) throw new Error(`${command} ${args.join(' ')} failed: ${result.stderr || result.stdout}`);
   return result.stdout.trim();
+}
+
+/**
+ * A digest of everything that ends up inside the packed tarball, used as its cache key.
+ *
+ * Covers the CLI source, its schemas, its package manifest, and the Scaffold payload (whose own
+ * `files.sha256` already summarises every file in it). Content, not timestamps: a checkout or a
+ * touch must not invalidate the cache, and an edit must.
+ */
+async function sourceDigest() {
+  const roots = [
+    path.join(repositoryRoot, 'xforge', 'src'),
+    path.join(repositoryRoot, 'xforge', 'schemas'),
+  ];
+  const hash = createHash('sha256');
+  for (const root of roots) {
+    const entries = [];
+    const walk = async (directory) => {
+      for (const entry of (await readdir(directory, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
+        const full = path.join(directory, entry.name);
+        if (entry.isDirectory()) await walk(full);
+        else entries.push(full);
+      }
+    };
+    await walk(root);
+    for (const file of entries) {
+      hash.update(path.relative(repositoryRoot, file));
+      hash.update(await readFile(file));
+    }
+  }
+  for (const file of [
+    path.join(repositoryRoot, 'xforge', 'package.json'),
+    path.join(repositoryRoot, 'scaffold', 'files.sha256'),
+  ]) {
+    hash.update(await readFile(file));
+  }
+  return hash.digest('hex').slice(0, 12);
 }
 
 async function cliPackageVersion() {
@@ -41,13 +79,23 @@ export async function resolveInstallSpec({ mode, packRoot }) {
    * isolated project: `npm run build`'s clean step deletes `xforge/dist`, so three Flows starting
    * together used to delete each other's build and fail before a single model call was made — one
    * of them installing a tarball packed from a half-empty dist. Packing once into a shared
-   * location and reusing it makes the Flows genuinely parallelizable, and `packRoot` stays a
-   * parameter only so a caller can isolate it. Delete the directory to force a rebuild after
-   * changing the CLI; `run-matrix.mjs` does that on a single-Flow run.
+   * location and reusing it makes the Flows genuinely parallelizable.
+   *
+   * **The cache is keyed by what was built, not by the version it calls itself.** It used to be
+   * `xforge-cli-<version>.tgz`, and during development the version does not move while the code
+   * does — so a run silently installed a build from hours earlier. That cost a full three-scenario
+   * run: the prompts told the Agent to use a command the packed CLI did not contain, and nothing
+   * anywhere reported a mismatch, because from every component's point of view 0.7.12 is 0.7.12.
+   *
+   * The previous comment here said to delete the directory to force a rebuild, and that
+   * `run-matrix.mjs` did so on a single-Flow run. It did not — there was no such deletion anywhere
+   * in the harness. A documented mitigation that does not exist is worse than an acknowledged gap,
+   * because it stops the next reader looking.
    */
   const sharedPackRoot = path.join(repositoryRoot, 'tests', '.tmp', 'live-engine-npm-pack');
   await mkdir(sharedPackRoot, { recursive: true });
-  const existing = path.join(sharedPackRoot, `xforge-cli-${version}.tgz`);
+  const key = await sourceDigest();
+  const existing = path.join(sharedPackRoot, `xforge-cli-${version}-${key}.tgz`);
   if (await readFile(existing).then(() => true, () => false)) {
     return { spec: existing, version, source: 'local-tarball' };
   }
@@ -55,20 +103,41 @@ export async function resolveInstallSpec({ mode, packRoot }) {
   const packed = JSON.parse(run('npm', [
     'pack', './xforge', '--json', '--ignore-scripts', '--pack-destination', sharedPackRoot,
   ], repositoryRoot));
-  const tarball = path.join(sharedPackRoot, packed[0]?.filename ?? 'missing.tgz');
-  return { spec: tarball, version, source: 'local-tarball' };
+  /* `npm pack` names the file after the version, which is exactly the name that cannot serve as a
+     cache key here. Renaming it to the content-keyed name is what makes the lookup above ever hit,
+     and what keeps two differing builds of one version from occupying the same path. */
+  await rename(path.join(sharedPackRoot, packed[0]?.filename ?? 'missing.tgz'), existing);
+  return { spec: existing, version, source: 'local-tarball' };
 }
 
 /**
- * Installs @xforge/cli as an exact pinned devDependency of `projectRoot`, mirroring the
- * documented `npm install --save-dev --save-exact @xforge/cli@<version>` step. Requires
- * `projectRoot/package.json` to already exist.
+ * Installs @xforge/cli *outside* the project under test, and returns the directory to put on PATH.
+ *
+ * It used to install into the project as a devDependency, which meant `setup.mjs` had to write a
+ * `package.json` there first — so every scenario this harness can produce is a Node project, no
+ * matter what its seed contains. That was not a neutral detail. The shipped `unit-tests` and
+ * `security-scan` Gates ran npm and, on a project *without* a `package.json`, reported `passed`
+ * having asserted nothing; a `must` Rule lost its only enforcement and an archive's mandatory Gate
+ * was empty. No number of runs here could have surfaced it, because the harness could not build the
+ * shape that triggers it. The tests were shaped so that the defect was invisible to them.
+ *
+ * Installing outside also matches what XForge itself now documents. v0.7.12 moved the CLI from
+ * `npx --no-install` to a global install for exactly this reason: putting a `package.json` and a
+ * `node_modules` into a project that is not a Node project is pollution, and the ancestor-install
+ * hazard that came with it was real. This harness was the last place still doing the thing the
+ * product had already decided was wrong.
  */
-export async function installCli({ projectRoot, mode, packRoot, npmCache }) {
+export async function installCli({ cliRoot, mode, packRoot, npmCache }) {
   const { spec, version, source } = await resolveInstallSpec({ mode, packRoot });
-  const args = ['install', '--save-dev', '--save-exact', '--ignore-scripts', '--no-audit', '--no-fund', spec];
+  await mkdir(cliRoot, { recursive: true });
+  /* A private package.json here, in the CLI's own directory — never in the project. */
+  await writeFile(
+    path.join(cliRoot, 'package.json'),
+    `${JSON.stringify({ name: 'xforge-live-engine-cli-host', private: true }, null, 2)}\n`,
+  );
+  const args = ['install', '--save-exact', '--ignore-scripts', '--no-audit', '--no-fund', spec];
   const result = spawnSync('npm', args, {
-    cwd: projectRoot,
+    cwd: cliRoot,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
     env: npmCache ? { ...process.env, npm_config_cache: npmCache } : process.env,
@@ -76,19 +145,11 @@ export async function installCli({ projectRoot, mode, packRoot, npmCache }) {
   if (result.status !== 0) {
     throw new Error(`npm install of ${spec} failed (mode=${mode}): ${result.stderr || result.stdout}`);
   }
-  const installedCliPath = path.join(projectRoot, 'node_modules', '@xforge', 'cli', 'dist', 'cli.js');
+  const installedCliPath = path.join(cliRoot, 'node_modules', '@xforge', 'cli', 'dist', 'cli.js');
   try {
     await readFile(installedCliPath);
   } catch {
-    throw new Error(`@xforge/cli did not install correctly into ${projectRoot} (expected ${installedCliPath}).`);
+    throw new Error(`@xforge/cli did not install correctly into ${cliRoot} (expected ${installedCliPath}).`);
   }
-  return { version, source, installedCliPath };
-}
-
-export async function writeMinimalPackageJson(projectRoot, name) {
-  await mkdir(projectRoot, { recursive: true });
-  await writeFile(
-    path.join(projectRoot, 'package.json'),
-    `${JSON.stringify({ name, private: true }, null, 2)}\n`,
-  );
+  return { version, source, installedCliPath, binDirectory: path.join(cliRoot, 'node_modules', '.bin') };
 }

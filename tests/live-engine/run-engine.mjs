@@ -1,5 +1,6 @@
 import { mkdir, readFile, realpath, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { cliBinDirectory } from './xforge-cli.mjs';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import {
@@ -148,7 +149,10 @@ Object.assign(environment, {
   USERPROFILE: claudeConfigRoot,
   XDG_CACHE_HOME: path.join(claudeConfigRoot, 'cache'),
   XDG_CONFIG_HOME: path.join(claudeConfigRoot, 'config'),
-  PATH: `${path.join(projectRoot, 'node_modules', '.bin')}${path.delimiter}${environment.PATH ?? ''}`,
+  /* The CLI is installed beside the project, not in it, so the Agent finds `xforge` on PATH — the
+     global-install form the project's own AGENTS.md tells it to use. Pointing at the project's
+     node_modules/.bin would find nothing, and would require the project to be a Node project. */
+  PATH: `${cliBinDirectory(projectRoot)}${path.delimiter}${environment.PATH ?? ''}`,
 });
 
 const executable = selected['sandbox-launcher'] ? path.resolve(selected['sandbox-launcher']) : 'claude';

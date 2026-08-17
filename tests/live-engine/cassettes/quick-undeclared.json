@@ -1,0 +1,53 @@
+{
+  "apiVersion": "xforge-live-engine/v1",
+  "kind": "Cassette",
+  "scenario": "quick-undeclared",
+  "flow": "quick",
+  "changeId": "greeter",
+  "recordedAt": "2026-08-17T08:26:56.093Z",
+  "scaffold": "sha256:2f44e792a6c34e56a7f18c092866f45ff24a130350aa936e39ac78e34f6e4a9e",
+  "cli": null,
+  "unreplayableReason": null,
+  "outcome": "stopped-awaiting-declaration",
+  "reworks": 0,
+  "steps": [
+    {
+      "stage": "propose",
+      "commit": "4f54bac63c19eb3e2f2b8edacfc2c69c0c94bd93",
+      "parent": "cc3521b3fc01a2dcc03b54314c48666482e8fc4f",
+      "subject": "Live engine stage complete: quick-undeclared:propose",
+      "files": 6
+    },
+    {
+      "stage": "apply",
+      "commit": "5e0577c62a9e8687832f19460d87ed3bf649791c",
+      "parent": "4f54bac63c19eb3e2f2b8edacfc2c69c0c94bd93",
+      "subject": "Live engine stage complete: quick-undeclared:apply",
+      "files": 3
+    },
+    {
+      "stage": "verify",
+      "commit": "d98347b8d3fa5577ff991479dcdfe79624f88f1d",
+      "parent": "5e0577c62a9e8687832f19460d87ed3bf649791c",
+      "subject": "Live engine stage complete: quick-undeclared:verify",
+      "files": 5
+    }
+  ],
+  "stages": [
+    {
+      "stage": "propose",
+      "contentRevision": "15b0801ada0219c07f169a36bb62be9727c99f62a2f9ae3967c09d754e487c76",
+      "currentStage": "apply"
+    },
+    {
+      "stage": "apply",
+      "contentRevision": "15b0801ada0219c07f169a36bb62be9727c99f62a2f9ae3967c09d754e487c76",
+      "currentStage": "verify"
+    },
+    {
+      "stage": "verify",
+      "contentRevision": "d114d099383a46ef17dc731c0d5f91e93b550afff13b27627ff050146a2a6180",
+      "currentStage": "verify"
+    }
+  ]
+}

@@ -1,16 +1,30 @@
 import { spawn, spawnSync } from 'node:child_process';
+import path from 'node:path';
 
 /**
- * Invokes the project-locally installed CLI the same way a real user or Agent does:
- * `xforge ...` with cwd set to the isolated project root. This works
- * identically whether that project's `node_modules/@xforge/cli` came from the real npm
- * registry or from a locally packed tarball (see cli-source.mjs) — the harness never
- * hardcodes a path to this repository's own `xforge/dist/cli.js`.
+ * Invokes the CLI the way v0.7.12 documents: a bare `xforge` found on PATH, with cwd set to the
+ * isolated project. It is installed beside the project rather than inside it (see cli-source.mjs),
+ * so the project itself carries only what its seed put there — which is what lets a scenario be a
+ * Rust, Go or Python project rather than unavoidably a Node one.
+ *
+ * The bin directory is derived from the project path rather than threaded through every call site:
+ * `setup.mjs` places the project at `<tmp>/live-engine-<scenario>` and the CLI at
+ * `<tmp>/live-engine-<scenario>-tmp/cli`, so one is a pure function of the other. `setup.mjs` also
+ * reports it as `cliBin` for callers that would rather be told than compute.
  */
+export function cliBinDirectory(projectRoot) {
+  return path.join(`${projectRoot}-tmp`, 'cli', 'node_modules', '.bin');
+}
+
+function withCliOnPath(projectRoot, env) {
+  const base = { ...process.env, ...env };
+  return { ...base, PATH: `${cliBinDirectory(projectRoot)}${path.delimiter}${base.PATH ?? ''}` };
+}
+
 export function spawnXforge(projectRoot, args, { env = {}, stdio = ['ignore', 'pipe', 'pipe'] } = {}) {
-  return spawnSync('npx', ['--no-install', 'xforge', ...args], {
+  return spawnSync('xforge', args, {
     cwd: projectRoot,
-    env: { ...process.env, ...env },
+    env: withCliOnPath(projectRoot, env),
     encoding: 'utf8',
     stdio,
   });
@@ -57,9 +71,9 @@ export function tryXforgeJson(projectRoot, args, env = {}) {
  */
 export function runXforgeInteractive(projectRoot, args, { env = {}, exchanges = [], timeoutMs = 30_000 } = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn('npx', ['--no-install', 'xforge', ...args], {
+    const child = spawn('xforge', args, {
       cwd: projectRoot,
-      env: { ...process.env, ...env },
+      env: withCliOnPath(projectRoot, env),
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     let stdout = '';

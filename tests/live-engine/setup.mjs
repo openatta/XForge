@@ -2,7 +2,7 @@ import { access, cp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/pro
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { installCli, writeMinimalPackageJson } from './cli-source.mjs';
+import { installCli } from './cli-source.mjs';
 import { parse as parseYaml, stringify as stringifyYaml } from '../../xforge/node_modules/yaml/dist/index.js';
 
 /* fileURLToPath, not .pathname + path.resolve: a file:// URL's .pathname keeps a leading
@@ -39,20 +39,33 @@ function run(command, args, cwd) {
   return result.stdout.trim();
 }
 
+/* Same, with an explicit environment — the CLI now lives on PATH rather than in the project. */
+function runWithEnv(command, args, cwd, env) {
+  const result = spawnSync(command, args, { cwd, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  if (result.status !== 0) throw new Error(`${command} ${args.join(' ')} failed: ${result.stderr || result.stdout}`);
+  return result.stdout.trim();
+}
+
 async function exists(target) {
   try { await access(target); return true; } catch { return false; }
 }
 
+/**
+ * A seed's `package.json` is now the only one a project gets.
+ *
+ * The harness used to write one first (to install the CLI as a devDependency) and merge the seed
+ * into it. With the CLI installed outside the project there is nothing to merge into, and there
+ * must not be: a project that declares no `package.json` has to end up without one, or the harness
+ * is back to making every scenario a Node project. A seed that ships one still gets it verbatim.
+ */
 async function mergePackageJson(projectRoot, seedPackageJsonPath) {
   const currentPath = path.join(projectRoot, 'package.json');
-  const current = JSON.parse(await readFile(currentPath, 'utf8'));
   const seed = JSON.parse(await readFile(seedPackageJsonPath, 'utf8'));
+  const current = await exists(currentPath) ? JSON.parse(await readFile(currentPath, 'utf8')) : {};
   const merged = {
     ...current,
     ...seed,
-    name: current.name,
     private: true,
-    devDependencies: current.devDependencies,
     scripts: { ...current.scripts, ...seed.scripts },
   };
   await writeFile(currentPath, `${JSON.stringify(merged, null, 2)}\n`);
@@ -118,17 +131,26 @@ await rm(projectRoot, { recursive: true, force: true });
 const claudeConfigRoot = path.join(scenarioTempRoot(selected.scenario), 'claude-config');
 const packRoot = path.join(scenarioTempRoot(selected.scenario), 'npm-pack');
 await mkdir(claudeConfigRoot, { recursive: true });
-await writeMinimalPackageJson(projectRoot, `live-engine-${selected.scenario}`);
-await writeFile(path.join(projectRoot, '.gitignore'), 'node_modules/\n');
+await mkdir(projectRoot, { recursive: true });
 
+/*
+ * The CLI is installed beside the project, never inside it. Installing it as a devDependency meant
+ * writing a `package.json` into the project first, which made every scenario this harness can build
+ * a Node project — and that is precisely the shape in which the shipped npm Gates reported `passed`
+ * without asserting anything. A harness that cannot construct the failing shape cannot see the
+ * failure. The project now starts empty and gets only what its seed puts there.
+ */
 const cli = await installCli({
-  projectRoot,
+  cliRoot: path.join(scenarioTempRoot(selected.scenario), 'cli'),
   mode: selected['cli-source'],
   packRoot,
   npmCache: process.env.XFORGE_LIVE_ENGINE_NPM_CACHE,
 });
 
-run('npx', ['--no-install', 'xforge', '--root', projectRoot, 'init', '--language', 'en', '--target', 'claude'], projectRoot);
+/* Invoked as a bare `xforge` off PATH — the global-install form v0.7.12 documents, and the same
+   form the project's own AGENTS.md tells an Agent to use. */
+const cliEnv = { ...process.env, PATH: `${cli.binDirectory}${path.delimiter}${process.env.PATH ?? ''}` };
+runWithEnv('xforge', ['--root', projectRoot, 'init', '--language', 'en', '--target', 'claude'], projectRoot, cliEnv);
 await enableApprovalHarness(projectRoot);
 
 await overlaySeed(projectRoot, path.join(scenarioRoot, 'project-seed'));
@@ -145,4 +167,5 @@ process.stdout.write(`${JSON.stringify({
   scenario: selected.scenario,
   cliSource: cli.source,
   cliVersion: cli.version,
+  cliBin: cli.binDirectory,
 })}\n`);

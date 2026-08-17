@@ -4,8 +4,8 @@
   "scenario": "major",
   "flow": "major",
   "changeId": "credential-store",
-  "recordedAt": "2026-08-16T12:25:39.382Z",
-  "scaffold": "sha256:1491ecbe16aa48641a111d0b8d1fdb7ffd93377325f2a0c460823c935ac4b757",
+  "recordedAt": "2026-08-17T10:05:19.904Z",
+  "scaffold": "sha256:2f44e792a6c34e56a7f18c092866f45ff24a130350aa936e39ac78e34f6e4a9e",
   "cli": null,
   "unreplayableReason": null,
   "outcome": "stopped-at-check",
@@ -13,57 +13,43 @@
   "steps": [
     {
       "stage": "propose",
-      "commit": "93d25a8253c8e836bdcf92aaa459e8805154d0cb",
-      "parent": "ad86af6097eaebe6b55410caef3c5fd6e6c4f248",
+      "commit": "1d1d3bdae6f268613b9b4f6f2141e786e4ad488d",
+      "parent": "d84a4c01bd01b2276470457388dd60ab48887305",
       "subject": "Live engine stage complete: major:propose",
       "files": 6
     },
     {
       "stage": "clarify",
-      "commit": "d323f10d7291b6c01ecd974e3d5cd7bc4edeab72",
-      "parent": "93d25a8253c8e836bdcf92aaa459e8805154d0cb",
+      "commit": "6131851d70e1e0d0c4758101507bf3e2e15a4cc4",
+      "parent": "1d1d3bdae6f268613b9b4f6f2141e786e4ad488d",
       "subject": "Live engine stage complete: major:clarify",
-      "files": 6
+      "files": 7
     },
     {
       "stage": "design",
-      "commit": "bb1eacd9d9dfac17fbcdd8036f4599adf01d0b74",
-      "parent": "d323f10d7291b6c01ecd974e3d5cd7bc4edeab72",
+      "commit": "6fd5377a446385f67c6180d831a5b87e38846752",
+      "parent": "6131851d70e1e0d0c4758101507bf3e2e15a4cc4",
       "subject": "Live engine stage complete: major:design",
       "files": 4
     },
     {
       "stage": "check",
-      "commit": "ecee4ba7c7471f453af8501fd4af47ad65696214",
-      "parent": "bb1eacd9d9dfac17fbcdd8036f4599adf01d0b74",
+      "commit": "4b701adb3672b4c6dbca8ec22aafde878b7661b7",
+      "parent": "6fd5377a446385f67c6180d831a5b87e38846752",
       "subject": "Live engine stage complete: major:check",
       "files": 7
     },
     {
-      "stage": "propose",
-      "commit": "37311ae4af4a20d965f4b86efe613d958219d50d",
-      "parent": "233de4458e659ef8e6e6a34f56a8399c96161df3",
-      "subject": "Live engine stage complete: major:propose",
-      "files": 5
-    },
-    {
-      "stage": "clarify",
-      "commit": "fad782d594ba8b7f60cb7bec116446092d93d06f",
-      "parent": "37311ae4af4a20d965f4b86efe613d958219d50d",
-      "subject": "Live engine stage complete: major:clarify",
-      "files": 4
-    },
-    {
       "stage": "design",
-      "commit": "5492d57a547703bb232e2ca28061321bac482499",
-      "parent": "fad782d594ba8b7f60cb7bec116446092d93d06f",
+      "commit": "06babe421508baa64946f99e68b444e8f61df698",
+      "parent": "08aa37f452581e361621e6854032010f970adc98",
       "subject": "Live engine stage complete: major:design",
       "files": 3
     },
     {
       "stage": "check",
-      "commit": "106afa179f2755c4c0f384acbac6c53763ed6d3c",
-      "parent": "5492d57a547703bb232e2ca28061321bac482499",
+      "commit": "0c969f3bc68146002108efdbff73e307bde49bb0",
+      "parent": "06babe421508baa64946f99e68b444e8f61df698",
       "subject": "Live engine stage complete: major:check",
       "files": 7
     }
@@ -71,47 +57,37 @@
   "stages": [
     {
       "stage": "propose",
-      "contentRevision": "47a8cfbd40bf63479239fc0bd73cad060d81a9f58d07756f8d48423f60b86747",
+      "contentRevision": "4472f7bb0e1c6637c91f4d63a787b371f79cdce3bb877b966f3322a0137bf5e3",
       "currentStage": "clarify"
     },
     {
       "stage": "clarify",
-      "contentRevision": "ef42ce1ac69de2ac9b73b8b025a3b934cdecaea0125d0400fc8ac8ff999d7f12",
+      "contentRevision": "7559d38aefcd4cde7fa2b65675e9aad5c78f7f85d8bb86844b0070a588fa5965",
       "currentStage": "design"
     },
     {
       "stage": "design",
-      "contentRevision": "b576332e0df12eaf80d112d24beb88be4e6f3ca0a837e280217f5d6e7f78857e",
+      "contentRevision": "c3f8dbb42adbab4c4afd3d39931c6ac06c08f435163a807bac01153500fddc82",
       "currentStage": "check"
     },
     {
       "stage": "check",
-      "contentRevision": "b0167b2c0743da36e1d563e3d82eb9d365e198e67378ccda2a2d817ebae595f8",
+      "contentRevision": "f91278f6233ac901231797f1e44deb835d8f01c3671f09d07fdbece32cd94f45",
       "currentStage": "check"
     },
     {
       "stage": "standalone-status-blocked",
-      "contentRevision": "b0167b2c0743da36e1d563e3d82eb9d365e198e67378ccda2a2d817ebae595f8",
+      "contentRevision": "f91278f6233ac901231797f1e44deb835d8f01c3671f09d07fdbece32cd94f45",
       "currentStage": "check"
     },
     {
-      "stage": "propose",
-      "contentRevision": "5ba5b61c611b7b29c1d4ddb8003a5273097f831134ba9e412479edbc457eec76",
-      "currentStage": "clarify"
-    },
-    {
-      "stage": "clarify",
-      "contentRevision": "167eb8f0376f513133d4268852e8da9d8fd11f080b36ce728e7312cb1bf367e5",
-      "currentStage": "design"
-    },
-    {
       "stage": "design",
-      "contentRevision": "a2cf2340090157dc6b846c0682c76811a536d64c3af781e029a268c276dea1e1",
+      "contentRevision": "fa8105289f8b496b3507275869c89370b99f76891d99e2e23dbd2afad9c2b74f",
       "currentStage": "check"
     },
     {
       "stage": "check",
-      "contentRevision": "52317e46fe627093ef034bd75db4fb1387c87dd4dbd888fb13eb598522455fc7",
+      "contentRevision": "5c1e3983e47d62cea47dc2088304e55ae42806aad4ffea323b59130b3b54aa7b",
       "currentStage": "check"
     }
   ]

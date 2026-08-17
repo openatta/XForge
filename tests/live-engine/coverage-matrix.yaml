@@ -10,6 +10,8 @@ entries:
   - skill: xforge-propose
     scenarios:
       - { scenario: quick, flow: quick, stage: propose }
+      - { scenario: quick-python, flow: quick, stage: propose }
+      - { scenario: quick-undeclared, flow: quick, stage: propose }
       - { scenario: solid, flow: solid, stage: propose }
       - { scenario: major, flow: major, stage: propose }
   - skill: xforge-clarify
@@ -26,11 +28,15 @@ entries:
   - skill: xforge-apply
     scenarios:
       - { scenario: quick, flow: quick, stage: apply }
+      - { scenario: quick-python, flow: quick, stage: apply }
+      - { scenario: quick-undeclared, flow: quick, stage: apply }
       - { scenario: solid, flow: solid, stage: apply }
       - { scenario: major, flow: major, stage: apply }
   - skill: xforge-verify
     scenarios:
       - { scenario: quick, flow: quick, stage: verify }
+      - { scenario: quick-python, flow: quick, stage: verify }
+      - { scenario: quick-undeclared, flow: quick, stage: verify }
       - { scenario: solid, flow: solid, stage: verify }
       - { scenario: major, flow: major, stage: verify }
   - skill: xforge-kanban
