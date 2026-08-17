@@ -7,7 +7,7 @@ are not supported installation inputs.
 
 Supported baseline:
 
-- package: `@xforge/cli@0.7.12`
+- package: `@xforge/cli@0.7.13`
 - protocol: `2`
 - Node.js: `>=20`
 - distribution: npm only
@@ -35,7 +35,7 @@ machine configuration unless the user separately authorizes that action.
 Resolve before writing:
 
 1. Exact target repository root.
-2. Exact XForge npm version; this runbook requires `0.7.12`.
+2. Exact XForge npm version; this runbook requires `0.7.13`.
 3. Project package manager and whether `@xforge/cli` is already declared.
 4. Project layout, module paths, test/security commands, and Specs/Changes paths.
 5. Agent-tool targets actually used: `codex`, `claude`, `cursor`, `opencode`,
@@ -85,14 +85,14 @@ Install XForge as an exact project development dependency:
 
 ```bash
 cd <target-root>
-npm install --save-dev --save-exact @xforge/cli@0.7.12
+npm install --save-dev --save-exact @xforge/cli@0.7.13
 xforge version
 ```
 
 Require a successful Protocol 2 JSON envelope with:
 
 - name `@xforge/cli`;
-- version `0.7.12`;
+- version `0.7.13`;
 - protocol `2`;
 - a `sha256:` runtime integrity value.
 
@@ -129,15 +129,15 @@ The Manifest must retain the npm identities installed by `init`:
 
 ```yaml
 scaffold:
-  version: 0.7.12
+  version: 0.7.13
   source:
     type: npm
     package: "@xforge/cli"
-    version: 0.7.12
+    version: 0.7.13
 xforge:
   source: npm
   package: "@xforge/cli"
-  version: 0.7.12
+  version: 0.7.13
   protocol: "2"
 ```
 
