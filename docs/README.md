@@ -10,7 +10,7 @@ XForge 不是另一个 Agent Runtime。模型和编程工具仍然负责探索�
 XForge 负责定义什么是当前事实、下一次状态转换是否合法，以及一个 Change 在推进或
 关闭前必须具备哪些证据。
 
-> **当前版本：** `@xforge/cli 0.7.13`、Protocol 2，需要 Node.js 20 或更高
+> **当前版本：** `@xforge/cli 0.7.14`、Protocol 2，需要 Node.js 20 或更高
 > 版本。只支持从 npm 安装精确版本，不再支持源码安装。项目仍在积极开发中。
 
 ## 设计目标
@@ -214,7 +214,7 @@ Skills 里给出的原文，发出 `xforge ...`。
 ### 2. 手动安装
 
 ```bash
-npm install -g @xforge/cli@0.7.13
+npm install -g @xforge/cli@0.7.14
 xforge version                       # 确认版本，以及它解析到了哪个文件
 xforge init --language zh-CN --dry-run
 xforge init --language zh-CN
@@ -247,7 +247,7 @@ xforge install --target codex
 或者 CI runner 要构建多个项目时，改用项目本地安装：
 
 ```bash
-npm install --save-dev --save-exact @xforge/cli@0.7.13
+npm install --save-dev --save-exact @xforge/cli@0.7.14
 npx --no-install xforge version
 ```
 
