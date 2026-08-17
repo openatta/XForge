@@ -52,8 +52,14 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
    **Supersedes**: <ARC-id, when replacing one>
    ```
 
-4. Merging an approved architecture change: read the Change's `evidence/conditions/architectureDeltas.yaml`, apply each decided entry to the file — new `ARC-` entry, or an amendment carrying `Supersedes` — and tell the user which entries were merged. Do not delete the ledger; it is the Change's evidence and archives with it.
-5. Report what changed, what the user decided, and anything you deliberately left out.
+4. Recording an architecture change a Change proposed: Design writes the proposal into its own
+   Artifact and stops, because the ledger entry names a `decidedBy` and only a human can be that.
+   Read the proposal, put the decision to the user in the terms it states, and on a clear answer
+   write the entry into the Change's `evidence/conditions/architectureDeltas.yaml` naming that user
+   as `decidedBy`. You are the only writer of that ledger — an Agent that could write its own
+   authorisation is not an authorisation.
+5. Merging a decided architecture change: read the Change's `evidence/conditions/architectureDeltas.yaml`, apply each decided entry to the file — new `ARC-` entry, or an amendment carrying `Supersedes` — and tell the user which entries were merged. Do not delete the ledger; it is the Change's evidence and archives with it.
+6. Report what changed, what the user decided, and anything you deliberately left out.
 
 # Evidence
 

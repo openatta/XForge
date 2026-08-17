@@ -52,8 +52,12 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
    **取代**：<ARC-id，替换旧决策时填>
    ```
 
-4. 合并已批准的架构变更：读取该 Change 的 `evidence/conditions/architectureDeltas.yaml`，把每条已决定的条目应用到文件——新增 `ARC-` 条目，或写一条带 `取代` 的修订——并告诉用户合并了哪几条。不要删除该账本，它是这个 Change 的证据，随它一起归档。
-5. 报告改了什么、用户决定了什么，以及你刻意没有写进去的东西。
+4. 记录某个 Change 提出的架构变更：Design 把提议写进它自己的 Artifact 后就停下，因为账本条目要
+   填具名的 `decidedBy`，而只有人能是那个名字。读取该提议，按它陈述的措辞把决定交给用户，得到明确
+   答复后，把条目写入该 Change 的 `evidence/conditions/architectureDeltas.yaml`，并把该用户填为
+   `decidedBy`。你是这个账本的唯一写者——一个能自己写授权的 Agent，写出来的不是授权。
+5. 合并已决定的架构变更：读取该 Change 的 `evidence/conditions/architectureDeltas.yaml`，把每条已决定的条目应用到文件——新增 `ARC-` 条目，或写一条带 `取代` 的修订——并告诉用户合并了哪几条。不要删除该账本，它是这个 Change 的证据，随它一起归档。
+6. 报告改了什么、用户决定了什么，以及你刻意没有写进去的东西。
 
 # 证据
 

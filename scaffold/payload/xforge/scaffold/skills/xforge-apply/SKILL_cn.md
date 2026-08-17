@@ -34,7 +34,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash, Task
 
 # 证据
 
-- 存在 `xforge/architecture.md` 时读取它，并说明本 Change 对它触及的每条决策的立场——在其之内、有理由地偏离，或提议修改。提议修改要记入 `evidence/conditions/architectureDeltas.yaml`，并填具名的 `decidedBy`；无人授权的架构变更正是该账本存在的理由。文件不存在时说明一次并继续：那是一个尚未写下架构的项目，不是一个违规的项目。
+- 存在 `xforge/architecture.md` 时读取它，实现保持在它记录的决策之内。当实现过程表明某条决策必须修改时，那是一个 rework 信号，不是一条留在原地的备注：回到 Action 的 rework Stage，由 Design 去提议。不要自己写 `evidence/conditions/architectureDeltas.yaml`——那条记录要填具名的 `decidedBy`，Agent 去填一个人的名字，就是在记录一份没人给过的授权。文件不存在时说明一次并继续：那是一个尚未写下架构的项目，不是一个违规的项目。
 - 交付成功必须同时具备真实 Git diff、全部 `verify` 退出为零、每项 `done_when` 的精确非空 `done_when_evidence` 映射，以及 CLI 重新校验结果。
 - Worker 的自然语言、checkbox 或自报退出码都不是 Gate Evidence；报告包状态、changed paths、命令结果、集成结果和未解决风险。
 

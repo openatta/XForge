@@ -34,7 +34,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash, Task
 
 # Evidence
 
-- Read `xforge/architecture.md` when it exists, and say how this Change stands against each decision it touches — within it, departing from it with a reason, or proposing to change it. Record a proposed change as an entry in `evidence/conditions/architectureDeltas.yaml` with a named `decidedBy`; an architecture change nobody authorised is the thing that ledger exists to catch. When the file does not exist, say so once and proceed: it is a project that has not written its architecture down, not a project in violation.
+- Read `xforge/architecture.md` when it exists and keep the implementation inside the decisions it records. When implementation reveals that a decision must change, that is a rework signal, not a note to leave behind: return to the Action's rework Stage so Design can propose it. Do not write `evidence/conditions/architectureDeltas.yaml` yourself — that entry names a `decidedBy`, and an Agent filling in a human's name records an authorisation nobody gave. When the file does not exist, say so once and proceed: it is a project that has not written its architecture down, not a project in violation.
 - Success requires a real Git diff, zero exits for every `verify`, an exact non-empty evidence mapping for every `done_when`, and CLI revalidation.
 - Worker prose, checkboxes, and self-reported exits are not Gate Evidence. Report package states, changed paths, commands, integration/review results, and unresolved risk.
 
