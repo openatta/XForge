@@ -7,6 +7,7 @@ import { parse } from '../../xforge/node_modules/yaml/dist/index.js';
 import { spawnXforge, runXforgeJson, tryXforgeJson } from './xforge-cli.mjs';
 import { assertLiveEnginePolicy, createLiveEnginePolicy, resetLiveEngineStageAttempts } from './policy.mjs';
 import { assertCassetteReplayable, assertCassetteStillApplies, readCassette } from './cassette.mjs';
+import { stoppedAwaitingDeclaration as stoppedAwaitingDeclarationHere } from './outcome.mjs';
 
 /**
  * Data-driven live-engine matrix runner. For a Flow scenario (quick/solid/major), this reads
@@ -722,11 +723,39 @@ for (let index = 0; index < stages.length; ) {
     promptRelative: path.posix.join(scenarioConfig.prompts ?? flowName, `${stage.id}.md`), policyPath, options: selected,
   });
 
+  /*
+   * A Stage that stopped for a reason the scenario expects did not fail to produce its Artifact —
+   * it correctly declined to. `quick-undeclared`'s Verify Agent refused to write `assurance.md`
+   * because its content would have to map Requirements to test evidence that does not exist, which
+   * is the strongest form of the behaviour the scenario tests. The outline check read the absent
+   * file as a defect and failed the run one Stage before the archive-path detection below could
+   * recognise the stop.
+   *
+   * The distinction is not "the file is missing", which any broken run would also show. It is that
+   * the CLI itself refuses, for the declared reason, at this exact moment.
+   */
+  let stoppedInStage = false;
   for (const artifactId of stage.produces ?? []) {
     const mode = outlineCheckable[artifactId];
     const artifact = flow.artifacts.find((entry) => entry.id === artifactId);
     if (!artifact || !mode) continue;
-    assertArtifactOutline({ projectRoot, flowName, artifactId, file: changePath(scenarioConfig.changeId, artifact.generates), mode });
+    const file = changePath(scenarioConfig.changeId, artifact.generates);
+    const artifactExists = existsSync(path.join(projectRoot, file));
+    /* Only ask the CLI when the Artifact is absent: `check` is cheap but not free, and on the happy
+       path there is nothing to ask about. */
+    const stalled = artifactExists ? null : tryXforgeJson(projectRoot, ['check', '--change', scenarioConfig.changeId]);
+    if (stoppedAwaitingDeclarationHere({ artifactExists, allowedOutcomes, diagnostics: stalled?.diagnostics })) {
+      outcome = 'stopped-awaiting-declaration';
+      stoppedAwaitingDeclaration = assertStoppedAwaitingDeclaration(projectRoot, stage, stalled);
+      stoppedInStage = true;
+      break;
+    }
+    assertArtifactOutline({ projectRoot, flowName, artifactId, file, mode });
+  }
+  if (stoppedInStage) {
+    commit(projectRoot, `Live engine stage stopped awaiting declaration: ${scenarioName}:${stage.id}`);
+    timelineStep(projectRoot, stage.id);
+    break;
   }
 
   commit(projectRoot, `Live engine stage complete: ${scenarioName}:${stage.id}`);
