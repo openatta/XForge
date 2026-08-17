@@ -12,10 +12,14 @@
 xforge [--root <exact-project-root>] <command> [options] [--text]
 ```
 
-- 不要把这行简化成裸的 `xforge`：项目本地安装并不会把可执行文件放进当前 shell
-  的 `PATH`，只有 `npx` 能从 `node_modules` 里可靠解析到它。
-- 不要去掉 `--no-install`：它保证找不到锁定版本时命令直接报错退出，而不是让
-  `npx` 静默拉取并运行另一个未锁定的版本。
+- 裸的 `xforge` 就是正确写法：CLI 是全局安装的，可执行文件在 `PATH` 上。找不到
+  时表现为 command-not-found，这正是"锁定版本缺失要响亮失败"原本要的效果。
+- 版本保证不再由 `npx --no-install` 承担，而由 XForge 自己承担：
+  `xforge/manifest.yaml` 钉住版本，CLI 每次运行都比对，不一致时降级为 Portable
+  模式并拒绝写入（`XFORGE_CLI_IDENTITY_MISMATCH`）。
+- 项目本地安装仍受支持，是第三条路径，也是唯一仍应写 `npx --no-install` 的地方
+  ——npx 是因为 `node_modules/.bin` 不在 `PATH` 上，`--no-install` 是因为 npm 上
+  另有一个无关的 `xforge` 包，普通 `npx` 会把它拉下来运行。
 - `--root` 使用精确根目录，不向父目录回退。
 - 读取命令可展示 Portable 状态；写命令要求 Manifest、Lock、CLI version/protocol/integrity 完全匹配。
 - `--dry-run` 对支持它的命令保持零写入。
@@ -100,8 +104,10 @@ opencode.json
 ```
 
 这些文件属于 Adapter 输出，不直接编辑。安装成功不等于平台已信任或 runtime 已激活项目 Hook。
-生成的 Hook 使用 `xforge`，缺少项目本地精确包时直接失败，不通过
-网络下载替代 CLI。
+生成的 Hook 使用裸的 `xforge`，与全局安装形态一致。Hook 由宿主进程派生，运行
+在 XForge 无法控制的环境里，所以应答的不一定是本项目钉住的那个 CLI——
+`hook dispatch` 因此先比对身份，不一致时明确拒绝并说明是版本不符，而不是把它
+表现成一个费解的资源加载错误。
 
 ## 4. 结构检查与 Machine Gates
 
