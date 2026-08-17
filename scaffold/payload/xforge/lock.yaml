@@ -91,7 +91,7 @@ resources:
     kind: skill
     license: project
     version: "1"
-  - digest: 1c7b9699d7b0657fefc6fae74dd2cffd2a1f818abcb343cda20989d90ea0b2e0
+  - digest: b4d261de222561e6ec28275860422cd3e5739aeed33b1c28f392c42cff147e06
     id: xforge-architect
     kind: skill
     license: project

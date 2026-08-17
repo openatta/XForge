@@ -46,8 +46,9 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
    ### ARC-001 <title>
    <the decision, one line>
    **Why**: <what breaks without it>
-   **Rejected**: <the credible alternative, and why not — especially when it was the better
-   engineering choice and lost to a constraint>
+   **Rejected**: <the alternative this project weighed and turned down, and why — especially when
+   it was the better engineering choice and lost to a constraint; omit the line entirely when
+   nobody weighed one>
    **Located in**: <paths>
    **Supersedes**: <ARC-id, when replacing one>
    ```
@@ -71,6 +72,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 - Stop when a decision the user is asking for contradicts the Constitution — that is a Constitution amendment and belongs in a governed Change.
 - Stop rather than write a decision whose reason you had to infer. A `Why` that nobody stated is a guess wearing the same clothes as a decision.
+- The same rule governs `Rejected`, which records an alternative this project actually weighed and turned down. A credible alternative nobody ever considered is an open question, not a rejection: put it in your report and leave the line out. A reader a year later cites `Rejected` as proof the option was evaluated, so an inferred one manufactures a deliberation that never happened — and unlike a missing line, it is invisible as a gap.
 - Report, and do not merge, an architecture delta whose ledger entry has no `decidedBy`. An unauthorised architecture change is exactly the thing the ledger exists to catch.
 
 # Judgment calls
