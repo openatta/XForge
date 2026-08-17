@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -91,23 +91,105 @@ export async function resolveInstallSpec({ mode, packRoot }) {
    * `run-matrix.mjs` did so on a single-Flow run. It did not — there was no such deletion anywhere
    * in the harness. A documented mitigation that does not exist is worse than an acknowledged gap,
    * because it stops the next reader looking.
+   *
+   * **The shared tarball only made a *warm* start parallelizable.** Reading the cache and building
+   * on a miss is check-then-act, and on a cold start every scenario misses: six launched together
+   * all ran `npm run build`, whose clean step deletes `scaffold/payload`, and they deleted each
+   * other's tree mid-copy. Three died on ENOTEMPTY/ENOENT before a model call. The paragraph above
+   * claimed parallelism the code did not have — the same defect it convicts its predecessor of, one
+   * paragraph later. `buildOnceInto` closes it by serialising the build itself, which is the part
+   * that touches the shared repository.
    */
   const sharedPackRoot = path.join(repositoryRoot, 'tests', '.tmp', 'live-engine-npm-pack');
   await mkdir(sharedPackRoot, { recursive: true });
   const key = await sourceDigest();
   const existing = path.join(sharedPackRoot, `xforge-cli-${version}-${key}.tgz`);
-  if (await readFile(existing).then(() => true, () => false)) {
-    return { spec: existing, version, source: 'local-tarball' };
-  }
-  run('npm', ['run', 'build', '--prefix', 'xforge'], repositoryRoot);
-  const packed = JSON.parse(run('npm', [
-    'pack', './xforge', '--json', '--ignore-scripts', '--pack-destination', sharedPackRoot,
-  ], repositoryRoot));
-  /* `npm pack` names the file after the version, which is exactly the name that cannot serve as a
-     cache key here. Renaming it to the content-keyed name is what makes the lookup above ever hit,
-     and what keeps two differing builds of one version from occupying the same path. */
-  await rename(path.join(sharedPackRoot, packed[0]?.filename ?? 'missing.tgz'), existing);
+  await buildOnceInto(existing, sharedPackRoot);
   return { spec: existing, version, source: 'local-tarball' };
+}
+
+const cached = (file) => readFile(file).then(() => true, () => false);
+const delay = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
+
+function buildOnceInto(target, sharedPackRoot) {
+  return produceOnce({
+    target,
+    lock: `${target}.lock`,
+    produce: () => {
+      run('npm', ['run', 'build', '--prefix', 'xforge'], repositoryRoot);
+      const packed = JSON.parse(run('npm', [
+        'pack', './xforge', '--json', '--ignore-scripts', '--pack-destination', sharedPackRoot,
+      ], repositoryRoot));
+      /* `npm pack` names the file after the version, which is exactly the name that cannot serve as
+         a cache key here. Renaming it to the content-keyed name is what makes the lookup above ever
+         hit, and what keeps two differing builds of one version from occupying the same path.
+         Rename is atomic, so a waiter never observes a partially written tarball. */
+      return rename(path.join(sharedPackRoot, packed[0]?.filename ?? 'missing.tgz'), target);
+    },
+  });
+}
+
+/**
+ * Runs `produce` at most once across concurrent processes racing to create `target`.
+ *
+ * Exported for its test: the property that matters is exactly-once under concurrency, and driving
+ * it with a real `npm run build` would take minutes and mutate the shared repository — so `produce`
+ * is a parameter. What the harness passes for it is the build; what the test passes is a counter.
+ *
+ * The lock is a directory, because `mkdir` is the one filesystem operation that both creates and
+ * tests for existence atomically — a "does it exist, then create it" pair is the very race being
+ * closed here. The holder's pid goes inside it: a run killed mid-build (Ctrl-C, or a harness that
+ * pkills its own children) would otherwise leave a lock nothing ever releases, and the next run
+ * would wait out the full timeout for a process that died minutes ago.
+ */
+export async function produceOnce({ target, lock, produce, pollMs = 1000, timeoutMs = 15 * 60 * 1000 }) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    if (await cached(target)) return;
+    try {
+      await mkdir(lock);
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+      if (await holderIsGone(lock)) {
+        /* Breaking a lock is only safe because the pid is gone: the work it guarded cannot still be
+           in progress, so whatever half-finished state it left is about to be redone. */
+        await rm(lock, { recursive: true, force: true });
+        continue;
+      }
+      if (Date.now() > deadline) {
+        throw new Error(
+          `Timed out waiting for another run to produce ${path.basename(target)}.\n  lock: ${lock}\n`
+          + 'A live build takes well under a minute, so a lock this old is either work that hung '
+          + 'or a stale directory. Remove it and rerun.',
+        );
+      }
+      await delay(pollMs);
+      continue;
+    }
+    try {
+      await writeFile(path.join(lock, 'pid'), `${process.pid}\n`);
+      /* Re-check inside the lock: the process that just released it may have been producing this
+         exact target, in which case there is nothing left to do. */
+      if (await cached(target)) return;
+      await produce();
+      return;
+    } finally {
+      await rm(lock, { recursive: true, force: true });
+    }
+  }
+}
+
+async function holderIsGone(lock) {
+  const pid = Number((await readFile(path.join(lock, 'pid'), 'utf8').catch(() => '')).trim());
+  /* No pid file yet means the holder is mid-acquire, not dead. Treating that as stale would break
+     a lock a live process is about to use. */
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return false;
+  } catch (error) {
+    return error.code === 'ESRCH';
+  }
 }
 
 /**
