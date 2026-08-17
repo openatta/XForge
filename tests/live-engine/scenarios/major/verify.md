@@ -52,7 +52,14 @@ answer. Declare it with the CLI, never by hand:
 
 ```
 xforge verification declare --gate-name unit-tests --command '["npm","test"]' --by "project owner"
+xforge verification declare --gate-name security-scan --command '["npm","audit","--audit-level=high"]' --by "project owner"
 ```
+
+Declare **both**. This Stage's Gates are `structure`, `unit-tests` and
+`security-scan`, and `security-scan` refuses when undeclared exactly as
+`unit-tests` does. A run that declares only the first passes Verify and then
+dies on the archive path's own Check, several paid turns later, on a question
+`TEST_REQUEST.md` had already answered.
 
 **Do not edit `xforge/manifest.yaml` yourself.** The Manifest is what the
 governance dispatcher reads, so a malformed one denies every tool call — and a

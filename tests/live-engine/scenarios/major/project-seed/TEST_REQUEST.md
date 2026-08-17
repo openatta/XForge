@@ -71,6 +71,8 @@
 
 - 只能实现 `src/**`；不得修改 `test/**`、`TEST_REQUEST.md` 或 XForge 治理资产来规避验收；
 - 使用现有 `node:test` 黑盒测试，不引入依赖，只用 `node:crypto`/`node:fs`；
+- 本项目的安全扫描就是 `npm audit --audit-level=high`：零运行时依赖是本项目的安全姿态，
+  依赖树上没有东西可被利用，`npm audit` 正是断言这一点的命令；
 - 创建一个 `T001` 工作包，`write_paths` 为 `src/**`，输入包含 delta Spec、
   Clarifications 和 Design，Skill 为 `xforge-apply`，验证命令为 `npm test`。
 
