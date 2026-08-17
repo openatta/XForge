@@ -4,8 +4,8 @@
   "scenario": "major",
   "flow": "major",
   "changeId": "credential-store",
-  "recordedAt": "2026-08-17T10:05:19.904Z",
-  "scaffold": "sha256:2f44e792a6c34e56a7f18c092866f45ff24a130350aa936e39ac78e34f6e4a9e",
+  "recordedAt": "2026-08-17T17:26:54.920Z",
+  "scaffold": "sha256:ba23d4c278b1646e5aa6b5eac742f88a996ad529a380178c596d16dee496a8b5",
   "cli": null,
   "unreplayableReason": null,
   "outcome": "stopped-at-check",
@@ -13,43 +13,50 @@
   "steps": [
     {
       "stage": "propose",
-      "commit": "1d1d3bdae6f268613b9b4f6f2141e786e4ad488d",
-      "parent": "d84a4c01bd01b2276470457388dd60ab48887305",
+      "commit": "cc90b4c5d39be1ca4336343a00306a92824bc7cf",
+      "parent": "04d8ff2b3e1b86f4393455f5702614ee1332a493",
       "subject": "Live engine stage complete: major:propose",
       "files": 6
     },
     {
       "stage": "clarify",
-      "commit": "6131851d70e1e0d0c4758101507bf3e2e15a4cc4",
-      "parent": "1d1d3bdae6f268613b9b4f6f2141e786e4ad488d",
+      "commit": "e21c5e96108561268d74769481edb1f161e34cc6",
+      "parent": "cc90b4c5d39be1ca4336343a00306a92824bc7cf",
       "subject": "Live engine stage complete: major:clarify",
       "files": 7
     },
     {
       "stage": "design",
-      "commit": "6fd5377a446385f67c6180d831a5b87e38846752",
-      "parent": "6131851d70e1e0d0c4758101507bf3e2e15a4cc4",
+      "commit": "9dab261100c1bcff70f6340b2d7c656368a0207b",
+      "parent": "e21c5e96108561268d74769481edb1f161e34cc6",
       "subject": "Live engine stage complete: major:design",
       "files": 4
     },
     {
       "stage": "check",
-      "commit": "4b701adb3672b4c6dbca8ec22aafde878b7661b7",
-      "parent": "6fd5377a446385f67c6180d831a5b87e38846752",
+      "commit": "4073c57f53022a1d591ab2e0f186a70e49363576",
+      "parent": "9dab261100c1bcff70f6340b2d7c656368a0207b",
       "subject": "Live engine stage complete: major:check",
       "files": 7
     },
     {
+      "stage": "clarify",
+      "commit": "105aff4556177d57ac2117d0ece0ce7adcfbbef9",
+      "parent": "6894e11f6679049ca74c9470034c3f6f44ac653a",
+      "subject": "Live engine stage complete: major:clarify",
+      "files": 2
+    },
+    {
       "stage": "design",
-      "commit": "06babe421508baa64946f99e68b444e8f61df698",
-      "parent": "08aa37f452581e361621e6854032010f970adc98",
+      "commit": "8cb83d1ce1f0ee14c2b8273acf39125b60c11ebc",
+      "parent": "105aff4556177d57ac2117d0ece0ce7adcfbbef9",
       "subject": "Live engine stage complete: major:design",
       "files": 3
     },
     {
       "stage": "check",
-      "commit": "0c969f3bc68146002108efdbff73e307bde49bb0",
-      "parent": "06babe421508baa64946f99e68b444e8f61df698",
+      "commit": "efb8dd690fb473a7bcea9fbaacd03eae14c7c14b",
+      "parent": "8cb83d1ce1f0ee14c2b8273acf39125b60c11ebc",
       "subject": "Live engine stage complete: major:check",
       "files": 7
     }
@@ -57,37 +64,42 @@
   "stages": [
     {
       "stage": "propose",
-      "contentRevision": "4472f7bb0e1c6637c91f4d63a787b371f79cdce3bb877b966f3322a0137bf5e3",
+      "contentRevision": "e3d67ad89bf758cfbbe6b58fef97dbe9471cc12539f82298033c23a3acb543d3",
       "currentStage": "clarify"
     },
     {
       "stage": "clarify",
-      "contentRevision": "7559d38aefcd4cde7fa2b65675e9aad5c78f7f85d8bb86844b0070a588fa5965",
+      "contentRevision": "8b5876646f452ba5d75a9ca27e20fcc96281856bfd86160d69b1728078b09049",
       "currentStage": "design"
     },
     {
       "stage": "design",
-      "contentRevision": "c3f8dbb42adbab4c4afd3d39931c6ac06c08f435163a807bac01153500fddc82",
+      "contentRevision": "df5b506f38a4ad265eadc752bd23ccffa5b8ca9a757e5be079efb12c1cbe1bbf",
       "currentStage": "check"
     },
     {
       "stage": "check",
-      "contentRevision": "f91278f6233ac901231797f1e44deb835d8f01c3671f09d07fdbece32cd94f45",
+      "contentRevision": "4ded5562650f9a23f0e343a55e8179c6c59879e364f0063ab508cde89fc34317",
       "currentStage": "check"
     },
     {
       "stage": "standalone-status-blocked",
-      "contentRevision": "f91278f6233ac901231797f1e44deb835d8f01c3671f09d07fdbece32cd94f45",
+      "contentRevision": "4ded5562650f9a23f0e343a55e8179c6c59879e364f0063ab508cde89fc34317",
       "currentStage": "check"
     },
     {
+      "stage": "clarify",
+      "contentRevision": "4ded5562650f9a23f0e343a55e8179c6c59879e364f0063ab508cde89fc34317",
+      "currentStage": "design"
+    },
+    {
       "stage": "design",
-      "contentRevision": "fa8105289f8b496b3507275869c89370b99f76891d99e2e23dbd2afad9c2b74f",
+      "contentRevision": "9ce14e9a6e6928cf3e614c8bb3bfe163576e17427950ea7ebb33a3a36fdc764e",
       "currentStage": "check"
     },
     {
       "stage": "check",
-      "contentRevision": "5c1e3983e47d62cea47dc2088304e55ae42806aad4ffea323b59130b3b54aa7b",
+      "contentRevision": "a025b4a9c95dd240c5bf0eba958746aa62afacbad013c29dc001b8ca6a6f6201",
       "currentStage": "check"
     }
   ]
