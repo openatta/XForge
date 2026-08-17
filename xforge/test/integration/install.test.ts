@@ -124,13 +124,13 @@ describe('install lifecycle', () => {
     // Exactly three summaries for the whole install: codex commands, codex rules, opencode rules.
     expect(gaps.map((item: any) => `${item.details.target}:${item.details.dimension}`).sort())
       .toEqual(['codex:commands', 'codex:rules', 'opencode:rules']);
-    // 10 shipped Skills and 4 shipped Rules today; the ids are cross-checked against the manifest
+    // 11 shipped Skills and 5 shipped Rules today; the ids are cross-checked against the manifest
     // so a scaffold change moves both numbers together instead of quietly shrinking coverage.
-    expect(gap('codex', 'commands').details.count).toBe(10);
+    expect(gap('codex', 'commands').details.count).toBe(11);
     expect(ids(gap('codex', 'commands')).sort()).toEqual([...manifest.scaffold.skills].sort());
-    expect(gap('codex', 'rules').details.count).toBe(4);
+    expect(gap('codex', 'rules').details.count).toBe(5);
     expect(ids(gap('codex', 'rules')).sort()).toEqual([...manifest.scaffold.rules].sort());
-    expect(gap('opencode', 'rules').details.count).toBe(4);
+    expect(gap('opencode', 'rules').details.count).toBe(5);
     expect(ids(gap('opencode', 'rules')).sort()).toEqual([...manifest.scaffold.rules].sort());
 
     // claude, cursor and github-copilot project every dimension; opencode projects commands; no

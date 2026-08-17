@@ -61,6 +61,11 @@ resources:
     kind: rule
     license: project
     version: 1
+  - digest: 3d97fd0af60127bbc46afc204dff225fa41b9d1475749b8e66772c69762f7b28
+    id: design-within-the-declared-architecture
+    kind: rule
+    license: project
+    version: 1
   - digest: c0aba0ed91ef29e744f19ee9f93a374d4b73dd2d7f6518368ed1ce1836b8baba
     id: governance-assets-are-integrator-only
     kind: rule
@@ -81,8 +86,13 @@ resources:
     kind: script
     license: project
     version: 1
-  - digest: a938965d411048bbc1457a98f59688ac83932c271c519e477751c2f7e12eb875
+  - digest: 1add624a628dcb87e7dcd08dc93afbd61602f317a1fbd8ea09e3c23525f50fd0
     id: xforge-apply
+    kind: skill
+    license: project
+    version: "1"
+  - digest: 0a2130359fea30f4e1f560af0e475848ae3c4e6f8c92a1b92b1b48dc15ae1366
+    id: xforge-architect
     kind: skill
     license: project
     version: "1"
@@ -96,7 +106,7 @@ resources:
     kind: skill
     license: project
     version: "1"
-  - digest: b794b4fcfe7e7918865a00eaf6ab05427d69a25ef4c7caaf30491474b9162723
+  - digest: b001f98015cfbac1951d00198577267fb9724f5698e03075c45e9d8a19c60807
     id: xforge-design
     kind: skill
     license: project
@@ -145,7 +155,7 @@ targets:
   - opencode
   - github-copilot
 xforge:
-  integrity: sha256:5f57d24dd896965c48c1a9c8ebe3eb07dd4ad27e429ff5520516937cdaf9f37e
+  integrity: sha256:5cae4ad752bb116d0be98cc20bab995231dbaa54bf9d6aa95a43aa63d841f1d8
   package: "@xforge/cli"
   protocol: "2"
   source: npm

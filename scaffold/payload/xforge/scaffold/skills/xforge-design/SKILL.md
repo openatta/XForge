@@ -24,6 +24,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # Evidence
 
+- Read `xforge/architecture.md` when it exists, and say how this Change stands against each decision it touches — within it, departing from it with a reason, or proposing to change it. Record a proposed change as an entry in `evidence/conditions/architectureDeltas.yaml` with a named `decidedBy`; an architecture change nobody authorised is the thing that ledger exists to catch. When the file does not exist, say so once and proceed: it is a project that has not written its architecture down, not a project in violation.
 - Map each major decision to a Requirement, project constraint, or code fact and state the verifiable result.
 - Report coverage, residual risk, and the next legal Action against Action `doneWhen`.
 - When this Stage exits on a human approval, run `xforge brief --change <id> --text` and give the user its output **verbatim**. Do not summarize, reorder, or paraphrase it — the brief separates what the CLI computed from what it quoted, and restating it in your own words destroys the only signal the reader has for telling those apart.

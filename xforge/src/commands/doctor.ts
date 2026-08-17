@@ -1,4 +1,5 @@
 import { access, readdir } from 'node:fs/promises';
+import path from 'node:path';
 import type { Diagnostic, FileChange, ProjectContext, StageFlow } from '../types.js';
 import { checkStructure } from '../core/checker.js';
 import { diagnostic } from '../core/errors.js';
@@ -23,16 +24,26 @@ export interface DoctorFinding {
 
 export interface DoctorData {
   kind: DoctorKind | 'all';
-  summary: { dangling: number; deadCode: number; uncited: number; unusedFlows: number; unusableApprovals: number };
+  summary: { dangling: number; deadCode: number; uncited: number; unusedFlows: number; unusableApprovals: number; suggestions: number };
   danglingReferences: DoctorFinding[];
   deadCode: DoctorFinding[];
   uncited: DoctorFinding[];
   unusedFlows: DoctorFinding[];
   unusableApprovals: DoctorFinding[];
+  /**
+   * Things a project could have and does not, reported as `info`.
+   *
+   * Distinct from every other list here, which reports something declared that does not resolve.
+   * A project with no architecture file is not misconfigured — it is a project that has not written
+   * its architecture down, and saying so is worth exactly one suggestion and no more. Reporting it
+   * as a problem would push projects into creating an empty file to silence the tool, and a file
+   * that exists but says nothing is worse than none: it reads as configured.
+   */
+  suggestions: DoctorFinding[];
 }
 
 // Built-in Skills that are never invoked from a Flow Stage by design (chat-driven, standalone).
-const STANDALONE_SKILLS = new Set(['xforge-explore', 'xforge-kanban', 'xforge-status', 'xforge-continue', 'xforge-revise', 'xforge-scaffold', 'xforge-archive']);
+const STANDALONE_SKILLS = new Set(['xforge-explore', 'xforge-kanban', 'xforge-status', 'xforge-continue', 'xforge-revise', 'xforge-scaffold', 'xforge-archive', 'xforge-architect']);
 
 const DANGLING_CODE_SCOPE: Record<string, DoctorScope> = {
   XFORGE_FLOW_GATE_MISSING: 'gates',
@@ -238,15 +249,39 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
     });
   }
 
+  /*
+   * The architecture file is suggested, never required.
+   *
+   * `xforge/architecture.md` is where a project records the few decisions whose reversal touches
+   * several modules — the ones that otherwise live in a single Change's design document and archive
+   * with it, leaving the next Change nothing to inherit. A project without one is not misconfigured,
+   * so this is an `info` suggestion and nothing more: made a warning, it would push projects into
+   * creating an empty file to silence the tool, and an architecture file that exists and says
+   * nothing is worse than none, because it reads as configured.
+   */
+  const suggestions: DoctorFinding[] = [];
+  if (project.manifest.scaffold.skills.includes('xforge-architect')
+    && !await exists(path.join(project.root, 'xforge', 'architecture.md'))) {
+    suggestions.push({
+      scope: 'skills',
+      code: 'XFORGE_DOCTOR_ARCHITECTURE_ABSENT',
+      id: 'xforge-architect',
+      message: 'This project has no xforge/architecture.md, so each Change designs without a durable record of the decisions the last one made. Run the xforge-architect Skill to write one — from the existing code, by answering a few questions, or from a description. It is a suggestion, not a requirement: nothing is blocked without it.',
+      path: 'xforge/architecture.md',
+      severity: 'info',
+    });
+  }
+
   const matchesKind = (finding: DoctorFinding): boolean => !options.kind || finding.scope === options.kind;
   const filtered: DoctorData = {
     kind: options.kind ?? 'all',
-    summary: { dangling: 0, deadCode: 0, uncited: 0, unusedFlows: 0, unusableApprovals: 0 },
+    summary: { dangling: 0, deadCode: 0, uncited: 0, unusedFlows: 0, unusableApprovals: 0, suggestions: 0 },
     danglingReferences: danglingReferences.filter(matchesKind),
     deadCode: deadCode.filter(matchesKind),
     uncited: uncited.filter(matchesKind),
     unusedFlows: unusedFlows.filter(matchesKind),
     unusableApprovals: unusableApprovals.filter(matchesKind),
+    suggestions: suggestions.filter(matchesKind),
   };
   filtered.summary = {
     dangling: filtered.danglingReferences.length,
@@ -254,10 +289,15 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
     uncited: filtered.uncited.length,
     unusedFlows: filtered.unusedFlows.length,
     unusableApprovals: filtered.unusableApprovals.length,
+    suggestions: filtered.suggestions.length,
   };
 
   for (const finding of [...filtered.danglingReferences, ...filtered.deadCode, ...filtered.uncited, ...filtered.unusedFlows, ...filtered.unusableApprovals]) {
     diagnostics.push(diagnostic(finding.code, finding.message, finding.path, 'warning'));
+  }
+  /* Suggestions never reach `hasFindings`, so `--strict` stays a statement about what is broken. */
+  for (const finding of filtered.suggestions) {
+    diagnostics.push(diagnostic(finding.code, finding.message, finding.path, 'info'));
   }
 
   const hasFindings = filtered.summary.dangling + filtered.summary.deadCode + filtered.summary.uncited + filtered.summary.unusedFlows + filtered.summary.unusableApprovals > 0;

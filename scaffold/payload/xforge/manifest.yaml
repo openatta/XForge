@@ -29,6 +29,7 @@ scaffold:
     - xforge-revise
     - xforge-scaffold
     - xforge-kanban
+    - xforge-architect
   agents:
     - worker
     - integrator
@@ -38,6 +39,7 @@ scaffold:
     - observable-requirements-are-tested
     - design-decisions-need-a-human
     - prefer-small-explicit-contracts
+    - design-within-the-declared-architecture
   policies:
     - protected-files
     - protected-manifest
