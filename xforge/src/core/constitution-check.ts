@@ -45,6 +45,20 @@ const STATUSES: PrincipleStatus[] = ['compliant', 'violation', 'not-applicable']
 /** How a `references` entry resolved, for diagnostics. `null` means it resolved to nothing. */
 export type ReferenceKind = 'gate' | 'path' | 'requirement';
 
+/**
+ * An approval receipt this Change holds, by the filename `core/approval-receipt.ts` writes.
+ *
+ * Such a path resolves — the file is right there — which is exactly the problem. A receipt records
+ * that somebody approved a transition; it says nothing about *why* this Change satisfies a
+ * principle. A principle answered `compliant` on a receipt alone therefore cites evidence of a
+ * decision in place of evidence of compliance, and the Gate's existing checks cannot tell the
+ * difference because the citation is perfectly locatable.
+ *
+ * It is not a hypothetical: for a principle *about governance* a receipt is the evidence a Check
+ * Agent naturally reaches for, and two consecutive recorded live runs cited only that.
+ */
+const APPROVAL_RECEIPT_REFERENCE = /(?:^|\/)approvals\/[^/]+\/[0-9a-f-]{36}\.json$/i;
+
 export interface ConstitutionCheckResult {
   status: 'passed' | 'failed';
   problems: string[];
@@ -274,6 +288,14 @@ export async function evaluateConstitutionCheck(
         problems.push(`${relative}: principle "${principle}" is answered compliant with no references; cite at least one machine-locatable reference — a Requirement id from this Change's delta Specs, a path that exists, or gate:<name> for a Gate this Change has passed.`);
       } else if (resolved.length === 0) {
         problems.push(`${relative}: principle "${principle}" cites only references this project cannot locate (${dangling.join(', ')}); a citation nobody can follow is not evidence of compliance.`);
+      } else if (resolved.every((reference) => APPROVAL_RECEIPT_REFERENCE.test(reference))) {
+        /*
+         * Every citation resolves, and none of them is evidence. Refused here rather than left to
+         * the Skill's wording because this codebase has already run that experiment: the hazard was
+         * documented, nothing acted on it, and it recurred. A rule an Agent is asked to remember is
+         * not the same rule as one the Gate applies.
+         */
+        problems.push(`${relative}: principle "${principle}" cites only approval receipts (${resolved.join(', ')}); a receipt records that someone approved a transition, not why this Change satisfies the principle. Cite a Requirement id, a governed Artifact, or gate:<name> as well.`);
       } else if (dangling.length > 0) {
         warnings.push(`${relative}: principle "${principle}" cites ${dangling.join(', ')}, which this project cannot locate.`);
       }

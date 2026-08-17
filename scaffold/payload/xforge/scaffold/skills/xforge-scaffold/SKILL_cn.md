@@ -25,6 +25,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 4. 运行 `xforge check`，再运行 `xforge sync --dry-run`；展示跨目标 diff、冲突、native/degraded/unsupported 和敏感变化。
 5. 需要确认的权限变化获批后运行 `xforge sync`；如果 CLI 返回 `XFORGE_FULL_UPDATE_REQUIRED` 或 `XFORGE_STATE_UPGRADE_REQUIRED`，改为 `xforge update --dry-run`，确认后运行 `xforge update`。不得把安装成功误报为不受支持能力已启用。
 6. 再次运行 State，验证 Manifest selection、language、lock digest、ownership、Adapter coverage 和安装结果；平台要求 review/trust 时单独报告待信任状态。
+7. 遇到 `XFORGE_VERIFICATION_NOT_DECLARED`、`XFORGE_VERIFICATION_TOOLCHAIN_UNCOVERED` 或 `XFORGE_VERIFICATION_GATE_MIGRATED` 时，**询问用户本项目如何运行该项检查，并把答案记入** `manifest.verification.<gate>`，`declaredBy` 填写用户姓名。`nextAction` 会给出 CLI 针对所发现构建标记能提供的候选命令——每一条都只是向用户提问的起点，绝不是可以直接采用的答案。**不得猜测，也不得静默采用建议**：XForge 无法判断一条命令是否真的在验证什么，这正是必须由具名的人来回答的原因。该 Gate 有意不覆盖的工具链，记为 `notApplicable` 并附 `justification`，而不是留作未答。
 
 # 证据
 

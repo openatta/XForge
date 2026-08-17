@@ -452,6 +452,38 @@ async function evaluateVerificationReceiptCondition(
   return { satisfied: true, reason: 'satisfied' };
 }
 
+export const INDEPENDENT_REVIEW_CONDITION = 'independentReview';
+
+/**
+ * Every delivered work package must carry a Reviewer acknowledgement before the Stage can be left.
+ *
+ * Major declares three semantic reviews and ships `worker` / `integrator` / `reviewer` sub-Agents,
+ * but nothing ever *required* a Reviewer: `xforge-verify` says to use one "for high-risk or
+ * cross-system results", which is guidance, and the control plane accepted `succeeded` on its own.
+ * A live Major run — high risk, security, privacy and public API all true — completed without a
+ * single Reviewer acknowledgement, with one executor reviewing the design, the implementation and
+ * its own check report. It caught its own mistakes, which is exactly the problem: that outcome
+ * rested on the executor's diligence rather than on anything the Flow guaranteed.
+ *
+ * What this enforces is presence and attribution, not independence. A receipt names an actor, and
+ * one session can name any actor it likes, so refusing on "the reviewer equals the integrator"
+ * would be enforcing a property the CLI cannot observe. Both names are reported in State instead,
+ * where the approver signing the Change can see them.
+ */
+function independentReviewCondition(state: ChangeState, expected: string): { satisfied: boolean; reason: string } {
+  if (expected !== 'complete') return { satisfied: false, reason: `unsupported-expected-${expected}` };
+  const packages = state.workPackages?.packages ?? [];
+  /* A Change that dispatched no work packages has nothing here to review; its semantic review is
+     the Check Stage's, which its own Gates already decide. */
+  if (packages.length === 0) return { satisfied: true, reason: 'no-work-packages' };
+  const unreviewed = packages
+    .filter((item) => ['succeeded', 'integrated', 'reviewed'].includes(item.status))
+    .filter((item) => !item.acknowledgements?.reviewedBy)
+    .map((item) => item.id);
+  if (unreviewed.length > 0) return { satisfied: false, reason: `unreviewed-${unreviewed.join('+')}` };
+  return { satisfied: true, reason: 'satisfied' };
+}
+
 export interface ResolvedControlPlane {
   governance: GovernanceState;
   diagnostics: Diagnostic[];
@@ -537,7 +569,9 @@ export async function resolveControlPlane(
       for (const [key, expected] of Object.entries(exit.conditions ?? {})) {
         const condition = key === VERIFICATION_RECEIPT_CONDITION
           ? await evaluateVerificationReceiptCondition(project, changeId, expected, revision.contentRevision, gateEvidence)
-          : await evaluateExitCondition(project, changeId, key, expected, identities);
+          : key === INDEPENDENT_REVIEW_CONDITION
+            ? independentReviewCondition(state, expected)
+            : await evaluateExitCondition(project, changeId, key, expected, identities);
         if (!condition.satisfied) blockedBy.push(`condition:${key}:${condition.reason}`);
       }
       for (const policyId of exit.approvals ?? []) {

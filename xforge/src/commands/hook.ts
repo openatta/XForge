@@ -272,6 +272,35 @@ const ENFORCEMENT_KINDS = new Set(['permission-policy', 'hook']);
  * same refusal `runProjectScript` already performs before executing a project Script; the dispatcher
  * had no equivalent even though it is the more security-relevant of the two.
  */
+/**
+ * Refuses, in the reader's own terms, when the CLI answering this hook is not the one the project
+ * pinned.
+ *
+ * Hooks are spawned by the host, in an environment XForge does not control, and the dispatcher
+ * command is a bare `xforge` — so whatever is on that PATH answers. Usually that is the right
+ * build. When it is not, the older CLI meets a Scaffold written for a newer one and the first thing
+ * that goes wrong is a schema it has never heard of: a live run against a project using
+ * `builtin: declared` produced `/spec/builtin must be equal to one of the allowed values` on every
+ * single tool call, and nothing in that message says "your CLI is out of date". The Agent, quite
+ * reasonably, concluded its governance assets were corrupt.
+ *
+ * Every ordinary command already compares this and drops to Portable mode; the hook path never did,
+ * because it is the one path where the answer must be a decision rather than a degraded mode. It
+ * still denies — a dispatcher that cannot vouch for itself must not permit anything — but it now
+ * denies with the fact that explains every downstream symptom.
+ */
+function assertDispatcherIdentity(project: ProjectContext): void {
+  const { cli } = project.compatibility;
+  if (cli.matches !== false) return;
+  throw new XForgeError(diagnostic(
+    'XFORGE_HOOK_CLI_IDENTITY_MISMATCH',
+    `the CLI answering this hook is ${cli.actual ?? 'an unknown build'}, but this project pins ${cli.declared ?? 'a different build'}. Hooks run whatever \`xforge\` the host finds on PATH, which here is not the build this project's governance assets were written for — so it refuses to decide rather than enforce a policy set it may misread. Every tool call stays denied until the two agree. Install the pinned version, or run \`xforge update\` in the project root to move the project to the one installed here.`,
+    'xforge/manifest.yaml',
+    'error',
+    { declared: cli.declared, actual: cli.actual },
+  ), { root: project.root });
+}
+
 async function assertEnforceableResources(project: ProjectContext, resources: SelectedResources): Promise<void> {
   const errors = resources.diagnostics.filter((item) => item.severity === 'error');
   if (errors.length > 0) {
@@ -309,6 +338,8 @@ async function assertEnforceableResources(project: ProjectContext, resources: Se
  * so the fix travels with the refusal; the generic sentence is the fallback for a failure that
  * genuinely has no better explanation (an unparsed argv, a payload that is not JSON).
  */
+export { platformOutput as hookPlatformOutput };
+
 export function hookFailureOutput(target: TargetId, event: string, reason?: string): Record<string, unknown> {
   if (!event.includes('before') && !event.includes('permission')) return {};
   const detail = reason?.trim();
@@ -317,14 +348,65 @@ export function hookFailureOutput(target: TargetId, event: string, reason?: stri
     : 'XForge governance dispatcher failed closed.');
 }
 
+
+/**
+ * Whether a call is one of the two things allowed to run while governance is unloadable, and which.
+ *
+ * Deliberately narrow, and narrow in a way that does not depend on the policy set — that is exactly
+ * what is unavailable here. A read cannot change the repository. An `xforge` invocation is the
+ * documented remedy and is governed by its own argument parsing rather than by this dispatcher.
+ *
+ * A shell call qualifies only when it is a single `xforge ...` invocation: any metacharacter that
+ * could chain, redirect or substitute another command disqualifies it, because `xforge version &&
+ * rm -rf /` starts with `xforge` too. Refusing the whole class on the first suspicious byte is the
+ * right trade when the alternative is an ungoverned shell during a governance outage.
+ */
+export function repairAffordance(target: TargetId, payloadTool: string, input: Record<string, any>): string | null {
+  const capability = resolveToolCapability(target, payloadTool).capability;
+  if (capability === 'fs.read') return 'a read, which cannot change anything';
+  if (capability !== 'shell') return null;
+  const command = String(input.command ?? input.cmd ?? input.value ?? '').trim();
+  if (!command || /[;&|><`$(){}\n]/.test(command)) return null;
+  return /^xforge(\s|$)/.test(command) ? 'an xforge invocation, the command that repairs this' : null;
+}
+
 export async function executeHookDispatch(project: ProjectContext, options: { target: TargetId; event: string; payload: Record<string, any> }): Promise<{
   platformOutput: Record<string, unknown>;
   decision: Decision;
   policyRefs: string[];
   scriptHooks: Array<{ hookId: string; scriptId: string; decision: Decision; failed: boolean }>;
 }> {
+  /* Before the resources are read, not after: a version mismatch is what *makes* them unreadable,
+     so checking it second reports the symptom and hides the cause. */
+  assertDispatcherIdentity(project);
   const selected = await loadSelectedResources(project);
-  await assertEnforceableResources(project, selected);
+  try {
+    await assertEnforceableResources(project, selected);
+  } catch (error) {
+    /*
+     * The deny has to leave a way out of itself.
+     *
+     * When governance will not load, every tool call is denied — correctly, because nothing here
+     * can vouch for a policy set it cannot read. But the remedy it names ("fix that file", "run
+     * xforge install") is itself a tool call, so the Agent that broke the Manifest is locked out of
+     * repairing it. Two live runs ended exactly there, one of them after an Agent hand-edited the
+     * Manifest and indented one line short; its own report was that every channel was closed to it.
+     *
+     * Reading and invoking `xforge` are therefore still permitted while this state persists. Both
+     * are chosen for what they cannot do: a read changes nothing, and `xforge` is the tool whose
+     * refusals are the thing being repaired. Everything else stays denied, so the relaxation buys
+     * diagnosis and repair without buying a single ungoverned write.
+     */
+    const repair = repairAffordance(options.target, tool(options.payload), toolInput(options.payload));
+    if (!repair) throw error;
+    const reason = `${(error as XForgeError).diagnostics?.[0]?.message ?? 'governance could not be loaded'} — this call is permitted only because it is ${repair}, which is how the problem above gets diagnosed and fixed. Every other tool call stays denied until it is.`;
+    return {
+      platformOutput: platformOutput(options.target, options.event, 'allow', reason, false),
+      decision: 'allow' as Decision,
+      policyRefs: [],
+      scriptHooks: [],
+    };
+  }
   const payloadTool = tool(options.payload);
   const input = toolInput(options.payload);
   const resolution = resolveToolCapability(options.target, payloadTool);

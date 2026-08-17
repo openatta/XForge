@@ -1,12 +1,14 @@
-import { access } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { TargetId } from '../constants.js';
-import type { FileChange, ProjectContext } from '../types.js';
+import type { Diagnostic, FileChange, ProjectContext } from '../types.js';
 import { loadBundledScaffold } from '../core/bundled-scaffold.js';
+import { diagnostic } from '../core/errors.js';
 import { atomicWrite } from '../core/files.js';
 import { sha256 } from '../core/hash.js';
 import { localizedVariant } from '../core/language.js';
-import { canUpgradeDeclaredCli, reconcileDeclaredCliVersion } from '../core/project-loader.js';
+import { canUpgradeDeclaredCli, loadProject, reconcileDeclaredCliVersion } from '../core/project-loader.js';
+import { safeResolve } from '../core/path-safety.js';
 import { assertInstalledRecord } from '../install/planner.js';
 import { executeProjection } from './projection.js';
 
@@ -43,6 +45,68 @@ async function seedMissingRootDocuments(project: ProjectContext, dryRun: boolean
   return changes;
 }
 
+/**
+ * Sentences that exist only inside the Gates XForge shipped as npm placeholders.
+ *
+ * They are the marker for "this file is the one we shipped, untouched". Matching on the text rather
+ * than on a table of historical digests is both simpler and more honest about what is being
+ * decided: these strings were written by the placeholder and by nothing else, so a Gate containing
+ * one is a Gate nobody has adapted to their project.
+ */
+const PLACEHOLDER_SENTINELS = ['passing WITHOUT asserting anything', 'passing WITHOUT scanning anything'];
+
+/**
+ * Replaces a shipped npm placeholder Gate with the `builtin: declared` form.
+ *
+ * This is the only route by which the fix reaches a project that already exists. `xforge/scaffold/**`
+ * is seeded once by `init` and never updated afterwards, so a project created on any earlier release
+ * keeps its `npm test` Gate through every upgrade — and that Gate reports `passed` without running
+ * anything on any project that is not Node. Shipping a corrected Gate in the bundle fixes new
+ * projects only; this fixes the ones already out there.
+ *
+ * A Gate that has been edited is never touched. The sentinel is what distinguishes "still the file
+ * we shipped" from "the project's own", and rewriting somebody's real test command because a newer
+ * default exists would be a far worse failure than the one being repaired.
+ */
+async function migratePlaceholderGates(project: ProjectContext, dryRun: boolean): Promise<{ changes: FileChange[]; diagnostics: Diagnostic[] }> {
+  const changes: FileChange[] = [];
+  const diagnostics: Diagnostic[] = [];
+  for (const name of ['unit-tests', 'security-scan']) {
+    const relative = `xforge/scaffold/gates/${name}.yaml`;
+    let current: string;
+    try { current = await readFile(await safeResolve(project.root, relative), 'utf8'); }
+    catch { continue; }
+    if (!PLACEHOLDER_SENTINELS.some((sentinel) => current.includes(sentinel))) continue;
+
+    const replacement = [
+      '# Runs what this project declared under `manifest.verification.' + name + '`, and refuses when',
+      '# it declared nothing. XForge knows no programming languages; this is where the project says',
+      '# how it verifies itself, in any language, and where an unanswered question stays visible',
+      '# instead of being reported as a pass.',
+      'apiVersion: xforge.dev/v1alpha1',
+      'kind: Gate',
+      'metadata:',
+      `  name: ${name}`,
+      '  version: 3',
+      'spec:',
+      '  required: true',
+      '  builtin: declared',
+      '  timeoutSeconds: 900',
+      `  evidence: ${name === 'unit-tests' ? 'tests' : 'security'}.json`,
+      '',
+    ].join('\n');
+    if (!dryRun) await atomicWrite(project.root, relative, replacement);
+    changes.push({ action: 'modify', path: relative, digest: sha256(replacement), source: 'migrate:placeholder-gate' });
+    diagnostics.push(diagnostic(
+      'XFORGE_VERIFICATION_GATE_MIGRATED',
+      `Gate ${name} was still the shipped npm placeholder, which reported passed without running anything unless this project happened to be a Node project. It now runs what manifest.verification.${name} declares, and refuses while that is empty. Declare this project's real ${name === 'unit-tests' ? 'test' : 'dependency or SAST scan'} command.`,
+      relative,
+      'warning',
+    ));
+  }
+  return { changes, diagnostics };
+}
+
 export async function executeUpdate(project: ProjectContext, options: { target?: TargetId; dryRun: boolean; adopt?: boolean }) {
   /*
    * Two orderings matter here, and they are independent of each other.
@@ -68,8 +132,29 @@ export async function executeUpdate(project: ProjectContext, options: { target?:
    */
   if (canUpgradeDeclaredCli(project.manifest)) await assertInstalledRecord(project, 'update');
   const versionChanges = await reconcileDeclaredCliVersion(project, options.dryRun);
-  const result = await executeProjection(project, 'update', options);
-  if (result.diagnostics.some((item) => item.severity === 'error')) return { ...result, changes: [...versionChanges, ...result.changes] };
-  const seeded = await seedMissingRootDocuments(project, options.dryRun);
-  return { ...result, changes: [...versionChanges, ...seeded, ...result.changes] };
+  const migrated = await migratePlaceholderGates(project, options.dryRun);
+  /*
+   * Re-read the project after a migration wrote one of its resources. `project` carries resource
+   * content that was read before `executeUpdate` was called, so the projection would otherwise lock
+   * the digests of the placeholder Gate it had just replaced — leaving the run reporting
+   * XFORGE_LOCK_RESOURCES_MISMATCH and needing a second `update` to converge.
+   */
+  const migratedProject = migrated.changes.length > 0 && !options.dryRun
+    ? await loadProject(project.root, { exactRoot: true })
+    : project;
+  const result = await executeProjection(migratedProject, 'update', options);
+  /*
+   * `executeProjection` reads the structure before it rewrites the lock, so a migration performed
+   * moments earlier in this same run shows up as a stale-resources warning that this very run has
+   * already resolved. Reporting it would tell the reader something is inconsistent at the exact
+   * moment it was made consistent. Suppressed only when a migration actually wrote something —
+   * a genuinely stale lock in any other update still reports.
+   */
+  const selfInflicted = migrated.changes.length > 0 ? new Set(['XFORGE_LOCK_RESOURCES_MISMATCH']) : new Set<string>();
+  const diagnostics = [...migrated.diagnostics, ...result.diagnostics.filter((item) => !selfInflicted.has(item.code))];
+  if (result.diagnostics.some((item) => item.severity === 'error')) {
+    return { ...result, diagnostics, changes: [...versionChanges, ...migrated.changes, ...result.changes] };
+  }
+  const seeded = await seedMissingRootDocuments(migratedProject, options.dryRun);
+  return { ...result, diagnostics, changes: [...versionChanges, ...migrated.changes, ...seeded, ...result.changes] };
 }

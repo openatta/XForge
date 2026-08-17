@@ -26,6 +26,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 - 每项关键决策映射到 Requirement、项目约束或代码事实，并给出可验证结果。
 - 按 Action 的 `doneWhen` 报告覆盖范围、残余风险和下一合法 Action。
+- 当本 Stage 以人类审批退出时，运行 `xforge brief --change <id> --text` 并把输出**逐字**交给用户。不得转述、重排或概括：简报把 CLI 算出的事实与原文引用分开呈现，用你自己的话复述会毁掉读者区分二者的唯一依据。
 
 # 停止与返工
 

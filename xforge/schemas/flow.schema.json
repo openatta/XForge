@@ -30,7 +30,8 @@
         "instruction": { "type": "string", "minLength": 1 },
         "outline": { "type": "string" },
         "requires": { "$ref": "#/$defs/idList" },
-        "validator": { "$ref": "#/$defs/artifactValidator" }
+        "validator": { "$ref": "#/$defs/artifactValidator" },
+        "markers": { "$ref": "#/$defs/artifactMarkers" }
       }
     },
     "stageArtifact": {
@@ -43,10 +44,27 @@
         "description": { "type": "string", "minLength": 1 },
         "instruction": { "type": "string", "minLength": 1 },
         "outline": { "type": "string" },
-        "validator": { "$ref": "#/$defs/artifactValidator" }
+        "validator": { "$ref": "#/$defs/artifactValidator" },
+        "markers": { "$ref": "#/$defs/artifactMarkers" }
       }
     },
     "artifactValidator": { "enum": ["spec-delta"] },
+    "artifactMarkers": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/artifactMarker" }
+    },
+    "artifactMarker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "section", "role"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "section": { "type": "string", "minLength": 1 },
+        "role": { "enum": ["requirement-coverage", "decision-alternative", "declared-gap"] },
+        "pattern": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "minOccurrences": { "type": "integer", "minimum": 0 }
+      }
+    },
     "v1alpha1": {
       "type": "object",
       "additionalProperties": false,

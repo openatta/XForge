@@ -66,7 +66,7 @@ describe('governance validation', () => {
   it('requires install to refresh locked content before checks can execute', async () => {
     const root = await fixture();
     await updateYaml(root, 'xforge/scaffold/gates/unit-tests.yaml', (gate) => {
-      gate.spec.command = [process.execPath, '-e', 'process.exit(0)'];
+      gate.spec.command = [process.execPath, '-e', 'process.exit(0)']; delete gate.spec.builtin;
     });
     const stale = await runCli(root, ['check']);
     expect(stale.code).toBe(1);

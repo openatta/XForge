@@ -1,37 +1,24 @@
-# Why this Gate is a guarded `node -e` and not a bare `npm audit`.
+# Runs what this project declared under `manifest.verification.security-scan`, and refuses when it
+# declared nothing.
 #
-# In a directory with no `package.json`, `npm audit --offline` exits **1** — indistinguishable, to
-# `runners/gate.ts`, from "this project has a high-severity advisory". It is neither ENOENT nor 127,
-# so the runner's "the tool is missing, this is not a failing check" detection cannot see it, and a
-# non-Node project on the Major Flow got a permanent `XFORGE_GATE_FAILED` reporting a vulnerability
-# that was never found. See `unit-tests.yaml` for why `required: false` is not the fix (nothing in
-# the CLI reads `spec.required`; the Flow's `stage.gates` list is what schedules a Gate).
+# This Gate used to be `npm audit` behind a guard that exited 0 when there was no
+# `package.json`. The guard was itself a fix — without it a non-Node project got a permanent,
+# false *failure*, because npm exits ENOLOCK rather than the 127 the runner reads as "tool
+# missing". But it turned a loud wrong answer into a quiet one: every Rust, Go and Python project
+# got a Gate reporting `passed` having asserted nothing, and with it a must-level Rule whose only
+# enforcement was this Gate, a verification receipt citing its digest, and an archive whose
+# mandatory Gate was empty.
 #
-# With no dependency manifest, or a manifest but no lockfile (`npm audit` then exits ENOLOCK, which
-# reads the same way), there is nothing resolvable to audit, so the Gate says exactly that and
-# passes. Replace the command below with this project's real dependency or SAST scanner — a Gate
-# that passes without scanning anything is a placeholder, not a security control.
+# XForge does not know how any given project verifies itself, and no list of languages inside the
+# CLI would change that — it would only move the edge. So the project says, in any language, and
+# an unanswered question stays visible instead of being reported as a pass.
 apiVersion: xforge.dev/v1alpha1
 kind: Gate
 metadata:
   name: security-scan
-  version: 2
+  version: 3
 spec:
   required: true
-  command:
-    - node
-    - -e
-    - |
-      const fs = require('fs');
-      const lockfile = ['package-lock.json', 'npm-shrinkwrap.json'].some((name) => fs.existsSync(name));
-      if (!fs.existsSync('package.json') || !lockfile) {
-        console.log('security-scan: no ' + (fs.existsSync('package.json') ? 'package-lock.json or npm-shrinkwrap.json' : 'package.json') + ' in this working directory, so `npm audit` has no resolved dependency tree to scan (it exits ENOLOCK, which reads as a finding rather than a missing precondition).');
-        console.log('security-scan: passing WITHOUT scanning anything. Replace this Gate\'s command in xforge/scaffold/gates/security-scan.yaml with this project\'s real dependency or SAST scanner.');
-        process.exit(0);
-      }
-      const run = require('child_process').spawnSync('npm', ['audit', '--offline', '--audit-level=high'], { stdio: 'inherit', shell: process.platform === 'win32' });
-      process.exit(run.status === null ? 1 : run.status);
-  workingDirectory: .
+  builtin: declared
   timeoutSeconds: 900
-  maxOutputBytes: 65536
   evidence: security.json

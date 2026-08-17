@@ -138,4 +138,69 @@ describe('Constitution ledger references', () => {
     const preApproval = await evaluateConstitutionCheck(await project(root), CHANGE, undefined, { approvals: [] });
     expect(preApproval.status).toBe('passed');
   });
+
+  /**
+   * A receipt path resolves — the file is right there — which is why the locatability rules above
+   * cannot catch this on their own. It is also not a hypothetical: for a principle about
+   * governance a receipt is the evidence a Check Agent naturally reaches for, and two consecutive
+   * recorded live runs cited only that, which is what made the `solid` cassette record-only.
+   */
+  describe('an approval receipt is not evidence of compliance', () => {
+    const receiptPath = `approvals/planning-solid/${'bc412e1c-9707-42ca-b322-2d93c5b91d29'}.json`;
+
+    async function withReceiptFile(root: string): Promise<void> {
+      await write(root, `${BASE}/${receiptPath}`, JSON.stringify({ decision: 'approve' }));
+    }
+
+    it('refuses a principle whose citations are all receipts, even though each one resolves', async () => {
+      const root = await fixture();
+      await citableChange(root);
+      await withReceiptFile(root);
+      const [first, ...rest] = await principlesOf(root);
+      await write(root, LEDGER, ledger([
+        { principle: first!, body: compliant(receiptPath) },
+        ...rest.map((principle) => ({ principle, body: compliant('proposal.md') })),
+      ]));
+
+      const result = await evaluateConstitutionCheck(await project(root), CHANGE);
+      expect(result.status).toBe('failed');
+      expect(result.problems.join(' ')).toContain('cites only approval receipts');
+      /* The refusal must say what a receipt does prove, or the fix is a guess. */
+      expect(result.problems.join(' ')).toContain('not why this Change satisfies the principle');
+    });
+
+    it('accepts a receipt cited alongside something that is evidence', async () => {
+      const root = await fixture();
+      await citableChange(root);
+      await withReceiptFile(root);
+      const [first, ...rest] = await principlesOf(root);
+      await write(root, LEDGER, ledger([
+        {
+          principle: first!,
+          body: `    status: compliant\n    references: [${JSON.stringify(receiptPath)}, "REQ-101"]\n`,
+        },
+        ...rest.map((principle) => ({ principle, body: compliant('proposal.md') })),
+      ]));
+
+      const result = await evaluateConstitutionCheck(await project(root), CHANGE);
+      expect(result.problems).toEqual([]);
+      expect(result.status).toBe('passed');
+    });
+
+    it('does not mistake an ordinary governed Artifact for a receipt', async () => {
+      const root = await fixture();
+      await citableChange(root);
+      const [first, ...rest] = await principlesOf(root);
+      await write(root, `${BASE}/evidence/conditions/materialQuestions.yaml`, 'entries: []\n');
+      await write(root, LEDGER, ledger([
+        { principle: first!, body: compliant('evidence/conditions/materialQuestions.yaml') },
+        ...rest.map((principle) => ({ principle, body: compliant('proposal.md') })),
+      ]));
+
+      /* The material-questions ledger is exactly what a governance principle should cite instead. */
+      const result = await evaluateConstitutionCheck(await project(root), CHANGE);
+      expect(result.problems).toEqual([]);
+      expect(result.status).toBe('passed');
+    });
+  });
 });

@@ -320,7 +320,28 @@ function isControlPlaneBookkeeping(filePath: string, changeRoot: string): boolea
   return tail.startsWith('audit/') || /^agents\/[^/]+\/(?:dispatch|ack)\//.test(tail);
 }
 
-function protectedWritePaths(project: ProjectContext, changeId: string, config: ChangeConfig, resources: SelectedResources): string[] {
+/**
+ * The citable part of a `done_when_evidence` entry, with any explanation stripped.
+ *
+ * The relevance check is exact-match against a command that ran or a path that changed, and it used
+ * to be applied to the whole string. So `"cargo build 退出码 0（validation 第 1 条）"` was rejected and
+ * the bare `"cargo build"` accepted — which squeezed every citation down to a naked reference and
+ * removed the room to say *what about it* mattered. That shape rewards whatever reference is
+ * easiest to produce, which is how a delivery ends up citing a lint run for a durability claim: the
+ * check's own form was inviting the padding it was meant to prevent.
+ *
+ * An entry may now read `<reference> — <explanation>`; only the reference is matched. An optional
+ * `command:` / `path:` prefix states which kind is intended, and is stripped the same way.
+ */
+export function evidenceReference(entry: string): string {
+  const withoutPrefix = entry.replace(/^\s*(?:command|path):\s*/i, '');
+  /* An em dash, an en dash, or a spaced `--`. All three require surrounding spaces so a hyphen
+     inside a filename or a command flag is never mistaken for the separator. */
+  const [reference] = withoutPrefix.split(/\s+(?:—|–|--)\s+/);
+  return (reference ?? withoutPrefix).trim();
+}
+
+function protectedWritePaths(project: ProjectContext, changeId: string, config: ChangeConfig, resources: SelectedResources, integratorPaths: string[] = []): string[] {
   const changeRoot = `${project.changesPath}/${changeId}`;
   const paths = new Set([
     'xforge/manifest.yaml',
@@ -339,6 +360,21 @@ function protectedWritePaths(project: ProjectContext, changeId: string, config: 
     if (policy.value.spec.capability !== 'fs.write' || policy.value.spec.effect === 'allow') continue;
     for (const declared of policy.value.spec.match.paths ?? []) paths.add(declared);
   }
+  /*
+   * Paths the plan declares as the Integrator's own.
+   *
+   * Everything else in this set is governance surface. Product source had no way to be Integrator
+   * territory at all, and integration legitimately produces some: a module list, a DI root, a
+   * config assembly point — files that belong to no single package because they are what joins the
+   * packages together. Creating one during integration made the delivery check report a path "no
+   * work package declared and no Integrator-only path covers", and the only way out was to file it
+   * under whichever package happened to be nearby, which records a falsehood about who delivered it.
+   *
+   * Joining this set gives both needed properties at once: the path becomes attributable, so it
+   * stops invalidating deliveries, and the existing overlap rule starts refusing any package that
+   * declares it — which is what "Integrator-only" has to mean to be worth declaring.
+   */
+  for (const declared of integratorPaths) paths.add(declared);
   return [...paths].sort();
 }
 
@@ -835,20 +871,51 @@ async function validateSuccessfulDelivery(
    */
   const ranCommands = new Set(delivery.validation.map((item) => item.command));
   const changedSet = new Set(actualPaths);
+  const matched = new Map<string, string[]>();
   for (const mapping of mappings) {
     const relevant = (mapping.evidence ?? []).filter((item) => {
-      if (ranCommands.has(item)) return true;
+      const reference = evidenceReference(item);
+      if (ranCommands.has(reference)) return true;
       let normalized: string;
-      try { normalized = normalizeRelative(item, 'Evidence path'); } catch { return false; }
+      try { normalized = normalizeRelative(reference, 'Evidence path'); } catch { return false; }
       return changedSet.has(normalized) && !isControlPlaneBookkeeping(normalized, changeRoot);
     });
     if (relevant.length === 0) {
       diagnostics.push(diagnostic(
         'XFORGE_WORK_PACKAGE_DONE_WHEN_EVIDENCE_IRRELEVANT',
-        `No evidence for done_when criterion "${mapping.criterion}" names a verify command this delivery ran or a path it changed.`,
+        `No evidence for done_when criterion "${mapping.criterion}" names a verify command this delivery ran or a path it changed. An entry may carry an explanation after an em dash or " -- "; only the reference before it is matched.`,
         sourcePath,
         'error',
         { criterion: mapping.criterion, evidence: mapping.evidence ?? [] },
+      ));
+      continue;
+    }
+    matched.set(mapping.criterion, relevant.map(evidenceReference));
+  }
+  /*
+   * Whether a citation actually supports the conclusion it is filed under is a semantic question,
+   * and this function cannot answer it — the same honest limit `check-findings` states about its
+   * own `refs`. What is decidable is whether the evidence *discriminates*: a live run mapped six
+   * different criteria, including "a failed cross-aggregate write leaves nothing queryable", to the
+   * single command `cargo clippy -- -D warnings`, which supports none of them. One reference
+   * standing for every criterion in a delivery cannot be telling them apart, whatever it says.
+   *
+   * Reported as a warning rather than an error, because two genuinely related criteria evidenced by
+   * one test command is normal and this cannot distinguish that from padding. Naming it is the
+   * point: the previous behaviour was silence.
+   */
+  if (matched.size > 1) {
+    const shared = [...matched.values()].reduce<string[] | null>(
+      (common, references) => (common === null ? references : common.filter((item) => references.includes(item))),
+      null,
+    ) ?? [];
+    if (shared.length > 0 && [...matched.values()].every((references) => references.length === shared.length)) {
+      diagnostics.push(diagnostic(
+        'XFORGE_WORK_PACKAGE_DONE_WHEN_EVIDENCE_UNDISCRIMINATING',
+        `Every one of the ${matched.size} mapped done_when criteria is evidenced by exactly the same reference(s): ${shared.join(', ')}. Evidence that is identical for every criterion cannot be distinguishing between them; cite what establishes each one specifically.`,
+        sourcePath,
+        'warning',
+        { criteria: [...matched.keys()], shared },
       ));
     }
   }
@@ -901,7 +968,7 @@ export async function resolveWorkPackages(
     if (dependsTransitively(byId, id, id)) diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_DEPENDENCY_CYCLE', `Work package DAG contains a cycle at ${id}.`, planPath));
   }
 
-  const protectedPaths = protectedWritePaths(project, changeId, config, resources);
+  const protectedPaths = protectedWritePaths(project, changeId, config, resources, plan.integrator_paths ?? []);
   for (const rule of resources.rules.values()) {
     if (rule.value.spec.writePolicy === 'integrator-only' && !rule.value.spec.paths?.length) {
       diagnostics.push(diagnostic('XFORGE_RULE_WRITE_POLICY_PATHS_REQUIRED', 'An integrator-only Rule must declare paths.', rule.yamlPath));
@@ -952,6 +1019,24 @@ export async function resolveWorkPackages(
     }
     for (const patternInput of workPackage.write_paths) {
       try {
+        /*
+         * A trailing slash reads as "this directory" and matches nothing, because `matchesPattern`
+         * compares against file paths. The plan validated, `xforge state` reported no diagnostic,
+         * and every package dispatched — the first sign of trouble was
+         * XFORGE_WORK_PACKAGE_WRITE_ESCAPE at delivery time, with the code already written and
+         * committed. Rejecting it here costs a one-character edit; catching it there cost a real
+         * project seven re-declared packages.
+         */
+        if (/\/$/.test(patternInput.trim())) {
+          diagnostics.push(diagnostic(
+            'XFORGE_WORK_PACKAGE_WRITE_PATH_DIRECTORY',
+            `Work package ${workPackage.id} write path ends with a slash: ${patternInput}. A write path matches files, so this matches nothing — write ${patternInput.trim().replace(/\/+$/, '')}/** to mean everything under it.`,
+            planPath,
+            'error',
+            { packageId: workPackage.id, pattern: patternInput },
+          ));
+          continue;
+        }
         const pattern = normalizeRelative(patternInput, `Work package ${workPackage.id} write path`);
         if (UNSUPPORTED_GLOB_MAGIC.test(pattern)) {
           diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_GLOB_UNSUPPORTED', 'write_paths supports literal paths, * and ** only.', planPath, 'error', { pattern }));
@@ -1078,6 +1163,7 @@ export async function resolveWorkPackages(
       return !dependencyDelivery || dependencyDelivery.status !== 'succeeded' || invalidDeliveries.has(dependency);
     });
     let status: WorkPackageState['status'];
+    let acknowledgements: WorkPackageState['acknowledgements'] = { reviewedBy: null, integratedBy: null };
     if (delivery?.status === 'succeeded' && !invalidDeliveries.has(workPackage.id)) {
       const lifecycle = auditEvents.filter((event) => event.workPackage === workPackage.id
         && (!delivery.audit_correlation_id || event.correlationId === delivery.audit_correlation_id));
@@ -1097,12 +1183,27 @@ export async function resolveWorkPackages(
       if (reviewed) status = 'reviewed';
       else if (integrated) status = 'integrated';
       else status = 'succeeded';
+      /*
+       * Who reviewed and who integrated, reported rather than judged.
+       *
+       * A live Major run wrote the Spec, the Design, every line of code, the check report and the
+       * assurance from one executor, and no Stage ever asked for a second opinion — the Reviewer
+       * role existed in the Scaffold and was never required. Requiring the acknowledgement is
+       * enforceable and now is. Requiring the two identities to *differ* is not: the same session
+       * can name any actor it likes, so a check that pretended to verify independence would be
+       * asserting something it cannot know. Surfacing both names lets an approver see it and
+       * decide, which is the same posture `declaredBy` and `decidedBy` take elsewhere.
+       */
+      acknowledgements = {
+        reviewedBy: receiptsForExecution.find((receipt) => receipt.status === 'reviewed')?.actor?.id ?? null,
+        integratedBy: receiptsForExecution.find((receipt) => receipt.status === 'integrated')?.actor?.id ?? null,
+      };
     }
     else if (delivery?.status === 'failed' || invalidDeliveries.has(workPackage.id)) status = 'failed';
     else if (delivery?.status === 'blocked') status = 'blocked';
     else if (dispatch) status = 'running';
     else status = missingDependencies.length === 0 ? 'ready' : 'blocked';
-    return { ...workPackage, status, missingDependencies, delivery };
+    return { ...workPackage, status, missingDependencies, delivery, acknowledgements };
   });
 
   if (options.requireDeliveries) {

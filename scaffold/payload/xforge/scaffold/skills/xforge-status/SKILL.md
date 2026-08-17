@@ -26,6 +26,7 @@ allowed-tools: Read, Grep, Glob, Bash(xforge:*)
 # Evidence
 
 - Bind every progress conclusion to one State revision and concrete diagnostics/Evidence paths.
+- When the user is asking whether a Change should pass its current approval rather than where it stands, run `xforge brief --change <id> --text` and hand back its output verbatim. It answers a different question than this Skill does, and it answers that one better.
 
 # Stop and rework
 

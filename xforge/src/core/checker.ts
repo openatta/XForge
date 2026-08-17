@@ -10,6 +10,7 @@ import { resolveWorkPackages } from './work-packages.js';
 import { normalizeRule } from './governance.js';
 import { loadTransitionReceipts } from './control-plane.js';
 import { validateChangeSpecDeltas } from './spec-delta.js';
+import { validateArtifactMarkers } from './artifact-markers.js';
 
 export interface StructureResult {
   diagnostics: Diagnostic[];
@@ -174,6 +175,7 @@ export async function checkStructure(project: ProjectContext, changeId?: string)
       `${project.changesPath}/${changeId}/change.yaml`,
     ));
     diagnostics.push(...await validateChangeSpecDeltas(project, changeId));
+    diagnostics.push(...await validateArtifactMarkers(project, changeId));
     for (const module of resolved.config.scope.modules) {
       if (!moduleIds.has(module)) diagnostics.push(diagnostic('XFORGE_CHANGE_MODULE_UNKNOWN', `Change references unknown module ${module}.`, `${project.changesPath}/${changeId}/change.yaml`));
     }

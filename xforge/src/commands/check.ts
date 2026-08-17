@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
-import type { Diagnostic, FileChange, Flow, GateEvidence, GateResource, ProjectContext, StageFlow } from '../types.js';
+import type { Diagnostic, FileChange, Flow, GateEvidence, GateResource, NextAction, ProjectContext, StageFlow } from '../types.js';
 import { checkStructure } from '../core/checker.js';
 import { diagnostic } from '../core/errors.js';
 import { atomicWrite } from '../core/files.js';
@@ -41,7 +41,13 @@ export interface CheckData {
   stage: string | null;
   gateSelection: GateSelection;
   workPackages: Array<{ packageId: string; command: string; status: 'passed' | 'failed'; evidence: GateEvidence; cached: boolean }>;
-  gates: Array<{ id: string; status: 'passed' | 'failed'; evidence: GateEvidence | null }>;
+  /**
+   * `evidencePath` is carried because a Gate's Evidence file is not named after the Gate —
+   * `unit-tests` writes `tests.json`, `security-scan` writes `security.json` — and a verification
+   * receipt has to cite each Gate's digest. Without it the only way to find the file was to list
+   * the Evidence directory and guess which entry belonged to which Gate.
+   */
+  gates: Array<{ id: string; status: 'passed' | 'failed'; evidence: GateEvidence | null; evidencePath: string | null }>;
 }
 
 const ALL_GATES = 'all';
@@ -244,10 +250,12 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
   data: CheckData;
   diagnostics: Diagnostic[];
   changes: FileChange[];
+  nextActions: NextAction[];
 }> {
   assertManaged(project, 'check');
   const structure = await checkStructure(project, options.change);
   const diagnostics = [...structure.diagnostics];
+  const nextActions: NextAction[] = [];
   const staleLockCodes = new Set(['XFORGE_LOCK_SCAFFOLD_MISMATCH', 'XFORGE_LOCK_PATHS_MISMATCH', 'XFORGE_LOCK_RESOURCES_MISMATCH']);
   if (diagnostics.some((item) => staleLockCodes.has(item.code))) {
     diagnostics.push(diagnostic('XFORGE_LOCK_STALE', 'Run xforge install to resolve and lock current Manifest paths, Scaffold, and resources before check.', 'xforge/lock.yaml'));
@@ -342,13 +350,31 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
       const result = await runGate(project, options.change, verification.gate, true);
       changes.push(result.change);
       await writeGateReuseRecord(project, options.change, verification.gate, result.evidence, worktreeDigest);
-      if (result.evidence.status === 'failed') diagnostics.push(diagnostic(
-        'XFORGE_WORK_PACKAGE_VERIFY_FAILED',
-        `Work package ${verification.packageId} verification failed: ${verification.command}`,
-        result.change.path,
-        'error',
-        { exitCode: result.evidence.exitCode, timedOut: result.evidence.timedOut },
-      ));
+      if (result.evidence.status === 'failed') diagnostics.push(
+        /*
+         * `runGate` already decided whether the command ran at all — it distinguishes ENOENT,
+         * EACCES and exit 127 from a real failure and says so in `result.diagnostic`. This branch
+         * used to throw that away and report every outcome as "verification failed", so a project
+         * whose `cargo` was not on PATH read fifteen failing test suites that had never started.
+         * A missing tool and a failing test need different actions from the reader; both still
+         * block, so nothing is loosened by telling them apart.
+         */
+        result.diagnostic?.code === 'XFORGE_GATE_COMMAND_UNAVAILABLE'
+          ? diagnostic(
+            'XFORGE_WORK_PACKAGE_VERIFY_UNRUNNABLE',
+            `Work package ${verification.packageId} verification could not be executed: ${verification.command}. ${result.diagnostic.message}`,
+            result.change.path,
+            'error',
+            { ...(result.diagnostic.details as Record<string, unknown> ?? {}), packageId: verification.packageId },
+          )
+          : diagnostic(
+            'XFORGE_WORK_PACKAGE_VERIFY_FAILED',
+            `Work package ${verification.packageId} verification failed: ${verification.command}`,
+            result.change.path,
+            'error',
+            { exitCode: result.evidence.exitCode, timedOut: result.evidence.timedOut },
+          ),
+      );
       workPackageResults.push({
         packageId: verification.packageId,
         command: verification.command,
@@ -364,17 +390,20 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
       const resource = structure.resources.gates.get(id);
       if (!resource) {
         diagnostics.push(diagnostic('XFORGE_GATE_NOT_FOUND', `Selected Gate does not exist or is not enabled: ${id}`, 'xforge/manifest.yaml'));
-        gateResults.push({ id, status: 'failed', evidence: null });
+        gateResults.push({ id, status: 'failed', evidence: null, evidencePath: null });
         continue;
       }
       if (!options.change) {
-        gateResults.push({ id, status: 'passed', evidence: null });
+        gateResults.push({ id, status: 'passed', evidence: null, evidencePath: null });
         continue;
       }
       const result = await runGate(project, options.change, resource.value, true);
       changes.push(result.change);
       if (result.diagnostic) diagnostics.push(result.diagnostic);
-      gateResults.push({ id, status: result.evidence.status, evidence: result.evidence });
+      /* A Gate refusing for want of a human answer carries the question with it; dropping it here
+         would leave the diagnostic naming a problem with no route to the fix. */
+      nextActions.push(...result.nextActions);
+      gateResults.push({ id, status: result.evidence.status, evidence: result.evidence, evidencePath: result.change.path });
     }
   }
 
@@ -407,5 +436,6 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
     },
     diagnostics,
     changes,
+    nextActions,
   };
 }

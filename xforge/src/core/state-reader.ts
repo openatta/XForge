@@ -1,4 +1,4 @@
-import { access, readdir } from 'node:fs/promises';
+import { access, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import fg from 'fast-glob';
 import type { TargetId } from '../constants.js';
@@ -9,7 +9,7 @@ import { diagnostic } from './errors.js';
 import { flowEligibilityDiagnostics } from './checker.js';
 import { flowApplyOperation, flowArchiveOperation, flowArtifacts, isStageFlow, loadFlows, resolveChangeState } from './flow-resolver.js';
 import { safeResolve } from './path-safety.js';
-import { loadSelectedResources } from './resource-loader.js';
+import { loadSelectedResources, type SelectedResources } from './resource-loader.js';
 import { resolvedResourceEntries } from './lockfile.js';
 import { stableStringify } from './hash.js';
 import { resolveWorkPackages } from './work-packages.js';
@@ -30,6 +30,57 @@ async function directoriesAt(root: string): Promise<string[]> {
   } catch {
     return [];
   }
+}
+
+/**
+ * What each mandatory Gate's Evidence says actually executed.
+ *
+ * A Gate's `status` answers "did it pass" and nothing else, so a Gate that ran no check and a Gate
+ * that ran a real suite were indistinguishable everywhere a reader looks — State, transitions,
+ * archive readiness — and the difference was visible only by opening the Evidence JSON and reading
+ * its stdout. That is how a live run reached Verify twice on Gates whose own output said "passing
+ * WITHOUT asserting anything".
+ *
+ * This reports the recorded facts and draws no conclusion: the command the runner executed, the
+ * Evidence path (which is not named after the Gate — `unit-tests` writes `tests.json`), and whether
+ * the Evidence is bound to the current content revision. What those facts mean is the reader's call;
+ * having to guess where to find them was the problem.
+ */
+async function mandatoryGateEvidence(
+  project: ProjectContext,
+  changeId: string,
+  gates: readonly string[],
+  resources: SelectedResources,
+  contentRevision: string | null,
+): Promise<Array<{ gate: string; status: string | null; command: string[] | null; evidencePath: string | null; currentRevision: boolean | null }>> {
+  const summaries: Array<{ gate: string; status: string | null; command: string[] | null; evidencePath: string | null; currentRevision: boolean | null }> = [];
+  for (const gate of gates) {
+    const resource = resources.gates.get(gate);
+    if (!resource) {
+      summaries.push({ gate, status: null, command: null, evidencePath: null, currentRevision: null });
+      continue;
+    }
+    const relative = `${project.changesPath}/${changeId}/evidence/${resource.value.spec.evidence}`;
+    try {
+      const evidence = JSON.parse(await readFile(await safeResolve(project.root, relative), 'utf8')) as {
+        status?: string; command?: string[]; contentRevision?: string;
+      };
+      summaries.push({
+        gate,
+        status: evidence.status ?? null,
+        command: evidence.command ?? null,
+        evidencePath: relative,
+        /* Stale Evidence describes a tree that no longer exists; `gateBlockReason` already refuses
+           to advance on it, and this makes the same fact visible before somebody plans around it. */
+        currentRevision: contentRevision === null ? null : evidence.contentRevision === contentRevision,
+      });
+    } catch {
+      /* Not yet run, or unreadable. Both are "no Evidence", which the Gate machinery reports far
+         more precisely than this summary could. */
+      summaries.push({ gate, status: null, command: null, evidencePath: relative, currentRevision: null });
+    }
+  }
+  return summaries;
 }
 
 interface ActiveChangeSummary {
@@ -149,11 +200,14 @@ export async function readState(project: ProjectContext, options: StateOptions):
     const workPackages = await resolveWorkPackages(project, options.change, resolved.config, resources);
     diagnostics.push(...workPackages.diagnostics);
     selectedChange.workPackages = workPackages.state;
+    let contentRevision: string | null = null;
     if (isStageFlow(resolved.flow) && resolved.flow.governance) {
       const control = await resolveControlPlane(project, options.change, resolved.flow, selectedChange, resources, resolved.config);
       diagnostics.push(...control.diagnostics);
       selectedChange.governance = control.governance;
+      contentRevision = control.governance.revision.contentRevision;
     }
+    selectedChange.mandatoryGateEvidence = await mandatoryGateEvidence(project, options.change, selectedChange.archive.mandatoryGates, resources, contentRevision);
     const relevantRules = [...resources.rules.values()]
       .map((rule) => normalizeRule(rule.value))
       .filter((rule) => ruleApplies(rule, resolved.config, selectedChange?.governance?.currentStage))

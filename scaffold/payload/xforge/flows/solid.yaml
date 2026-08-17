@@ -2,7 +2,7 @@ apiVersion: xforge.dev/v1alpha2
 kind: Flow
 metadata:
   name: solid
-  version: 3
+  version: 4
   description: Stable and maintainable delivery for ordinary product and engineering changes
 policy:
   assuranceLevel: solid
@@ -42,6 +42,14 @@ artifacts:
       ## Failure modes and compatibility
       ## Migration and rollback
       ## Verification notes
+    markers:
+      - id: verification-coverage
+        section: Verification notes
+        role: requirement-coverage
+      - id: rejected-alternative
+        section: Decisions and alternatives
+        role: decision-alternative
+        pattern: ['**Rejected alternative:', '**被否决的替代方案：']
   - id: check-report
     generates: check-report.md
     description: Narrate the pre-implementation review across Proposal, delta Specs, and Design
@@ -68,7 +76,7 @@ artifacts:
   - id: constitution-check
     generates: evidence/constitution-check.yaml
     description: Answer every Constitution principle for this Change
-    instruction: One entry per `## ` principle in xforge/constitution.md, each with status compliant|violation|not-applicable. Every entry must cite at least one machine-locatable reference in `references` — a Requirement id from this Change's delta Specs, a file path that exists, or `gate:<name>` for a Gate that passed. A violation additionally needs a justification and a named approvedBy; not-applicable needs a justification. A general claim of compliance does not satisfy the Gate.
+    instruction: One entry per `## ` principle in xforge/constitution.md, each with status compliant|violation|not-applicable. Every entry must cite at least one machine-locatable reference in `references` — a Requirement id from this Change's delta Specs, a file path that exists, or `gate:<name>` for a Gate that passed. A violation additionally needs a justification and a named approvedBy; not-applicable needs a justification. A general claim of compliance does not satisfy the Gate, and neither does an approval receipt on its own — a receipt records that someone approved a transition, not why this Change satisfies the principle.
     outline: |
       principles:
         - principle: <exact `## ` heading from constitution.md>
@@ -86,6 +94,10 @@ artifacts:
       ## Coherence
       ## Gates and evidence
       ## Findings
+    markers:
+      - id: verification-coverage
+        section: Completeness
+        role: requirement-coverage
 governance:
   approvalPolicies:
     - id: planning-solid

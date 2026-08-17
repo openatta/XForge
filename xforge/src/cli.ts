@@ -7,14 +7,16 @@ import { CLI_NAME, CLI_VERSION, PROTOCOL_VERSION, TARGETS, type TargetId } from 
 import { executeArchive } from './commands/archive.js';
 import { executeApprove, type ApprovalTerminal } from './commands/approve.js';
 import { executeAudit } from './commands/audit.js';
+import { executeBrief, renderBriefText } from './commands/brief.js';
 import { executeCheck } from './commands/check.js';
+import { executeVerificationDeclare } from './commands/verification.js';
 import { executeInstall } from './commands/install.js';
 import { executeState } from './commands/state.js';
 import { executeSync } from './commands/sync.js';
 import { executeUninstall } from './commands/uninstall.js';
 import { executeUpdate } from './commands/update.js';
 import { executeTransition } from './commands/transition.js';
-import { executeHookDispatch, hookFailureOutput } from './commands/hook.js';
+import { executeHookDispatch, hookFailureOutput, hookPlatformOutput, repairAffordance } from './commands/hook.js';
 import { executeInit } from './commands/init.js';
 import { executeWorkPackageAcknowledge, executeWorkPackageDispatch } from './commands/work-package.js';
 import { executeDoctor } from './commands/doctor.js';
@@ -25,7 +27,7 @@ import { detectScaffoldLanguage, parseScaffoldLanguage } from './core/language.j
 import { envelope, present } from './protocol/envelope.js';
 import type { Diagnostic, Envelope, FlowAuthority, NextAction, ScaffoldLanguage } from './types.js';
 
-type CommandName = 'help' | 'version' | 'init' | 'state' | 'install' | 'sync' | 'update' | 'uninstall' | 'check' | 'transition' | 'approve' | 'audit' | 'work-package' | 'hook' | 'archive' | 'doctor';
+type CommandName = 'help' | 'version' | 'init' | 'state' | 'install' | 'sync' | 'update' | 'uninstall' | 'check' | 'brief' | 'verification' | 'transition' | 'approve' | 'audit' | 'work-package' | 'hook' | 'archive' | 'doctor';
 
 interface ParsedArguments {
   command: string;
@@ -59,11 +61,21 @@ interface ParsedArguments {
   language?: ScaffoldLanguage;
   acknowledgeAs?: 'integrator' | 'reviewer';
   evidence?: string;
+  attachTriage?: string;
+  gateName?: string;
+  commandArgv?: string;
+  module?: string;
+  covers?: string;
+  workingDirectory?: string;
+  timeoutSeconds?: string;
+  notApplicable?: string;
+  justification?: string;
+  by?: string;
 }
 
-const COMMANDS: CommandName[] = ['help', 'version', 'init', 'state', 'install', 'sync', 'update', 'uninstall', 'check', 'transition', 'approve', 'audit', 'work-package', 'hook', 'archive', 'doctor'];
+const COMMANDS: CommandName[] = ['help', 'version', 'init', 'state', 'install', 'sync', 'update', 'uninstall', 'check', 'brief', 'verification', 'transition', 'approve', 'audit', 'work-package', 'hook', 'archive', 'doctor'];
 const VALID_KINDS = ['skills', 'agents', 'rules', 'policies', 'hooks', 'gates', 'scripts', 'flows', 'approvals', 'mcp-servers'] as const;
-const VALUE_OPTIONS = ['--root', '--change', '--kind', '--target', '--gate', '--to', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--provider', '--output', '--event', '--package', '--language', '--as', '--evidence', '--stage'] as const;
+const VALUE_OPTIONS = ['--root', '--change', '--kind', '--target', '--gate', '--to', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--provider', '--output', '--event', '--package', '--language', '--as', '--evidence', '--stage', '--attach-triage', '--gate-name', '--command', '--module', '--covers', '--working-directory', '--timeout-seconds', '--not-applicable', '--justification', '--by'] as const;
 
 function isValueOption(token: string): boolean {
   return VALUE_OPTIONS.includes(token as (typeof VALUE_OPTIONS)[number]);
@@ -123,6 +135,12 @@ const HELP: Record<CommandName, { usage: string; description: string; options: s
   update: { usage: 'xforge [--root <path>] update [--target <target>] [--adopt] [--dry-run] [--text]', description: 'Fully reconcile installed targets, identities, and Adapter output.', options: ['--root', '--target', '--adopt', '--dry-run', '--text'] },
   uninstall: { usage: 'xforge [--root <path>] uninstall [--target <target>] [--force] [--dry-run] [--text]', description: 'Remove managed target files, refusing on a digest mismatch unless --force.', options: ['--root', '--target', '--force', '--dry-run', '--text'] },
   check: { usage: 'xforge [--root <path>] check [--change <id>] [--gate <id>] [--stage <id> | --all-gates] [--force] [--text]', description: 'Validate project structure, deliveries, and the Gates the current Stage requires.', options: ['--root', '--change', '--gate', '--stage', '--all-gates', '--force', '--text'] },
+  verification: {
+    usage: 'xforge [--root <path>] verification declare --gate-name <gate> (--command \'["prog","arg"]\' | --not-applicable <marker> --justification <text>) --by <person> [--module <id>] [--covers \'["marker"]\'] [--working-directory <path>] [--timeout-seconds <n>] [--dry-run] [--text]',
+    description: 'Declare how this project runs a declared-verification Gate, without hand-editing the Manifest.',
+    options: ['--root', '--gate-name', '--command', '--module', '--covers', '--working-directory', '--timeout-seconds', '--not-applicable', '--justification', '--by', '--dry-run', '--text'],
+  },
+  brief: { usage: 'xforge [--root <path>] brief --change <id> [--attach-triage <path>] [--text]', description: 'Report what a human approval at this Stage turns on, separating computed facts from quoted Artifact text.', options: ['--root', '--change', '--attach-triage', '--text'] },
   transition: { usage: 'xforge [--root <path>] transition --change <id> --to <stage> [--dry-run] [--text]', description: 'Evaluate and record a governed Stage transition.', options: ['--root', '--change', '--to', '--dry-run', '--text'] },
   approve: { usage: 'xforge [--root <path>] approve --change <id> --for <stage|archive> [--policy <id>] [--provider <mcp-provider-id> | local fields] [--dry-run] [--text]', description: 'Record an interactive human approval at the terminal, or submit/poll an mcp provider. There is no other approval mechanism.', options: ['--root', '--change', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--provider', '--dry-run', '--text'] },
   audit: { usage: 'xforge [--root <path>] audit <status|verify|export|retry|prune> [--change <id>] [--output <path>] [--text]', description: 'Inspect, verify, export, redeliver, or prune the append-only audit chain.', options: ['--root', '--change', '--output', '--text'] },
@@ -178,6 +196,16 @@ function parseArguments(argv: string[]): ParsedArguments {
     if (token === '--language') parsed.language = parseScaffoldLanguage(value);
     if (token === '--evidence') parsed.evidence = value;
     if (token === '--stage') parsed.stage = value;
+    if (token === '--gate-name') parsed.gateName = value;
+    if (token === '--command') parsed.commandArgv = value;
+    if (token === '--module') parsed.module = value;
+    if (token === '--covers') parsed.covers = value;
+    if (token === '--working-directory') parsed.workingDirectory = value;
+    if (token === '--timeout-seconds') parsed.timeoutSeconds = value;
+    if (token === '--not-applicable') parsed.notApplicable = value;
+    if (token === '--justification') parsed.justification = value;
+    if (token === '--by') parsed.by = value;
+    if (token === '--attach-triage') parsed.attachTriage = value;
     if (token === '--as') {
       if (!['integrator', 'reviewer'].includes(value)) throw new XForgeError(diagnostic('XFORGE_WORK_PACKAGE_ROLE_UNKNOWN', `Unknown acknowledgement role: ${value}`));
       parsed.acknowledgeAs = value as ParsedArguments['acknowledgeAs'];
@@ -228,7 +256,7 @@ function parseArguments(argv: string[]): ParsedArguments {
     if (parsed.command === 'help') {
       parsed.helpCommand = positionals[1];
       if (positionals.length > 2) throw new XForgeError(diagnostic('XFORGE_ARGUMENT_UNEXPECTED', `Unexpected positional argument: ${positionals[2]}`));
-    } else if (parsed.command === 'audit' || parsed.command === 'hook' || parsed.command === 'work-package') {
+    } else if (parsed.command === 'audit' || parsed.command === 'hook' || parsed.command === 'work-package' || parsed.command === 'verification') {
       parsed.subcommand = positionals[1];
       if (positionals.length > 2) throw new XForgeError(diagnostic('XFORGE_ARGUMENT_UNEXPECTED', `Unexpected positional argument: ${positionals[2]}`));
     } else if (positionals.length > 1) {
@@ -249,8 +277,23 @@ function parseArguments(argv: string[]): ParsedArguments {
     if (!allowed.has(flag)) throw new XForgeError(diagnostic('XFORGE_OPTION_NOT_ALLOWED', `${flag} is not valid for ${parsed.command}.`));
   }
   if (parsed.command === 'archive' && !parsed.change) throw new XForgeError(diagnostic('XFORGE_CHANGE_REQUIRED', 'archive requires --change <id>.'));
+  if (parsed.command === 'verification') {
+    if (parsed.subcommand !== 'declare') throw new XForgeError(diagnostic('XFORGE_VERIFICATION_ACTION_REQUIRED', 'verification requires the declare action.'));
+    if (!parsed.gateName || !parsed.by) throw new XForgeError(diagnostic('XFORGE_VERIFICATION_ARGUMENTS_REQUIRED', 'verification declare requires --gate-name <gate> and --by <person>. The person is required because nothing can decide mechanically whether a command verifies anything; this records who answered.'));
+  }
+  if (parsed.command === 'brief' && !parsed.change) throw new XForgeError(diagnostic('XFORGE_CHANGE_REQUIRED', 'brief requires --change <id>.'));
   if (parsed.command === 'transition' && (!parsed.change || !parsed.to)) throw new XForgeError(diagnostic('XFORGE_TRANSITION_ARGUMENTS_REQUIRED', 'transition requires --change <id> and --to <stage>.'));
-  if (parsed.command === 'approve' && (!parsed.change || !parsed.transition)) throw new XForgeError(diagnostic('XFORGE_APPROVAL_ARGUMENTS_REQUIRED', 'approve requires --change <id> and --for <stage|archive>.'));
+  if (parsed.command === 'approve' && (!parsed.change || !parsed.transition)) {
+    /* Naming what is missing and what was accepted, separately. The old message listed both
+       required options whichever one was absent, so somebody who had passed a perfectly valid
+       `--policy` had no way to tell whether that was the rejected part without reading the help. */
+    const missing = [!parsed.change ? '--change <id>' : null, !parsed.transition ? '--for <stage|archive>' : null].filter(Boolean);
+    const given = [parsed.change ? '--change' : null, parsed.transition ? '--for' : null, parsed.policy ? '--policy' : null, parsed.provider ? '--provider' : null].filter(Boolean);
+    throw new XForgeError(diagnostic(
+      'XFORGE_APPROVAL_ARGUMENTS_REQUIRED',
+      `approve is missing ${missing.join(' and ')}.${given.length ? ` What you gave is accepted: ${given.join(', ')}.` : ''}`,
+    ));
+  }
   if (parsed.command === 'audit' && !['status', 'verify', 'export', 'retry', 'prune'].includes(parsed.subcommand ?? '')) throw new XForgeError(diagnostic('XFORGE_AUDIT_ACTION_REQUIRED', 'audit requires status, verify, export, retry, or prune.'));
   if (parsed.command === 'audit' && parsed.output && parsed.subcommand !== 'export') throw new XForgeError(diagnostic('XFORGE_OPTION_NOT_ALLOWED', '--output is only valid for audit export.'));
   if (parsed.command === 'hook' && (parsed.subcommand !== 'dispatch' || !parsed.target || !parsed.event)) throw new XForgeError(diagnostic('XFORGE_HOOK_ARGUMENTS_REQUIRED', 'hook dispatch requires --target and --event.'));
@@ -380,7 +423,41 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
   }
 
   const root = parsed.root ? path.resolve(process.cwd(), parsed.root) : process.cwd();
-  const project = await loadProject(root, { exactRoot: Boolean(parsed.root) });
+
+  /*
+   * The hook payload is read before the project is, because the project is what may be broken.
+   *
+   * A Manifest that does not validate makes `loadProject` throw, which is earlier than any
+   * dispatcher logic and therefore denies every tool call — including the read and the `xforge`
+   * invocation that would repair it. Two live runs died in that deadlock. Knowing which tool is
+   * being attempted is what makes it escapable, and that knowledge is on stdin.
+   */
+  let hookPayload: Record<string, unknown> | null = null;
+  if (parsed.command === 'hook') {
+    const chunks: Buffer[] = [];
+    for await (const chunk of process.stdin) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    const source = Buffer.concat(chunks).toString('utf8').trim();
+    hookPayload = source ? JSON.parse(source) as Record<string, unknown> : {};
+  }
+
+  let project: Awaited<ReturnType<typeof loadProject>>;
+  try {
+    project = await loadProject(root, { exactRoot: Boolean(parsed.root) });
+  } catch (error) {
+    const payload = hookPayload as Record<string, any> | null;
+    const repair = payload && parsed.target
+      ? repairAffordance(parsed.target, String(payload.tool_name ?? payload.toolName ?? payload.tool ?? payload.name ?? 'unknown'),
+        (payload.tool_input ?? payload.toolArgs ?? payload.input ?? payload.args ?? {}) as Record<string, any>)
+      : null;
+    if (!repair) throw error;
+    const detail = error instanceof XForgeError ? error.diagnostics[0]?.message ?? 'the project could not be loaded' : (error as Error).message;
+    const reason = `${detail} — this call is permitted only because it is ${repair}, which is how that gets diagnosed and fixed. Every other tool call stays denied until it is.`;
+    return envelope({
+      command: 'hook',
+      root: null,
+      data: { platformOutput: hookPlatformOutput(parsed.target!, parsed.event!, 'allow', reason, false) },
+    });
+  }
   const command = parsed.command as Exclude<CommandName, 'help' | 'version' | 'init'>;
   if (command === 'state') {
     const result = await executeState(project, { change: parsed.change, kind: parsed.kind, target: parsed.target });
@@ -479,6 +556,18 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
     const result = await executeCheck(project, { change: parsed.change, gate: parsed.gate, stage: parsed.stage, allGates: parsed.allGates, force: parsed.force });
     return envelope({ command, root: project.root, ...result });
   }
+  if (command === 'verification') {
+    const result = await executeVerificationDeclare(project, {
+      gate: parsed.gateName!, command: parsed.commandArgv, module: parsed.module, covers: parsed.covers,
+      workingDirectory: parsed.workingDirectory, timeoutSeconds: parsed.timeoutSeconds,
+      notApplicable: parsed.notApplicable, justification: parsed.justification, by: parsed.by!, dryRun: parsed.dryRun,
+    });
+    return envelope({ command, root: project.root, ...result });
+  }
+  if (command === 'brief') {
+    const result = await executeBrief(project, { change: parsed.change!, attachTriage: parsed.attachTriage });
+    return envelope({ command, root: project.root, ...result });
+  }
   if (command === 'transition') {
     const result = await executeTransition(project, { change: parsed.change!, to: parsed.to!, dryRun: parsed.dryRun });
     return envelope({ command, root: project.root, ...result });
@@ -547,11 +636,7 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
     return envelope({ command, root: project.root, ...result });
   }
   if (command === 'hook') {
-    const chunks: Buffer[] = [];
-    for await (const chunk of process.stdin) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-    const source = Buffer.concat(chunks).toString('utf8').trim();
-    const payload = source ? JSON.parse(source) as Record<string, unknown> : {};
-    const result = await executeHookDispatch(project, { target: parsed.target!, event: parsed.event!, payload });
+    const result = await executeHookDispatch(project, { target: parsed.target!, event: parsed.event!, payload: hookPayload ?? {} });
     return envelope({ command, root: project.root, data: result });
   }
   if (command === 'doctor') {
@@ -605,7 +690,12 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
     return event.includes('after') ? 0 : 2;
   }
   const textMode = parsed?.text ?? argv.some((item) => ['--text', '--help', '--version'].includes(item));
-  process.stdout.write(present(result, textMode));
+  /* Only a successful brief renders: a failed one has `data: null` and its diagnostics are the
+     result, which the standard text form already prints. */
+  const render = parsed?.command === 'brief' && result.ok
+    ? (data: unknown) => renderBriefText(data as Parameters<typeof renderBriefText>[0])
+    : undefined;
+  process.stdout.write(present(result, textMode, render));
   return result.ok ? 0 : 1;
 }
 

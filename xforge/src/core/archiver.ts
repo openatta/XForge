@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import { access, mkdir, readFile, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import type { Diagnostic, FileChange, ProjectContext } from '../types.js';
@@ -9,12 +10,32 @@ import { assertManaged } from './project-loader.js';
 import { safeResolve } from './path-safety.js';
 import { planSpecMutations, type SpecMutation } from './spec-merger.js';
 import { isStageFlow, resolveChangeState } from './flow-resolver.js';
-import { loadSelectedResources } from './resource-loader.js';
+import { loadSelectedResources, type SelectedResources } from './resource-loader.js';
 import { blockRemedy, resolveControlPlane, terminalGovernanceBlocks } from './control-plane.js';
 import { readChangeAuditEvents, recordAudit, type ChangeAuditFacts } from './audit.js';
 
 async function exists(filePath: string): Promise<boolean> {
   try { await access(filePath); return true; } catch { return false; }
+}
+
+/**
+ * `git status --porcelain` over specific paths, or `null` when the question cannot be asked here.
+ *
+ * `null` covers every "we do not know" case — no Git on PATH, not a repository, a failed
+ * invocation — and every caller treats it as "report nothing". Guessing that an unanswerable
+ * question means "uncommitted" would block archives in environments that never had Git.
+ */
+async function gitPorcelain(root: string, paths: readonly string[]): Promise<string | null> {
+  return new Promise((resolve) => {
+    const child = spawn('git', ['-c', 'core.quotepath=false', '-C', root, 'status', '--porcelain=v1', '-z', '--untracked-files=all', '--', ...paths], {
+      shell: false,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const chunks: Buffer[] = [];
+    child.stdout.on('data', (chunk: Buffer) => chunks.push(chunk));
+    child.on('error', () => resolve(null));
+    child.on('close', (code) => resolve(code === 0 ? Buffer.concat(chunks).toString('utf8') : null));
+  });
 }
 
 function archiveName(changeId: string, now = new Date()): string {
@@ -53,6 +74,42 @@ export interface PlanArchiveOptions {
   auditFacts?: ChangeAuditFacts;
 }
 
+/**
+ * Refuses to archive while the definition of a mandatory Gate is not in version control.
+ *
+ * The audit chain exists to make a conclusion reproducible. A live run hit exactly the case this
+ * guards: the shipped Gates asserted nothing on a non-Node project, the fix was to edit them, and
+ * editing them mid-Change invalidated every delivery — so the edited Gate files were left
+ * uncommitted and the Change archived anyway. The chain then recorded "security-scan passed" while
+ * the definition that produced that pass existed only in one working tree. Check the repository out
+ * anywhere else and the same command yields a different answer, which means the record proves
+ * nothing.
+ *
+ * Deliberately scoped to Gates the archive itself requires, and silent where the question cannot be
+ * asked: no Git, or a project that is not a repository root, reports nothing rather than guessing.
+ */
+async function uncommittedGateDefinitions(
+  project: ProjectContext,
+  mandatoryGates: readonly string[],
+  resources: SelectedResources,
+): Promise<Diagnostic[]> {
+  if (mandatoryGates.length === 0) return [];
+  const paths = mandatoryGates
+    .map((name) => resources.gates.get(name)?.yamlPath)
+    .filter((item): item is string => Boolean(item));
+  if (paths.length === 0) return [];
+
+  const status = await gitPorcelain(project.root, paths);
+  if (status === null) return [];
+  const dirty = [...new Set(status.split('\0').filter((line) => line.length > 3).map((line) => line.slice(3)))];
+  if (dirty.length === 0) return [];
+  return [diagnostic(
+    'XFORGE_ARCHIVE_GATE_DEFINITION_UNCOMMITTED',
+    `The definition of ${dirty.length === 1 ? 'a mandatory Gate is' : 'mandatory Gates are'} not committed: ${dirty.join(', ')}. Archiving now records that these Gates passed while the files that decided it exist only in this working tree — another checkout would run different Gates and could reach a different conclusion. Commit them before archiving.`,
+    dirty[0],
+  )];
+}
+
 export async function planArchive(project: ProjectContext, changeId: string, options: PlanArchiveOptions = {}): Promise<ArchivePlan> {
   assertManaged(project, 'archive');
   const structure = await checkStructure(project, changeId);
@@ -81,6 +138,7 @@ export async function planArchive(project: ProjectContext, changeId: string, opt
       const tasks = await incompleteTasks(project, changeId, tracker);
       if (tasks.length > 0) diagnostics.push(diagnostic('XFORGE_ARCHIVE_TASKS_INCOMPLETE', `${tasks.length} task(s) are incomplete.`, `${project.changesPath}/${changeId}/${tracker}`, 'error', tasks));
     }
+    diagnostics.push(...await uncommittedGateDefinitions(project, structure.change.archive.mandatoryGates, structure.resources));
   }
   if (diagnostics.some((item) => item.severity === 'error')) {
     return { changeId, target: '', mutations: [], changes: [], diagnostics, mandatoryGates: structure.change?.archive.mandatoryGates ?? [] };

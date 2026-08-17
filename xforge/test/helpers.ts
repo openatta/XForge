@@ -31,10 +31,44 @@ export async function temporaryDirectory(prefix = 'xforge-test-'): Promise<strin
   return root;
 }
 
+/**
+ * A trivially passing command for the `builtin: declared` Gates, so a fixture stands for a project
+ * that has answered how it verifies itself.
+ *
+ * Those Gates refuse when nothing is declared, which is the point of them: before this, the shipped
+ * `unit-tests` Gate was `npm test` behind a guard that exited 0 when no `package.json` was present,
+ * so a fixture — which has none — got a Gate reporting `passed` having asserted nothing. Every test
+ * about archives, transitions and Evidence was relying on that silence. Declaring here restores
+ * what those tests meant to assume: a project whose verification is configured and passes.
+ *
+ * Tests *about* the declaration build the undeclared state explicitly with `clearVerification`.
+ */
+export function passingVerification(): Record<string, unknown> {
+  /* A fresh object per Gate: sharing one would make the YAML writer emit an anchor and an alias,
+     and a later edit that replaces only one of the two leaves the alias pointing at nothing. */
+  const entry = (): Record<string, unknown> => ({
+    command: ['node', '-e', 'console.log("fixture verification ok")'],
+    declaredBy: 'owner@example.test',
+    declaredAt: '2026-01-01T00:00:00Z',
+  });
+  return { 'unit-tests': [entry()], 'security-scan': [entry()] };
+}
+
 export async function fixture(prefix = 'xforge-test-'): Promise<string> {
   const root = await temporaryDirectory(prefix);
   await cp(scaffoldPayload, root, { recursive: true, force: false, errorOnExist: false });
+  /* Appended as text rather than written through `updateYaml`: a YAML round trip drops the
+     Manifest's comments, and upgrade-channel.test.ts asserts they survive an upgrade. */
+  const manifest = path.join(root, 'xforge', 'manifest.yaml');
+  await writeFile(manifest, `${await readFile(manifest, 'utf8')}${stringify({ verification: passingVerification() })}`);
   return root;
+}
+
+/** Removes the fixture's declaration, for tests that need a project which has not answered yet. */
+export async function clearVerification(root: string): Promise<void> {
+  await updateYaml(root, 'xforge/manifest.yaml', (manifest) => {
+    delete manifest.verification;
+  });
 }
 
 export async function yamlFile<T = Record<string, unknown>>(root: string, relative: string): Promise<T> {

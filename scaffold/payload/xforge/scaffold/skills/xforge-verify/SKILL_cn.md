@@ -45,6 +45,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 - 输出 Requirement/Scenario、实现、测试、Design、工作包和 Gate 的可定位映射，以及 receipt 的 `contentRevision`、`gitHead` 和它引用的 Gate digest。
 - 只有所有当前 mandatory Gate 成功且没有 blocker 时，才能声明 ready for archive；只有 CLI 原子事务成功才能声明 closed。
+- 在关闭审批之前，运行 `xforge brief --change <id> --text` 并把输出**逐字**交给用户。不得转述、重排或概括：简报把 CLI 算出的事实与原文引用分开呈现，用你自己的话复述会毁掉读者区分二者的唯一依据。
 
 # 停止与返工
 

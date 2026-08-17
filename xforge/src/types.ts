@@ -146,6 +146,60 @@ export interface Manifest {
   };
   /** Extra environment variable names Gate subprocesses may inherit, on top of the built-in allowlist. */
   gates?: { env?: { allow?: string[]; allowPrefixes?: string[] } };
+  /**
+   * How this project runs each `builtin: declared` Gate, keyed by Gate name.
+   *
+   * XForge knows no programming languages, and this is where that stops being a limitation. The
+   * shipped `unit-tests` Gate used to be `npm test` behind a guard that passed when no
+   * `package.json` was present, so every Rust, Go or Python project got a Gate that reported
+   * `passed` having asserted nothing — and, through it, a `must` Rule with no enforcement and an
+   * archive whose mandatory Gate was empty. Teaching the CLI more languages only moves the edge of
+   * that failure; declaring the command removes it, because an undeclared Gate refuses instead of
+   * passing.
+   */
+  verification?: Record<string, VerificationEntry[]>;
+}
+
+/** One command that verifies part of this project, and who says so. */
+export interface VerificationRun {
+  command: string[];
+  /** A `project.modules` id. Omitted means the whole project. */
+  module?: string;
+  /**
+   * Detected build-system markers this run accounts for, as project-relative paths.
+   *
+   * Only needed once a repository has more than one toolchain, where "which of these does that
+   * command cover" is a question with a real answer. Two markers can share a module root, so
+   * `module` cannot express it.
+   */
+  covers?: string[];
+  workingDirectory?: string;
+  timeoutSeconds?: number;
+  /**
+   * The person attesting that this is how this project runs this check.
+   *
+   * Nothing can decide mechanically whether a command really verifies anything — `[echo, ok]` and
+   * `[go, build, ./...]` both exit 0 without testing — so this records who answered rather than
+   * pretending to check. It is the same move `decidedBy`, `approvedBy` and `resolvedBy` make in the
+   * other ledgers.
+   */
+  declaredBy: string;
+  declaredAt: string;
+}
+
+/** A detected toolchain a Gate deliberately does not cover, recorded so it is asked once. */
+export interface VerificationDismissal {
+  /** The detected marker file, project-relative. */
+  notApplicable: string;
+  justification: string;
+  declaredBy: string;
+  declaredAt: string;
+}
+
+export type VerificationEntry = VerificationRun | VerificationDismissal;
+
+export function isVerificationRun(entry: VerificationEntry): entry is VerificationRun {
+  return Array.isArray((entry as VerificationRun).command);
 }
 
 export interface Lockfile {
@@ -160,6 +214,44 @@ export interface Lockfile {
   generatedProtocol?: string;
 }
 
+/**
+ * A machine-locatable landmark inside an Artifact, declared by the Flow rather than inferred.
+ *
+ * `outline` already tells a reader which `## ` sections an Artifact must have, and that is enough
+ * to slice one. It is not enough to answer questions *about* a section — "is every Requirement
+ * named where this Flow says coverage is recorded", "which alternatives were rejected and why" —
+ * because the answer depends on knowing what a section is *for*, and on the shape of the entries
+ * inside it. Both were previously conventions an author happened to follow.
+ *
+ * Declaring them here is the difference between computing an answer and summarizing one. A rule
+ * keyed on a marker either finds the marker or reports that the Flow never declared it; neither
+ * outcome requires anybody to read prose and vouch for it. Markers are optional, and a rule that
+ * depends on one simply does not run for a Flow that omits it — silence, never a guess.
+ */
+export interface ArtifactMarker {
+  id: string;
+  /** The exact `## ` heading text (without the `## `) this marker lives under. */
+  section: string;
+  /**
+   * What the marked section or entry means:
+   * - `requirement-coverage`: this section is where Requirement coverage is recorded.
+   * - `decision-alternative`: entries matching `pattern` are rejected alternatives.
+   * - `declared-gap`: entries matching `pattern` defer a question to a later Stage.
+   */
+  role: 'requirement-coverage' | 'decision-alternative' | 'declared-gap';
+  /**
+   * Literal prefixes, any one of which starts an entry. Omitted when the section as a whole is
+   * the marker.
+   *
+   * A list rather than one string because a Flow is not localized but the prose inside an Artifact
+   * is: the same Flow governs a project writing English and a project writing Chinese, so the
+   * spelling of an entry marker has to be per-language while the Flow stays single-sourced.
+   */
+  pattern?: string[];
+  /** Structural minimum the `structure` Gate enforces once the Artifact exists. */
+  minOccurrences?: number;
+}
+
 export interface ArtifactDefinition {
   id: string;
   generates: string;
@@ -168,6 +260,7 @@ export interface ArtifactDefinition {
   outline: string;
   requires: string[];
   validator?: 'spec-delta';
+  markers?: ArtifactMarker[];
 }
 
 export interface LegacyFlow {
@@ -289,6 +382,15 @@ export interface WorkPackagePlan {
   apiVersion: 'xforge.dev/v1alpha1';
   kind: 'WorkPackagePlan';
   packages: WorkPackage[];
+  /**
+   * Paths this plan reserves for the Integrator: shared contracts, module lists, DI roots, config
+   * assembly points — what joins the packages together and therefore belongs to none of them.
+   *
+   * Without it, a file created during integration is attributable to nobody and invalidates every
+   * delivery in the plan, and the only workaround is to file it under a package that did not
+   * produce it.
+   */
+  integrator_paths?: string[];
 }
 
 export interface WorkPackageDelivery {
@@ -326,6 +428,12 @@ export interface WorkPackageState extends WorkPackage {
   status: 'ready' | 'blocked' | 'running' | 'succeeded' | 'failed' | 'integrated' | 'reviewed';
   missingDependencies: string[];
   delivery: WorkPackageDelivery | null;
+  /**
+   * Who acknowledged this delivery, in each role. Reported so an approver can see whether the
+   * semantic review was done by the same actor that produced the work — which the CLI can show but
+   * cannot verify, since one session may name any actor.
+   */
+  acknowledgements: { reviewedBy: string | null; integratedBy: string | null };
 }
 
 export interface WorkPackagePlanState {
@@ -364,6 +472,11 @@ export interface ChangeState {
   archive: { ready: boolean; requires: string[]; mandatoryGates: string[]; syncSpecs: boolean };
   workPackages: WorkPackagePlanState | null;
   governance?: GovernanceState;
+  /**
+   * What each mandatory Gate's Evidence records as having run, so "it passed" and "it ran nothing"
+   * are distinguishable without opening the Evidence JSON. Facts only; no verdict.
+   */
+  mandatoryGateEvidence?: Array<{ gate: string; status: string | null; command: string[] | null; evidencePath: string | null; currentRevision: boolean | null }>;
 }
 
 export interface AgentResource {

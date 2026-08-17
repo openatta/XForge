@@ -2,7 +2,7 @@ apiVersion: xforge.dev/v1alpha2
 kind: Flow
 metadata:
   name: quick
-  version: 3
+  version: 4
   description: Fast delivery for low-risk, single-module, clearly scoped, and easily reversible changes
 policy:
   assuranceLevel: quick
@@ -42,6 +42,10 @@ artifacts:
       ## Coherence
       ## Gates and evidence
       ## Findings
+    markers:
+      - id: verification-coverage
+        section: Completeness
+        role: requirement-coverage
 governance:
   approvalPolicies:
     - id: quick-close

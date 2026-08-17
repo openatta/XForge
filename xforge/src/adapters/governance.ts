@@ -31,8 +31,24 @@ const EVENT_MAP: Record<TargetId, Record<string, string>> = {
   opencode: {},
 };
 
+/**
+ * The command a host runs to ask XForge whether a tool call is allowed.
+ *
+ * A bare `xforge`, not `npx --no-install xforge`. v0.7.12 moved the CLI to a global install
+ * precisely because a project need not be a Node project, and this dispatcher was the last thing
+ * still assuming otherwise: with no project `node_modules`, `npx --no-install` silently falls
+ * through to whatever `xforge` is on the ambient PATH. That is exactly what a bare `xforge` does,
+ * only without pretending the resolution was project-scoped — and when the two disagree, npx
+ * resolves the project-local copy while every documented command resolves the global one, so a
+ * project could be governed by a different build than the one it runs.
+ *
+ * The resolved CLI is not necessarily this one, and cannot be: hooks are spawned by the host, in an
+ * environment nobody here controls. That is why `hook dispatch` checks the identity of whatever
+ * answered against the project's Manifest before deciding anything — see `commands/hook.ts`. A
+ * mismatch that used to surface as an unexplained resource-loading failure now says what it is.
+ */
 function dispatcher(target: TargetId, event: string): string {
-  return `npx --no-install xforge hook dispatch --target ${target} --event ${event}`;
+  return `xforge hook dispatch --target ${target} --event ${event}`;
 }
 
 function desired(target: TargetId, version: string, path: string, content: string, id: string, sources: string[], fragment?: DesiredFile['fragment']): DesiredFile {
@@ -278,7 +294,7 @@ function renderOpenCode(input: GovernanceProjectionInput, version: string): Gove
   if (hooks.length > 0 || input.policies.length > 0) {
     const before = input.policies.length > 0 || hooks.some((item) => ['agent.tool.before', 'agent.permission.request'].includes(item.value.spec.event));
     const after = hooks.some((item) => item.value.spec.event === 'agent.tool.after');
-    const plugin = `import { spawn } from "node:child_process";\nimport { Plugin } from "@opencode-ai/plugin";\n\nasync function dispatch(event, phase) {\n  const output = await new Promise((resolve, reject) => {\n    const child = spawn("npx", ["--no-install", "xforge", "hook", "dispatch", "--target", "opencode", "--event", phase], { stdio: ["pipe", "pipe", "inherit"] });\n    const chunks = []; child.stdout.on("data", chunk => chunks.push(chunk)); child.on("error", reject); child.on("close", code => code === 0 ? resolve(Buffer.concat(chunks).toString("utf8")) : reject(new Error("XForge hook dispatcher failed"))); child.stdin.end(JSON.stringify(event));\n  });\n  const decision = JSON.parse(output || "{}");\n  if (decision.decision === "deny") throw new Error(decision.reason || "Denied by XForge policy");\n}\n\nexport default Plugin.define({\n  id: "xforge.governance",\n  setup: async (ctx) => {\n${before ? '    await ctx.tool.hook("execute.before", event => dispatch(event, "agent.tool.before"));\n' : ''}${after ? '    await ctx.tool.hook("execute.after", event => dispatch(event, "agent.tool.after"));\n' : ''}  },\n});\n`;
+    const plugin = `import { spawn } from "node:child_process";\nimport { Plugin } from "@opencode-ai/plugin";\n\nasync function dispatch(event, phase) {\n  const output = await new Promise((resolve, reject) => {\n    const child = spawn("xforge", ["hook", "dispatch", "--target", "opencode", "--event", phase], { stdio: ["pipe", "pipe", "inherit"] });\n    const chunks = []; child.stdout.on("data", chunk => chunks.push(chunk)); child.on("error", reject); child.on("close", code => code === 0 ? resolve(Buffer.concat(chunks).toString("utf8")) : reject(new Error("XForge hook dispatcher failed"))); child.stdin.end(JSON.stringify(event));\n  });\n  const decision = JSON.parse(output || "{}");\n  if (decision.decision === "deny") throw new Error(decision.reason || "Denied by XForge policy");\n}\n\nexport default Plugin.define({\n  id: "xforge.governance",\n  setup: async (ctx) => {\n${before ? '    await ctx.tool.hook("execute.before", event => dispatch(event, "agent.tool.before"));\n' : ''}${after ? '    await ctx.tool.hook("execute.after", event => dispatch(event, "agent.tool.after"));\n' : ''}  },\n});\n`;
     files.push(desired('opencode', version, '.opencode/plugins/xforge-governance.ts', plugin, 'hooks', [...input.policies.map((item) => item.yamlPath), ...hooks.map((item) => item.yamlPath)]));
   }
   return { files, diagnostics };

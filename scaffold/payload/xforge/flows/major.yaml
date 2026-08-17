@@ -2,7 +2,7 @@ apiVersion: xforge.dev/v1alpha2
 kind: Flow
 metadata:
   name: major
-  version: 3
+  version: 4
   description: High-assurance governance for high-risk, cross-system, or critical-impact changes
 policy:
   assuranceLevel: major
@@ -69,6 +69,18 @@ artifacts:
       ## Rollout, monitoring and stop signals
       ## Owners and parallel boundaries
       ## Migration and rollback
+    markers:
+      - id: verification-coverage
+        section: Test strategy
+        role: requirement-coverage
+      - id: rejected-alternative
+        section: Decisions and alternatives
+        role: decision-alternative
+        pattern: ['**Rejected alternative:', '**被否决的替代方案：']
+      - id: deferred-question
+        section: Risks and mitigations
+        role: declared-gap
+        pattern: ['**Deferred to Check:', '**留待 Check 决议：']
   - id: check-report
     generates: check-report.md
     description: Narrate the pre-implementation semantic review across Artifacts
@@ -95,7 +107,7 @@ artifacts:
   - id: constitution-check
     generates: evidence/constitution-check.yaml
     description: Answer every Constitution principle for this Change
-    instruction: One entry per `## ` principle in xforge/constitution.md, each with status compliant|violation|not-applicable. Every entry must cite at least one machine-locatable reference in `references` — a Requirement id from this Change's delta Specs, a file path that exists, or `gate:<name>` for a Gate that passed. A violation additionally needs a justification and a named approvedBy; not-applicable needs a justification. A general claim of compliance does not satisfy the Gate.
+    instruction: One entry per `## ` principle in xforge/constitution.md, each with status compliant|violation|not-applicable. Every entry must cite at least one machine-locatable reference in `references` — a Requirement id from this Change's delta Specs, a file path that exists, or `gate:<name>` for a Gate that passed. A violation additionally needs a justification and a named approvedBy; not-applicable needs a justification. A general claim of compliance does not satisfy the Gate, and neither does an approval receipt on its own — a receipt records that someone approved a transition, not why this Change satisfies the principle.
     outline: |
       principles:
         - principle: <exact `## ` heading from constitution.md>
@@ -114,6 +126,10 @@ artifacts:
       ## Risk controls
       ## Gates and evidence
       ## Findings
+    markers:
+      - id: verification-coverage
+        section: Completeness
+        role: requirement-coverage
 governance:
   # `local` sits alongside `enterprise-approvals` (unlike a hypothetical enterprise-only
   # policy) so a fresh project isn't locked out of Major entirely until an external
@@ -192,6 +208,13 @@ stages:
     exit:
       conditions:
         verificationReceipt: passed
+        # Major declares three semantic reviews and ships a reviewer sub-Agent, but nothing ever
+        # required one: `succeeded` alone satisfied the control plane, so a high-risk Change could
+        # be designed, implemented, reviewed and signed off by a single executor. This makes the
+        # Reviewer acknowledgement a condition of leaving Verify. It enforces that a review
+        # happened and is attributed; whether the reviewer is genuinely independent is reported in
+        # State rather than asserted here, because one session can name any actor it likes.
+        independentReview: complete
 terminal:
   archive:
     handler: xforge-verify

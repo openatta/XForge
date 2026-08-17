@@ -21,7 +21,7 @@ describe('archive transaction', () => {
   it('keeps dry-run at zero writes, then gates, syncs, and moves atomically', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
-    await updateYaml(root, 'xforge/scaffold/gates/unit-tests.yaml', (gate) => { gate.spec.command = [process.execPath, '-e', 'process.exit(0)']; });
+    await updateYaml(root, 'xforge/scaffold/gates/unit-tests.yaml', (gate) => { gate.spec.command = [process.execPath, '-e', 'process.exit(0)']; delete gate.spec.builtin; });
     expect((await runCli(root, ['install'])).code).toBe(0);
     await advanceSolidToReadyToArchive(root);
     const before = await tree(root);
@@ -58,7 +58,7 @@ describe('archive transaction', () => {
 
     const failedRoot = await fixture();
     await createCompleteSolidChange(failedRoot);
-    await updateYaml(failedRoot, 'xforge/scaffold/gates/unit-tests.yaml', (gate) => { gate.spec.command = [process.execPath, '-e', "const fs=require('node:fs'); process.exit(fs.existsSync('fail-gate') ? 2 : 0)"]; });
+    await updateYaml(failedRoot, 'xforge/scaffold/gates/unit-tests.yaml', (gate) => { gate.spec.command = [process.execPath, '-e', "const fs=require('node:fs'); process.exit(fs.existsSync('fail-gate') ? 2 : 0)"]; delete gate.spec.builtin; });
     expect((await runCli(failedRoot, ['install'])).code).toBe(0);
     await advanceSolidToReadyToArchive(failedRoot);
     await write(failedRoot, 'fail-gate', 'fail\n');
@@ -76,7 +76,7 @@ describe('archive transaction', () => {
   it('archives on a machine that has no local audit chain at all', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
-    await updateYaml(root, 'xforge/scaffold/gates/unit-tests.yaml', (gate) => { gate.spec.command = [process.execPath, '-e', 'process.exit(0)']; });
+    await updateYaml(root, 'xforge/scaffold/gates/unit-tests.yaml', (gate) => { gate.spec.command = [process.execPath, '-e', 'process.exit(0)']; delete gate.spec.builtin; });
     expect((await runCli(root, ['install'])).code).toBe(0);
     await advanceSolidToReadyToArchive(root);
     const index = JSON.parse(await readFile(path.join(root, 'xforge', 'changes', 'add-feature', 'evidence', 'audit', 'index.json'), 'utf8'));
@@ -91,7 +91,7 @@ describe('archive transaction', () => {
   it('blocks archive when the committed audit index was hand-edited', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
-    await updateYaml(root, 'xforge/scaffold/gates/unit-tests.yaml', (gate) => { gate.spec.command = [process.execPath, '-e', 'process.exit(0)']; });
+    await updateYaml(root, 'xforge/scaffold/gates/unit-tests.yaml', (gate) => { gate.spec.command = [process.execPath, '-e', 'process.exit(0)']; delete gate.spec.builtin; });
     expect((await runCli(root, ['install'])).code).toBe(0);
     await advanceSolidToReadyToArchive(root);
     const indexPath = path.join(root, 'xforge', 'changes', 'add-feature', 'evidence', 'audit', 'index.json');
@@ -116,7 +116,7 @@ describe('archive transaction', () => {
     const { cp, mkdir } = await import('node:fs/promises');
     await mkdir(path.join(root, 'docs', 'changes'), { recursive: true });
     await cp(path.join(root, 'xforge', 'changes', 'unused'), path.join(root, 'docs', 'changes', 'relocated'), { recursive: true });
-    await updateYaml(root, 'xforge/scaffold/gates/unit-tests.yaml', (gate) => { gate.spec.command = [process.execPath, '-e', 'process.exit(0)']; });
+    await updateYaml(root, 'xforge/scaffold/gates/unit-tests.yaml', (gate) => { gate.spec.command = [process.execPath, '-e', 'process.exit(0)']; delete gate.spec.builtin; });
     expect((await runCli(root, ['install'])).code).toBe(0);
     await advanceSolidToReadyToArchive(root, 'relocated');
     const state = await runCli(root, ['state', '--change', 'relocated'], approvalTestEnv);

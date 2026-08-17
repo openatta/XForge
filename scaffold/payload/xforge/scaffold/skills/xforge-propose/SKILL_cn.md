@@ -9,7 +9,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 - 先运行 `xforge state`，从 State 读取 Changes 路径、Flows、policy、Constitution、Rules、Specs 和项目模块。
 - 只消费 `xforge-propose` 对应的 ready Action；每次写入前重读 Action inputs，写入后刷新 State。
 - Flow 表达交付侧重点与治理量级：Quick 强调快速，限低风险、单模块、易回滚且无关键影响；Solid 强调稳定，适合常规产品与工程变更；Major 强调重大影响治理，用于高风险、跨系统或关键影响变更。不确定时升级或请求决定。
-- 三个 Flow 都要回答 Constitution 台账，只是时点不同：Solid 与 Major 在 Check（实现之前）回答，Quick 没有 Check Stage，改在 Verify 针对最终 diff 回答。选择 Quick 不会跳过 Constitution，只会改变提问的时点。
+- Constitution 台账在 Check（实现之前）回答，而只有 Solid 与 Major 有 Check Stage。Quick 不带台账：它面向的是琐碎、单模块、低风险的工作，对一个「其全部意义就在于不承载原则级风险」的 Change 要求逐条原则认证并无所得。这不是绕开 Constitution 的路径——它照样约束着工作，而且 Quick 的 eligibility（`risk: low`、单模块、禁止 critical impact）由 CLI 强制，因此把一个真正需要台账的 Change 塞进 Quick，等于声明一份与事实不符的 classification。
 - Specs 使用机器约定的 `ADDED|MODIFIED|REMOVED|RENAMED Requirements`、`Requirement`、`Scenario`、`WHEN`、`THEN` 标题。
 
 # 权限

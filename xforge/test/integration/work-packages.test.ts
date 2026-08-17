@@ -254,7 +254,7 @@ describe('work-package protocol', () => {
       workPackage('T001', { write_paths: ['src/order/**'], verify: [verify] }),
     ]));
     await updateYaml(root, 'xforge/scaffold/gates/unit-tests.yaml', (gate) => {
-      gate.spec.command = [process.execPath, '-e', 'process.exit(0)'];
+      gate.spec.command = [process.execPath, '-e', 'process.exit(0)']; delete gate.spec.builtin;
     });
     const installed = await runCli(root, ['install', '--target', 'codex']);
     expect(installed.code, JSON.stringify(installed.json.diagnostics, null, 2)).toBe(0);
@@ -922,7 +922,7 @@ describe('work-package protocol', () => {
       workPackage('T001', { write_paths: ['src/order/**'], verify: [verify] }),
     ]));
     await updateYaml(root, 'xforge/scaffold/gates/unit-tests.yaml', (gate) => {
-      gate.spec.command = [process.execPath, '-e', 'process.exit(0)'];
+      gate.spec.command = [process.execPath, '-e', 'process.exit(0)']; delete gate.spec.builtin;
     });
     const installed = await runCli(root, ['install', '--target', 'codex']);
     expect(installed.code, JSON.stringify(installed.json.diagnostics, null, 2)).toBe(0);

@@ -72,7 +72,7 @@ describe('check and Gate evidence', () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
     await updateYaml(root, 'xforge/scaffold/gates/unit-tests.yaml', (gate) => {
-      gate.spec.command = [process.execPath, '-e', "require('node:fs').writeFileSync('unit-tests-ran', 'yes')"];
+      gate.spec.command = [process.execPath, '-e', "require('node:fs').writeFileSync('unit-tests-ran', 'yes')"]; delete gate.spec.builtin;
     });
     expect((await runCli(root, ['install'])).code).toBe(0);
 
@@ -143,7 +143,7 @@ describe('check and Gate evidence', () => {
       flow.stages.find((stage: any) => stage.id === 'propose').gates = ['structure', 'unit-tests'];
     });
     await updateYaml(root, 'xforge/scaffold/gates/unit-tests.yaml', (gate) => {
-      gate.spec.command = [process.execPath, '-e', 'process.exit(7)'];
+      gate.spec.command = [process.execPath, '-e', 'process.exit(7)']; delete gate.spec.builtin;
     });
     expect((await runCli(root, ['install'])).code).toBe(0);
     await runCli(root, ['check', '--change', 'add-feature']);
@@ -154,7 +154,7 @@ describe('check and Gate evidence', () => {
 
     /* Passed, then an edit moved the content revision underneath it. Only this one is stale. */
     await updateYaml(root, 'xforge/scaffold/gates/unit-tests.yaml', (gate) => {
-      gate.spec.command = [process.execPath, '-e', 'process.exit(0)'];
+      gate.spec.command = [process.execPath, '-e', 'process.exit(0)']; delete gate.spec.builtin;
     });
     expect((await runCli(root, ['install'])).code).toBe(0);
     expect((await runCli(root, ['check', '--change', 'add-feature'])).code).toBe(0);
@@ -191,7 +191,7 @@ describe('check and Gate evidence', () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
     await updateYaml(root, 'xforge/scaffold/gates/unit-tests.yaml', (gate) => {
-      gate.spec.command = [process.execPath, '-e', "console.log('TOKEN=supersecret'); if (process.env.MY_SECRET) process.exit(9)"];
+      gate.spec.command = [process.execPath, '-e', "console.log('TOKEN=supersecret'); if (process.env.MY_SECRET) process.exit(9)"]; delete gate.spec.builtin;
     });
     expect((await runCli(root, ['install'])).code).toBe(0);
     const result = await runCli(root, ['check', '--change', 'add-feature', '--gate', 'all'], { MY_SECRET: 'must-not-be-passed' });
@@ -213,7 +213,7 @@ describe('check and Gate evidence', () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
     await updateYaml(root, 'xforge/scaffold/gates/unit-tests.yaml', (gate) => {
-      gate.spec.command = [process.execPath, '-e', "process.stderr.write('failed test'); process.exit(7)"];
+      gate.spec.command = [process.execPath, '-e', "process.stderr.write('failed test'); process.exit(7)"]; delete gate.spec.builtin;
     });
     expect((await runCli(root, ['install'])).code).toBe(0);
     const result = await runCli(root, ['check', '--change', 'add-feature', '--gate', 'all']);
@@ -228,7 +228,7 @@ describe('check and Gate evidence', () => {
     await createCompleteSolidChange(root);
     const { write } = await import('../helpers.js');
     await write(root, 'xforge/changes/add-feature/evidence/tests.json', '{"claimed":"pass"}\n');
-    await updateYaml(root, 'xforge/scaffold/gates/unit-tests.yaml', (gate) => { gate.spec.command = [process.execPath, '-e', 'process.exit(0)']; });
+    await updateYaml(root, 'xforge/scaffold/gates/unit-tests.yaml', (gate) => { gate.spec.command = [process.execPath, '-e', 'process.exit(0)']; delete gate.spec.builtin; });
     expect((await runCli(root, ['install'])).code).toBe(0);
     const result = await runCli(root, ['check', '--change', 'add-feature', '--gate', 'all']);
     expect(result.code).toBe(1);
@@ -241,7 +241,7 @@ describe('check and Gate evidence', () => {
     await createCompleteSolidChange(root);
     await updateYaml(root, 'xforge/scaffold/gates/unit-tests.yaml', (gate) => {
       gate.spec.timeoutSeconds = 1;
-      gate.spec.command = [process.execPath, '-e', "process.on('SIGTERM',()=>{}); setInterval(()=>{},1000)"];
+      gate.spec.command = [process.execPath, '-e', "process.on('SIGTERM',()=>{}); setInterval(()=>{},1000)"]; delete gate.spec.builtin;
     });
     expect((await runCli(root, ['install'])).code).toBe(0);
     const result = await runCli(root, ['check', '--change', 'add-feature', '--gate', 'all']);
@@ -255,7 +255,7 @@ describe('check and Gate evidence', () => {
     await createCompleteSolidChange(root);
     await updateYaml(root, 'xforge/scaffold/gates/unit-tests.yaml', (gate) => {
       gate.spec.maxOutputBytes = 1024;
-      gate.spec.command = [process.execPath, '-e', "process.stdout.write('x'.repeat(5000))"];
+      gate.spec.command = [process.execPath, '-e', "process.stdout.write('x'.repeat(5000))"]; delete gate.spec.builtin;
     });
     expect((await runCli(root, ['install'])).code).toBe(0);
     expect((await runCli(root, ['check', '--change', 'add-feature', '--gate', 'all'])).code).toBe(0);
@@ -348,7 +348,7 @@ describe('check and Gate evidence', () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
     await updateYaml(root, 'xforge/scaffold/gates/unit-tests.yaml', (gate) => {
-      gate.spec.command = ['xforge-no-such-executable-anywhere', 'test', '--if-present'];
+      gate.spec.command = ['xforge-no-such-executable-anywhere', 'test', '--if-present']; delete gate.spec.builtin;
     });
     expect((await runCli(root, ['install'])).code).toBe(0);
 
@@ -373,7 +373,7 @@ describe('check and Gate evidence', () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
     await updateYaml(root, 'xforge/scaffold/gates/unit-tests.yaml', (gate) => {
-      gate.spec.command = [process.execPath, '-e', 'process.exit(1)'];
+      gate.spec.command = [process.execPath, '-e', 'process.exit(1)']; delete gate.spec.builtin;
     });
     expect((await runCli(root, ['install'])).code).toBe(0);
     const result = await runCli(root, ['check', '--change', 'add-feature', '--gate', 'all']);
@@ -429,7 +429,7 @@ describe('check and Gate evidence', () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
     await updateYaml(root, 'xforge/scaffold/gates/unit-tests.yaml', (gate) => {
-      gate.spec.command = [process.execPath, '-e', 'process.exit(0)'];
+      gate.spec.command = [process.execPath, '-e', 'process.exit(0)']; delete gate.spec.builtin;
     });
     expect((await runCli(root, ['install'])).code).toBe(0);
     expect((await runCli(root, ['check', '--change', 'add-feature', '--gate', 'unit-tests'])).code).toBe(0);
@@ -437,7 +437,7 @@ describe('check and Gate evidence', () => {
     const attested = await readFile(evidencePath, 'utf8');
 
     await updateYaml(root, 'xforge/scaffold/gates/unit-tests.yaml', (gate) => {
-      gate.spec.command = [process.execPath, '-e', "const fs = require('node:fs'); const shard = require('node:path').join('xforge', '.audit', 'changes', 'add-feature.jsonl'); fs.rmSync(shard, { force: true }); fs.mkdirSync(shard, { recursive: true });"];
+      gate.spec.command = [process.execPath, '-e', "const fs = require('node:fs'); const shard = require('node:path').join('xforge', '.audit', 'changes', 'add-feature.jsonl'); fs.rmSync(shard, { force: true }); fs.mkdirSync(shard, { recursive: true });"]; delete gate.spec.builtin;
     });
     expect((await runCli(root, ['install'])).code).toBe(0);
     const sabotaged = await runCli(root, ['check', '--change', 'add-feature', '--gate', 'unit-tests']);
@@ -453,7 +453,7 @@ describe('check and Gate evidence', () => {
     await createCompleteSolidChange(root);
     await updateYaml(root, 'xforge/scaffold/gates/unit-tests.yaml', (gate) => {
       gate.spec.env = { allow: ['MY_BUILD_FLAG', 'MY_API_KEY'] };
-      gate.spec.command = [process.execPath, '-e', "console.log(JSON.stringify({ flag: process.env.MY_BUILD_FLAG ?? null, ci: process.env.CI ?? null, registry: process.env.npm_config_registry ?? null, key: process.env.MY_API_KEY ?? null, other: process.env.UNDECLARED_VARIABLE ?? null }))"];
+      gate.spec.command = [process.execPath, '-e', "console.log(JSON.stringify({ flag: process.env.MY_BUILD_FLAG ?? null, ci: process.env.CI ?? null, registry: process.env.npm_config_registry ?? null, key: process.env.MY_API_KEY ?? null, other: process.env.UNDECLARED_VARIABLE ?? null }))"]; delete gate.spec.builtin;
     });
     expect((await runCli(root, ['install'])).code).toBe(0);
     const result = await runCli(root, ['check', '--change', 'add-feature', '--gate', 'unit-tests'], {

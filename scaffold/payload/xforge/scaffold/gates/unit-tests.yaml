@@ -1,38 +1,24 @@
-# Why this Gate is a guarded `node -e` and not a bare `npm test --if-present`.
+# Runs what this project declared under `manifest.verification.unit-tests`, and refuses when it
+# declared nothing.
 #
-# In a directory with no `package.json`, `npm test --if-present` exits **254**. That is neither
-# ENOENT nor 127, so `runners/gate.ts`'s "the tool is missing, this is not a failing check"
-# detection cannot see it: a non-Node project got a hard `XFORGE_GATE_FAILED` on a Gate that never
-# had anything to run, on every Change, forever.
+# This Gate used to be `npm test --if-present` behind a guard that exited 0 when there was no
+# `package.json`. The guard was itself a fix — without it a non-Node project got a permanent,
+# false *failure*, because npm exits 254 rather than the 127 the runner reads as "tool
+# missing". But it turned a loud wrong answer into a quiet one: every Rust, Go and Python project
+# got a Gate reporting `passed` having asserted nothing, and with it a must-level Rule whose only
+# enforcement was this Gate, a verification receipt citing its digest, and an archive whose
+# mandatory Gate was empty.
 #
-# Marking the Gate `required: false` does not fix that. Nothing in the CLI reads `spec.required` —
-# Gate scheduling belongs to the Flow's `stage.gates`, and the control plane blocks on any Gate in
-# that list that is not `passed`. Dropping the flag would change nothing while looking like it had.
-#
-# So the Gate answers the question itself: no `package.json`, no npm test, pass with an explicit
-# statement that nothing was asserted. A pass that says so in its own Evidence is honest and
-# fixable; a permanent failure is neither. Replace the command below with this project's real test
-# command as soon as it has one — a Gate that passes without asserting anything is a placeholder,
-# not verification.
+# XForge does not know how any given project verifies itself, and no list of languages inside the
+# CLI would change that — it would only move the edge. So the project says, in any language, and
+# an unanswered question stays visible instead of being reported as a pass.
 apiVersion: xforge.dev/v1alpha1
 kind: Gate
 metadata:
   name: unit-tests
-  version: 2
+  version: 3
 spec:
   required: true
-  command:
-    - node
-    - -e
-    - |
-      if (!require('fs').existsSync('package.json')) {
-        console.log('unit-tests: no package.json in this working directory, so there is no `npm test` to run.');
-        console.log('unit-tests: passing WITHOUT asserting anything. Replace this Gate\'s command in xforge/scaffold/gates/unit-tests.yaml with this project\'s real test command.');
-        process.exit(0);
-      }
-      const run = require('child_process').spawnSync('npm', ['test', '--if-present'], { stdio: 'inherit', shell: process.platform === 'win32' });
-      process.exit(run.status === null ? 1 : run.status);
-  workingDirectory: .
+  builtin: declared
   timeoutSeconds: 900
-  maxOutputBytes: 65536
   evidence: tests.json

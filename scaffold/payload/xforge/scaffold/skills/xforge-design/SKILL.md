@@ -26,6 +26,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 - Map each major decision to a Requirement, project constraint, or code fact and state the verifiable result.
 - Report coverage, residual risk, and the next legal Action against Action `doneWhen`.
+- When this Stage exits on a human approval, run `xforge brief --change <id> --text` and give the user its output **verbatim**. Do not summarize, reorder, or paraphrase it — the brief separates what the CLI computed from what it quoted, and restating it in your own words destroys the only signal the reader has for telling those apart.
 
 # Stop and rework
 

@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
-import type { ApprovalReceipt, Diagnostic, FileChange, GateEvidence, GateResource, GovernanceRevision, ProjectContext } from '../types.js';
+import type { ApprovalReceipt, Diagnostic, FileChange, GateEvidence, GateResource, GovernanceRevision, NextAction, ProjectContext } from '../types.js';
 import { CLI_NAME, CLI_VERSION, MAX_GATE_OUTPUT_BYTES, PROTOCOL_VERSION } from '../constants.js';
 import { atomicWrite } from '../core/files.js';
 import { sha256, stableStringify } from '../core/hash.js';
@@ -17,6 +17,7 @@ import { recordAudit } from '../core/audit.js';
 import { evaluateCheckFindings } from '../core/check-findings.js';
 import { evaluateConstitutionCheck } from '../core/constitution-check.js';
 import { knownIdentities } from '../core/ledger-identity.js';
+import { VERIFICATION_NOT_DECLARED, VERIFICATION_TOOLCHAIN_UNCOVERED, notDeclaredNextAction, notDeclaredReason, resolveVerificationPlan, suspiciouslyEmpty, uncoveredNextAction, uncoveredReason } from '../core/verification.js';
 
 /**
  * Gate subprocesses never inherit the ambient environment; `filterEnvironment` (core/env-safety.ts)
@@ -78,10 +79,25 @@ interface GateExecution {
  */
 const COMMAND_NOT_FOUND_EXIT = 127;
 
-async function runCommand(project: ProjectContext, gate: GateResource): Promise<GateExecution> {
-  const command = gate.spec.command;
+/**
+ * What to execute, when it does not come from the Gate resource itself.
+ *
+ * A `builtin: declared` Gate runs commands the project wrote in `manifest.verification`, and they
+ * go through this same function rather than a parallel implementation. Output bounding, redaction,
+ * the timeout and its SIGKILL escalation, the environment allowlist, and above all the
+ * missing-executable detection are properties a declared command needs exactly as much as a Gate
+ * command does — a second spawner would drift from all six.
+ */
+interface CommandOverride {
+  command: string[];
+  workingDirectory?: string;
+  timeoutSeconds?: number;
+}
+
+async function runCommand(project: ProjectContext, gate: GateResource, override?: CommandOverride): Promise<GateExecution> {
+  const command = override?.command ?? gate.spec.command;
   if (!command?.length) throw new Error(`Gate ${gate.metadata.name} has no command`);
-  const workingRelative = normalizeRelative(gate.spec.workingDirectory ?? '.', `Gate ${gate.metadata.name} workingDirectory`);
+  const workingRelative = normalizeRelative(override?.workingDirectory ?? gate.spec.workingDirectory ?? '.', `Gate ${gate.metadata.name} workingDirectory`);
   const workingDirectory = await safeResolve(project.root, workingRelative);
   const maxBytes = gate.spec.maxOutputBytes ?? MAX_GATE_OUTPUT_BYTES;
   const stdout: Buffer[] = [];
@@ -116,7 +132,7 @@ async function runCommand(project: ProjectContext, gate: GateResource): Promise<
       child.kill('SIGTERM');
       forceTimer = setTimeout(() => child.kill('SIGKILL'), 1_000);
       forceTimer.unref();
-    }, gate.spec.timeoutSeconds * 1000);
+    }, (override?.timeoutSeconds ?? gate.spec.timeoutSeconds) * 1000);
     timer.unref();
     /*
      * A spawn failure resolves rather than rejects: "the executable is missing" is a result this
@@ -158,6 +174,8 @@ async function runCommand(project: ProjectContext, gate: GateResource): Promise<
 export interface GateRunResult {
   evidence: GateEvidence;
   diagnostic: Diagnostic | null;
+  /** Human decisions this Gate is waiting on. Empty for every outcome the CLI can resolve alone. */
+  nextActions: NextAction[];
   change: FileChange;
 }
 
@@ -219,6 +237,9 @@ export async function runGate(
   const startedAt = new Date();
   let result: GateProcessResult;
   let unavailable: GateCommandUnavailable | null = null;
+  /* Set when a `declared` Gate refused for want of an answer rather than because a check failed.
+     The two need different diagnostics because they need different actions from the reader. */
+  let declaredRefusal: { code: string; message: string; nextAction: NextAction } | null = null;
   if (gate.spec.builtin === 'structure') {
     result = {
       command: ['builtin:structure'],
@@ -261,6 +282,86 @@ export async function runGate(
         : '',
       stderr: constitution.status === 'passed' ? '' : constitution.problems.join('\n'),
     };
+  } else if (gate.spec.builtin === 'declared') {
+    /*
+     * The Gate runs what this project said it runs, and refuses when it said nothing.
+     *
+     * `passed` here always means a command executed and succeeded. There is no path through this
+     * branch that reports success without having run something — that path is what made every
+     * non-npm project's `unit-tests` Gate a decoration.
+     */
+    const plan = await resolveVerificationPlan(project, gate.metadata.name);
+    if (plan.runs.length === 0) {
+      declaredRefusal = {
+        code: VERIFICATION_NOT_DECLARED,
+        message: `Gate ${gate.metadata.name} has no command declared under manifest.verification.${gate.metadata.name}. This is an unanswered question, not a failing check — XForge does not know how this project runs its tests and refuses to report success for something it never ran. Ask the user and record the answer.`,
+        nextAction: notDeclaredNextAction(gate.metadata.name, plan.detected),
+      };
+      result = {
+        command: [`builtin:declared:${gate.metadata.name}`],
+        shell: false,
+        workingDirectory: '.',
+        exitCode: 1,
+        timedOut: false,
+        outputTruncated: false,
+        stdout: '',
+        stderr: notDeclaredReason(gate.metadata.name, plan.detected),
+      };
+    } else if (plan.uncovered.length > 0) {
+      /* Declared, but something in this repository is outside everything it declared. Refusing is
+         the point: an unverified module that ships under a green Gate is the original defect with
+         a smaller blast radius, not a different one. A dismissal closes it permanently. */
+      declaredRefusal = {
+        code: VERIFICATION_TOOLCHAIN_UNCOVERED,
+        message: `Gate ${gate.metadata.name} declares commands, but ${plan.uncovered.map((marker) => marker.marker).join(', ')} ${plan.uncovered.length === 1 ? 'is' : 'are'} covered by none of them. Declare a command for it, or record it as notApplicable with a justification — either answer closes the question for good.`,
+        nextAction: uncoveredNextAction(gate.metadata.name, plan.uncovered),
+      };
+      result = {
+        command: [`builtin:declared:${gate.metadata.name}`],
+        shell: false,
+        workingDirectory: '.',
+        exitCode: 1,
+        timedOut: false,
+        outputTruncated: false,
+        stdout: '',
+        stderr: uncoveredReason(gate.metadata.name, plan.uncovered),
+      };
+    } else {
+      const transcript: string[] = [];
+      let failure: GateProcessResult | null = null;
+      for (const run of plan.runs) {
+        const started = Date.now();
+        const execution = await runCommand(project, gate, {
+          command: run.command,
+          workingDirectory: run.workingDirectory,
+          timeoutSeconds: run.timeoutSeconds,
+        });
+        const elapsed = Date.now() - started;
+        const label = `${run.command.join(' ')}${run.module ? ` [module ${run.module}]` : ''}`;
+        transcript.push(`${label} -> exit ${execution.result.exitCode ?? 'none'} in ${elapsed}ms (declared by ${run.declaredBy})`);
+        if (execution.result.stdout) transcript.push(execution.result.stdout);
+        const empty = suspiciouslyEmpty(elapsed, execution.result.stdout.length + execution.result.stderr.length, execution.result.exitCode);
+        if (empty) transcript.push(`${gate.metadata.name}: ${empty}`);
+        if (execution.result.exitCode !== 0 || execution.result.timedOut) {
+          unavailable = execution.unavailable;
+          failure = { ...execution.result, stderr: [`${label} failed.`, execution.result.stderr].filter(Boolean).join('\n') };
+          /* Stop at the first failure: the Gate has its answer, and the commands after it would
+             report against a tree the failing one may have left mid-change. */
+          break;
+        }
+      }
+      result = failure ?? {
+        command: [`builtin:declared:${gate.metadata.name}`],
+        shell: false,
+        workingDirectory: '.',
+        exitCode: 0,
+        timedOut: false,
+        outputTruncated: false,
+        stdout: transcript.join('\n'),
+        stderr: '',
+      };
+      if (failure) result = { ...failure, stdout: transcript.join('\n') };
+    }
   } else {
     try {
       const execution = await runCommand(project, gate);
@@ -348,7 +449,15 @@ export async function runGate(
    * Evidence only, so nothing here was telling a Node-less project what to do about a `npm test`
    * Gate it can never satisfy.
    */
-  const failureDiagnostic = unavailable
+  const failureDiagnostic = declaredRefusal
+    ? diagnostic(
+      declaredRefusal.code,
+      declaredRefusal.message,
+      'xforge/manifest.yaml',
+      'error',
+      { gate: gate.metadata.name },
+    )
+    : unavailable
     ? diagnostic(
       'XFORGE_GATE_COMMAND_UNAVAILABLE',
       `Gate ${gate.metadata.name} could not be executed: ${unavailable.executable} is not available here (${unavailable.detail}). This is a missing tool, not a failing check — install it, or change the Gate's command in its Gate resource so it runs something this project has.`,
@@ -360,6 +469,9 @@ export async function runGate(
   return {
     evidence,
     diagnostic: status === 'failed' ? failureDiagnostic : null,
+    /* The refusal is only actionable if the reader is told what to ask and where to write the
+       answer, and `nextActions` is the channel the protocol reserves for a human decision. */
+    nextActions: status === 'failed' && declaredRefusal ? [declaredRefusal.nextAction] : [],
     change: { action, path: evidencePath, digest: sha256(`${JSON.stringify(evidence, null, 2)}\n`), source: `gate:${gate.metadata.name}` },
   };
 }

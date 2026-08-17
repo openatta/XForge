@@ -25,6 +25,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 4. Run `xforge check`, then `xforge sync --dry-run`; show cross-target diff, conflicts, capability level, and sensitive changes.
 5. After confirmation, run `xforge sync`. If the CLI returns `XFORGE_FULL_UPDATE_REQUIRED` or `XFORGE_STATE_UPGRADE_REQUIRED`, run `xforge update --dry-run` instead, then `xforge update` after confirmation. Never report a successful install as an unsupported capability being active.
 6. Query State again and verify Manifest selection, language, lock digest, ownership, Adapter coverage, and installation; report any separate platform review/trust requirement.
+7. On `XFORGE_VERIFICATION_NOT_DECLARED`, `XFORGE_VERIFICATION_TOOLCHAIN_UNCOVERED`, or `XFORGE_VERIFICATION_GATE_MIGRATED`, **ask the user how this project runs that check and record their answer** under `manifest.verification.<gate>` with their name in `declaredBy`. The `nextAction` carries any command this CLI can suggest for the build-system markers it found — treat every one as a question to put to the user, never as an answer to adopt. **Do not guess, and do not adopt a suggestion silently:** XForge cannot tell whether a command verifies anything, which is exactly why a person has to say so and be named. A toolchain the Gate deliberately does not cover is recorded as `notApplicable` with a `justification` rather than left unanswered.
 
 # Evidence
 

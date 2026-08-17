@@ -45,6 +45,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 - Return traceable Requirement/Scenario, implementation, test, Design, work-package, and Gate mappings, plus the receipt's `contentRevision`, `gitHead`, and the Gate digests it cites.
 - Claim ready for archive only with all current mandatory Gates passing and no blocker; claim closed only after the CLI atomic transaction succeeds.
+- Before the closing approval, run `xforge brief --change <id> --text` and give the user its output **verbatim**. Do not summarize, reorder, or paraphrase it — the brief separates what the CLI computed from what it quoted, and restating it in your own words destroys the only signal the reader has for telling those apart.
 
 # Stop and rework
 

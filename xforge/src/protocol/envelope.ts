@@ -33,14 +33,20 @@ function disabledHookNames(data: unknown): string[] {
     .map((hook) => hook.id);
 }
 
-export function present(result: Envelope, textMode: boolean): string {
+/**
+ * `render` replaces the JSON dump of `data` for commands whose whole purpose is to be read by a
+ * person — today only `brief`, whose value disappears if it arrives as a wall of JSON. Everything
+ * else about the text form is unchanged, so `--text` still alters presentation only: the same
+ * Envelope, the same diagnostics, the same exit code.
+ */
+export function present(result: Envelope, textMode: boolean, render?: (data: unknown) => string): string {
   if (!textMode) return `${JSON.stringify(result)}\n`;
 
   const lines = [
     `XForge ${result.command}: ${result.ok ? 'OK' : 'FAILED'}`,
     `Protocol: ${result.protocolVersion}`,
     `Root: ${result.root ?? '(not found)'}`,
-    `Data: ${JSON.stringify(result.data, null, 2)}`,
+    render && result.data !== null ? render(result.data) : `Data: ${JSON.stringify(result.data, null, 2)}`,
   ];
   const disabledHooks = disabledHookNames(result.data);
   if (disabledHooks.length > 0) {

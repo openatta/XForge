@@ -32,7 +32,9 @@
       ],
       "properties": {
         "required": {
-          "type": "boolean"
+          "type": "boolean",
+          "deprecated": true,
+          "description": "Ignored. Nothing in the CLI reads it. Gate scheduling is owned by the Flow's stage.gates / stage.exit.gates and the archive terminal, and the control plane blocks on any Gate in those lists that is not passed — so setting this false does not disable a Gate, it only looks as though it might. Kept required for Gates written before that was true."
         },
         "stage": {
           "enum": [
@@ -46,9 +48,10 @@
           "enum": [
             "structure",
             "check-findings",
-            "constitution-check"
+            "constitution-check",
+            "declared"
           ],
-          "description": "Runs an in-process XForge check instead of a subprocess. structure = project/Change structural validation; check-findings = the Check Stage findings ledger has no open blocker; constitution-check = every Constitution principle is answered and any violation is justified and approved."
+          "description": "Runs an in-process XForge check instead of a subprocess. structure = project/Change structural validation; check-findings = the Check Stage findings ledger has no open blocker; constitution-check = every Constitution principle is answered and any violation is justified and approved; declared = run the commands this project declared for a Gate of this name under manifest.verification, and refuse when it declared none."
         },
         "command": {
           "type": "array",
