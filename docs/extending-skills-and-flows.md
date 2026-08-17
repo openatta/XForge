@@ -114,6 +114,53 @@ put that difference, in preference order:
    schema field the resolver reads, and the Skill references it generically
    ("per Action execution policy") rather than by Flow name.
 
+### Artifact `markers`: telling the tooling what a section is *for*
+
+`outline` says which `## ` sections an Artifact must have. `artifacts[].markers`
+says what one of them *means*, which is what lets `xforge brief` compute an
+answer instead of asking somebody to read the prose and vouch for it:
+
+```yaml
+- id: design
+  outline: |
+    ## Decisions and alternatives
+    ## Test strategy
+  markers:
+    - id: verification-coverage
+      section: Test strategy
+      role: requirement-coverage
+    - id: rejected-alternative
+      section: Decisions and alternatives
+      role: decision-alternative
+      pattern: ['**Rejected alternative:', '**被否决的替代方案：']
+      minOccurrences: 1
+```
+
+- `role: requirement-coverage` — this section is where Requirement coverage is
+  recorded, so a Requirement missing *from it* is reportable even when the
+  Requirement appears elsewhere in the same file.
+- `role: decision-alternative` — entries matching `pattern` are rejected
+  alternatives, quoted verbatim into the brief.
+- `role: declared-gap` — entries matching `pattern` defer a question to a later
+  Stage; the brief reports one that no finding ever cites.
+
+`pattern` is a **list** because a Flow is single-sourced while the prose it
+governs is localized: one Flow governs a project writing English and one writing
+Chinese, so an entry marker that named a single language would silently stop
+locating anything in the other.
+
+Two severities, deliberately different. A marker naming a section the Artifact
+does not contain is a **warning** — `outline` has always been instruction rather
+than enforcement, and promoting a missing section to an error would fail Changes
+that were valid before markers existed. `minOccurrences` is an **error**,
+because unlike the outline it is a Flow explicitly requiring that a section
+carry at least N entries, and only a project that opted in ever reaches it. The
+shipped Flows therefore declare `requirement-coverage` sections with no
+`minOccurrences`.
+
+A rule keyed on a marker the Flow never declared reports **nothing**. It never
+falls back to guessing which section was meant.
+
 **Anti-pattern:** a Skill's own prose branching on a literal Flow name (`"For
 Solid, ... For Major, ..."`). This is fragile in a way the three mechanisms
 above are not — a new custom Flow (e.g. `hotfix.yaml`) gets silently

@@ -76,9 +76,67 @@ stages:
 
 这里面没有任何 Node/npm 专属的东西——把 `[ruff, check, ., --quiet]` 换成
 `[pytest]`、`[go, vet, ./...]`、`[cargo, clippy, --, -D, warnings]` 或者
-`[mvn, -q, verify]`，机制完全一样。`unit-tests.yaml` 之所以是
-`npm test --if-present`，只是因为**内置的默认 Scaffold 假设的是一个 npm
-项目**；Gate 的 schema 本身没有任何要求必须是 npm。
+`[mvn, -q, verify]`，机制完全一样。
+
+### `builtin: declared`——由项目自己说明如何验证自己
+
+随包发布的 `unit-tests` 与 `security-scan` 曾经是 `npm test` 和 `npm audit`，
+外面套一层守卫：没有 `package.json` 就直接 `exit(0)`——因为 npm 退出的是 254 /
+ENOLOCK，而不是 runner 识别为「工具缺失」的 127。那层守卫消除了非 Node 项目上
+永久的**假失败**，却换来了更糟的东西：一个报告 `passed` 却什么都没断言的 Gate，
+以及随之而来的、唯一执行者就是该 Gate 的 must 级 Rule、引用其 digest 的
+verification receipt，和一个 mandatory Gate 为空的 archive。
+
+两个 Gate 现在都是 `builtin: declared`：运行项目为同名 Gate 声明的命令，
+**没有声明就拒绝**：
+
+```yaml
+# xforge/manifest.yaml
+verification:
+  unit-tests:
+    - command: [go, test, ./...]
+      declaredBy: alex           # 必填
+      declaredAt: 2026-08-17T05:00:00Z
+  security-scan:
+    - command: [govulncheck, ./...]
+      declaredBy: alex
+      declaredAt: 2026-08-17T05:00:00Z
+```
+
+`declaredBy` 之所以必填：没有任何机制能判断一条命令是否真的在验证什么——
+`[echo, ok]` 和 `[go, build, ./...]` 都会 exit 0 而不做测试。它记录的是谁回答的，
+与其他台账里 `decidedBy`、`approvedBy`、`resolvedBy` 是同一个做法。
+
+**XForge 绝不猜测命令。** 未声明的 Gate 以 `XFORGE_VERIFICATION_NOT_DECLARED`
+失败，并给出面向人的 `declare-verification` nextAction。当 CLI 认得某个构建标记
+（`Cargo.toml`、`go.mod`、`pyproject.toml`、`pom.xml`、`build.zig`……）时，
+nextAction 会带上候选命令；认不出时会直说认不出——但候选只是提问的起点，绝不是
+可以直接采用的答案。这张标记表**刻意是不完整的**：表错了只会让提示变差，绝不会
+让结果出错，所以一个没被认出的工具链**仍然会触发提问，而不是通过**。
+
+含多种工具链的仓库必须逐个交代，因为「他们已有的那条命令大概也覆盖了它」正是本
+机制要消灭的猜测：
+
+```yaml
+verification:
+  unit-tests:
+    - command: [cargo, test]
+      covers: [Cargo.toml]
+      declaredBy: alex
+      declaredAt: 2026-08-17T05:00:00Z
+    - notApplicable: web/package.json
+      justification: 前端由其自身仓库的流水线验证
+      declaredBy: alex
+      declaredAt: 2026-08-17T05:01:00Z
+```
+
+记录下来的 `notApplicable` 是一个真正的答案：问题只问一次，此后不再问。
+单一工具链的项目不需要 `covers`——没有歧义可消，提问只会变成噪音。
+
+在此之前创建的项目仍带着占位 Gate，因为 `xforge/scaffold/**` 由 `init` 播种一次、
+此后永不更新。执行 `xforge update` 时，仍然是随包占位符的 Gate 会被替换为
+`builtin: declared` 形式，并报告 `XFORGE_VERIFICATION_GATE_MIGRATED`；
+**项目自己改过的 Gate 一律不动。**
 
 ## Rule——声明的指导，被核验而不是被采信的覆盖率
 

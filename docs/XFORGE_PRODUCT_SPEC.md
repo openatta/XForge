@@ -852,6 +852,7 @@ xforge sync
 xforge update
 xforge uninstall
 xforge check
+xforge brief
 xforge transition
 xforge approve
 xforge work-package
@@ -948,6 +949,30 @@ xforge check --gate unit-tests
 ```
 
 不提供独立的 `validate`、`verify`、`test`、`gate run`、`doctor` 命令。
+
+### 5.6b `brief`
+
+只读。回答"这次人类审批该不该放行"，不回答"这个设计对不对"。
+
+```text
+xforge brief --change add-login
+xforge brief --change add-login --text
+xforge brief --change add-login --attach-triage triage.yaml
+```
+
+只在当前 Stage 声明了 `exit.approvals`、或处于 `ready-to-archive` 且 archive 需要审批、或存在未关闭的 blocking finding 时才有内容；其余情况返回 `decision.applicable: false`。**没有人要做决定的地方不发简报**——本命令存在的理由是减少阅读量，在无决策处再发一份只会增加它。
+
+每一条输出都带 `provenance`，三层在 `--text` 下分区呈现且永不交错：
+
+- `computed` — 由结构化数据算出，同一 `contentRevision` 上可复算；
+- `extracted` — 按 Flow `outline` 从原文按标题切片，一字未改，带路径与行号；
+- `authored` — 人或模型写的判断，只能经 `--attach-triage` 提交，每条必须 `basis` 引用本次简报中真实存在的条目 id，否则以 `XFORGE_BRIEF_UNANCHORED_CLAIM` 拒绝。
+
+这条约束是本命令的承重墙。要解决的问题是 Agent 产出量超过人的阅读速度，而"让 Agent 再写一份摘要"会让审阅者的处境更糟：他读到的不再是产物，而是产出方对自己产物的自述，且无从分辨哪些说法被核对过。因此 CLI 算出能算的、引用不能算的，并拒绝让一条 authored 声明脱离二者独立存在。CLI 本身永不调用模型。
+
+`reconciliation` 单列一组 `computed` 观察，陈述记录声称与文件实际之间的差异，只述差异不下判断（`XFORGE_BRIEF_RESOLUTION_UNVERIFIED`、`XFORGE_BRIEF_REQUIREMENT_UNANCHORED`、`XFORGE_BRIEF_REQUIREMENT_UNCOVERED`、`XFORGE_BRIEF_DECLARED_GAP_UNRESOLVED`、`XFORGE_BRIEF_REFERENCE_UNRESOLVABLE`）。依赖 `artifacts[].markers` 的规则在 Flow 未声明对应 marker 时一律沉默。
+
+`brief` 不写文件、不产生 receipt、不记 audit，属 §5.9 的只读读取范畴。
 
 ### 5.7 `archive`
 

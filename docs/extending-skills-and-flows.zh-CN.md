@@ -99,6 +99,44 @@ Flow 是纯数据：`xforge/flows/*.yaml`，加载方式是读取该目录下的
    schema 字段，Skill 只按"根据 Action 的 execution policy"这种通用方式引用它，
    不按 Flow 名字判断。
 
+### Artifact `markers`：告诉工具某个小节是"干什么用的"
+
+`outline` 规定 Artifact 必须有哪些 `## ` 小节。`artifacts[].markers` 规定其中某个小节
+**意味着什么**——正是这一点让 `xforge brief` 能够算出答案，而不必请人读完散文再为它背书：
+
+```yaml
+- id: design
+  outline: |
+    ## Decisions and alternatives
+    ## Test strategy
+  markers:
+    - id: verification-coverage
+      section: Test strategy
+      role: requirement-coverage
+    - id: rejected-alternative
+      section: Decisions and alternatives
+      role: decision-alternative
+      pattern: ['**Rejected alternative:', '**被否决的替代方案：']
+      minOccurrences: 1
+```
+
+- `role: requirement-coverage` — 该小节是记录 Requirement 覆盖的地方，因此某条 Requirement
+  即使出现在同一文件别处，只要不在该小节内就可被报告；
+- `role: decision-alternative` — 匹配 `pattern` 的条目是被否决的替代方案，逐字引用进简报；
+- `role: declared-gap` — 匹配 `pattern` 的条目把问题推给后续 Stage，简报会报告没有任何
+  finding 引用它的那些。
+
+`pattern` 是**列表**，因为 Flow 单一来源而它治理的散文是本地化的：同一个 Flow 同时治理
+用英文写作和用中文写作的项目，只写一种语言的条目标记会在另一种语言下静默地什么也定位不到。
+
+两种严重级别是刻意区分的。marker 指向 Artifact 不存在的小节是 **warning**——`outline` 一向
+是指导而非强制，把缺失小节升级为错误会让 markers 出现之前就已合法的 Change 失败。
+`minOccurrences` 是 **error**，因为它不同于 outline，是 Flow 明确要求某小节至少承载 N 个条目，
+只有主动声明的项目才会走到那里。因此随包发布的 Flow 只声明 `requirement-coverage` 小节，
+不设 `minOccurrences`。
+
+依赖某个 marker 的规则，在 Flow 未声明该 marker 时**什么也不报告**，绝不退化为猜测。
+
 **反模式：** Skill 自己的散文里按字面 Flow 名字分支（"Solid 时……Major 时……"）。
 这比上面三种机制都脆弱——新增一个自定义 Flow（比如 `hotfix.yaml`）会被静默处理
 错，因为这个 Skill 从没"听说过"它。`xforge-design` 就是具体例子：

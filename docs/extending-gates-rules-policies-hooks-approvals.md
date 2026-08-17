@@ -80,9 +80,75 @@ stages:
 
 Nothing here is Node/npm-specific — swap `[ruff, check, ., --quiet]` for
 `[pytest]`, `[go, vet, ./...]`, `[cargo, clippy, --, -D, warnings]`, or
-`[mvn, -q, verify]` and the mechanism is identical. `unit-tests.yaml` itself
-is only `npm test --if-present` because the *bundled default Scaffold*
-assumes an npm project; nothing in the Gate schema requires npm.
+`[mvn, -q, verify]` and the mechanism is identical.
+
+### `builtin: declared` — the project says how it verifies itself
+
+The shipped `unit-tests` and `security-scan` Gates used to be `npm test` and
+`npm audit` behind a guard that exited 0 when no `package.json` was present,
+because npm exits 254 / ENOLOCK rather than the 127 the runner reads as "tool
+missing". The guard removed a permanent false *failure* on every non-Node
+project and replaced it with something worse: a Gate reporting `passed` having
+asserted nothing, and with it a `must` Rule whose only enforcement was that
+Gate, a verification receipt citing its digest, and an archive whose mandatory
+Gate was empty.
+
+Both Gates are now `builtin: declared`. They run what the project declared for a
+Gate of that name, and **refuse when it declared nothing**:
+
+```yaml
+# xforge/manifest.yaml
+verification:
+  unit-tests:
+    - command: [go, test, ./...]
+      declaredBy: alex           # required
+      declaredAt: 2026-08-17T05:00:00Z
+  security-scan:
+    - command: [govulncheck, ./...]
+      declaredBy: alex
+      declaredAt: 2026-08-17T05:00:00Z
+```
+
+`declaredBy` is required because nothing can decide mechanically whether a
+command verifies anything — `[echo, ok]` and `[go, build, ./...]` both exit 0
+without testing. It records who answered, the same move `decidedBy`,
+`approvedBy` and `resolvedBy` make in the other ledgers.
+
+**XForge never guesses the command.** An undeclared Gate fails with
+`XFORGE_VERIFICATION_NOT_DECLARED` and a `declare-verification` nextAction
+addressed to a human. That nextAction carries a suggestion when the CLI
+recognises a build-system marker (`Cargo.toml`, `go.mod`, `pyproject.toml`,
+`pom.xml`, `build.zig`, …) and says so plainly when it does not — but a
+suggestion is the start of a question, never an answer to adopt. The marker
+table is deliberately incomplete: being wrong about it costs a worse prompt,
+never a wrong result, which is why an unrecognised toolchain still produces a
+question rather than a pass.
+
+A repository with more than one toolchain must account for each one, since "the
+command they already had probably covers it" is exactly the guess this replaces:
+
+```yaml
+verification:
+  unit-tests:
+    - command: [cargo, test]
+      covers: [Cargo.toml]
+      declaredBy: alex
+      declaredAt: 2026-08-17T05:00:00Z
+    - notApplicable: web/package.json
+      justification: The web client is verified by its own repository pipeline.
+      declaredBy: alex
+      declaredAt: 2026-08-17T05:01:00Z
+```
+
+A recorded `notApplicable` is a real answer: the question is asked once and
+never again. A single-toolchain project needs no `covers` — with nothing to
+disambiguate, a prompt would just be noise.
+
+Projects created before this shipped keep their placeholder Gate, because
+`xforge/scaffold/**` is seeded once by `init` and never updated afterwards. On
+`xforge update` a Gate still carrying the shipped placeholder is replaced with
+the `builtin: declared` form and reported as `XFORGE_VERIFICATION_GATE_MIGRATED`.
+A Gate the project has edited is never touched.
 
 ## Rules — declared instruction, verified (not trusted) coverage
 

@@ -115,6 +115,39 @@ xforge check --change add-login --gate structure
 
 LLM 写出的 Check report 或 `PASS` 不会成为 Machine Gate Evidence。
 
+## 4b. 审批决策简报
+
+```bash
+xforge brief --change add-login
+xforge brief --change add-login --text
+```
+
+`brief` 回答"这次审批该不该放行"，而不是"这个设计对不对"。它只读不写，不产生 receipt，也不记 audit。
+
+只有当前 Stage 声明了 `exit.approvals`（或处于 `ready-to-archive` 且 archive 需要审批），或存在未关闭的 blocking finding 时，简报才有内容；其余情况返回 `decision.applicable: false`，因为那里没有人需要做的决定，多发一份简报只会增加阅读量。
+
+输出分三层，每一条都带 `provenance`：
+
+- `computed` — 由结构化数据算出（Requirement/Scenario 计数、findings 与宪法账本状态、分级与范围、Stage 时间线与返工次数、各次 transition 的 Git head）。同一 `contentRevision` 上重复运行逐字节相同。
+- `extracted` — 按 Flow `outline` 声明的 `## ` 标题从 Artifact 原文切片，一字未改，带 `path` 与 `line`。
+- `authored` — 人或模型写的判断，只能经 `--attach-triage <path>` 提交，且每条必须用 `basis` 引用本次简报里真实存在的 `computed`/`extracted` id，否则以 `XFORGE_BRIEF_UNANCHORED_CLAIM` 拒绝。
+
+`reconciliation` 是单独一组 `computed` 条目，陈述**记录声称的事**与**文件里实际有的事**之间的差异，只说差异，不判断对错：
+
+| 规则 | 代码 |
+|---|---|
+| 结案未兑现：finding 记为 `resolved`，但它引用的 Requirement 没进入它引用的 Artifact（有 `requirement-coverage` marker 时限定在该小节内） | `XFORGE_BRIEF_RESOLUTION_UNVERIFIED` |
+| 需求无锚点：delta Spec 里的 Requirement 未被本 Change 任何其他 Artifact 引用 | `XFORGE_BRIEF_REQUIREMENT_UNANCHORED` |
+| 覆盖缺口：Requirement 未出现在 Flow 声明的 `requirement-coverage` 小节内 | `XFORGE_BRIEF_REQUIREMENT_UNCOVERED` |
+| 自述缺口无决议：`declared-gap` 条目把问题推给后续 Stage，却没有任何 finding 引用它 | `XFORGE_BRIEF_DECLARED_GAP_UNRESOLVED` |
+| 引用不可解析：宪法账本的 `references` 既不是本 Change 的 Requirement，也不是存在的路径或已通过的 Gate | `XFORGE_BRIEF_REFERENCE_UNRESOLVABLE` |
+
+后三条依赖 Flow 的 `markers` 声明（见 `docs/extending-skills-and-flows.md`）；Flow 没有声明对应 marker 时，规则一律沉默，绝不猜测哪个小节是哪个意思。
+
+尚未到期的 Artifact 不参与引用与覆盖判定：在 design 审批处检查 verify 阶段才写的 `assurance.md`，报告的缺失没有意义。
+
+`--text` 分区呈现三层且永不交错，并固定打印"未覆盖"清单——签这份简报不等于审阅了 Scenario 正文、Check 散文和 Flow outline 未声明的小节。
+
 ## 5. Stage Transition
 
 ```bash
