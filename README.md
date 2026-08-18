@@ -156,13 +156,38 @@ evidence, while the selected Agent runtime performs the actual delegation. If
 a platform lacks native sub-agent support, execution remains sequential and
 the degradation is reported.
 
+### Verification a project declares, in any language
+
+The shipped `unit-tests` and `security-scan` Gates once ran npm. On a project
+without a `package.json` they reported `passed` having asserted nothing, so a
+`must` Rule lost its only enforcement and an archive's mandatory Gate was empty.
+
+Gates now run the command the project declared under `manifest.verification`
+and **refuse** when nothing is declared. A refusal is an unanswered question,
+not a failing check. `xforge verification declare` writes the entry so no Agent
+has to hand-edit the Manifest, and toolchain detection across fifteen ecosystems
+proposes a command — a proposal being the start of a question to a person, never
+an answer.
+
+### One place to write the architecture down
+
+Requirements survive a Change because `syncSpecs` merges them back. Architecture
+had no such path, so each Change's decisions archived with it and the next one
+re-derived them from code. `xforge/architecture.md` is that durable record, and
+`xforge-architect` is its only writer — from existing code, by questioning, or
+from a description. It is capped at fifty lines and six decisions, because a
+decision earns its place by being one whose reversal would touch several
+modules. Nothing requires the file; `doctor` suggests it and never fails on it.
+
 ### Read-only Skills outside the Change lifecycle
 
 Not every Skill touches Change/Flow/Gate state. `xforge-kanban` turns plain
 `git log` into a Markdown activity dashboard: per-contributor commits, lines,
 and active days, a weekday x hour heatmap, a feat/fix/other breakdown, and a
-per-module split for multi-module projects. It is read-only and safe to run at
-any time.
+per-module split for multi-module projects. `xforge-status` reports where a
+Change stands, `xforge-architect` writes the architecture file, and
+`xforge-upgrade-scaffold` merges a newer Scaffold. All are read-only with
+respect to Change state and safe to run at any time.
 
 Investigating code, Specs, and options before proposing needs no Skill of its
 own — reading and search are native to every coding tool XForge projects into.
@@ -373,6 +398,63 @@ Use `xforge update --dry-run` followed by `xforge update` when targets,
 Scaffold/CLI identity, or Adapter output changes. Use `xforge uninstall
 --target <target> --dry-run` to preview safe removal of one target's managed
 files.
+
+## Moving a project onto a newer XForge
+
+`xforge/scaffold/**` is seeded once by `init` and never updated afterwards, so a
+project keeps the Skills, Rules and Gates it was created with until somebody
+moves it. `xforge update` does not do this: it reprojects the Scaffold you
+already have into `.claude/` and friends. `xforge upgrade-scaffold` is the one
+that changes which Scaffold that is.
+
+It never merges for you. It stages the incoming Scaffold beside your own,
+snapshots what you have, and classifies every file — because which files differ
+is arithmetic, while whether your wording in a Skill should give way to a newer
+default is a question about your project. Nothing under `xforge/scaffold/` is
+touched until you or an Agent decides.
+
+Archive or finish open Changes first. A Change's remaining Stages would
+otherwise run under Gates its Design never saw, and the command refuses rather
+than let that happen silently.
+
+### Hand this to your coding Agent
+
+```text
+Upgrade this project's XForge Scaffold to the version the installed CLI ships.
+
+1. Run `npm i -g @xforge/cli@latest`, then `xforge version` to confirm it.
+2. Run `xforge upgrade-scaffold --dry-run --text` and show me the plan. Stop if
+   it refuses: open Changes must be archived first, and that is my decision.
+3. Run `xforge upgrade-scaffold` to stage it. Nothing under `xforge/scaffold/`
+   changes at this step.
+4. Read `xforge/scaffold-<version>/MERGE.md`. It names every file that differs
+   and every file that is new. Do not survey the Scaffold yourself — the plan is
+   the statement of the job, and the identical files are already settled.
+5. Merge, following that file. Adopt what the new version rules; keep what this
+   project knows — a Gate carrying our real test command, wording we chose, a
+   threshold somebody tuned. Where both cannot hold, stop and ask me.
+6. Do NOT add anything to `xforge/manifest.yaml`. A file arriving with a release
+   is not a decision to run it. List what arrived unselected and let me choose.
+7. Never delete a file marked `project-only`, and never touch `xforge/changes/`,
+   `xforge/specs/`, the audit chain, approvals, `constitution.md`, or
+   `architecture.md`.
+8. Finish with `xforge upgrade-scaffold --complete`, then `xforge install`, then
+   `xforge doctor`.
+9. Report: which side you took per changed file and why, the adoption count from
+   step 8 quoted verbatim without grading it, and what awaits my decision.
+```
+
+Projects that select `xforge-upgrade-scaffold` can have the Agent invoke that
+Skill instead; it carries the same rules with the authority boundaries attached.
+
+### If it goes wrong
+
+`xforge upgrade-scaffold --rollback` restores the Scaffold exactly as it stood
+before staging. Exactly one snapshot is kept — the last upgrade's — because
+arbitrary version travel would reintroduce the problem this replaces. It refuses
+when the Scaffold changed after the upgrade completed, since rolling back would
+discard that work; `--force` overrides. `xforge/upgrade-log.md` records every
+completed upgrade and survives both the staged directory and the rollback.
 
 ## Important boundaries
 

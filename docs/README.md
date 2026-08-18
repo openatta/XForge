@@ -136,11 +136,33 @@ Apply 可以生成带依赖关系、且写入路径互不重叠的 work packages
 当前修订绑定的 dispatch receipt 并验证 delivery evidence，真正的子 Agent 调度仍由
 所选编程工具完成。如果平台没有原生子 Agent 能力，就按顺序执行并报告能力降级。
 
+### 项目自己声明验证，与语言无关
+
+出厂的 `unit-tests` 与 `security-scan` Gate 曾经直接跑 npm。在没有 `package.json`
+的项目上，它们**什么都没断言就报告 `passed`**——一条 `must` 规则因此失去了唯一的
+强制力，归档时的必过 Gate 变成空的。
+
+现在 Gate 运行的是项目在 `manifest.verification` 下声明的命令，**没有声明就拒绝**。
+拒绝是一个尚未回答的问题，不是一次失败的检查。`xforge verification declare` 负责写入
+条目，任何 Agent 都不必手改 Manifest；跨十五种生态的工具链探测会给出**建议**——而建议
+是向人提问的开始，永远不是答案。
+
+### 架构有一个可以写下来的地方
+
+Requirements 能活过一个 Change，是因为 `syncSpecs` 会把它们合并回去。架构没有这条
+通路，于是每个 Change 的决策随它一起归档，下一个 Change 只能从代码里重新推导。
+`xforge/architecture.md` 就是这份持久记录，`xforge-architect` 是它唯一的写者——可以
+从现有代码生成、通过提问收敛，或从一段描述生成。它被限制在 50 行、6 条决策以内：
+一条决策配得上位置，是因为**推翻它会牵动好几个模块**。这个文件不是必需的，`doctor`
+只会建议，永远不会因为它缺失而失败。
+
 ### 独立于 Change 生命周期的只读 Skills
 
 不是所有 Skill 都会读写 Change/Flow/Gate 状态。`xforge-kanban` 把纯 `git log` 转成
 Markdown 活动看板：按贡献者统计 commit、代码行数与活跃天数、按星期几 x 小时的活动
-热力图、feat/fix/其他分类，以及多模块项目的按模块拆分。它是只读的，随时可以运行。
+热力图、feat/fix/其他分类，以及多模块项目的按模块拆分。`xforge-status` 报告某个
+Change 的处境，`xforge-architect` 写架构文件，`xforge-upgrade-scaffold` 合并新版脚手架。
+它们对 Change 状态都是只读的，随时可以运行。
 
 提案之前调查代码、Specs 与方案不需要单独的 Skill——阅读与检索是 XForge 投影到的每个
 编程工具的原生能力；把模糊想法收敛成可 Propose 的范围，是 `xforge-propose` 的第一步。
@@ -323,6 +345,55 @@ xforge sync --verify-digests
 Targets、Scaffold/CLI 身份或 Adapter 输出变化时，先运行 `xforge update
 --dry-run`，确认后再运行 `xforge update`。需要移除某个 Target 时，先用 `xforge
 uninstall --target <target> --dry-run` 查看只针对受管文件的删除计划。
+
+## 把项目搬到新版 XForge 上
+
+`xforge/scaffold/**` 只在 `init` 时播种一次，**之后永不更新**，所以项目会一直带着
+创建时的那套 Skills、Rules 和 Gates，直到有人把它搬过去。`xforge update` **不做**
+这件事——它是把你**已有的**脚手架重新投射进 `.claude/` 等目录。改变"已有的是哪一套"
+的是 `xforge upgrade-scaffold`。
+
+它**从不替你合并**：把新版原样暂存在你自己的脚手架旁边、快照你现在的状态、把每个
+文件分类。因为哪些文件有差异是算术，而"你在某个 Skill 里的措辞是否该让位给新的默认
+值"是一个关于你这个项目的问题。在你或 Agent 做出决定之前，`xforge/scaffold/` 下面
+一个字节都不会动。
+
+**先归档或走完进行中的 Change。** 否则那个 Change 剩下的 Stage 会在它的 Design
+从未见过的 Gate 下运行；命令会拒绝，而不是让这件事悄悄发生。
+
+### 把这段交给你的编程 Agent
+
+```text
+把本项目的 XForge 脚手架升级到已安装 CLI 所带的版本。
+
+1. 运行 `npm i -g @xforge/cli@latest`，再用 `xforge version` 确认。
+2. 运行 `xforge upgrade-scaffold --dry-run --text`，把计划给我看。如果它拒绝就停下：
+   进行中的 Change 必须先归档，那是我的决定。
+3. 运行 `xforge upgrade-scaffold` 暂存。这一步 `xforge/scaffold/` 下不会有任何变化。
+4. 读 `xforge/scaffold-<version>/MERGE.md`。它已经点名了每一个有差异的文件和每一个
+   新增文件。不要自己去翻脚手架——计划就是工作面的陈述，相同的文件已成定局。
+5. 按那个文件合并。吸收新版**规定**的东西，保住本项目**知道**的东西——带着我们真实
+   测试命令的 Gate、我们选定的措辞、有人调过的阈值。两者不能同时成立时，停下来问我。
+6. **不要**往 `xforge/manifest.yaml` 里加任何东西。文件随发行版到达，不等于决定要
+   运行它。把到达但未选中的列出来，由我来选。
+7. 绝不删除标记为 `project-only` 的文件；绝不触碰 `xforge/changes/`、`xforge/specs/`、
+   审计链、审批、`constitution.md`、`architecture.md`。
+8. 最后运行 `xforge upgrade-scaffold --complete`，然后 `xforge install`，
+   然后 `xforge doctor`。
+9. 报告：每个有差异的文件你取了哪一边、为什么；第 8 步的采纳计数**逐字引用、不要
+   打分**；以及有哪些等着我决定。
+```
+
+已选中 `xforge-upgrade-scaffold` 的项目，可以让 Agent 直接调用那个 Skill——它带着
+同样的规则，并且附有权限边界。
+
+### 出问题了怎么办
+
+`xforge upgrade-scaffold --rollback` 会把脚手架**逐字节**还原成暂存之前的样子。
+**只保留一份快照**（最近一次升级的），因为允许任意版本穿梭就会把这个方案要解决的
+问题重新引进来。如果升级完成后脚手架又被改动过，回滚会**拒绝**——那样会丢掉这些
+工作；`--force` 可以强制。`xforge/upgrade-log.md` 记录每一次完成的升级，它活过暂存
+目录，也活过回滚。
 
 ## 必须了解的边界
 
