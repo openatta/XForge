@@ -20,6 +20,7 @@ import { executeHookDispatch, hookFailureOutput, hookPlatformOutput, repairAffor
 import { executeInit } from './commands/init.js';
 import { executeWorkPackageAcknowledge, executeWorkPackageDispatch } from './commands/work-package.js';
 import { executeDoctor } from './commands/doctor.js';
+import { executeUpgrade, renderUpgradeText } from './commands/upgrade.js';
 import { XForgeError, diagnostic } from './core/errors.js';
 import { actualGitIdentity, runtimeCliIntegrity } from './core/identity.js';
 import { loadProject } from './core/project-loader.js';
@@ -27,7 +28,7 @@ import { detectScaffoldLanguage, parseScaffoldLanguage } from './core/language.j
 import { envelope, present } from './protocol/envelope.js';
 import type { Diagnostic, Envelope, FlowAuthority, NextAction, ScaffoldLanguage } from './types.js';
 
-type CommandName = 'help' | 'version' | 'init' | 'state' | 'install' | 'sync' | 'update' | 'uninstall' | 'check' | 'brief' | 'verification' | 'transition' | 'approve' | 'audit' | 'work-package' | 'hook' | 'archive' | 'doctor';
+type CommandName = 'help' | 'version' | 'init' | 'state' | 'install' | 'sync' | 'update' | 'uninstall' | 'check' | 'brief' | 'verification' | 'transition' | 'approve' | 'audit' | 'work-package' | 'hook' | 'archive' | 'doctor' | 'upgrade';
 
 interface ParsedArguments {
   command: string;
@@ -38,6 +39,9 @@ interface ParsedArguments {
   allGates: boolean;
   force: boolean;
   adopt: boolean;
+  complete: boolean;
+  rollback: boolean;
+  withActiveChanges: boolean;
   root?: string;
   stage?: string;
   helpCommand?: string;
@@ -73,7 +77,7 @@ interface ParsedArguments {
   by?: string;
 }
 
-const COMMANDS: CommandName[] = ['help', 'version', 'init', 'state', 'install', 'sync', 'update', 'uninstall', 'check', 'brief', 'verification', 'transition', 'approve', 'audit', 'work-package', 'hook', 'archive', 'doctor'];
+const COMMANDS: CommandName[] = ['help', 'version', 'init', 'state', 'install', 'sync', 'update', 'uninstall', 'check', 'brief', 'verification', 'transition', 'approve', 'audit', 'work-package', 'hook', 'archive', 'doctor', 'upgrade'];
 const VALID_KINDS = ['skills', 'agents', 'rules', 'policies', 'hooks', 'gates', 'scripts', 'flows', 'approvals', 'mcp-servers'] as const;
 const VALUE_OPTIONS = ['--root', '--change', '--kind', '--target', '--gate', '--to', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--provider', '--output', '--event', '--package', '--language', '--as', '--evidence', '--stage', '--attach-triage', '--gate-name', '--command', '--module', '--covers', '--working-directory', '--timeout-seconds', '--not-applicable', '--justification', '--by'] as const;
 
@@ -147,11 +151,16 @@ const HELP: Record<CommandName, { usage: string; description: string; options: s
   'work-package': { usage: 'xforge [--root <path>] work-package <dispatch|acknowledge> --change <id> --package <id> [--as <integrator|reviewer> --evidence <path>] [--dry-run] [--text]', description: 'Dispatch a work package or acknowledge integration/review evidence.', options: ['--root', '--change', '--package', '--as', '--evidence', '--dry-run', '--text'] },
   hook: { usage: 'xforge hook dispatch --target <target> --event <event>', description: 'Internal platform Hook dispatcher.', options: ['--root', '--target', '--event'] },
   archive: { usage: 'xforge [--root <path>] archive --change <id> [--dry-run] [--text]', description: 'Verify, merge Specs, and atomically archive a Change.', options: ['--root', '--change', '--dry-run', '--text'] },
+  upgrade: {
+    usage: 'xforge [--root <path>] upgrade [--complete | --rollback] [--with-active-changes] [--force] [--dry-run] [--text]',
+    description: 'Stage the Scaffold this CLI ships beside the project\'s own and classify every file, so a person or an Agent can merge it.',
+    options: ['--root', '--complete', '--rollback', '--with-active-changes', '--force', '--dry-run', '--text'],
+  },
   doctor: { usage: 'xforge [--root <path>] doctor [--kind <kind>] [--strict] [--text]', description: 'Report unreferenced and dangling Flow/Skill/Rule/Gate/Hook/PermissionPolicy/Approval/McpServer extensions.', options: ['--root', '--kind', '--strict', '--text'] },
 };
 
 function parseArguments(argv: string[]): ParsedArguments {
-  const parsed: ParsedArguments = { command: '', text: false, dryRun: false, verifyDigests: false, strict: false, allGates: false, force: false, adopt: false };
+  const parsed: ParsedArguments = { command: '', text: false, dryRun: false, verifyDigests: false, strict: false, allGates: false, force: false, adopt: false, complete: false, rollback: false, withActiveChanges: false };
   const seen = new Set<string>();
   const positionals: string[] = [];
   let helpShortcut = false;
@@ -171,6 +180,9 @@ function parseArguments(argv: string[]): ParsedArguments {
     if (token === '--dry-run') { parsed.dryRun = true; continue; }
     if (token === '--verify-digests') { parsed.verifyDigests = true; continue; }
     if (token === '--strict') { parsed.strict = true; continue; }
+    if (token === '--complete') { parsed.complete = true; continue; }
+    if (token === '--rollback') { parsed.rollback = true; continue; }
+    if (token === '--with-active-changes') { parsed.withActiveChanges = true; continue; }
     if (token === '--all-gates') { parsed.allGates = true; continue; }
     if (token === '--force') { parsed.force = true; continue; }
     if (token === '--adopt') { parsed.adopt = true; continue; }
@@ -564,6 +576,19 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
     });
     return envelope({ command, root: project.root, ...result });
   }
+  if (command === 'upgrade') {
+    if (parsed.complete && parsed.rollback) {
+      throw new XForgeError(diagnostic(
+        'XFORGE_UPGRADE_MODE_AMBIGUOUS',
+        'Pass at most one of --complete and --rollback. Completing an upgrade and abandoning it are opposite decisions, and nothing here can choose between them.',
+      ));
+    }
+    const mode = parsed.complete ? 'complete' : parsed.rollback ? 'rollback' : 'stage';
+    const result = await executeUpgrade(project, {
+      mode, dryRun: parsed.dryRun, force: parsed.force, withActiveChanges: parsed.withActiveChanges,
+    });
+    return envelope({ command, root: project.root, ...result });
+  }
   if (command === 'brief') {
     const result = await executeBrief(project, { change: parsed.change!, attachTriage: parsed.attachTriage });
     return envelope({ command, root: project.root, ...result });
@@ -692,9 +717,14 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
   const textMode = parsed?.text ?? argv.some((item) => ['--text', '--help', '--version'].includes(item));
   /* Only a successful brief renders: a failed one has `data: null` and its diagnostics are the
      result, which the standard text form already prints. */
-  const render = parsed?.command === 'brief' && result.ok
-    ? (data: unknown) => renderBriefText(data as Parameters<typeof renderBriefText>[0])
-    : undefined;
+  let render: ((data: unknown) => string) | undefined;
+  if (parsed?.command === 'brief' && result.ok) {
+    render = (data: unknown) => renderBriefText(data as Parameters<typeof renderBriefText>[0]);
+  } else if (parsed?.command === 'upgrade' && result.ok) {
+    /* The plan is the whole output of a staged upgrade, and a wall of JSON is not a thing anyone
+       reads before deciding what to merge. */
+    render = (data: unknown) => renderUpgradeText({ data: data as Record<string, unknown>, diagnostics: [], changes: [] });
+  }
   process.stdout.write(present(result, textMode, render));
   return result.ok ? 0 : 1;
 }

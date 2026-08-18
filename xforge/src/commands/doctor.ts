@@ -43,7 +43,7 @@ export interface DoctorData {
 }
 
 // Built-in Skills that are never invoked from a Flow Stage by design (chat-driven, standalone).
-const STANDALONE_SKILLS = new Set(['xforge-explore', 'xforge-kanban', 'xforge-status', 'xforge-continue', 'xforge-revise', 'xforge-scaffold', 'xforge-archive', 'xforge-architect']);
+const STANDALONE_SKILLS = new Set(['xforge-explore', 'xforge-kanban', 'xforge-status', 'xforge-continue', 'xforge-revise', 'xforge-scaffold', 'xforge-archive', 'xforge-architect', 'xforge-upgrade']);
 
 const DANGLING_CODE_SCOPE: Record<string, DoctorScope> = {
   XFORGE_FLOW_GATE_MISSING: 'gates',

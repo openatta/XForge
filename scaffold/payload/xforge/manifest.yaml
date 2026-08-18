@@ -30,6 +30,7 @@ scaffold:
     - xforge-scaffold
     - xforge-kanban
     - xforge-architect
+    - xforge-upgrade
   agents:
     - worker
     - integrator
