@@ -1,6 +1,6 @@
 ---
-name: xforge-upgrade
-description: Merge a staged newer XForge Scaffold into this project's own, preserving the project's adaptations and reporting what needs a human decision; use after `xforge upgrade` has staged a version and written MERGE.md.
+name: xforge-upgrade-scaffold
+description: Merge a staged newer XForge Scaffold into this project's own, preserving the project's adaptations and reporting what needs a human decision; use after `xforge upgrade-scaffold` has staged a version and written MERGE.md.
 allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 ---
 
@@ -23,19 +23,19 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 1. For each `added` file: copy it in verbatim. Do not add it to Manifest selection — a file arriving in a release is not a decision to run it.
 2. For each `changed` file: read both versions. Adopt what the new one **rules**; keep what this project **knows**. A Gate carrying a real test command, a Skill carrying wording this project chose, a threshold somebody tuned — those are facts about this project and they survive the upgrade.
 3. Keep English and `_cn` Skill variants equivalent. Merging one language and not the other leaves the project with two Skills that disagree, and whichever an Agent reads is then a matter of the Manifest's language setting rather than of what the project decided.
-4. Run `xforge upgrade --complete`, then `xforge install`, then `xforge doctor`.
+4. Run `xforge upgrade-scaffold --complete`, then `xforge install`, then `xforge doctor`.
 
 # Evidence
 
 - Report, per `changed` file, which side you took and why in one line. "Adopted upstream" and "kept ours" are both answers; an unreported merge is not.
 - List every asset the plan marked shipped-but-not-selected, and say plainly that selecting it is the user's decision, not yours.
-- Quote `xforge upgrade --complete`'s adoption count verbatim. It reports how many planned files now match the release; it does not grade the merge, and restating it as a score would invent a judgement the CLI did not make.
+- Quote `xforge upgrade-scaffold --complete`'s adoption count verbatim. It reports how many planned files now match the release; it does not grade the merge, and restating it as a score would invent a judgement the CLI did not make.
 
 # Stop and rework
 
 - Stop when a `changed` file's two versions cannot both hold — when the release removes a rule the project depends on, or renames something the project references. That is a decision about the project, not about the merge.
 - Stop rather than resolve a conflict by taking the newer file wholesale. Preferring upstream is the one resolution that is always available and almost never right; it is how a project silently loses the adaptation the Scaffold existed to invite.
-- Stop when the staged directory is missing or its `plan.json` does not parse: run `xforge upgrade` rather than reconstructing the plan by reading directories.
+- Stop when the staged directory is missing or its `plan.json` does not parse: run `xforge upgrade-scaffold` rather than reconstructing the plan by reading directories.
 
 # Judgment calls
 

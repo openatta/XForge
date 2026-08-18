@@ -1,6 +1,6 @@
 ---
-name: xforge-upgrade
-description: 把已暂存的新版 XForge 脚手架合并进本项目自己的脚手架，保住项目的适配，并报告需要人来决定的事项；用于 `xforge upgrade` 已暂存某个版本并写出 MERGE.md 之后。
+name: xforge-upgrade-scaffold
+description: 把已暂存的新版 XForge 脚手架合并进本项目自己的脚手架，保住项目的适配，并报告需要人来决定的事项；用于 `xforge upgrade-scaffold` 已暂存某个版本并写出 MERGE.md 之后。
 allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 ---
 
@@ -23,19 +23,19 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 1. 每个 `added` 文件：逐字拷入。**不要**把它加进 Manifest 选择——文件随发行版到达，不等于决定要运行它。
 2. 每个 `changed` 文件：两份都读。吸收新版**规定**的东西，保住本项目**知道**的东西。一个带着真实测试命令的 Gate、一段本项目选定的 Skill 措辞、一个有人调过的阈值——那些是关于这个项目的事实，要活过升级。
 3. 英文与 `_cn` 两份 Skill 必须保持等价。只合并一种语言，会让项目留下两份互相矛盾的 Skill，而 Agent 读到哪一份就变成了 Manifest 语言设置的问题，而不是项目决定的问题。
-4. 运行 `xforge upgrade --complete`，然后 `xforge install`，然后 `xforge doctor`。
+4. 运行 `xforge upgrade-scaffold --complete`，然后 `xforge install`，然后 `xforge doctor`。
 
 # 证据
 
 - 逐个 `changed` 文件报告你取了哪一边、为什么，一行即可。"采纳上游"和"保留本项目的"都是答案；**不报告的合并不是答案。**
 - 列出计划中标为"随发行版到达但未被选中"的每一项资产，并明说选不选是**用户**的决定，不是你的。
-- 逐字引用 `xforge upgrade --complete` 的采纳计数。它报告的是"计划中有多少个文件现在与发行版一致"，**它不给合并打分**；把它复述成一个评分，就是替 CLI 编造了一个它没有做出的判断。
+- 逐字引用 `xforge upgrade-scaffold --complete` 的采纳计数。它报告的是"计划中有多少个文件现在与发行版一致"，**它不给合并打分**；把它复述成一个评分，就是替 CLI 编造了一个它没有做出的判断。
 
 # 停止与返工
 
 - 当某个 `changed` 文件的两份内容**不可能同时成立**时停下——比如新版删掉了本项目依赖的某条规则，或改名了本项目引用的东西。那是关于这个项目的决定，不是关于合并的。
 - 宁可停下，也不要靠"整份采纳新版"来化解冲突。**偏向上游是唯一永远可用、而几乎永远不对的解法**；项目就是这样悄悄失去那些脚手架本来就邀请它做的适配的。
-- 当暂存目录不存在、或它的 `plan.json` 无法解析时停下：去运行 `xforge upgrade`，而不是靠翻目录把计划重建出来。
+- 当暂存目录不存在、或它的 `plan.json` 无法解析时停下：去运行 `xforge upgrade-scaffold`，而不是靠翻目录把计划重建出来。
 
 # 判断要点
 

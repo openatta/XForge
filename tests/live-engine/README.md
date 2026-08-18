@@ -242,8 +242,44 @@ invents an answer when none is available — which no static test can show.
 obeys it.** Four of the defects the 2026-08-13 runs found were model-behaviour
 defects that no replay would have caught. So a cassette records the fingerprint
 of the Scaffold it was made against, and replaying against a changed Scaffold is
-**refused**, with the re-record commands printed. Change a Skill, Flow, Gate,
-Rule or policy, and you owe a live run — enforced rather than remembered.
+**refused**, with the re-record commands printed.
+
+### A stale cassette is unavailable, not a debt
+
+That refusal used to be read as an obligation — change a Skill and you owe a live
+run of everything. Two months of doing that produced a plain result: **the
+cassettes have never once been replayed.** Every defect these runs have found
+came from the run, not from a replay of it — the Skill authority contradiction,
+the harness's fake parallelism, a correct refusal scored as a missing Artifact,
+the `major` fixture that had never been asked how it scans. The recording is a
+by-product that has not yet been cashed in.
+
+It is also not free. One standalone scenario costs roughly 300k tokens and four
+minutes; a six-scenario re-record is tens of millions of tokens and the better
+part of an hour. Twice that was paid to validate one edit to one standalone
+Skill's prose.
+
+So the fingerprint refusal stands, and what it means is narrower: *this cassette
+cannot speak for the current Scaffold.* Nothing is owed. Run the scenario that
+exercises what you changed:
+
+| Changed | Run |
+|---|---|
+| A standalone Skill (`architect`, `upgrade-scaffold`, `status`, `kanban`…) | that Skill's own scenario — one run, minutes |
+| A Skill a Flow Stage names (`design`, `apply`, `check`, `verify`…) | one scenario that walks that Flow |
+| A Flow, Gate, or the control plane | several, chosen for what they touch |
+| Preparing a release | all six, deliberately |
+
+The `Rejected` fix of 2026-08-17 is the worked example: it changed
+`xforge-architect` alone, `standalone-architect` alone validated it in four
+minutes, and both halves of the new rule were observed. The other five scenarios
+would have added nothing.
+
+**The fingerprint is coarser than this table.** Any payload change invalidates
+every cassette, including a standalone Skill no Flow Stage references. Making a
+cassette record only the assets its own run actually read would fix that, and is
+worth doing — carefully, because a fingerprint that misses an input fails green,
+and a replay trusted wrongly is worse than one refused unnecessarily.
 
 **One recording hazard worth knowing.** Replay re-signs approvals, so a replayed
 receipt lands at a fresh UUID filename and a citation of the recorded filename

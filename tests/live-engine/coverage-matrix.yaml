@@ -52,9 +52,9 @@ entries:
   - skill: xforge-architect
     scenarios:
       - { scenario: standalone-architect, flow: null, stage: null, note: "runs against a fresh project with no architecture file; covers writing one by questioning and reporting that absence blocks nothing" }
-  - skill: xforge-upgrade
+  - skill: xforge-upgrade-scaffold
     scenarios:
-      - { scenario: standalone-upgrade, flow: null, stage: null, note: "runs against a project aged onto an older Scaffold with a hand-adapted Gate; covers keeping the project's own command while adopting a new Rule" }
+      - { scenario: standalone-upgrade-scaffold, flow: null, stage: null, note: "runs against a project aged onto an older Scaffold with a hand-adapted Gate; covers keeping the project's own command while adopting a new Rule" }
   - skill: xforge-revise
     scenarios:
       - { scenario: standalone-revise, flow: null, stage: null, note: "injected into the solid run between propose and design, after the harness edits TEST_REQUEST.md" }

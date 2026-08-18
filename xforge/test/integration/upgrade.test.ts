@@ -46,7 +46,7 @@ describe('staging an upgrade', () => {
     const root = await agedProject();
     const before = await tree(root, 'xforge/scaffold');
 
-    const staged = await runCli(root, ['upgrade']);
+    const staged = await runCli(root, ['upgrade-scaffold']);
     expect(staged.code).toBe(0);
 
     /*
@@ -65,7 +65,7 @@ describe('staging an upgrade', () => {
 
   it('leaves a visible directory carrying the plan and the merge prompt', async () => {
     const root = await agedProject();
-    const staged = (await runCli(root, ['upgrade'])).json.data.staged;
+    const staged = (await runCli(root, ['upgrade-scaffold'])).json.data.staged;
     /* Visible, not a dotfile: an unfinished upgrade should be obvious in a plain file listing. */
     expect(staged.startsWith('xforge/scaffold-')).toBe(true);
 
@@ -80,28 +80,28 @@ describe('staging an upgrade', () => {
     const root = await agedProject();
     await mkdir(path.join(root, 'xforge', 'changes', 'in-flight'), { recursive: true });
 
-    const refused = await runCli(root, ['upgrade']);
+    const refused = await runCli(root, ['upgrade-scaffold']);
     expect(refused.code).not.toBe(0);
     expect(refused.json.diagnostics[0].code).toBe('XFORGE_UPGRADE_ACTIVE_CHANGES');
     /* Naming it is the point: the person deciding needs to know what they would be disrupting. */
     expect(refused.json.diagnostics[0].message).toContain('in-flight');
 
-    const accepted = await runCli(root, ['upgrade', '--with-active-changes']);
+    const accepted = await runCli(root, ['upgrade-scaffold', '--with-active-changes']);
     expect(accepted.code).toBe(0);
     expect(accepted.json.diagnostics.some((item: any) => item.code === 'XFORGE_UPGRADE_ACTIVE_CHANGES_ACCEPTED')).toBe(true);
   });
 
   it('refuses to stage twice over an unfinished merge', async () => {
     const root = await agedProject();
-    await runCli(root, ['upgrade']);
-    const again = await runCli(root, ['upgrade']);
+    await runCli(root, ['upgrade-scaffold']);
+    const again = await runCli(root, ['upgrade-scaffold']);
     expect(again.json.diagnostics[0].code).toBe('XFORGE_UPGRADE_ALREADY_STAGED');
   });
 
   it('writes nothing at all on --dry-run', async () => {
     const root = await agedProject();
     const before = await tree(root, 'xforge');
-    const dry = await runCli(root, ['upgrade', '--dry-run']);
+    const dry = await runCli(root, ['upgrade-scaffold', '--dry-run']);
     expect(dry.json.data.plan.counts.changed).toBeGreaterThan(0);
     expect(same(before, await tree(root, 'xforge'))).toBe(true);
   });
@@ -110,13 +110,13 @@ describe('staging an upgrade', () => {
 describe('completing an upgrade', () => {
   it('clears the staged directory and records what the merge kept', async () => {
     const root = await agedProject();
-    const staged = (await runCli(root, ['upgrade'])).json.data.staged;
+    const staged = (await runCli(root, ['upgrade-scaffold'])).json.data.staged;
     /* A merge that adopts the new Skill and keeps the project's own Gate — the intended outcome. */
     const incoming = await tree(root, `${staged}/skills/xforge-architect`);
     await mkdir(scaffold(root, 'skills', 'xforge-architect'), { recursive: true });
     for (const [name, content] of incoming) await writeFile(scaffold(root, 'skills', 'xforge-architect', name), content, 'utf8');
 
-    const done = await runCli(root, ['upgrade', '--complete']);
+    const done = await runCli(root, ['upgrade-scaffold', '--complete']);
     expect(done.code).toBe(0);
     expect((await tree(root, staged)).size).toBe(0);
 
@@ -135,42 +135,42 @@ describe('rolling back', () => {
   it('restores the previous Scaffold byte for byte', async () => {
     const root = await agedProject();
     const before = await tree(root, 'xforge/scaffold');
-    await runCli(root, ['upgrade']);
+    await runCli(root, ['upgrade-scaffold']);
     await mkdir(scaffold(root, 'skills', 'xforge-architect'), { recursive: true });
     await writeFile(scaffold(root, 'skills', 'xforge-architect', 'SKILL.md'), 'adopted', 'utf8');
-    await runCli(root, ['upgrade', '--complete']);
+    await runCli(root, ['upgrade-scaffold', '--complete']);
 
-    const back = await runCli(root, ['upgrade', '--rollback']);
+    const back = await runCli(root, ['upgrade-scaffold', '--rollback']);
     expect(back.code).toBe(0);
     expect(same(before, await tree(root, 'xforge/scaffold'))).toBe(true);
   });
 
   it('refuses when work has happened since, rather than discarding it', async () => {
     const root = await agedProject();
-    await runCli(root, ['upgrade']);
-    await runCli(root, ['upgrade', '--complete']);
+    await runCli(root, ['upgrade-scaffold']);
+    await runCli(root, ['upgrade-scaffold', '--complete']);
 
     const gate = scaffold(root, 'gates', 'structure.yaml');
     await writeFile(gate, `${await readFile(gate, 'utf8')}\n# later work\n`, 'utf8');
 
-    const refused = await runCli(root, ['upgrade', '--rollback']);
+    const refused = await runCli(root, ['upgrade-scaffold', '--rollback']);
     expect(refused.code).not.toBe(0);
     expect(refused.json.diagnostics[0].code).toBe('XFORGE_UPGRADE_ROLLBACK_DRIFT');
     /* An escape hatch exists, because sometimes discarding it is exactly what is wanted. */
-    expect((await runCli(root, ['upgrade', '--rollback', '--force'])).code).toBe(0);
+    expect((await runCli(root, ['upgrade-scaffold', '--rollback', '--force'])).code).toBe(0);
   });
 
   it('refuses when there is nothing to roll back to', async () => {
     const root = await agedProject();
-    const refused = await runCli(root, ['upgrade', '--rollback']);
+    const refused = await runCli(root, ['upgrade-scaffold', '--rollback']);
     expect(refused.json.diagnostics[0].code).toBe('XFORGE_UPGRADE_NO_ROLLBACK');
   });
 
   it('keeps the upgrade log, because a rollback is also history', async () => {
     const root = await agedProject();
-    await runCli(root, ['upgrade']);
-    await runCli(root, ['upgrade', '--complete']);
-    await runCli(root, ['upgrade', '--rollback']);
+    await runCli(root, ['upgrade-scaffold']);
+    await runCli(root, ['upgrade-scaffold', '--complete']);
+    await runCli(root, ['upgrade-scaffold', '--rollback']);
     /* Erasing the record of an upgrade because it was undone would leave a project unable to say
        what it had tried. The snapshot is a mechanism; the log is an account. */
     expect(await readFile(path.join(root, 'xforge', 'upgrade-log.md'), 'utf8')).toContain('→');

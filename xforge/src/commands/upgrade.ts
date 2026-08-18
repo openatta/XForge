@@ -103,7 +103,7 @@ async function readRollbackManifest(root: string): Promise<RollbackManifest | nu
 }
 
 export async function executeUpgrade(project: ProjectContext, options: UpgradeOptions): Promise<UpgradeResult> {
-  assertManaged(project, `upgrade${options.mode === 'stage' ? '' : ` --${options.mode}`}`);
+  assertManaged(project, `upgrade-scaffold${options.mode === 'stage' ? '' : ` --${options.mode}`}`);
   if (options.mode === 'stage') return stage(project, options);
   if (options.mode === 'complete') return complete(project, options);
   return rollback(project, options);
@@ -120,7 +120,7 @@ async function stage(project: ProjectContext, options: UpgradeOptions): Promise<
   if (existing.size > 0) {
     throw new XForgeError(diagnostic(
       'XFORGE_UPGRADE_ALREADY_STAGED',
-      `${staged} already exists, so an upgrade to ${toVersion} is already in progress. Finish the merge and run \`xforge upgrade --complete\`, or \`xforge upgrade --rollback\` to abandon it.`,
+      `${staged} already exists, so an upgrade to ${toVersion} is already in progress. Finish the merge and run \`xforge upgrade-scaffold --complete\`, or \`xforge upgrade-scaffold --rollback\` to abandon it.`,
       staged,
     ));
   }
@@ -184,7 +184,7 @@ async function complete(project: ProjectContext, options: UpgradeOptions): Promi
   if (!record) {
     throw new XForgeError(diagnostic(
       'XFORGE_UPGRADE_NOT_STAGED',
-      'No upgrade is in progress: there is no rollback snapshot to complete against. Run `xforge upgrade` first.',
+      'No upgrade is in progress: there is no rollback snapshot to complete against. Run `xforge upgrade-scaffold` first.',
       ROLLBACK_MANIFEST,
     ));
   }
@@ -371,7 +371,7 @@ export function renderMergePrompt(plan: UpgradePlan, staged: string, snapshot: s
   return [
     `# Merge the ${plan.toVersion} Scaffold into this project`,
     ``,
-    `Invoke the \`xforge-upgrade\` Skill and give it this file.`,
+    `Invoke the \`xforge-upgrade-scaffold\` Skill and give it this file.`,
     ``,
     `The incoming Scaffold is at \`${staged}\`; the current one is at \`xforge/scaffold/\` and is`,
     `unchanged. A snapshot of it is at \`${snapshot}\` — do not edit that, it is the rollback point.`,
@@ -414,7 +414,7 @@ export function renderMergePrompt(plan: UpgradePlan, staged: string, snapshot: s
     ``,
     `## When done`,
     ``,
-    `Run \`xforge upgrade --complete\`, then \`xforge install\`, then \`xforge doctor\`. Report which`,
+    `Run \`xforge upgrade-scaffold --complete\`, then \`xforge install\`, then \`xforge doctor\`. Report which`,
     `files you merged, which conflicts you stopped on, and which new assets await a person's decision.`,
     ``,
   ].join('\n');

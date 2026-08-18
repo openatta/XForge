@@ -28,7 +28,7 @@ import { detectScaffoldLanguage, parseScaffoldLanguage } from './core/language.j
 import { envelope, present } from './protocol/envelope.js';
 import type { Diagnostic, Envelope, FlowAuthority, NextAction, ScaffoldLanguage } from './types.js';
 
-type CommandName = 'help' | 'version' | 'init' | 'state' | 'install' | 'sync' | 'update' | 'uninstall' | 'check' | 'brief' | 'verification' | 'transition' | 'approve' | 'audit' | 'work-package' | 'hook' | 'archive' | 'doctor' | 'upgrade';
+type CommandName = 'help' | 'version' | 'init' | 'state' | 'install' | 'sync' | 'update' | 'uninstall' | 'check' | 'brief' | 'verification' | 'transition' | 'approve' | 'audit' | 'work-package' | 'hook' | 'archive' | 'doctor' | 'upgrade-scaffold';
 
 interface ParsedArguments {
   command: string;
@@ -77,7 +77,7 @@ interface ParsedArguments {
   by?: string;
 }
 
-const COMMANDS: CommandName[] = ['help', 'version', 'init', 'state', 'install', 'sync', 'update', 'uninstall', 'check', 'brief', 'verification', 'transition', 'approve', 'audit', 'work-package', 'hook', 'archive', 'doctor', 'upgrade'];
+const COMMANDS: CommandName[] = ['help', 'version', 'init', 'state', 'install', 'sync', 'update', 'uninstall', 'check', 'brief', 'verification', 'transition', 'approve', 'audit', 'work-package', 'hook', 'archive', 'doctor', 'upgrade-scaffold'];
 const VALID_KINDS = ['skills', 'agents', 'rules', 'policies', 'hooks', 'gates', 'scripts', 'flows', 'approvals', 'mcp-servers'] as const;
 const VALUE_OPTIONS = ['--root', '--change', '--kind', '--target', '--gate', '--to', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--provider', '--output', '--event', '--package', '--language', '--as', '--evidence', '--stage', '--attach-triage', '--gate-name', '--command', '--module', '--covers', '--working-directory', '--timeout-seconds', '--not-applicable', '--justification', '--by'] as const;
 
@@ -151,8 +151,8 @@ const HELP: Record<CommandName, { usage: string; description: string; options: s
   'work-package': { usage: 'xforge [--root <path>] work-package <dispatch|acknowledge> --change <id> --package <id> [--as <integrator|reviewer> --evidence <path>] [--dry-run] [--text]', description: 'Dispatch a work package or acknowledge integration/review evidence.', options: ['--root', '--change', '--package', '--as', '--evidence', '--dry-run', '--text'] },
   hook: { usage: 'xforge hook dispatch --target <target> --event <event>', description: 'Internal platform Hook dispatcher.', options: ['--root', '--target', '--event'] },
   archive: { usage: 'xforge [--root <path>] archive --change <id> [--dry-run] [--text]', description: 'Verify, merge Specs, and atomically archive a Change.', options: ['--root', '--change', '--dry-run', '--text'] },
-  upgrade: {
-    usage: 'xforge [--root <path>] upgrade [--complete | --rollback] [--with-active-changes] [--force] [--dry-run] [--text]',
+  'upgrade-scaffold': {
+    usage: 'xforge [--root <path>] upgrade-scaffold [--complete | --rollback] [--with-active-changes] [--force] [--dry-run] [--text]',
     description: 'Stage the Scaffold this CLI ships beside the project\'s own and classify every file, so a person or an Agent can merge it.',
     options: ['--root', '--complete', '--rollback', '--with-active-changes', '--force', '--dry-run', '--text'],
   },
@@ -576,7 +576,7 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
     });
     return envelope({ command, root: project.root, ...result });
   }
-  if (command === 'upgrade') {
+  if (command === 'upgrade-scaffold') {
     if (parsed.complete && parsed.rollback) {
       throw new XForgeError(diagnostic(
         'XFORGE_UPGRADE_MODE_AMBIGUOUS',
@@ -720,7 +720,7 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
   let render: ((data: unknown) => string) | undefined;
   if (parsed?.command === 'brief' && result.ok) {
     render = (data: unknown) => renderBriefText(data as Parameters<typeof renderBriefText>[0]);
-  } else if (parsed?.command === 'upgrade' && result.ok) {
+  } else if (parsed?.command === 'upgrade-scaffold' && result.ok) {
     /* The plan is the whole output of a staged upgrade, and a wall of JSON is not a thing anyone
        reads before deciding what to merge. */
     render = (data: unknown) => renderUpgradeText({ data: data as Record<string, unknown>, diagnostics: [], changes: [] });

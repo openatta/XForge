@@ -3,7 +3,7 @@ only inside the current project. Never search parent directories, read
 environment variables, inspect `.env`, create approvals, or modify anything
 outside what the Skill you are invoking is authorised to write.
 
-Read `AGENTS.md`, `xforge/manifest.yaml`, and the installed `xforge-upgrade`
+Read `AGENTS.md`, `xforge/manifest.yaml`, and the installed `xforge-upgrade-scaffold`
 Skill. Use `xforge` from the project root exactly as `AGENTS.md` specifies and
 follow its JSON state and next actions as authoritative facts.
 
@@ -27,7 +27,7 @@ it. Report those as a decision for a person instead.
 Do not create a Change, do not touch `src/**`, `xforge/changes/**` or
 `xforge/specs/**`, and never write into `xforge/.rollback/**`.
 
-Finish with `xforge upgrade --complete`, then `xforge install`, then
+Finish with `xforge upgrade-scaffold --complete`, then `xforge install`, then
 `xforge doctor`. Report, per changed file, which side you took and why; quote the
 completion command's adoption count verbatim without grading it; and name every
 asset that arrived unselected.
