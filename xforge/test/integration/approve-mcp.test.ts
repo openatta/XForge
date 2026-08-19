@@ -57,7 +57,14 @@ async function toDesignWithMcpProvider(
   });
 }
 
-const mcpApproveArgs = ['approve', '--change', 'add-feature', '--for', 'apply', '--policy', 'planning-solid', '--provider', 'review-bot'];
+/*
+ * `--for check`, not `--for apply`. `planning-solid` gates the *design* Stage's exit, and the design
+ * exit transitions to `check`; a receipt filed against `apply` is bound to a transition this Change
+ * cannot take from here, so `approvalsForPolicy` would never count it. This fixture said `apply` for
+ * fifteen tests and they all passed, because each asserted only that a receipt was written — which
+ * is exactly the hole `assertApprovableTransition` now closes, found in our own suite by closing it.
+ */
+const mcpApproveArgs = ['approve', '--change', 'add-feature', '--for', 'check', '--policy', 'planning-solid', '--provider', 'review-bot'];
 
 describe('mcp approval provider', () => {
   it('submits and polls to a decided approval, writing an unsigned receipt', async () => {
@@ -113,7 +120,8 @@ describe('mcp approval provider', () => {
     expect(result.json.changes).toEqual([]);
     const pending = result.json.nextActions.find((item: any) => item.action === 'await-approval');
     expect(pending).toMatchObject({ status: 'pending', id: 'planning-solid', type: 'approval' });
-    expect(pending.command).toEqual(['xforge', 'approve', '--change', 'add-feature', '--for', 'apply', '--policy', 'planning-solid', '--provider', 'review-bot']);
+    /* The resume command is this invocation re-emitted, so it carries the same `--for`. */
+    expect(pending.command).toEqual(['xforge', ...mcpApproveArgs]);
     const state = await runCli(root, ['state', '--change', 'add-feature']);
     expect(state.json.data.change.governance.pendingApprovals.some((item: any) => item.policyId === 'planning-solid')).toBe(true);
   });

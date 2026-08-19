@@ -51,6 +51,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 - 在不完整实现、失败 Gate、无效 delivery、stale receipt、Spec 冲突、路径安全问题、目标碰撞或未授权归档时停止。
 - 在 approval provider 配置失败（`XFORGE_APPROVAL_PROVIDER_FORBIDDEN`、`XFORGE_APPROVAL_MCP_SERVER_MISSING`、`XFORGE_APPROVAL_MCP_TOKEN_MISSING`、`XFORGE_APPROVAL_MCP_CONNECTION_FAILED`）时停止：provider 未配置，不是决定仍在等待。告知用户配置其 McpServer 与 token（见 `scaffold/mcp-servers/`），或改在终端本地审批；绝不对同一个 provider 反复重试。
+- 审批命令一律从 `state.nextActions[].command` 里取，不要照 usage 字符串自己拼。`--for` 填的是该审批所解锁的那次 transition——Flow 里的 Stage id，绝不是 `stage` 这类字面词；填错过去会把真实的人类签字消耗在一份不会被计数的 receipt 上。`XFORGE_APPROVAL_TRANSITION_UNKNOWN` 与 `XFORGE_APPROVAL_TRANSITION_UNAPPROVABLE` 表示参数错了、且什么都没写入：改参数，不要重跑，更不要再请人签一次。`xforge approve ... --dry-run` 不需要终端、也不惊动审批人，就能把这些先校验一遍。
 - 归档时出现 `audit:remote-pending` 要停止：远端 audit 投递被设为 required，而 `XFORGE_AUDIT_ENDPOINT` 未设置或不可达，`audit retry` 没有可投递的去处。应告知用户配置该 endpoint（以及 token/HMAC 环境变量），或不再对该 assurance level 要求远端投递；绝不反复重试。
 - Verify 失败返回 Apply；governing artifact 自相矛盾时按 State 的 `reworkTo` 返回更早 Stage，**经由 `xforge-revise`**——它会一致地修订受影响的 Artifact，并让 digest 链使依赖它们的 Evidence 失效。直接改 governing artifact 会让 Change 的其余部分静默地与它不一致。
 

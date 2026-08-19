@@ -4,7 +4,7 @@ import fg from 'fast-glob';
 import type { ApprovalReceipt, ProjectContext } from '../types.js';
 import { safeResolve } from './path-safety.js';
 import { loadYaml } from './yaml.js';
-import { knownIdentities, unknownIdentityReason, type KnownIdentities } from './ledger-identity.js';
+import { knownIdentities, unknownIdentityReason, unverifiableIdentityWarning, type KnownIdentities } from './ledger-identity.js';
 
 /**
  * Makes the Constitution the enforced first layer it is documented to be.
@@ -236,6 +236,8 @@ export async function evaluateConstitutionCheck(
   const warnings: string[] = [];
   const covered: string[] = [];
   const violations: string[] = [];
+  /** Every `approvedBy` checked here, so a pass reached with nothing to check against can say so. */
+  const approvedNames: string[] = [];
   const byName = new Map<string, Record<string, unknown>>();
 
   for (const [index, raw] of document.principles.entries()) {
@@ -327,6 +329,7 @@ export async function evaluateConstitutionCheck(
          */
         problems.push(`${relative}: principle "${principle}" is approved by "${approvedBy}", who holds no approval receipt for this Change (${[...approvers].slice(0, 4).join(', ')}). An exception must be approved by someone who actually decided it.`);
       } else {
+        approvedNames.push(approvedBy);
         const reason = known && unknownIdentityReason(approvedBy, known);
         if (reason) problems.push(`${relative}: principle "${principle}" is approved by "${approvedBy}", which ${reason}.`);
       }
@@ -344,6 +347,13 @@ export async function evaluateConstitutionCheck(
    */
   if (!citedAnything && violations.length === 0) {
     problems.push(`${relative}: no entry in this ledger cites anything; a ledger of bare statuses is the general claim of compliance this Gate replaces.`);
+  }
+
+  /* The same disclosure `check-findings` makes, for the same reason: an approvedBy accepted against
+     an empty identity set was not verified, and the first commit turns that pass into a failure. */
+  const unverifiable = approvedNames.length > 0 && known ? unverifiableIdentityWarning(known) : null;
+  if (unverifiable) {
+    warnings.push(`${relative}: ${approvedNames.length} approvedBy name(s) (${approvedNames.join(', ')}) were accepted without verification — ${unverifiable}.`);
   }
 
   return { status: problems.length === 0 ? 'passed' : 'failed', problems, warnings, principles, covered, violations };

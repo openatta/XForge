@@ -287,6 +287,40 @@ describe('xforge brief', () => {
       const unresolvable = result.data.reconciliation.filter((entry) => entry.rule === 'RC-5');
       expect(unresolvable.map((entry) => entry.refs[0])).toEqual(['REQ-404']);
     });
+
+    /*
+     * RC-5 must resolve a reference the same way `constitution-check.ts` does, and that Gate tries
+     * the path Change-relative and *then* project-relative. This side did not: it consulted a set
+     * built only from the Change's own Artifacts, so a principle citing `xforge/constitution.md` or
+     * `xforge/architecture.md` — real files, and the most natural citation an architecture or
+     * governance principle has — passed the Gate and was reported here as not existing.
+     *
+     * Not hypothetical. A live `solid-rework` run's Check Agent cited
+     * `test/task-ledger.acceptance.mjs`, the immutable acceptance suite at the repository root, as
+     * evidence for a testability principle. That is the right citation; a brief that calls it
+     * unresolvable teaches the next Agent to cite something worse.
+     */
+    it('RC-5 accepts a citation of a real repository path outside the Change directory', async () => {
+      const root = await fixture();
+      await atDesignApproval(root);
+      const { CONSTITUTION_CHECK_PATH, constitutionPrinciples } = await import('../../src/core/constitution-check.js');
+      const { readFile } = await import('node:fs/promises');
+      const path = await import('node:path');
+      const source = await readFile(path.join(root, 'xforge', 'constitution.md'), 'utf8');
+      const [first] = constitutionPrinciples(source);
+      /* A file that exists in the repository and nowhere near the Change. */
+      await write(root, 'test/acceptance.mjs', 'export const suite = true;\n');
+      await write(root, `xforge/changes/${CHANGE}/${CONSTITUTION_CHECK_PATH}`, [
+        'principles:',
+        `  - principle: ${JSON.stringify(first)}`,
+        '    status: compliant',
+        '    references: [test/acceptance.mjs, xforge/constitution.md]',
+        '',
+      ].join('\n'));
+
+      const result = await brief(root);
+      expect(result.data.reconciliation.filter((entry) => entry.rule === 'RC-5')).toEqual([]);
+    });
   });
 
   describe('the authored layer', () => {

@@ -109,7 +109,7 @@ governance:
 用这个命令跑：
 
 ```bash
-xforge approve --change <id> --for <stage|archive> --policy planning-solid --provider review-bot
+xforge approve --change <id> --for <transition-id|archive> --policy planning-solid --provider review-bot
 ```
 
 ## `McpServer` 字段参考

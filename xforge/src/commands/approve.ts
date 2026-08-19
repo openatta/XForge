@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { rm } from 'node:fs/promises';
 import type { ApprovalPolicy, ApprovalReceipt, Diagnostic, FileChange, NextAction, ProjectContext } from '../types.js';
 import { recordAudit } from '../core/audit.js';
-import { resolveControlPlane } from '../core/control-plane.js';
+import { resolveControlPlane, type ResolvedControlPlane } from '../core/control-plane.js';
 import { XForgeError, diagnostic } from '../core/errors.js';
 import { atomicWrite } from '../core/files.js';
 import { isStageFlow, resolveChangeState } from '../core/flow-resolver.js';
@@ -82,6 +82,65 @@ export interface ApproveResult {
 function exitApprovals(flow: any, stageId: string): string[] {
   const exit = flow.stages.find((stage: any) => stage.id === stageId)?.exit;
   return Array.isArray(exit?.approvals) ? exit.approvals : [];
+}
+
+/**
+ * Refuses a `--for` that cannot produce a receipt anything will count.
+ *
+ * An approval is an irreversible draw on a human being. XForge is careful in one direction — the
+ * decision may not be constituted by flags, `architectureDeltas` demands a named `decidedBy`, Gate
+ * Evidence is written only by the runner — all of it aimed at an Agent manufacturing an authorisation
+ * nobody gave. The opposite direction was unguarded, and it has the same end state: a governance
+ * record that disagrees with the governance state.
+ *
+ * A live run wrote `--for stage`, taking the word from this command's own usage string. It was
+ * accepted. Two real people were called in, each signed once, and both receipts were filed under a
+ * transition the Flow does not contain, so `state` still reported `missing: 2` with four receipts on
+ * disk under two different transitions and nothing to say which pair was the real one. The correct
+ * value had been sitting in `state.nextActions[].command` the whole time.
+ *
+ * So the rule is: before a receipt is written, the transition it names must be one this Change could
+ * actually take, and some policy must gate it. A rework target passes the first test and fails the
+ * second — nothing governs a step backwards — and a receipt filed against one is just as uncountable
+ * as `--for stage` was.
+ */
+function assertApprovableTransition(control: ResolvedControlPlane, options: ApproveOptions, flow: any): void {
+  const stage = control.governance.currentStage;
+  const candidates = [...control.transitionRequirements.keys()];
+  const archiveApprovals: string[] = stage === 'ready-to-archive' ? flow.terminal?.archive?.approvals ?? [] : [];
+  const approvable = [
+    ...candidates.filter((target) => (control.transitionRequirements.get(target)?.approvalPolicies.length ?? 0) > 0),
+    ...(archiveApprovals.length > 0 ? ['archive'] : []),
+  ];
+  const suggestion = approvable[0];
+  const correction = suggestion
+    ? ` Use --for ${suggestion}${approvable.length > 1 ? ` (or one of: ${approvable.join(', ')})` : ''}.`
+    : ' No transition out of this Stage requires an approval right now.';
+  const nextActions: NextAction[] = [{
+    action: 'resolve-approval-transition', actor: 'main',
+    reason: `Read the exact command from state.nextActions[] rather than assembling one from the usage string: xforge state --change ${options.change} reports the transition each pending approval belongs to.`,
+    command: ['xforge', 'state', '--change', options.change],
+  }];
+
+  if (options.transition === 'archive') {
+    if (archiveApprovals.length > 0) return;
+    throw new XForgeError(diagnostic(
+      'XFORGE_APPROVAL_TRANSITION_UNAPPROVABLE',
+      `--for archive is not approvable here: this Change is at Stage ${stage}, and archive approval is only collected at ready-to-archive.${correction}`,
+    ), { nextActions });
+  }
+  if (!candidates.includes(options.transition)) {
+    throw new XForgeError(diagnostic(
+      'XFORGE_APPROVAL_TRANSITION_UNKNOWN',
+      `--for ${options.transition} does not name a transition this Change can take: from Stage ${stage} the Flow allows ${candidates.length > 0 ? candidates.join(', ') : 'no transition at all'}. "--for" takes the id of the transition the approval unlocks, never a literal word like "stage".${correction} Nothing was recorded.`,
+    ), { nextActions });
+  }
+  if ((control.transitionRequirements.get(options.transition)?.approvalPolicies.length ?? 0) === 0) {
+    throw new XForgeError(diagnostic(
+      'XFORGE_APPROVAL_TRANSITION_UNAPPROVABLE',
+      `The transition to ${options.transition} is legal from ${stage} but no approval policy gates it, so a receipt recorded against it would never be counted — a human decision filed where nothing reads it.${correction} Nothing was recorded.`,
+    ), { nextActions });
+  }
 }
 
 function approvalPolicy(flow: any, stageId: string, transition: string, requested?: string): ApprovalPolicy {
@@ -168,6 +227,7 @@ export async function executeApprove(project: ProjectContext, options: ApproveOp
   if (!isStageFlow(resolved.flow) || !resolved.flow.governance) throw new XForgeError(diagnostic('XFORGE_GOVERNANCE_FLOW_REQUIRED', 'approve requires a Protocol 2 governed Flow.'));
   const resources = await loadSelectedResources(project);
   const control = await resolveControlPlane(project, options.change, resolved.flow, resolved.state, resources, resolved.config);
+  assertApprovableTransition(control, options, resolved.flow);
   const policy = approvalPolicy(resolved.flow, control.governance.currentStage, options.transition, options.policy);
   const revision = control.governance.revision;
   let receipt: ApprovalReceipt;
@@ -189,6 +249,33 @@ export async function executeApprove(project: ProjectContext, options: ApproveOp
     });
     const governingDigest = sha256(stableStringify({ change: options.change, flow: resolved.flow.metadata.name, policy: policy.id, revision }));
     const resumeCommand = ['xforge', 'approve', '--change', options.change, '--for', options.transition, '--policy', policy.id, '--provider', provider.id];
+    /*
+     * The same line the local path draws, in the same place: everything decidable without troubling
+     * anyone has been decided, and the next step reaches a person. Submitting the request under
+     * `--dry-run` would have raised a real approval task on a real external system for a run whose
+     * whole purpose is to not do that.
+     */
+    if (options.dryRun) {
+      return {
+        data: { change: options.change, policy: policy.id, transition: options.transition, receipt: null, dryRun: true, status: 'pending' },
+        diagnostics: [
+          ...resources.diagnostics,
+          ...control.diagnostics,
+          diagnostic(
+            'XFORGE_APPROVAL_DRY_RUN_VALID',
+            `This approval is well-formed: policy ${policy.id} gates the transition to ${options.transition} from Stage ${control.governance.currentStage}, provider ${provider.id} is authorized for it, and a receipt recorded here would be counted. No request was submitted to the provider.`,
+            undefined,
+            'warning',
+          ),
+        ],
+        changes: [],
+        nextActions: [{
+          action: 'collect-approval', type: 'approval', id: policy.id, status: 'pending', actor: 'human',
+          reason: `Re-run without --dry-run to submit the request to ${provider.id} and poll for the decision.`,
+          command: resumeCommand,
+        }],
+      };
+    }
     const { result: poll, diagnostics: envDiagnostics } = await withMcpApprovalSession(project, server.value, provider.id, async (client, timeoutMs) => {
       await submitApprovalRequest(client, timeoutMs, {
         change: options.change, flow: resolved.flow.metadata.name, stage: control.governance.currentStage, transition: options.transition, policyId: policy.id,
@@ -247,10 +334,42 @@ export async function executeApprove(project: ProjectContext, options: ApproveOp
     if (!policy.providers.includes('local')) throw new XForgeError(diagnostic('XFORGE_APPROVAL_PROVIDER_FORBIDDEN', `Policy ${policy.id} does not allow local approvals.`), {
       nextActions: [{ action: 'resolve-approval-provider', reason: `Policy ${policy.id} requires an external provider (${policy.providers.join(', ') || '(none configured)'}) and does not permit a human to approve at the terminal. If the declared provider's McpServer is a placeholder or unreachable, this is a configuration gap, not a pending decision — tell the user rather than retrying. Fixing it requires editing the Flow/manifest to register a working provider or add "local" to this policy's providers, not a CLI command.`, actor: 'human' }],
     });
+    /*
+     * A dry run stops here, and stops here whether or not a terminal is attached.
+     *
+     * Both orderings were wrong before. Without a terminal, this command died on the interactivity
+     * gate below before reporting anything about the arguments, so the one tool available for
+     * checking an approval command in advance could not check it — which is precisely how a wrong
+     * `--for` reached two real approvers. With a terminal, it was worse: `--dry-run` ran the whole
+     * dialogue, asked a human for a decision, and then discarded it, because only the write is
+     * skipped when `dryRun` is set. Everything that can be decided without a human has now been
+     * decided above; the remaining step *is* the human, and a rehearsal must not spend one.
+     */
+    if (options.dryRun) {
+      return {
+        data: { change: options.change, policy: policy.id, transition: options.transition, receipt: null, dryRun: true, status: 'pending' },
+        diagnostics: [
+          ...resources.diagnostics,
+          ...control.diagnostics,
+          diagnostic(
+            'XFORGE_APPROVAL_DRY_RUN_VALID',
+            `This approval is well-formed: policy ${policy.id} gates the transition to ${options.transition} from Stage ${control.governance.currentStage}, and a receipt recorded here would be counted. Nothing was written, and no decision was requested. Re-run without --dry-run at an interactive terminal to collect it.`,
+            undefined,
+            'warning',
+          ),
+        ],
+        changes: [],
+        nextActions: [{
+          action: 'collect-approval', type: 'approval', id: policy.id, status: 'pending', actor: 'human',
+          reason: `Policy ${policy.id} requires ${policy.minApprovers} approver(s) with role ${policy.roles.join(' | ')}. The decision is typed at the terminal; it cannot be supplied by a flag.`,
+          command: ['xforge', 'approve', '--change', options.change, '--for', options.transition, '--policy', policy.id],
+        }],
+      };
+    }
     if (!options.interactive || !options.terminal) {
       throw new XForgeError(diagnostic(
         'XFORGE_APPROVAL_INTERACTIVE_REQUIRED',
-        'Local approval requires an interactive terminal: XForge asks for the approver, the decision, and the reason on stdin, and command-line flags cannot constitute the decision. There is no manifest setting that relaxes this. For a non-interactive session, use an mcp provider instead.',
+        'Local approval requires an interactive terminal: XForge asks for the approver, the decision, and the reason on stdin, and command-line flags cannot constitute the decision. There is no manifest setting that relaxes this. For a non-interactive session, use an mcp provider instead. To check the command itself without a terminal, re-run it with --dry-run.',
       ));
     }
     const governingDigest = sha256(stableStringify({ change: options.change, flow: resolved.flow.metadata.name, policy: policy.id, revision }));

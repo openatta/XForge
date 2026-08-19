@@ -28,7 +28,7 @@
       "items": {
         "$ref": "#/$defs/path"
       },
-      "description": "Paths reserved for the Integrator: shared contracts, module lists, DI roots and other integration output that belongs to no single package. They become attributable like any declared write path, and no package may declare one."
+      "description": "Paths reserved for the Integrator: shared contracts, module lists, DI roots and other integration output that belongs to no single package. They become attributable like any declared write path, and no worker package may declare one. Declaring any obliges the plan to carry exactly one role: integrator package, so the assembly that writes them is a tracked node rather than untracked work the DAG reports as done."
     }
   },
   "$defs": {
@@ -94,6 +94,14 @@
       "properties": {
         "id": {
           "$ref": "#/$defs/taskId"
+        },
+        "role": {
+          "enum": [
+            "worker",
+            "integrator"
+          ],
+          "default": "worker",
+          "description": "What this package is. A worker (the default) delivers one unit of the decomposition and may write nothing the plan reserved for the Integrator. The single optional integrator package delivers the assembly itself: its write_paths must fall inside integrator_paths, and because it is a package it carries depends_on, verify and done_when like any other, so the assembly is a node the DAG tracks instead of work that happens between nodes."
         },
         "goal": {
           "type": "string",

@@ -372,8 +372,11 @@ xforge transition --change <change-id> --to <next-stage>
 # When state reports a ready work package:
 xforge work-package dispatch --change <change-id> --package <package-id>
 
-# When state reports a required approval:
-xforge approve --change <change-id> --for <stage-or-archive> ...
+# When state reports a required approval. Copy the command from
+# state.nextActions[] rather than assembling one: --for takes the id of the
+# transition the approval unlocks, and approve refuses any other value
+# instead of writing a receipt nothing will count.
+xforge approve --change <change-id> --for <transition-id-or-archive> ...
 
 xforge audit verify --change <change-id>
 xforge archive --change <change-id> --dry-run

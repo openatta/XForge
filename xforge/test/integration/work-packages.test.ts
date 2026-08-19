@@ -808,16 +808,22 @@ describe('work-package protocol', () => {
     const result = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
     expect(result.code).toBe(1);
     const codes = result.json.diagnostics.map((item: any) => item.code);
-    expect(codes).toContain('XFORGE_WORK_PACKAGE_HEAD_NOT_CURRENT');
+    expect(codes).toContain('XFORGE_WORK_PACKAGE_TREE_UNATTRIBUTED');
     /* The declared range really is clean — that is what made this invisible. */
     expect(codes).not.toContain('XFORGE_WORK_PACKAGE_WRITE_ESCAPE');
     expect(codes).not.toContain('XFORGE_WORK_PACKAGE_CHANGED_PATHS_MISMATCH');
-    /* Self-explaining: both commits and the file nobody declared. */
-    const stale = result.json.diagnostics.find((item: any) => item.code === 'XFORGE_WORK_PACKAGE_HEAD_NOT_CURRENT');
-    expect(stale.message).toContain(head);
-    expect(stale.message).toContain(repositoryHead);
+    /* Self-explaining: the file nobody declared, and what to do about it. */
+    const stale = result.json.diagnostics.find((item: any) => item.code === 'XFORGE_WORK_PACKAGE_TREE_UNATTRIBUTED');
     expect(stale.message).toContain('src/payment/escaped.ts');
-    expect(result.json.data.change.workPackages.packages[0].status).toBe('failed');
+    /*
+     * And the package is not blamed. T001's own delivery is faultless: its declared range is clean,
+     * its diff matches, its verify passed. Reporting it as `failed` sent a live run auditing three
+     * good deliveries for a defect none of them had — the tree is what is wrong, and the plan's
+     * declarations are what fix it.
+     */
+    expect(result.json.data.change.workPackages.packages[0].status).toBe('succeeded');
+    expect(result.json.data.change.workPackages.unattributedPaths).toEqual(['src/payment/escaped.ts']);
+    expect(head).not.toBe(repositoryHead);
   });
 
   /*
@@ -956,5 +962,194 @@ describe('work-package protocol', () => {
     expect(result.code).toBe(1);
     expect(result.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_WORK_PACKAGE_VERIFY_FAILED');
     expect(result.json.data.workPackages[0].status).toBe('failed');
+  });
+
+  /*
+   * `integrator_paths` gave the shared assembly surface a unique writer. It did not put the assembly
+   * in the DAG, and a live run showed what that costs: three worker packages `succeeded`, the Apply
+   * transition reported ready with every Gate green, and the service did not start — eight of eleven
+   * Requirements unimplemented, because nothing in the plan had ever claimed the assembly was owed.
+   */
+  describe('integrator packages', () => {
+    it('refuses a plan that reserves Integrator paths but puts no package in the DAG to write them', async () => {
+      const root = await fixture();
+      await createCompleteSolidChange(root);
+      await write(root, 'xforge/changes/add-feature/work-packages.yaml', stringify({
+        apiVersion: 'xforge.dev/v1alpha1',
+        kind: 'WorkPackagePlan',
+        integrator_paths: ['src/lib.rs'],
+        packages: [workPackage('T001')],
+      }, { lineWidth: 120 }));
+
+      const result = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
+      expect(result.code).toBe(1);
+      const finding = result.json.diagnostics.find((item: any) => item.code === 'XFORGE_WORK_PACKAGE_INTEGRATOR_UNTRACKED');
+      expect(finding.message).toContain('src/lib.rs');
+      expect(finding.message).toContain('role: integrator');
+    });
+
+    it('holds an integrator package to the surface the plan reserved, in both directions', async () => {
+      const root = await fixture();
+      await createCompleteSolidChange(root);
+      await initializeGit(root);
+      const integratorPlan = (writePaths: string[]) => stringify({
+        apiVersion: 'xforge.dev/v1alpha1',
+        kind: 'WorkPackagePlan',
+        integrator_paths: ['src/lib.rs'],
+        packages: [
+          workPackage('T001'),
+          workPackage('T900', { role: 'integrator', depends_on: ['T001'], write_paths: writePaths }),
+        ],
+      }, { lineWidth: 120 });
+
+      /* Outward: role: integrator is not a licence to write anywhere. */
+      await write(root, 'xforge/changes/add-feature/work-packages.yaml', integratorPlan(['src/t001/leak.ts']));
+      const escaped = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
+      expect(escaped.code).toBe(1);
+      expect(escaped.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_WORK_PACKAGE_INTEGRATOR_WRITE_UNRESERVED');
+
+      /* Inward: the reserved path is the one thing a worker may not take and the Integrator may. */
+      await write(root, 'xforge/changes/add-feature/work-packages.yaml', integratorPlan(['src/lib.rs']));
+      const accepted = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
+      expect(accepted.code, JSON.stringify(accepted.json.diagnostics)).toBe(0);
+
+      /*
+       * The whole point: the assembly is a node. It waits on what it assembles, it occupies its own
+       * wave, and until it has a delivery of its own the Apply transition cannot report ready.
+       */
+      const packages = accepted.json.data.change.workPackages.packages;
+      expect(packages.find((item: any) => item.id === 'T900')).toMatchObject({ role: 'integrator', status: 'blocked' });
+      expect(accepted.json.data.change.workPackages.waves).toEqual([
+        { index: 1, packages: ['T001'] },
+        { index: 2, packages: ['T900'] },
+      ]);
+    });
+
+    it('refuses two integrator packages, because two writers of one assembly is not an assembly', async () => {
+      const root = await fixture();
+      await createCompleteSolidChange(root);
+      await write(root, 'xforge/changes/add-feature/work-packages.yaml', stringify({
+        apiVersion: 'xforge.dev/v1alpha1',
+        kind: 'WorkPackagePlan',
+        integrator_paths: ['src/lib.rs', 'src/main.rs'],
+        packages: [
+          workPackage('T001'),
+          workPackage('T900', { role: 'integrator', depends_on: ['T001'], write_paths: ['src/lib.rs'] }),
+          workPackage('T901', { role: 'integrator', depends_on: ['T001'], write_paths: ['src/main.rs'] }),
+        ],
+      }, { lineWidth: 120 }));
+
+      const result = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
+      expect(result.code).toBe(1);
+      const finding = result.json.diagnostics.find((item: any) => item.code === 'XFORGE_WORK_PACKAGE_INTEGRATOR_DUPLICATE');
+      expect(finding.message).toContain('T900');
+      expect(finding.message).toContain('T901');
+    });
+
+    it('leaves a plan that reserves nothing exactly as it was', async () => {
+      /* The compatibility claim, stated as a test: `role` is optional and absent means `worker`, so
+         a plan written before any of this existed keeps its meaning unchanged. */
+      const root = await fixture();
+      await createCompleteSolidChange(root);
+      await initializeGit(root);
+      await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([workPackage('T001'), workPackage('T002')]));
+      const result = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
+      expect(result.code, JSON.stringify(result.json.diagnostics)).toBe(0);
+      expect(result.json.data.change.workPackages.packages.map((item: any) => item.status)).toEqual(['ready', 'ready']);
+    });
+  });
+
+  /*
+   * Direction K: everything below already exists inside XForge at the moment a delivery is written,
+   * and requiring it to be retyped bought nothing but transcription errors.
+   */
+  describe('delivery drafting', () => {
+    it('fills in every field XForge already knows and leaves the executor only its own claims', async () => {
+      const root = await fixture();
+      await createCompleteSolidChange(root);
+      const verify = VERIFY_OK;
+      await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([
+        workPackage('T001', { write_paths: ['src/order/**'], verify: [verify] }),
+      ]));
+      const { binding } = await dispatchWithCommittedReceipt(root);
+      const base = await git(root, ['rev-parse', 'HEAD']);
+      await write(root, 'src/order/refund.ts', 'export const refund = true;\n');
+      await git(root, ['add', 'src/order/refund.ts']);
+      await git(root, ['commit', '-qm', 'worker T001']);
+      const head = await git(root, ['rev-parse', 'HEAD']);
+
+      const result = await runCli(root, ['work-package', 'draft', '--change', 'add-feature', '--package', 'T001'], approvalTestEnv);
+      expect(result.code, JSON.stringify(result.json.diagnostics)).toBe(0);
+      const draft = result.json.data.delivery;
+
+      /* Read back out of the dispatch receipt XForge issued, not copied by hand. */
+      expect(draft.execution_id).toBe(binding.executionId);
+      expect(draft.state_revision).toBe(binding.stateRevision);
+      expect(draft.policy_snapshot_digest).toBe(binding.policySnapshotDigest);
+      expect(draft.audit_correlation_id).toBe(binding.auditCorrelationId);
+      expect(draft.base_commit).toBe(base);
+      expect(draft.head_commit).toBe(head);
+      expect(draft.changed_paths).toEqual(['src/order/refund.ts']);
+      /* Ran, not asserted: the exit code comes from the same spawner Gates use. */
+      expect(draft.validation).toEqual([{ command: verifyLabel(verify), exit_code: 0 }]);
+
+      /*
+       * And what it refuses to invent. `status` is a claim about whether the work was done, and the
+       * evidence mapping is a semantic judgement; a CLI producing either would be signing the
+       * Worker's assertion on its behalf.
+       */
+      expect(draft.status).toBeUndefined();
+      expect(draft.issues).toBeUndefined();
+      expect(draft.done_when_evidence).toEqual([
+        { criterion: 'T001 is covered by an automated check', evidence: [] },
+      ]);
+      expect(result.json.data.target).toBe(`xforge/changes/add-feature/evidence/agents/T001/${binding.executionId}.yaml`);
+      /* It computes; it does not file. */
+      expect(result.json.changes).toEqual([]);
+    });
+
+    it('refuses to draft a delivery for an execution that was never dispatched', async () => {
+      const root = await fixture();
+      await createCompleteSolidChange(root);
+      await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([workPackage('T001')]));
+      await initializeGit(root);
+      await advanceSolidToApply(root);
+      const result = await runCli(root, ['work-package', 'draft', '--change', 'add-feature', '--package', 'T001'], approvalTestEnv);
+      expect(result.code).toBe(1);
+      expect(result.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_WORK_PACKAGE_DISPATCH_REQUIRED');
+    });
+  });
+
+  /*
+   * N-3(a): a path and a line is how people cite code, and it was the one spelling the exact-match
+   * comparison refused — turning a correct citation into an irrelevant one.
+   */
+  it('accepts a done_when citation that carries a line locator', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const verify = VERIFY_OK;
+    await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([
+      workPackage('T001', { write_paths: ['src/order/**'], verify: [verify] }),
+    ]));
+    const { binding } = await dispatchWithCommittedReceipt(root);
+    const base = await git(root, ['rev-parse', 'HEAD']);
+    await write(root, 'src/order/refund.ts', 'export const refund = true;\n');
+    await git(root, ['add', 'src/order/refund.ts']);
+    await git(root, ['commit', '-qm', 'worker T001']);
+    const head = await git(root, ['rev-parse', 'HEAD']);
+    await write(root, `xforge/changes/add-feature/evidence/agents/T001/${binding.executionId}.yaml`, delivery(binding, {
+      base_commit: base,
+      head_commit: head,
+      changed_paths: ['src/order/refund.ts'],
+      validation: [{ command: verifyLabel(verify), exit_code: 0 }],
+      done_when_evidence: [{
+        criterion: 'T001 is covered by an automated check',
+        evidence: ['src/order/refund.ts:1-3 — the exported constant the criterion names'],
+      }],
+    }));
+
+    const result = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
+    expect(result.code, JSON.stringify(result.json.diagnostics)).toBe(0);
+    expect(result.json.data.change.workPackages.packages[0].status).toBe('succeeded');
   });
 });

@@ -11,6 +11,8 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 - `xforge/scaffold/**` is the project's; `xforge/scaffold-<version>/**` is the release's. Neither is authoritative over the other by default.
 - `xforge/.rollback/**` is the restore point. Never write to it.
 - Read what this project currently selects with `xforge state --kind skills` (and `--kind rules`), not by parsing `xforge/manifest.yaml`. What is selected is a resolved fact the CLI reports; the file is one input to it.
+- `manifest.scaffold.version` tracks the Scaffold's *content* and only `upgrade-scaffold --complete` advances it, so a project whose CLI is newer than its Scaffold is in a normal state, not a broken one. If `xforge upgrade-scaffold` refuses because the declared CLI does not match the running one, run `xforge update` first: it moves the CLI pin alone and leaves the Scaffold pin where the files are.
+- `XFORGE_UPGRADE_VERSION_PIN_UNRELIABLE` means the pin says this Scaffold is already the incoming version while files disagree — written by an older `update` that advanced the pin without merging anything. The starting version is unrecoverable, so the reported span is meaningless; the merge itself is computed from file content and is unaffected. Say so once and continue.
 
 # Authority
 

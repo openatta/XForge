@@ -211,7 +211,7 @@ function verifyEntries(workPackage: WorkPackage): VerifyEntry[] {
   return workPackage.verify as unknown as VerifyEntry[];
 }
 
-function normalizeVerify(workPackage: WorkPackage): NormalizedVerify[] {
+export function normalizeVerify(workPackage: WorkPackage): NormalizedVerify[] {
   return verifyEntries(workPackage).map(normalizeVerifyEntry);
 }
 
@@ -268,7 +268,7 @@ interface GitResult {
   stderr: string;
 }
 
-async function git(root: string, args: string[]): Promise<GitResult> {
+export async function git(root: string, args: string[]): Promise<GitResult> {
   const environment: NodeJS.ProcessEnv = {};
   for (const name of ['PATH', 'SystemRoot', 'HOME', 'TMPDIR', 'TEMP', 'TMP']) {
     if (process.env[name]) environment[name] = process.env[name];
@@ -339,6 +339,34 @@ export function evidenceReference(entry: string): string {
      inside a filename or a command flag is never mistaken for the separator. */
   const [reference] = withoutPrefix.split(/\s+(?:—|–|--)\s+/);
   return (reference ?? withoutPrefix).trim();
+}
+
+/**
+ * The same reference with a trailing line locator removed: `src/store/mod.rs:166`, `…:166-190`.
+ *
+ * Citing a path and a line is how people cite code, and it was the one spelling the matcher refused:
+ * the reference is compared against the delivery's `changed_paths` by exact equality, so the line
+ * number turned a correct citation into an irrelevant one. Ten entries were rewritten across two
+ * round trips over exactly this.
+ *
+ * Only ever applied as a *fallback*, after the literal reference has failed to match, so a file
+ * whose name genuinely ends in `:<digits>` still resolves as itself first. The suffix is stripped,
+ * never interpreted — nothing here claims the cited line says what the entry says it does, which is
+ * the same limit the whole check already operates under.
+ */
+export function evidenceReferenceWithoutLine(reference: string): string | null {
+  const match = /^(.*[^/]):(\d+)(?:-(\d+))?$/.exec(reference);
+  return match ? match[1]! : null;
+}
+
+/**
+ * Whether this package delivers the plan's assembly rather than one unit of its decomposition.
+ *
+ * Absent `role` means `worker`, so every plan written before the field existed keeps its meaning
+ * exactly: a plan with no `integrator_paths` and no `role` is unaffected by any of this.
+ */
+export function isIntegratorPackage(workPackage: Pick<WorkPackage, 'role'>): boolean {
+  return workPackage.role === 'integrator';
 }
 
 function protectedWritePaths(project: ProjectContext, changeId: string, config: ChangeConfig, resources: SelectedResources, integratorPaths: string[] = []): string[] {
@@ -488,6 +516,20 @@ async function loadDispatches(
     }
   }
   return { dispatches, diagnostics };
+}
+
+/**
+ * The most recent dispatch receipt for one package, validated exactly as `resolveWorkPackages`
+ * validates it. Used by `work-package draft` to read back the bindings XForge itself issued, rather
+ * than asking an Agent to copy four opaque digests out of a receipt by hand.
+ */
+export async function latestDispatchFor(
+  project: ProjectContext,
+  changeId: string,
+  packageId: string,
+): Promise<{ dispatch: WorkPackageDispatchReceipt | null; diagnostics: Diagnostic[] }> {
+  const loaded = await loadDispatches(project, changeId, new Set([packageId]));
+  return { dispatch: latestDispatch(loaded.dispatches.get(packageId)), diagnostics: loaded.diagnostics };
 }
 
 function latestDispatch(dispatches: WorkPackageDispatchReceipt[] | undefined): WorkPackageDispatchReceipt | null {
@@ -675,29 +717,36 @@ async function validateDeliveryHead(
   headCommit: string,
   sourcePath: string,
   context: DeliveryContext,
-): Promise<Diagnostic[]> {
+): Promise<{ diagnostics: Diagnostic[]; unattributed: string[] }> {
   const { repositoryHead } = context;
   /* No observed HEAD means Git itself was unusable, which `resolveWorkPackages` already reported as
      XFORGE_WORK_PACKAGE_GIT_REQUIRED. Repeating it per delivery would only add noise. */
-  if (!repositoryHead || headCommit === repositoryHead) return [];
+  if (!repositoryHead || headCommit === repositoryHead) return { diagnostics: [], unattributed: [] };
 
   const reachable = await git(project.root, ['merge-base', '--is-ancestor', headCommit, repositoryHead]);
   if (reachable.code !== 0) {
     /* A head that is not an ancestor of HEAD is not in this worktree's history at all: an abandoned
        branch, a rebased-away commit, or a range invented wholesale. Nothing it claims is checkable
-       against the tree everyone else will read. */
-    return [diagnostic(
-      'XFORGE_WORK_PACKAGE_HEAD_NOT_CURRENT',
-      `Work package ${workPackage.id} declares head_commit ${headCommit}, which is not an ancestor of the repository HEAD ${repositoryHead}. A delivery must be judged against the history the repository actually has.`,
-      sourcePath,
-      'error',
-      { packageId: workPackage.id, headCommit, repositoryHead },
-    )];
+       against the tree everyone else will read. This one really is the package's problem — it is
+       *this* delivery's declared range that does not exist — so it stays a per-package error. */
+    return {
+      diagnostics: [diagnostic(
+        'XFORGE_WORK_PACKAGE_HEAD_NOT_CURRENT',
+        `Work package ${workPackage.id} declares head_commit ${headCommit}, which is not an ancestor of the repository HEAD ${repositoryHead}. A delivery must be judged against the history the repository actually has.`,
+        sourcePath,
+        'error',
+        { packageId: workPackage.id, headCommit, repositoryHead },
+      )],
+      unattributed: [],
+    };
   }
 
   const beyond = await git(project.root, ['diff', '--name-only', '--no-renames', '-z', `${headCommit}..${repositoryHead}`, '--']);
   if (beyond.code !== 0) {
-    return [diagnostic('XFORGE_WORK_PACKAGE_GIT_DIFF_FAILED', 'Unable to resolve the commits between the delivery head and HEAD.', sourcePath, 'error', { stderr: beyond.stderr.trim() })];
+    return {
+      diagnostics: [diagnostic('XFORGE_WORK_PACKAGE_GIT_DIFF_FAILED', 'Unable to resolve the commits between the delivery head and HEAD.', sourcePath, 'error', { stderr: beyond.stderr.trim() })],
+      unattributed: [],
+    };
   }
   const changeRoot = `${project.changesPath}/${changeId}`;
   const unattributed: string[] = [];
@@ -708,14 +757,18 @@ async function validateDeliveryHead(
     if (context.attributablePaths.some((pattern) => matchesPattern(changed, pattern))) continue;
     unattributed.push(changed);
   }
-  if (unattributed.length === 0) return [];
-  return [diagnostic(
-    'XFORGE_WORK_PACKAGE_HEAD_NOT_CURRENT',
-    `Work package ${workPackage.id} declares head_commit ${headCommit}, but the repository HEAD is ${repositoryHead} and the commits in between changed paths no work package declared and no Integrator-only path covers: ${unattributed.join(', ')}. A delivery is checked against the tree, not only against the commit range it names.`,
-    sourcePath,
-    'error',
-    { packageId: workPackage.id, headCommit, repositoryHead, unattributed },
-  )];
+  /*
+   * Returned rather than reported here, because the finding is not about this package.
+   *
+   * The condition is "the tree contains work nobody declared", and it is discovered while checking a
+   * delivery only because a delivery is what gives us a commit to measure from. Reporting it as a
+   * per-delivery error made three independently correct packages read as
+   * `work-package:wp-a:failed, work-package:wp-b:failed, work-package:wp-c:failed` — the same tree
+   * condition, restated once per package, blamed on all of them. Nothing about any of those packages
+   * needs fixing; the plan's declarations do. `resolveWorkPackages` aggregates these into one
+   * finding, and the control plane blocks the transition on `tree:unattributed-paths`.
+   */
+  return { diagnostics: [], unattributed };
 }
 
 async function validateSuccessfulDelivery(
@@ -725,8 +778,9 @@ async function validateSuccessfulDelivery(
   delivery: WorkPackageDelivery,
   sourcePath: string,
   context: DeliveryContext,
-): Promise<Diagnostic[]> {
+): Promise<{ diagnostics: Diagnostic[]; unattributed: string[] }> {
   const diagnostics: Diagnostic[] = [];
+  const unattributed: string[] = [];
   if (project.manifest.apiVersion === 'xforge.dev/v1alpha2') {
     if (!delivery.state_revision || !delivery.policy_snapshot_digest || !delivery.audit_correlation_id) {
       diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_DISPATCH_BINDING_REQUIRED', 'Protocol 2 delivery requires state_revision, policy_snapshot_digest, and audit_correlation_id.', sourcePath));
@@ -774,7 +828,7 @@ async function validateSuccessfulDelivery(
   }
   if (!delivery.head_commit) {
     diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_HEAD_REQUIRED', 'A succeeded delivery requires head_commit.', sourcePath));
-    return diagnostics;
+    return { diagnostics, unattributed };
   }
   if (delivery.changed_paths.length === 0) {
     diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_EMPTY_DELIVERY', 'A succeeded write package must contain at least one changed path.', sourcePath));
@@ -783,13 +837,15 @@ async function validateSuccessfulDelivery(
   const ancestry = await git(project.root, ['merge-base', '--is-ancestor', delivery.base_commit, delivery.head_commit]);
   if (ancestry.code !== 0) {
     diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_COMMIT_ANCESTRY', 'head_commit must descend from base_commit.', sourcePath, 'error', { stderr: ancestry.stderr.trim() }));
-    return diagnostics;
+    return { diagnostics, unattributed };
   }
-  diagnostics.push(...await validateDeliveryHead(project, changeId, workPackage, delivery.head_commit, sourcePath, context));
+  const head = await validateDeliveryHead(project, changeId, workPackage, delivery.head_commit, sourcePath, context);
+  diagnostics.push(...head.diagnostics);
+  unattributed.push(...head.unattributed);
   const diff = await git(project.root, ['diff', '--name-only', '--no-renames', '-z', `${delivery.base_commit}...${delivery.head_commit}`, '--']);
   if (diff.code !== 0) {
     diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_GIT_DIFF_FAILED', 'Unable to resolve the delivery commit diff.', sourcePath, 'error', { stderr: diff.stderr.trim() }));
-    return diagnostics;
+    return { diagnostics, unattributed };
   }
   const actualPaths = diff.stdout.split('\0').filter(Boolean).map((item) => normalizeRelative(item, 'Git changed path')).sort();
   const declaredPaths = [...delivery.changed_paths].map((item) => normalizeRelative(item, 'Delivery changed path')).sort();
@@ -876,14 +932,17 @@ async function validateSuccessfulDelivery(
     const relevant = (mapping.evidence ?? []).filter((item) => {
       const reference = evidenceReference(item);
       if (ranCommands.has(reference)) return true;
-      let normalized: string;
-      try { normalized = normalizeRelative(reference, 'Evidence path'); } catch { return false; }
-      return changedSet.has(normalized) && !isControlPlaneBookkeeping(normalized, changeRoot);
+      const candidates = [reference, evidenceReferenceWithoutLine(reference)].filter((value): value is string => value !== null);
+      return candidates.some((candidate) => {
+        let normalized: string;
+        try { normalized = normalizeRelative(candidate, 'Evidence path'); } catch { return false; }
+        return changedSet.has(normalized) && !isControlPlaneBookkeeping(normalized, changeRoot);
+      });
     });
     if (relevant.length === 0) {
       diagnostics.push(diagnostic(
         'XFORGE_WORK_PACKAGE_DONE_WHEN_EVIDENCE_IRRELEVANT',
-        `No evidence for done_when criterion "${mapping.criterion}" names a verify command this delivery ran or a path it changed. An entry may carry an explanation after an em dash or " -- "; only the reference before it is matched.`,
+        `No evidence for done_when criterion "${mapping.criterion}" names a verify command this delivery ran or a path it changed. An entry must begin with the exact command or path; an explanation may follow after an em dash or " -- ", and a trailing :line or :line-line is ignored. Only the reference before the dash is matched, so a test name or a sentence of prose matches nothing.`,
         sourcePath,
         'error',
         { criterion: mapping.criterion, evidence: mapping.evidence ?? [] },
@@ -924,7 +983,7 @@ async function validateSuccessfulDelivery(
       diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_DONE_WHEN_EVIDENCE_UNKNOWN', `Evidence maps an unknown done_when criterion: ${mapping.criterion}`, sourcePath));
     }
   }
-  return diagnostics;
+  return { diagnostics, unattributed };
 }
 
 export interface ResolveWorkPackagesOptions {
@@ -968,7 +1027,48 @@ export async function resolveWorkPackages(
     if (dependsTransitively(byId, id, id)) diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_DEPENDENCY_CYCLE', `Work package DAG contains a cycle at ${id}.`, planPath));
   }
 
-  const protectedPaths = protectedWritePaths(project, changeId, config, resources, plan.integrator_paths ?? []);
+  const integratorPaths = plan.integrator_paths ?? [];
+  const protectedPaths = protectedWritePaths(project, changeId, config, resources, integratorPaths);
+  /*
+   * The governance surface on its own — everything `protectedWritePaths` reserves *except* what this
+   * plan reserved for its own Integrator. No package of any role may write these. The integrator
+   * package is exempt from the `integrator_paths` half of the set and from nothing else: it delivers
+   * the assembly, not the Constitution, the Specs, the lock, or the Change's own Evidence.
+   */
+  const governancePaths = protectedWritePaths(project, changeId, config, resources, []);
+  const integratorPackages = plan.packages.filter(isIntegratorPackage);
+  if (integratorPackages.length > 1) {
+    diagnostics.push(diagnostic(
+      'XFORGE_WORK_PACKAGE_INTEGRATOR_DUPLICATE',
+      `A plan may declare at most one role: integrator package; this one declares ${integratorPackages.length}: ${integratorPackages.map((item) => item.id).join(', ')}. Integration is the point where the packages become one thing, so two of them are two writers of the same assembly.`,
+      planPath,
+      'error',
+      { packageIds: integratorPackages.map((item) => item.id) },
+    ));
+  }
+  /*
+   * Assembly the DAG cannot see is assembly the DAG will report as done.
+   *
+   * `integrator_paths` alone fixed attribution: it gave the shared surface a unique writer, so a file
+   * created during integration stopped invalidating every delivery in the plan. It did not make the
+   * assembly a *node*. A live run finished three worker packages, every one `succeeded`, and the
+   * control plane reported the Apply transition ready with all Gates green — while the assembly root
+   * was still empty and eight of eleven Requirements were unimplemented. Nothing was wrong: no
+   * artifact in the plan had ever claimed that the assembly was owed, so nothing could be missing.
+   *
+   * Declaring a path for the Integrator is that claim, made halfway. This completes it: reserve the
+   * surface and you must also name the package that delivers it, which then carries `depends_on`,
+   * `verify` and `done_when` like any other and blocks the transition until it has a delivery.
+   */
+  if (integratorPaths.length > 0 && integratorPackages.length === 0) {
+    diagnostics.push(diagnostic(
+      'XFORGE_WORK_PACKAGE_INTEGRATOR_UNTRACKED',
+      `The plan reserves ${integratorPaths.length} path(s) for the Integrator (${integratorPaths.join(', ')}) but declares no package with role: integrator, so the assembly that writes them is not in the DAG. Every worker package can then succeed and the Apply transition report ready with nothing assembled. Add one package with role: integrator whose write_paths fall inside integrator_paths, depending on the packages it assembles.`,
+      planPath,
+      'error',
+      { integratorPaths },
+    ));
+  }
   for (const rule of resources.rules.values()) {
     if (rule.value.spec.writePolicy === 'integrator-only' && !rule.value.spec.paths?.length) {
       diagnostics.push(diagnostic('XFORGE_RULE_WRITE_POLICY_PATHS_REQUIRED', 'An integrator-only Rule must declare paths.', rule.yamlPath));
@@ -1051,6 +1151,35 @@ export async function resolveWorkPackages(
         if (!config.scope.paths.some((scope) => patternWithinScope(pattern, normalizeRelative(scope, 'Change scope path')))) {
           diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_OUTSIDE_CHANGE_SCOPE', `Work package ${workPackage.id} write path is outside Change scope: ${pattern}`, planPath));
         }
+        /*
+         * The integrator package's boundary is `integrator_paths`, and it is a boundary in both
+         * directions: it may write the reserved surface (the exemption below), and it may write
+         * nothing else. Without the second half, "role: integrator" would read as a licence to write
+         * anywhere, and the plan would have named an integrator to satisfy the rule above while
+         * actually delivering ordinary work no reviewer expected to find there.
+         */
+        if (isIntegratorPackage(workPackage)) {
+          if (!integratorPaths.some((declared) => patternWithinScope(pattern, normalizeRelative(declared, 'Integrator path')))) {
+            diagnostics.push(diagnostic(
+              'XFORGE_WORK_PACKAGE_INTEGRATOR_WRITE_UNRESERVED',
+              `Integrator package ${workPackage.id} declares write path ${pattern}, which no integrator_paths entry covers. An integrator package delivers the reserved assembly surface and only that; anything else it needs to write belongs to a worker package, or must be reserved in integrator_paths first.`,
+              planPath,
+              'error',
+              { packageId: workPackage.id, pattern, integratorPaths },
+            ));
+          }
+          for (const governancePath of governancePaths) {
+            const normalizedGovernance = normalizeRelative(governancePath, 'Protected write path');
+            if (patternsPotentiallyOverlap(pattern, normalizedGovernance)) {
+              diagnostics.push(diagnostic(
+                'XFORGE_WORK_PACKAGE_SHARED_WRITE',
+                `Integrator package ${workPackage.id} write path overlaps a governance path no package may write: ${governancePath}`,
+                planPath,
+              ));
+            }
+          }
+          continue;
+        }
         for (const protectedPath of protectedPaths) {
           const normalizedProtected = normalizeRelative(protectedPath, 'Protected write path');
           if (patternsPotentiallyOverlap(pattern, normalizedProtected)) {
@@ -1122,18 +1251,40 @@ export async function resolveWorkPackages(
          dropping it here only makes this check stricter, never more permissive. */
       try { return [normalizeRelative(pattern, 'Attributable write path')]; } catch { return []; }
     }))];
+  const unattributedPaths = new Set<string>();
   for (const workPackage of plan.packages) {
     const latest = latestDelivery(loadedDeliveries.deliveries.get(workPackage.id));
     latestByPackage.set(workPackage.id, latest);
     if (!latest || latest.status !== 'succeeded') continue;
     const deliveryPath = `${project.changesPath}/${changeId}/evidence/agents/${workPackage.id}/${latest.execution_id}.yaml`;
-    const deliveryDiagnostics = await validateSuccessfulDelivery(project, changeId, workPackage, latest, deliveryPath, {
+    const delivered = await validateSuccessfulDelivery(project, changeId, workPackage, latest, deliveryPath, {
       repositoryHead: baseCommit,
       attributablePaths,
       verify: normalizeVerify(workPackage),
     });
-    diagnostics.push(...deliveryDiagnostics);
-    if (deliveryDiagnostics.some((item) => item.severity === 'error')) invalidDeliveries.add(workPackage.id);
+    diagnostics.push(...delivered.diagnostics);
+    for (const item of delivered.unattributed) unattributedPaths.add(item);
+    if (delivered.diagnostics.some((item) => item.severity === 'error')) invalidDeliveries.add(workPackage.id);
+  }
+  /*
+   * One finding for one condition. Every succeeded delivery measures the remainder between its own
+   * head and HEAD against the same plan-wide attributable set, so the same undeclared file is
+   * discovered by every delivery that precedes it — which is how a single unattributed directory
+   * came out as three separate package failures naming three packages that were fine.
+   *
+   * The check itself was right and stays: without it a change nobody claimed can sit between two
+   * accepted deliveries and reach Verify unexamined. Only the attribution of the finding moves —
+   * from the packages, which cannot fix it, to the plan, which can.
+   */
+  if (unattributedPaths.size > 0) {
+    const paths = [...unattributedPaths].sort();
+    diagnostics.push(diagnostic(
+      'XFORGE_WORK_PACKAGE_TREE_UNATTRIBUTED',
+      `${paths.length} path(s) changed after a delivery that no work package declares and no Integrator-only path covers: ${paths.join(', ')}. A delivery is checked against the tree, not only against the commit range it names, so this blocks the Change without any package being at fault. Declare these paths — in the write_paths of the package that produced them, or in the plan's integrator_paths if they are assembly output — and re-record the affected deliveries.`,
+      planPath,
+      'error',
+      { unattributed: paths },
+    ));
   }
 
   for (const workPackage of plan.packages) {
@@ -1226,6 +1377,7 @@ export async function resolveWorkPackages(
       waves: executionWaves(plan.packages),
       parallelCandidates: packageStates.filter((item) => item.status === 'ready').map((item) => item.id),
       protectedWritePaths: protectedPaths,
+      unattributedPaths: [...unattributedPaths].sort(),
       packages: packageStates,
     },
     diagnostics,

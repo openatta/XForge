@@ -45,11 +45,32 @@ export async function knownIdentities(
 }
 
 /**
+ * The caveat a caller must state when a ledger passed this check without one being possible.
+ *
+ * `null` once the Change records at least one identity — the check ran and means something. Non-null
+ * while the identity set is empty, which is a real condition with a real consequence: the same file,
+ * unchanged, passes now and fails after the Change's first commit, because the commit is what
+ * creates the set to compare against.
+ *
+ * That is the intended design — see `unknownIdentityReason` for why a new repository must not have
+ * its first Change blocked — and it was silent, which is the part that misled. A live run watched
+ * two mandatory Gates report `passed`, wrote the Check report on the strength of it, committed, and
+ * then had the identical content refused. "Green" there did not mean the names were good; it meant
+ * nothing yet existed that could say they were bad. Callers surface this so a reader can tell those
+ * two states apart before, rather than after, building on one.
+ */
+export function unverifiableIdentityWarning(known: KnownIdentities): string | null {
+  if (!known.empty) return null;
+  return 'this Change records no approvers and has no commits yet, so the names in it could not be checked against anything; they will be checked after the first commit, and a name that does not match a Git author or approver then will fail this Gate';
+}
+
+/**
  * `null` when the name is acceptable, otherwise the reason it is not.
  *
  * When the project records no identities at all there is nothing to check against, so a non-empty
  * name is accepted rather than blocking a Change that simply has no history yet — failing there
- * would punish the first Change in a repository for the repository being new.
+ * would punish the first Change in a repository for the repository being new. `unverifiableIdentityWarning`
+ * is the disclosure that goes with that acceptance.
  */
 export function unknownIdentityReason(name: string, known: KnownIdentities): string | null {
   const normalized = name.trim().toLowerCase();

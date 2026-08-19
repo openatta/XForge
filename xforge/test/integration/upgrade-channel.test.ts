@@ -105,22 +105,26 @@ describe('declared CLI version upgrade channel', () => {
     expect(childKeys(after, 'scaffold')).toEqual(childKeys(before, 'scaffold'));
     expect(childKeys(after, 'xforge')).toEqual(childKeys(before, 'xforge'));
 
-    /* The strongest form of the claim: line for line, the only edits anywhere in the file are the
-       three version pins moving from the declared version to the running one. */
+    /* The strongest form of the claim: line for line, the only edit anywhere in the file is the CLI
+       pin moving from the declared version to the running one. It used to be all three pins. The
+       Scaffold's two now belong to `upgrade-scaffold --complete`, because they describe the content
+       of `xforge/scaffold/**`, which this command does not touch — writing them here made the
+       Manifest assert a Scaffold version that no file on disk had reached. */
     const beforeLines = before.split('\n');
     const afterLines = after.split('\n');
     expect(afterLines.length).toBe(beforeLines.length);
     const edits = beforeLines.flatMap((line, index) => (line === afterLines[index] ? [] : [[line.trim(), afterLines[index]!.trim()]]));
     expect(edits).toEqual([
       ['version: 0.7.7', `version: ${CLI_VERSION}`],
-      ['version: 0.7.7', `version: ${CLI_VERSION}`],
-      ['version: 0.7.7', `version: ${CLI_VERSION}`],
     ]);
 
     const manifest = await yamlFile<any>(root, MANIFEST);
     expect(manifest.xforge.version).toBe(CLI_VERSION);
-    expect(manifest.scaffold.version).toBe(CLI_VERSION);
-    expect(manifest.scaffold.source.version).toBe(CLI_VERSION);
+    expect(manifest.scaffold.version).toBe('0.7.7');
+    expect(manifest.scaffold.source.version).toBe('0.7.7');
+
+    /* And the lag is stated rather than papered over, with the command that closes it. */
+    expect(update.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_SCAFFOLD_BEHIND_CLI');
   });
 
   it('converges the lockfile onto the reconciled version in the same run', async () => {
@@ -144,7 +148,10 @@ describe('declared CLI version upgrade channel', () => {
        also reach the lock would leave the project reporting a mismatch it can never resolve. */
     const lock = await yamlFile<any>(root, 'xforge/lock.yaml');
     expect(lock.xforge.version).toBe(CLI_VERSION);
-    expect(lock.scaffold.version).toBe(CLI_VERSION);
+    /* The lock records what the Manifest says, and the Manifest's Scaffold pin does not move here —
+       so the lock's does not either. The two agreeing is what matters; agreeing on the *CLI's*
+       version would be the lock repeating a claim about Scaffold content that nothing established. */
+    expect(lock.scaffold.version).toBe('0.7.7');
 
     const state = await runCli(root, ['state']);
     expect(state.code, JSON.stringify(state.json.diagnostics)).toBe(0);
@@ -231,8 +238,10 @@ describe('declared CLI version upgrade channel', () => {
 
     const manifest = await yamlFile<any>(root, MANIFEST);
     expect(manifest.xforge.version).toBe(CLI_VERSION);
-    expect(manifest.scaffold.version).toBe(CLI_VERSION);
-    expect(manifest.scaffold.source.version).toBe(CLI_VERSION);
+    /* `pinDeclaredVersion` set all three, and only the CLI pin moves; the Scaffold's stays where the
+       Scaffold content is, which here is still the prerelease's. */
+    expect(manifest.scaffold.version).toBe(`${CLI_VERSION}-rc.1`);
+    expect(manifest.scaffold.source.version).toBe(`${CLI_VERSION}-rc.1`);
   });
 
   it('refuses a prerelease of a newer version, and keeps that project loadable', async () => {

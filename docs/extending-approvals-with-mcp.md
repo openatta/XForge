@@ -119,7 +119,7 @@ governance:
 Run it with:
 
 ```bash
-xforge approve --change <id> --for <stage|archive> --policy planning-solid --provider review-bot
+xforge approve --change <id> --for <transition-id|archive> --policy planning-solid --provider review-bot
 ```
 
 ## `McpServer` field reference

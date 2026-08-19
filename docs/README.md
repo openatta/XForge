@@ -322,7 +322,7 @@ xforge transition --change <change-id> --to <next-stage>
 xforge work-package dispatch --change <change-id> --package <package-id>
 
 # state 报告需要审批时：
-xforge approve --change <change-id> --for <stage-or-archive> ...
+xforge approve --change <change-id> --for <transition-id-or-archive> ...
 
 xforge audit verify --change <change-id>
 xforge archive --change <change-id> --dry-run

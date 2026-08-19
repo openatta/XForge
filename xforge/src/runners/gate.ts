@@ -216,6 +216,27 @@ async function resolveGateContext(project: ProjectContext, changeId: string): Pr
  * every input is either a governance Artifact or a commit id, so a caller reusing Evidence on the
  * strength of a matching digest must establish working-tree equality separately.
  */
+/**
+ * Runs one command and reports how it exited, with no Evidence, audit event, or Gate semantics.
+ *
+ * For `work-package draft`, which needs the exit code of each declared `verify` entry and nothing
+ * else. It goes through `runCommand` rather than its own `spawn` for the reason stated above that
+ * function: the output bound, the timeout and its escalation, the environment allowlist, and the
+ * never-a-shell rule are properties this needs exactly as much as a Gate does, and a work package's
+ * `verify` is the one command list in XForge that arrives from a file the Change itself can write.
+ */
+export async function runVerifyCommand(
+  project: ProjectContext,
+  gate: GateResource,
+): Promise<{ exitCode: number | null; timedOut: boolean; unavailable: string | null }> {
+  const execution = await runCommand(project, gate);
+  return {
+    exitCode: execution.result.exitCode,
+    timedOut: execution.result.timedOut,
+    unavailable: execution.unavailable ? `${execution.unavailable.executable}: ${execution.unavailable.detail}` : null,
+  };
+}
+
 export async function gateInputDigest(
   project: ProjectContext,
   changeId: string,

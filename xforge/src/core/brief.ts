@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import fg from 'fast-glob';
 import type {
@@ -585,13 +585,28 @@ function decidedOn(value: string): string {
   return /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : '(no date recorded)';
 }
 
-/** RC-5 — a Constitution reference that resolves to nothing. */
+/**
+ * RC-5 — a Constitution reference that resolves to nothing.
+ *
+ * "Resolves" has to mean here exactly what it means in `constitution-check.ts`'s `resolveReference`,
+ * which is the Gate that decides whether the same citation is acceptable. It did not: that function
+ * tries the reference Change-relative and then project-relative, while this one consulted a set built
+ * only from the Change's own Artifacts. A principle citing `xforge/architecture.md` — a real file,
+ * and the most natural thing an architecture principle can cite — passed the Gate and was reported
+ * here as neither a Requirement nor a file that exists. The observed cost was not confusion but a
+ * worse Constitution: the citation was rewritten to a Change-local path to silence a false alarm.
+ *
+ * `resolvesOnDisk` is supplied by the caller, which has already awaited the same two candidate
+ * spellings the Gate tries. Keep the two in step; a divergence here reads to everyone as a defect in
+ * whichever component they happen to be looking at.
+ */
 function reconcileConstitutionReferences(
   principles: LedgerPrinciple[],
   requirements: SpecRequirement[],
   sources: ArtifactSource[],
   gatePassed: Set<string>,
   existingPaths: Set<string>,
+  resolvesOnDisk: Set<string>,
 ): ReconciliationObservation[] {
   const observations: ReconciliationObservation[] = [];
   const anchors = new Set(requirements.map((entry) => entry.anchor));
@@ -613,12 +628,13 @@ function reconcileConstitutionReferences(
       }
       if (anchors.has(reference) || headings.has(reference)) continue;
       if (existingPaths.has(reference) || sources.some((source) => source.path.endsWith(reference))) continue;
+      if (resolvesOnDisk.has(reference)) continue;
       observations.push({
         id: `RC-5:${principle.principle}:${reference}`,
         rule: 'RC-5',
         code: 'XFORGE_BRIEF_REFERENCE_UNRESOLVABLE',
         provenance: 'computed',
-        summary: `Principle "${principle.principle}" cites ${reference}, which is neither a Requirement in this Change nor a file that exists.`,
+        summary: `Principle "${principle.principle}" cites ${reference}, which is neither a Requirement in this Change nor a file that exists in the Change directory or the repository.`,
         refs: [reference],
       });
     }
@@ -936,12 +952,31 @@ export async function readBrief(project: ProjectContext, options: BriefOptions):
     existingPaths.add(requirement.file.slice(`${project.changesPath}/${options.change}/`.length));
   }
 
+  /*
+   * The same two spellings `constitution-check.ts`'s `resolveReference` tries, resolved here so RC-5
+   * agrees with the Gate that already accepted these citations. Done once for the whole principle
+   * set rather than inside the pure reconciliation function, which stays synchronous and testable.
+   */
+  const resolvesOnDisk = new Set<string>();
+  for (const principle of principlesResult.principles) {
+    for (const reference of principle.references) {
+      if (/^gate:/i.test(reference) || resolvesOnDisk.has(reference)) continue;
+      for (const candidate of [`${project.changesPath}/${options.change}/${reference}`, reference]) {
+        try {
+          await access(await safeResolve(project.root, candidate));
+          resolvesOnDisk.add(reference);
+          break;
+        } catch { /* try the next spelling */ }
+      }
+    }
+  }
+
   const reconciliation: ReconciliationObservation[] = [
     ...reconcileResolvedFindings(findingsResult.findings, requirements, sources),
     ...reconcileRequirementAnchors(requirements, sources),
     ...reconcileCoverageSections(requirements, sources),
     ...reconcileDeclaredGaps(sources, findingsResult.findings),
-    ...reconcileConstitutionReferences(principlesResult.principles, requirements, sources, gatePassed, existingPaths),
+    ...reconcileConstitutionReferences(principlesResult.principles, requirements, sources, gatePassed, existingPaths, resolvesOnDisk),
     ...reconcileMaterialDecisions(await readMaterialDecisions(project, options.change), sources),
   ];
 

@@ -484,12 +484,26 @@ function independentReviewCondition(state: ChangeState, expected: string): { sat
   return { satisfied: true, reason: 'satisfied' };
 }
 
+export interface TransitionRequirement {
+  approvals: ApprovalReceipt[];
+  gates: GateEvidence[];
+  blockedBy: string[];
+  /**
+   * The approval policies that gate this specific target, in Flow order.
+   *
+   * Empty for a rework target, which is governed by nothing — and that emptiness is load-bearing:
+   * `approve` reads it to refuse writing a receipt against a transition no policy protects, rather
+   * than recording a human decision that can never be counted.
+   */
+  approvalPolicies: string[];
+}
+
 export interface ResolvedControlPlane {
   governance: GovernanceState;
   diagnostics: Diagnostic[];
   flow: StageFlow;
   state: ChangeState;
-  transitionRequirements: Map<string, { approvals: ApprovalReceipt[]; gates: GateEvidence[]; blockedBy: string[] }>;
+  transitionRequirements: Map<string, TransitionRequirement>;
   resources: SelectedResources;
   /** Audit facts for this Change as of this resolution, usable without the local `.audit` chain. */
   auditFacts: ChangeAuditFacts;
@@ -536,7 +550,7 @@ export async function resolveControlPlane(
   const currentIndex = flow.stages.findIndex((stage) => stage.id === currentStage);
   const current = currentIndex >= 0 ? flow.stages[currentIndex]! : null;
   const candidates = current ? legalTransitionTargets(flow, current.id) : [];
-  const transitionRequirements = new Map<string, { approvals: ApprovalReceipt[]; gates: GateEvidence[]; blockedBy: string[] }>();
+  const transitionRequirements = new Map<string, TransitionRequirement>();
   const readyTransitions: GovernanceState['readyTransitions'] = [];
   const pendingApprovals: GovernanceState['pendingApprovals'] = [];
 
@@ -544,6 +558,10 @@ export async function resolveControlPlane(
     const blockedBy: string[] = [];
     const approvalEvidence: ApprovalReceipt[] = [];
     const gateEvidence: GateEvidence[] = [];
+    /* Which policies gate *this* target, recorded rather than recomputed by callers. A rework target
+       is governed by none, and `approve.ts` needs to know that before it writes a receipt nothing
+       will ever count. */
+    const approvalPolicies: string[] = [];
     const isRework = currentIndex >= 0 && target !== 'ready-to-archive' && flow.stages.findIndex((stage) => stage.id === target) <= currentIndex;
     /* Outside the `isRework` guard on purpose: a forked or broken receipt chain makes the Change's
        current Stage itself unreliable, so rework is no more decidable than forward progress. This
@@ -555,6 +573,11 @@ export async function resolveControlPlane(
       }
       if (current.id === 'apply' && target === 'verify' && state.workPackages) {
         for (const workPackage of state.workPackages.packages) if (!['succeeded', 'integrated', 'reviewed'].includes(workPackage.status)) blockedBy.push(`work-package:${workPackage.id}:${workPackage.status}`);
+        /* Kept distinct from the package blocks above on purpose. `work-package:<id>:failed` says
+           "that package's delivery is bad"; this says "the tree holds work no package claims". The
+           two have entirely different repairs, and reporting the second in the shape of the first
+           sent a live run looking for defects in three deliveries that had none. */
+        if (state.workPackages.unattributedPaths?.length) blockedBy.push('tree:unattributed-paths');
       }
       const exit = structuredExit(current);
       for (const gateId of [...new Set([...(current.gates ?? []), ...(exit.gates ?? [])])]) {
@@ -575,6 +598,7 @@ export async function resolveControlPlane(
         if (!condition.satisfied) blockedBy.push(`condition:${key}:${condition.reason}`);
       }
       for (const policyId of exit.approvals ?? []) {
+        approvalPolicies.push(policyId);
         const policy = policyById(flow, policyId);
         if (!policy) { blockedBy.push(`approval-policy:${policyId}:missing`); continue; }
         const result = approvalsForPolicy(approvals.receipts, policy, target, await binding());
@@ -591,7 +615,7 @@ export async function resolveControlPlane(
       for (const eventType of exit.auditEvents ?? []) if (!auditFacts.eventTypes.includes(eventType)) blockedBy.push(`audit:${eventType}:missing`);
       if (!auditFacts.chain.valid) blockedBy.push('audit:chain-invalid');
     }
-    transitionRequirements.set(target, { approvals: approvalEvidence, gates: gateEvidence, blockedBy });
+    transitionRequirements.set(target, { approvals: approvalEvidence, gates: gateEvidence, blockedBy, approvalPolicies });
     readyTransitions.push({ to: target, ready: blockedBy.length === 0, blockedBy });
   }
 
@@ -604,6 +628,19 @@ export async function resolveControlPlane(
     }
   }
 
+  /*
+   * A Rule's enforcement refs are resolved against what this Flow and this project actually contain,
+   * not merely counted.
+   *
+   * The Scaffold's `design-decisions-need-a-human` declared `approvalRefs: [planning-solid]`, a
+   * policy that exists only in the `solid` Flow. Under `major` the counting version reported the
+   * Rule as having enforcement — `approvalRefs` was non-empty, so the `uncovered` branch never fired
+   * — while nothing whatsoever checked it: no receipt could ever carry that policy id, so `approved`
+   * could never be added either. The Rule read as governed precisely because it named a mechanism
+   * that was absent. A citation that resolves to nothing is the one case a coverage report must not
+   * treat as coverage.
+   */
+  const flowPolicyIds = new Set((flow.governance?.approvalPolicies ?? []).map((policy: ApprovalPolicy) => policy.id));
   const rules = [...resources.rules.values()].map((item) => normalizeRule(item.value)).filter((rule) => ruleApplies(rule, config, currentStage)).map((rule) => {
     const coverage: GovernanceState['rules'][number]['coverage'] = ['instructed'];
     if (rule.policyRefs.some((id) => resources.policies.has(id))) coverage.push('guarded');
@@ -612,9 +649,23 @@ export async function resolveControlPlane(
     const approved = rule.approvalRefs.some((id) => approvals.receipts.some((receipt) => receipt.policyId === id && receipt.decision === 'approve'
       && boundToRevision(receipt, { governingRevision: revision.governingRevision!, stateRevision: revision.stateRevision })));
     if (approved) coverage.push('approved');
+    const enforceableRefs = [
+      ...rule.gateRefs.filter((id) => resources.gates.has(id)),
+      ...rule.approvalRefs.filter((id) => flowPolicyIds.has(id)),
+    ];
     if (rule.severity === 'must' && rule.gateRefs.length === 0 && rule.approvalRefs.length === 0) coverage.push('uncovered');
-    return { id: rule.id, severity: rule.severity, instruction: rule.instruction, coverage, gateRefs: rule.gateRefs, policyRefs: rule.policyRefs, approvalRefs: rule.approvalRefs };
+    else if (rule.severity === 'must' && enforceableRefs.length === 0) coverage.push('unenforceable');
+    return { id: rule.id, severity: rule.severity, instruction: rule.instruction, coverage, gateRefs: rule.gateRefs, policyRefs: rule.policyRefs, approvalRefs: rule.approvalRefs, enforceableRefs };
   });
+  for (const rule of rules) {
+    if (!rule.coverage.includes('unenforceable')) continue;
+    diagnostics.push(diagnostic(
+      'XFORGE_RULE_ENFORCEMENT_UNAVAILABLE',
+      `Rule ${rule.id} is severity must and its enforcement cites ${[...rule.gateRefs, ...rule.approvalRefs].join(', ')}, none of which exists under Flow ${flow.metadata.name}: the Rule is instruction only here. Either declare enforcement this Flow can apply, or word the Rule so it does not promise a mechanism that depends on which Flow a Change happens to run.`,
+      [...resources.rules.values()].find((item) => item.value.metadata.name === rule.id)?.yamlPath ?? 'xforge/scaffold/rules',
+      'warning',
+    ));
+  }
 
   const governance: GovernanceState = {
     currentStage, transitionHead, transitions: transitions.receipts, revision,

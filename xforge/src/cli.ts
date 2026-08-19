@@ -18,7 +18,7 @@ import { executeUpdate } from './commands/update.js';
 import { executeTransition } from './commands/transition.js';
 import { executeHookDispatch, hookFailureOutput, hookPlatformOutput, repairAffordance } from './commands/hook.js';
 import { executeInit } from './commands/init.js';
-import { executeWorkPackageAcknowledge, executeWorkPackageDispatch } from './commands/work-package.js';
+import { executeWorkPackageAcknowledge, executeWorkPackageDispatch, executeWorkPackageDraft } from './commands/work-package.js';
 import { executeDoctor } from './commands/doctor.js';
 import { executeUpgrade, renderUpgradeText } from './commands/upgrade.js';
 import { XForgeError, diagnostic } from './core/errors.js';
@@ -146,9 +146,9 @@ const HELP: Record<CommandName, { usage: string; description: string; options: s
   },
   brief: { usage: 'xforge [--root <path>] brief --change <id> [--attach-triage <path>] [--text]', description: 'Report what a human approval at this Stage turns on, separating computed facts from quoted Artifact text.', options: ['--root', '--change', '--attach-triage', '--text'] },
   transition: { usage: 'xforge [--root <path>] transition --change <id> --to <stage> [--dry-run] [--text]', description: 'Evaluate and record a governed Stage transition.', options: ['--root', '--change', '--to', '--dry-run', '--text'] },
-  approve: { usage: 'xforge [--root <path>] approve --change <id> --for <stage|archive> [--policy <id>] [--provider <mcp-provider-id> | local fields] [--dry-run] [--text]', description: 'Record an interactive human approval at the terminal, or submit/poll an mcp provider. There is no other approval mechanism.', options: ['--root', '--change', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--provider', '--dry-run', '--text'] },
+  approve: { usage: 'xforge [--root <path>] approve --change <id> --for <transition-id|archive> [--policy <id>] [--provider <mcp-provider-id> | local fields] [--dry-run] [--text]', description: 'Record an interactive human approval at the terminal, or submit/poll an mcp provider. There is no other approval mechanism. --for takes the id of the transition the approval unlocks (the value xforge state reports in nextActions[].command), not a literal word.', options: ['--root', '--change', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--provider', '--dry-run', '--text'] },
   audit: { usage: 'xforge [--root <path>] audit <status|verify|export|retry|prune> [--change <id>] [--output <path>] [--text]', description: 'Inspect, verify, export, redeliver, or prune the append-only audit chain.', options: ['--root', '--change', '--output', '--text'] },
-  'work-package': { usage: 'xforge [--root <path>] work-package <dispatch|acknowledge> --change <id> --package <id> [--as <integrator|reviewer> --evidence <path>] [--dry-run] [--text]', description: 'Dispatch a work package or acknowledge integration/review evidence.', options: ['--root', '--change', '--package', '--as', '--evidence', '--dry-run', '--text'] },
+  'work-package': { usage: 'xforge [--root <path>] work-package <dispatch|draft|acknowledge> --change <id> --package <id> [--as <integrator|reviewer> --evidence <path>] [--dry-run] [--text]', description: 'Dispatch a work package, draft its delivery record from what XForge already knows, or acknowledge integration/review evidence.', options: ['--root', '--change', '--package', '--as', '--evidence', '--dry-run', '--text'] },
   hook: { usage: 'xforge hook dispatch --target <target> --event <event>', description: 'Internal platform Hook dispatcher.', options: ['--root', '--target', '--event'] },
   archive: { usage: 'xforge [--root <path>] archive --change <id> [--dry-run] [--text]', description: 'Verify, merge Specs, and atomically archive a Change.', options: ['--root', '--change', '--dry-run', '--text'] },
   'upgrade-scaffold': {
@@ -231,8 +231,17 @@ function parseArguments(argv: string[]): ParsedArguments {
       parsed.attestation = 'human';
     }
     if (token === '--kind') {
-      if (!VALID_KINDS.includes(value as (typeof VALID_KINDS)[number])) throw new XForgeError(diagnostic('XFORGE_KIND_UNKNOWN', `Unknown resource kind: ${value}`));
-      parsed.kind = value as ParsedArguments['kind'];
+      /*
+       * The kinds are plural, and the Skills that tell an Agent to run this say `--kind <resource>`,
+       * which invites the singular. A live run typed `--kind skill`, got "Unknown resource kind" with
+       * no list of what would have worked, and abandoned the flag. Accepting the singular costs
+       * nothing and removes the whole class; the message now names the alternatives either way.
+       */
+      const canonical = VALID_KINDS.find((kind) => kind === value || kind === `${value}s`);
+      if (!canonical) {
+        throw new XForgeError(diagnostic('XFORGE_KIND_UNKNOWN', `Unknown resource kind: ${value}. Valid kinds are ${VALID_KINDS.join(', ')}.`));
+      }
+      parsed.kind = canonical as ParsedArguments['kind'];
     }
     if (token === '--target') {
       if (!TARGETS.includes(value as TargetId)) throw new XForgeError(diagnostic('XFORGE_TARGET_UNKNOWN', `Unknown target: ${value}`));
@@ -299,7 +308,7 @@ function parseArguments(argv: string[]): ParsedArguments {
     /* Naming what is missing and what was accepted, separately. The old message listed both
        required options whichever one was absent, so somebody who had passed a perfectly valid
        `--policy` had no way to tell whether that was the rejected part without reading the help. */
-    const missing = [!parsed.change ? '--change <id>' : null, !parsed.transition ? '--for <stage|archive>' : null].filter(Boolean);
+    const missing = [!parsed.change ? '--change <id>' : null, !parsed.transition ? '--for <transition-id|archive>' : null].filter(Boolean);
     const given = [parsed.change ? '--change' : null, parsed.transition ? '--for' : null, parsed.policy ? '--policy' : null, parsed.provider ? '--provider' : null].filter(Boolean);
     throw new XForgeError(diagnostic(
       'XFORGE_APPROVAL_ARGUMENTS_REQUIRED',
@@ -310,13 +319,13 @@ function parseArguments(argv: string[]): ParsedArguments {
   if (parsed.command === 'audit' && parsed.output && parsed.subcommand !== 'export') throw new XForgeError(diagnostic('XFORGE_OPTION_NOT_ALLOWED', '--output is only valid for audit export.'));
   if (parsed.command === 'hook' && (parsed.subcommand !== 'dispatch' || !parsed.target || !parsed.event)) throw new XForgeError(diagnostic('XFORGE_HOOK_ARGUMENTS_REQUIRED', 'hook dispatch requires --target and --event.'));
   if (parsed.command === 'work-package') {
-    if (!parsed.change || !parsed.packageId || !['dispatch', 'acknowledge'].includes(parsed.subcommand ?? '')) {
-      throw new XForgeError(diagnostic('XFORGE_WORK_PACKAGE_ARGUMENTS_REQUIRED', 'work-package requires dispatch or acknowledge, --change, and --package.'));
+    if (!parsed.change || !parsed.packageId || !['dispatch', 'draft', 'acknowledge'].includes(parsed.subcommand ?? '')) {
+      throw new XForgeError(diagnostic('XFORGE_WORK_PACKAGE_ARGUMENTS_REQUIRED', 'work-package requires dispatch, draft, or acknowledge, plus --change and --package.'));
     }
     if (parsed.subcommand === 'acknowledge' && (!parsed.acknowledgeAs || !parsed.evidence)) {
       throw new XForgeError(diagnostic('XFORGE_WORK_PACKAGE_ACK_ARGUMENTS_REQUIRED', 'work-package acknowledge requires --as <integrator|reviewer> and --evidence <path>.'));
     }
-    if (parsed.subcommand === 'dispatch' && (parsed.acknowledgeAs || parsed.evidence)) {
+    if (parsed.subcommand !== 'acknowledge' && (parsed.acknowledgeAs || parsed.evidence)) {
       throw new XForgeError(diagnostic('XFORGE_OPTION_NOT_ALLOWED', '--as and --evidence are only valid for work-package acknowledge.'));
     }
   }
@@ -655,6 +664,10 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
   if (command === 'work-package') {
     if (parsed.subcommand === 'dispatch') {
       const result = await executeWorkPackageDispatch(project, { change: parsed.change!, packageId: parsed.packageId!, dryRun: parsed.dryRun });
+      return envelope({ command, root: project.root, ...result });
+    }
+    if (parsed.subcommand === 'draft') {
+      const result = await executeWorkPackageDraft(project, { change: parsed.change!, packageId: parsed.packageId! });
       return envelope({ command, root: project.root, ...result });
     }
     const result = await executeWorkPackageAcknowledge(project, { change: parsed.change!, packageId: parsed.packageId!, role: parsed.acknowledgeAs!, evidence: parsed.evidence!, dryRun: parsed.dryRun });

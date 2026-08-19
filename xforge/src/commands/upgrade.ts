@@ -5,7 +5,7 @@ import type { Diagnostic, FileChange, ProjectContext } from '../types.js';
 import { XForgeError, diagnostic } from '../core/errors.js';
 import { atomicWrite } from '../core/files.js';
 import { sha256 } from '../core/hash.js';
-import { assertManaged } from '../core/project-loader.js';
+import { assertManaged, writeScaffoldVersion } from '../core/project-loader.js';
 import { safeResolve } from '../core/path-safety.js';
 import { loadBundledScaffold } from '../core/bundled-scaffold.js';
 import {
@@ -145,6 +145,24 @@ async function stage(project: ProjectContext, options: UpgradeOptions): Promise<
   const current = await currentScaffold(project.root);
   const incoming = incomingScaffold(bundle.files);
   const plan = buildUpgradePlan({ fromVersion, toVersion, manifest: project.manifest, current, incoming });
+  /*
+   * The Manifest says the Scaffold is already this version, and the files say otherwise.
+   *
+   * Reachable in one specific way: a project that ran `xforge update` on a CLI released before the
+   * pins were separated, where `update` wrote the new version into `scaffold.version` without any
+   * Scaffold file changing. Nothing here can recover the version those files actually came from, so
+   * the honest move is to say the span is unknown rather than print "X -> X" over a real upgrade and
+   * name the rollback snapshot after the version being left for.
+   */
+  const differing = plan.counts.changed + plan.counts.added;
+  if (fromVersion === toVersion && differing > 0) {
+    diagnostics.push(diagnostic(
+      'XFORGE_UPGRADE_VERSION_PIN_UNRELIABLE',
+      `The Manifest pins the Scaffold at ${fromVersion}, the same version being installed, yet ${differing} file(s) differ from it. The pin was written by an older \`xforge update\`, which advanced it without changing any Scaffold file, so the real starting version is not recorded anywhere and this upgrade's span cannot be reported. The merge itself is unaffected — it is computed from file content, not from the pin.`,
+      'xforge/manifest.yaml',
+      'warning',
+    ));
+  }
 
   if (options.dryRun) {
     return { data: { mode: 'stage', dryRun: true, plan, staged, rollback: rollbackDirectory(fromVersion) }, diagnostics, changes: [] };
@@ -212,6 +230,14 @@ async function complete(project: ProjectContext, options: UpgradeOptions): Promi
   await rm(path.join(project.root, ...staged.split('/')), { recursive: true, force: true });
   changes.push({ action: 'delete', path: staged });
 
+  /*
+   * The merge is adopted, so now — and only now — the Manifest may say the Scaffold is this version.
+   * `xforge update` deliberately no longer does this: it moves the CLI pin, because the CLI is what
+   * it changed. Advancing the Scaffold pin here is what keeps `fromVersion` on the *next* upgrade
+   * honest, since `stage()` reads it straight back out of `scaffold.source.version`.
+   */
+  changes.push(...await writeScaffoldVersion(project, record.toVersion, false));
+
   const completedAt = new Date().toISOString();
   await atomicWrite(project.root, ROLLBACK_MANIFEST, `${JSON.stringify({
     ...record, completedAt, after: digestMap(merged),
@@ -273,6 +299,10 @@ async function rollback(project: ProjectContext, options: UpgradeOptions): Promi
     await atomicWrite(project.root, relative, content);
     changes.push({ action: 'create', path: relative, digest: sha256(content) });
   }
+  /* The files on disk are `fromVersion` again, so the Manifest says so again. A rollback after a
+     completed upgrade is the one case where this walks the pin backwards; leaving it forward would
+     leave the Manifest claiming the very version this command just discarded. */
+  changes.push(...await writeScaffoldVersion(project, record.fromVersion, false));
   /* The staged directory, if the upgrade never completed, goes with it. */
   await rm(path.join(project.root, ...stagedDirectory(record.toVersion).split('/')), { recursive: true, force: true });
   await rm(path.join(project.root, 'xforge', '.rollback'), { recursive: true, force: true });

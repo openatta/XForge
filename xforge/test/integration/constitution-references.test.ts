@@ -143,7 +143,8 @@ describe('Constitution ledger references', () => {
    * A receipt path resolves — the file is right there — which is why the locatability rules above
    * cannot catch this on their own. It is also not a hypothetical: for a principle about
    * governance a receipt is the evidence a Check Agent naturally reaches for, and two consecutive
-   * recorded live runs cited only that, which is what made the `solid` cassette record-only.
+   * live runs of `solid` cited only that — a stable choice by the model, not variance, which is
+   * why it is refused by the Gate rather than discouraged in a Skill.
    */
   describe('an approval receipt is not evidence of compliance', () => {
     const receiptPath = `approvals/planning-solid/${'bc412e1c-9707-42ca-b322-2d93c5b91d29'}.json`;

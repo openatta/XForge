@@ -6,7 +6,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # 不变量
 
-- 先运行 `xforge state --kind <resource>`，读取 Manifest selection、本地 canonical assets、目标 Adapter 能力与降级状态。
+- 先运行 `xforge state --kind <skills|agents|rules|policies|hooks|gates|scripts|flows|approvals|mcp-servers>`，读取 Manifest selection、本地 canonical assets、目标 Adapter 能力与降级状态；不带 `--kind` 的 `xforge state` 一次报告全部类别。
 - `xforge/scaffold/**` 是源；`.agents/`、`.codex/`、`.claude/`、`.cursor/`、`.opencode/`、`.github/` 与 `opencode.json` 是生成目标，绝不直接编辑。
 - 未完成或未选择的资源不得因目录自动发现而被启用。
 - Agents 与 Skills 必须同时维护英文默认文件和 `_cn` 中文变体，由 Manifest 的 `scaffold.language` 选择投影；其它 Scaffold 资产统一使用英文。

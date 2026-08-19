@@ -11,6 +11,8 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 - `xforge/scaffold/**` 是项目的，`xforge/scaffold-<version>/**` 是发行版的。**默认谁也不压过谁。**
 - `xforge/.rollback/**` 是还原点，绝不写入。
 - 用 `xforge state --kind skills`（以及 `--kind rules`）读取本项目当前选中了什么，不要去解析 `xforge/manifest.yaml`。选中了什么是 CLI 报告的**已解析事实**，而那个文件只是它的输入之一。
+- `manifest.scaffold.version` 跟随的是脚手架的**内容**，只有 `upgrade-scaffold --complete` 会推进它；因此「CLI 比脚手架新」是正常状态，不是故障。若 `xforge upgrade-scaffold` 因声明的 CLI 与运行的 CLI 不一致而拒绝，先跑 `xforge update`：它只动 CLI 那个版本号，脚手架的版本号仍停在文件所在的位置。
+- `XFORGE_UPGRADE_VERSION_PIN_UNRELIABLE` 表示版本号声称脚手架已经是即将安装的这个版本，而文件并非如此——这是旧版 `update` 在没有合并任何东西的情况下推进了版本号留下的。起始版本已无法恢复，因此报告出的版本跨度没有意义；合并本身是按文件内容算的，不受影响。说明一次即可继续。
 
 # 权限
 

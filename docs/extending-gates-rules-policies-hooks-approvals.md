@@ -407,7 +407,7 @@ own tamper-evident audit hash chain — see "Trust model" below.
 
 ### How it's actually invoked
 
-`xforge approve --change <id> --for <stage|archive> --policy <id> ...` has
+`xforge approve --change <id> --for <transition-id|archive> --policy <id> ...` has
 two paths:
 
 1. **Local interactive** — requires a real TTY

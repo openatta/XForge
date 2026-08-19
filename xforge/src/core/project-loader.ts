@@ -250,10 +250,15 @@ export function compareVersions(left: string, right: string): number {
  * - the declared version must be strictly older than the running CLI's version — never equal
  *   (nothing to do) and never newer (that would silently declare a "downgrade" as resolved, which
  *   is exactly the silent-state-corruption failure mode the exact-version lock exists to prevent);
- * - `manifest.scaffold.version` and `manifest.scaffold.source.version` must already agree with
- *   `manifest.xforge.version` — if a project's three version fields have already drifted from each
- *   other (not something any XForge command produces today), that is an unexpected hand-edited or
- *   corrupted state this feature does not attempt to guess how to reconcile.
+ * - the Scaffold's source must be the same npm package, so that a later `upgrade-scaffold` has a
+ *   base to merge from.
+ *
+ * It deliberately says nothing about `manifest.scaffold.version`. It used to require all three
+ * version pins to agree, which was true of every project while `update` was the only thing that
+ * moved any of them. `upgrade-scaffold` ended that: the Scaffold's version now tracks the Scaffold's
+ * *content*, which lags the CLI for exactly as long as the merge is outstanding, and that lag is the
+ * normal state of an upgraded project rather than the corruption this predicate used to read it as.
+ * See `reconcileDeclaredCliVersion` for what stopped being written here.
  *
  * Prereleases are deliberately *not* excluded. A prerelease CLI reconciles a project just like a
  * GA one, in both directions of the boundary (`0.7.9-rc.1 -> 0.7.9`, `0.7.8 -> 0.7.9-rc.1`), for
@@ -261,26 +266,37 @@ export function compareVersions(left: string, right: string): number {
  * weaken; and refusing here would only move the dead end this feature exists to remove — a project
  * pinned by a prerelease CLI would have no in-tool way back. That requires all three version
  * fields to *accept* a prerelease, which is why `manifest.schema.json` shares one `semver` $def
- * across `xforge.version`, `scaffold.version`, and `scaffold.source.version` rather than letting
- * `scaffold.version` keep a narrower pattern: `reconcileDeclaredCliVersion` writes the identical
- * string into all three, so a field that rejects what the other two accept would make the very
- * Manifest this function just wrote fail `loadProject`'s schema validation on the next command.
+ * across `xforge.version`, `scaffold.version`, and `scaffold.source.version`: the same prerelease
+ * string can reach any of them, from here or from `upgrade-scaffold --complete`, so a field with a
+ * narrower pattern would make a Manifest XForge itself just wrote fail the next `loadProject`.
  */
 export function canUpgradeDeclaredCli(manifest: Manifest): boolean {
   if (manifest.xforge.source !== 'npm' || manifest.xforge.package !== CLI_NAME) return false;
   if (manifest.xforge.protocol !== PROTOCOL_VERSION) return false;
-  if (manifest.scaffold.version !== manifest.xforge.version) return false;
   if (manifest.scaffold.source.type !== 'npm' || manifest.scaffold.source.package !== CLI_NAME) return false;
-  if (manifest.scaffold.source.version !== manifest.xforge.version) return false;
   return compareVersions(manifest.xforge.version, CLI_VERSION) < 0;
 }
 
 /**
- * Rewrites the three npm-version fields a Manifest uses to declare its pinned CLI/Scaffold
- * identity (`xforge.version`, `scaffold.version`, `scaffold.source.version` — all required to
- * already agree, see `canUpgradeDeclaredCli`) from the declared version to the running CLI's
- * version, in place on disk, then mutates `project.manifest`/`project.compatibility` so the rest
- * of this same command invocation sees a consistent, already-Managed project.
+ * Rewrites `xforge.version` — the Manifest's pinned *CLI* identity — from the declared version to
+ * the running CLI's version, in place on disk, then mutates `project.manifest`/
+ * `project.compatibility` so the rest of this same command invocation sees a consistent, already-
+ * Managed project.
+ *
+ * It writes that one field and no other. It used to write `scaffold.version` and
+ * `scaffold.source.version` with the same string, on the reasoning that all three pins named one
+ * npm release. `upgrade-scaffold` made that false: `xforge/scaffold/**` is seeded once and then
+ * merged forward deliberately, so after `update` the CLI is new and the Scaffold on disk is still
+ * whatever it was. Writing the new number into `scaffold.version` anyway made the Manifest assert
+ * something untrue for as long as the merge was outstanding, and a live run showed what that costs:
+ * `update` reported `changedSources: 0` while bumping all three pins, and the `upgrade-scaffold`
+ * that followed read its own `fromVersion` back out of `scaffold.source.version` and announced
+ * "0.7.15 -> 0.7.15" for a real 0.7.12 -> 0.7.15 span — naming its rollback snapshot after the
+ * version it was leaving *for*, not the one it could return to.
+ *
+ * So the two facts are now written by the two commands that establish them: `update` moves the CLI
+ * pin because it is the CLI that changed, and `upgrade-scaffold --complete` moves the Scaffold pins
+ * because it is the only thing that changes the Scaffold's content.
  *
  * Uses targeted, context-anchored text substitution rather than a full YAML parse-and-restringify
  * round trip, so anything else in a hand-edited `manifest.yaml` — comments, key order, formatting
@@ -316,38 +332,16 @@ export async function reconcileDeclaredCliVersion(project: ProjectContext, dryRu
   const from = project.manifest.xforge.version;
   const to = CLI_VERSION;
   const source = await readFile(project.manifestPath, 'utf8');
-  let next = source;
-  const scaffoldFixed = replaceFieldInBlock(next, 'scaffold', 0, 'version', 2, to);
-  if (scaffoldFixed === null) {
-    throw new XForgeError(diagnostic(
-      'XFORGE_MANIFEST_VERSION_FIELD_NOT_FOUND',
-      'Could not locate scaffold.version in xforge/manifest.yaml in the expected shape to reconcile the declared CLI version. Edit it by hand instead.',
-      'xforge/manifest.yaml',
-    ), { root: project.root });
-  }
-  next = scaffoldFixed;
-  const sourceFixed = replaceFieldInBlock(next, 'source', 2, 'version', 4, to);
-  if (sourceFixed === null) {
-    throw new XForgeError(diagnostic(
-      'XFORGE_MANIFEST_VERSION_FIELD_NOT_FOUND',
-      'Could not locate scaffold.source.version in xforge/manifest.yaml in the expected shape to reconcile the declared CLI version. Edit it by hand instead.',
-      'xforge/manifest.yaml',
-    ), { root: project.root });
-  }
-  next = sourceFixed;
-  const xforgeFixed = replaceFieldInBlock(next, 'xforge', 0, 'version', 2, to);
-  if (xforgeFixed === null) {
+  const next = replaceFieldInBlock(source, 'xforge', 0, 'version', 2, to);
+  if (next === null) {
     throw new XForgeError(diagnostic(
       'XFORGE_MANIFEST_VERSION_FIELD_NOT_FOUND',
       'Could not locate xforge.version in xforge/manifest.yaml in the expected shape to reconcile the declared CLI version. Edit it by hand instead.',
       'xforge/manifest.yaml',
     ), { root: project.root });
   }
-  next = xforgeFixed;
   if (!dryRun) await atomicWrite(project.root, 'xforge/manifest.yaml', next);
   project.manifest.xforge.version = to;
-  project.manifest.scaffold.version = to;
-  project.manifest.scaffold.source.version = to;
   const recomputed = resolveCompatibility(project.manifest, project.lock);
   project.compatibility = recomputed.value;
   /*
@@ -368,6 +362,43 @@ export async function reconcileDeclaredCliVersion(project: ProjectContext, dryRu
     path: 'xforge/manifest.yaml',
     digest: sha256(next),
     source: `xforge:declared-version-upgrade:${from}->${to}`,
+  }];
+}
+
+/**
+ * Advances the Manifest's Scaffold pins (`scaffold.version`, `scaffold.source.version`) to the
+ * version whose content now sits in `xforge/scaffold/**`.
+ *
+ * The counterpart of `reconcileDeclaredCliVersion`, and the reason that function no longer touches
+ * these two fields: the Scaffold's version is a claim about content, so only the command that
+ * changes the content may advance it. `upgrade-scaffold --complete` calls this when the merge is
+ * adopted, and `--rollback` calls it with the restored version when the merge is abandoned, so the
+ * pins move in step with the files in both directions.
+ *
+ * Uses the same targeted substitution as the CLI-pin reconciliation, for the same reason: comments,
+ * key order and formatting in a hand-edited Manifest survive untouched.
+ */
+export async function writeScaffoldVersion(project: ProjectContext, version: string, dryRun: boolean): Promise<FileChange[]> {
+  if (project.manifest.scaffold.version === version && project.manifest.scaffold.source.version === version) return [];
+  const from = project.manifest.scaffold.version;
+  const source = await readFile(project.manifestPath, 'utf8');
+  const scaffoldFixed = replaceFieldInBlock(source, 'scaffold', 0, 'version', 2, version);
+  const next = scaffoldFixed === null ? null : replaceFieldInBlock(scaffoldFixed, 'source', 2, 'version', 4, version);
+  if (next === null) {
+    throw new XForgeError(diagnostic(
+      'XFORGE_MANIFEST_VERSION_FIELD_NOT_FOUND',
+      `Could not locate scaffold.version and scaffold.source.version in xforge/manifest.yaml in the expected shape to record the Scaffold as ${version}. Set both by hand; the Scaffold content on disk is already ${version}.`,
+      'xforge/manifest.yaml',
+    ), { root: project.root });
+  }
+  if (!dryRun) await atomicWrite(project.root, 'xforge/manifest.yaml', next);
+  project.manifest.scaffold.version = version;
+  project.manifest.scaffold.source.version = version;
+  return [{
+    action: 'modify',
+    path: 'xforge/manifest.yaml',
+    digest: sha256(next),
+    source: `xforge:scaffold-version:${from}->${version}`,
   }];
 }
 

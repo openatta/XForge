@@ -1,13 +1,13 @@
 import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { TargetId } from '../constants.js';
+import { CLI_VERSION, type TargetId } from '../constants.js';
 import type { Diagnostic, FileChange, ProjectContext } from '../types.js';
 import { loadBundledScaffold } from '../core/bundled-scaffold.js';
 import { diagnostic } from '../core/errors.js';
 import { atomicWrite } from '../core/files.js';
 import { sha256 } from '../core/hash.js';
 import { localizedVariant } from '../core/language.js';
-import { canUpgradeDeclaredCli, loadProject, reconcileDeclaredCliVersion } from '../core/project-loader.js';
+import { canUpgradeDeclaredCli, compareVersions, loadProject, reconcileDeclaredCliVersion } from '../core/project-loader.js';
 import { safeResolve } from '../core/path-safety.js';
 import { assertInstalledRecord } from '../install/planner.js';
 import { executeProjection } from './projection.js';
@@ -132,6 +132,21 @@ export async function executeUpdate(project: ProjectContext, options: { target?:
    */
   if (canUpgradeDeclaredCli(project.manifest)) await assertInstalledRecord(project, 'update');
   const versionChanges = await reconcileDeclaredCliVersion(project, options.dryRun);
+  /*
+   * Say the other half out loud. `update` moves the CLI pin and reprojects the targets; it does not
+   * touch `xforge/scaffold/**`, which is the project's own copy and is merged forward deliberately.
+   * Before the pins were separated this gap was invisible — `update` wrote the new number into
+   * `scaffold.version` too, so a project whose Skills and Gates were three releases old reported
+   * itself as current. Now the lag is stated, with the command that closes it.
+   */
+  const scaffoldLag = compareVersions(project.manifest.scaffold.version, CLI_VERSION) < 0
+    ? [diagnostic(
+      'XFORGE_SCAFFOLD_BEHIND_CLI',
+      `The CLI is ${CLI_VERSION} and this project's Scaffold is ${project.manifest.scaffold.version}. update does not touch xforge/scaffold/** — that copy is yours, and newer Skills, Gates and Rules reach it only through a merge you review. Run \`xforge upgrade-scaffold --dry-run\` to see what changed.`,
+      'xforge/scaffold',
+      'warning',
+    )]
+    : [];
   const migrated = await migratePlaceholderGates(project, options.dryRun);
   /*
    * Re-read the project after a migration wrote one of its resources. `project` carries resource
@@ -151,7 +166,7 @@ export async function executeUpdate(project: ProjectContext, options: { target?:
    * a genuinely stale lock in any other update still reports.
    */
   const selfInflicted = migrated.changes.length > 0 ? new Set(['XFORGE_LOCK_RESOURCES_MISMATCH']) : new Set<string>();
-  const diagnostics = [...migrated.diagnostics, ...result.diagnostics.filter((item) => !selfInflicted.has(item.code))];
+  const diagnostics = [...migrated.diagnostics, ...scaffoldLag, ...result.diagnostics.filter((item) => !selfInflicted.has(item.code))];
   if (result.diagnostics.some((item) => item.severity === 'error')) {
     return { ...result, diagnostics, changes: [...versionChanges, ...migrated.changes, ...result.changes] };
   }

@@ -363,6 +363,16 @@ export interface ChangeConfig {
 
 export interface WorkPackage {
   id: string;
+  /**
+   * `worker` (the default) or the plan's single `integrator`.
+   *
+   * The distinction exists because integration was the one piece of real work the DAG could not see.
+   * `integrator_paths` gave the assembly surface a unique writer, which fixed attribution, but a set
+   * of paths is not a node: with every worker package `succeeded` the control plane reported the
+   * Apply transition ready while nothing had been assembled yet, and every Gate agreed, because
+   * nothing in the plan claimed the assembly was owed. An integrator package is that claim.
+   */
+  role?: 'worker' | 'integrator';
   goal: string;
   depends_on: string[];
   inputs: string[];
@@ -443,6 +453,14 @@ export interface WorkPackagePlanState {
   waves: Array<{ index: number; packages: string[] }>;
   parallelCandidates: string[];
   protectedWritePaths: string[];
+  /**
+   * Paths changed after some delivery that no package declared and no Integrator-only path covers.
+   *
+   * A property of the tree and of the plan's declarations, not of any package — which is why it is
+   * carried here rather than folded into a package's status. The control plane blocks the transition
+   * on `tree:unattributed-paths` while this is non-empty.
+   */
+  unattributedPaths: string[];
   packages: WorkPackageState[];
 }
 
@@ -728,6 +746,23 @@ export interface AdapterCapability {
     bypasses: string[];
   };
   auditDelivery: CapabilityLevel;
+  /**
+   * Whether XForge can *write* Agent definitions this target understands — a fact about projection,
+   * decided entirely by this process.
+   *
+   * `agents: native` above says the same for the file format. Neither says the runtime will offer
+   * those Agents as selectable executors: XForge writes `.claude/agents/worker.md` and stops there,
+   * and whether a session then exposes `worker` as a sub-agent type is the host's business and is
+   * not observable from here. A live run had `agents: native`, `subagent: native`, a correct
+   * `worker.md` on disk, and no `worker` in the runtime's list; the Worker contract had to be
+   * inlined into a generic agent's prompt instead.
+   *
+   * Read this as "this target has a sub-agent mechanism and XForge has written the definitions for
+   * it", never as "the contract in those definitions is being enforced by the runtime". It is not
+   * enforced there in any case — a Worker's `write_paths` boundary is decided after the fact, by
+   * `core/work-packages.ts` diffing `base...head` against the declared patterns, which is what
+   * actually holds whether the runtime isolated anything or not.
+   */
   subagent: CapabilityLevel;
   /**
    * What the target's *static* permission layer can actually express. `permissionPolicy` above
@@ -894,10 +929,21 @@ export interface RuleCoverage {
   id: string;
   severity: 'must' | 'should';
   instruction: string;
-  coverage: Array<'instructed' | 'guarded' | 'verified' | 'approved' | 'uncovered'>;
+  /**
+   * `unenforceable` is not a weaker `uncovered`; it is a different statement. `uncovered` says the
+   * Rule cites no mechanism. `unenforceable` says it cites one that does not exist under the Flow
+   * this Change is running — a Gate the project does not have, or an approval policy only another
+   * Flow defines. Before the distinction existed, the second case read as covered, because a
+   * non-empty `approvalRefs` was taken as proof that something was enforcing the Rule: a `must` Rule
+   * pointing at `planning-solid` reported as governed under `major`, where no such policy exists and
+   * nothing was checking it at all.
+   */
+  coverage: Array<'instructed' | 'guarded' | 'verified' | 'approved' | 'uncovered' | 'unenforceable'>;
   gateRefs: string[];
   policyRefs: string[];
   approvalRefs: string[];
+  /** The subset of `gateRefs`/`approvalRefs` that names something this Flow and project actually have. */
+  enforceableRefs: string[];
 }
 
 export interface GovernanceState {

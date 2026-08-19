@@ -376,7 +376,7 @@ receipt 只有在项目自己的防篡改 audit hash chain 里能找到匹配事
 
 ### 实际是怎么被调用的
 
-`xforge approve --change <id> --for <stage|archive> --policy <id> ...` 有
+`xforge approve --change <id> --for <transition-id|archive> --policy <id> ...` 有
 两条路径：
 
 1. **本地交互式**——要求真实 TTY（`process.stdin.isTTY &&

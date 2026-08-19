@@ -1,6 +1,6 @@
 import { access, readFile } from 'node:fs/promises';
 import type { ProjectContext } from '../types.js';
-import { knownIdentities, unknownIdentityReason, type KnownIdentities } from './ledger-identity.js';
+import { knownIdentities, unknownIdentityReason, unverifiableIdentityWarning, type KnownIdentities } from './ledger-identity.js';
 import { safeResolve } from './path-safety.js';
 import { loadYaml } from './yaml.js';
 
@@ -81,6 +81,8 @@ async function evaluate(
   const problems: string[] = [];
   const warnings: string[] = [];
   const openBlockers: string[] = [];
+  /** Every `resolvedBy` this ledger asserts, so a pass reached without a way to check them can say so. */
+  const resolvedNames: string[] = [];
 
   if (!Array.isArray(document.findings)) {
     return {
@@ -126,6 +128,7 @@ async function evaluate(
         problems.push(`${relative}: blocking finding ${label} is marked resolved but names no resolvedBy; an unattributed resolution does not count as resolved.`);
         openBlockers.push(id || label);
       } else {
+        resolvedNames.push(resolvedBy);
         const reason = unknownIdentityReason(resolvedBy, known);
         if (reason) {
           problems.push(`${relative}: blocking finding ${label} is resolved by "${resolvedBy}", which ${reason}.`);
@@ -141,6 +144,16 @@ async function evaluate(
   }
 
   if (openBlockers.length > 0) problems.push(`${relative}: ${openBlockers.length} blocking finding(s) still open: ${openBlockers.join(', ')}.`);
+  /*
+   * A pass that could not have failed says so. Every `resolvedBy` above was accepted against an
+   * empty identity set, which is not the same fact as "these names check out", and the difference
+   * becomes visible at the worst moment: the Change's first commit populates the set, and the same
+   * ledger is then refused with the Check report already written.
+   */
+  const unverifiable = resolvedNames.length > 0 ? unverifiableIdentityWarning(known) : null;
+  if (unverifiable) {
+    warnings.push(`${relative}: ${resolvedNames.length} resolvedBy name(s) (${resolvedNames.join(', ')}) were accepted without verification — ${unverifiable}.`);
+  }
   return { status: problems.length === 0 ? 'passed' : 'failed', problems, warnings, counts, openBlockers };
 }
 
