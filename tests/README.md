@@ -17,7 +17,7 @@ real project transitions rather than mocked planner results.
 Run through `npm run test:product` or the complete `npm run verify` at the
 repository root. **[RUNBOOK.md](RUNBOOK.md) is the operational companion**: what
 to run after a given kind of change, why a Scaffold edit needs `npm run relock`
-before anything will build, how to run and re-record the live-engine suite, and
+before anything will build, which live-engine scenario a given change owes, and
 how to tell an external provider failure from a scenario that is asserting
 something it cannot hold.
 

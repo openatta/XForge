@@ -71,9 +71,11 @@ tests/live-engine/scenarios/
   major/        propose -> clarify -> design -> check -> apply -> verify (credential-store:
                 risk high, security + dataMigration impact, a deliberately unresolved
                 material question for Clarify to formally resolve)
-  standalone/   kanban, scaffold (fresh project, no active Change) and
-                status, status-blocked, revise (piggyback on an in-progress
-                quick/solid/major run — see coverage-matrix.yaml's notes for exactly where)
+  standalone/   scaffold, architect, kanban, upgrade-scaffold — each its own selectable
+                scenario: one prepared project, one model call, one assertion on what the
+                Skill left on disk; and
+                status, status-blocked, revise (not selectable — they piggyback on an
+                in-progress quick/solid/major run, see coverage-matrix.yaml's notes)
 ```
 
 Each Flow scenario's `project-seed/` carries its own `TEST_REQUEST.md`,
@@ -99,6 +101,13 @@ once.
 | `solid` | solid | happy-path | archived, **exactly 0 reworks** |
 | `solid-rework` | solid | rework | archived, **exactly 1 rework** |
 | `major` | major | adversarial | archived **or** `stopped-at-check` |
+| `standalone-scaffold` | — | authoring | a project-owned Rule written **and** registered in the Manifest |
+| `standalone-architect` | — | authoring | `xforge/architecture.md` written with real sections |
+| `standalone-kanban` | — | read-only | reported without writing any governance state |
+| `standalone-upgrade-scaffold` | — | merge | the project's own test command survived the merge, and no staged directory left behind |
+
+A standalone scenario asserts the Skill's **observable effect**, never its prose: what the
+final message claimed is not evidence, what it left on disk is.
 
 The rework count is asserted, not tolerated. `maxReworks` only ever bounded
 oscillation, so a scenario meant to prove the rework path worked passed
@@ -189,41 +198,97 @@ per-call budget capped to the remainder, 2 attempts per stage, 900 second
 timeout). Missing provider cost accounting blocks all later calls in that
 run instead of treating the cost as zero.
 
-## Recording and replaying a run
+**The per-stage timeout sizes itself to the provider.** Roughly 95% of a
+stage's wall clock is time waiting on the API, so unless you state
+`--timeout-seconds` yourself the runner makes one trivial round trip to the
+endpoint in `.env` and multiplies the default by `ceil(latency / 3s)`, capped
+at ×4. A stated value is never scaled.
 
-A live run costs real money and real minutes, which makes it a poor loop to
-iterate the *tooling* in. Recording one lets the CLI, the Gates, the control
-plane, the Approval and work-package protocols, archive, and this harness be
-regression-tested for free.
+That exists because a fixed ceiling lost on a real endpoint: `major`'s check
+stage runs 49 turns, and on the gateway this project is configured with
+(~13s for a trivial call, ~7s per turn) its API time alone is 5.8 minutes.
+It was killed twice at exactly 900s having produced nothing, then passed
+every stage on the first attempt at 2700s. On a 1–2s/turn provider the same
+run finishes in 15–20 minutes and 900s is ample.
 
-```bash
-# 1. Record: run the scenario live, then package the run it left behind.
-node tests/live-engine/run-matrix.mjs --scenario solid --cli-source local
-node tests/live-engine/record-cassette.mjs --scenario solid
+**Every run reports the limits it ran under.** The timeline and the summary
+envelope both carry `limits`: the four effective values, the shipped
+defaults, which ones the caller stated, the probed latency and scale, and
+`atDefaults`. A run at widened limits also prints a `warning: relaxed-limits`
+line. Check `limits.atDefaults` before reading a verdict — an `archived`
+reached at a raised ceiling is not the same claim as one reached at the
+shipped default, and without this they were the same three words in the file.
 
-# 2. Replay: no model calls, no API key needed, seconds instead of minutes.
-node tests/live-engine/run-matrix.mjs --scenario solid --replay solid --cli-source local
-```
+## What a run costs, and which one to run
 
-**What is recorded is the project's Git history, not the model's responses.**
-That is forced by what exists: every call passes `--no-session-persistence`, so
-no tool-call transcript is written anywhere, and a recorded response could not
-reproduce file-system state even if one were. What the model *did* is already
-recorded exactly — the harness commits after every Stage — so a cassette is a
-`git bundle` of the isolated project plus a manifest saying which commits were
-the Agent's.
+Every run here calls a real model against a real, freshly installed project.
+There is no recorded mode and nothing is replayed: the only way to learn what an
+Agent does with these Skills is to have an Agent do it.
 
-On replay, only the Agent's own contribution is applied: the diff between a
-recorded Stage commit and its parent. Everything else genuinely re-executes —
-approvals are re-signed, Gates re-run, work packages re-dispatched, the archive
-transaction performed again. Restoring whole trees would reinstate their outputs
-instead of testing them.
+That makes cost the thing to plan around. One standalone scenario is roughly
+300k tokens and four minutes; all six is tens of millions of tokens and the
+better part of an hour. So run the scenario that exercises what you changed
+rather than the whole matrix:
 
-Each Stage is then checked against the recording's `contentRevision`.
-`core/revision.ts` derives that value from governed content and the policy
-snapshot, with no commit id or timestamp in it, so identical trees must produce
-an identical revision — and any drift in how content is digested fails
-immediately, at the Stage that caused it.
+| Changed | Run |
+|---|---|
+| A standalone Skill (`architect`, `upgrade-scaffold`, `scaffold`, `kanban`) | that Skill's own `standalone-*` scenario — one run, minutes |
+| A Skill a Flow Stage names (`design`, `apply`, `check`, `verify`…) | one scenario that walks that Flow |
+| A Flow, Gate, or the control plane | several, chosen for what they touch |
+| Preparing a release | all six, deliberately |
+
+The `Rejected` fix of 2026-08-17 is the worked example: it changed
+`xforge-architect` alone, `standalone-architect` alone validated it in four
+minutes, and both halves of the new rule were observed. The other five scenarios
+would have added nothing.
+
+**A named scenario is a runnable one.** `coverage-matrix.yaml` may only name scenarios listed in
+`scenario-catalogue.mjs`, and `run-matrix.mjs` refuses to start if its own table and that catalogue
+disagree. Both checks exist because they were missing: `xforge-scaffold` and
+`xforge-upgrade-scaffold` were recorded as covered by `standalone-scaffold` and
+`standalone-upgrade-scaffold`, the prompts existed, the runner rows did not, and `check-coverage.mjs`
+reported `ok: true` throughout — it only ever compared Skill *names*. Two Skills were documented as
+covered by runs that could not happen.
+
+**The run is the product, and it is not saved anywhere else.** The isolated
+project tree under `tests/.tmp/` and `tests/.tmp/live-engine-results/` are the
+whole record of what happened — `clean-tmp.mjs` spares both by default for that
+reason, and `--all` is the explicit opt-in to discarding them. A per-Stage
+`contentRevision` is written into `<scenario>-timeline.json` as the run goes, so
+a finished run can be read back stage by stage without re-running it.
+
+**Why there is no recorded mode.** There was one, for two months: a `git bundle`
+of the isolated project plus a manifest naming the Agent's commits, replayed by
+restoring each Stage's authored diff and genuinely re-executing everything
+around it. It was removed in favour of running live, on the evidence it
+produced.
+
+The recordings were never once replayed. Every defect these runs have found came
+from the run itself — the Skill authority contradiction, the harness's fake
+parallelism, a correct refusal scored as a missing Artifact, the `major` fixture
+that had never been asked how it scans. None of those is reachable by replay,
+because a replay substitutes the model's output and therefore cannot test the
+model. Meanwhile any change to any payload file invalidated every recording at
+once, so the recordings were usually stale, and re-recording cost a full live
+run of everything — twice paid to validate one edit to one standalone Skill's
+prose.
+
+There was also a hazard that only replay had: replay re-signs approvals, so a
+replayed receipt lands at a fresh UUID and a principle citing the recorded
+filename cannot resolve. Four fixes were tried; three failed. The one that
+worked was not a replay fix at all — **`constitution-check` now refuses a
+principle whose citations are *all* approval receipts**, because a receipt
+records that someone approved a transition, not why the Change satisfies the
+principle. `xforge-check`'s `SKILL.md`/`SKILL_cn.md` and the `constitution-check`
+artifact `instruction` in `solid.yaml`/`major.yaml` say the same thing before the
+Gate has to.
+
+Note which half of that is load-bearing. This directory's own history is the
+argument: the hazard was documented here, in prose, and documenting it did not
+prevent a single recurrence. A rule an Agent is asked to remember is not the
+same rule as one the Gate applies — so the Skill text explains the reason and
+the Gate is what enforces it. That conclusion outlived the feature that produced
+it, which is why it is still here.
 
 **Every project here was a Node project until 2026-08-17, and not by choice.**
 `setup.mjs` installed `@xforge/cli` as a devDependency, so it wrote a
@@ -237,104 +302,6 @@ The CLI is now installed beside the project rather than inside it, so a seed wit
 no `package.json` produces a project with none, and a non-Node scenario is
 buildable. `quick-undeclared` records the other half — whether an **Agent**
 invents an answer when none is available — which no static test can show.
-
-**A replay cannot tell you whether a Skill is comprehensible or whether an Agent
-obeys it.** Four of the defects the 2026-08-13 runs found were model-behaviour
-defects that no replay would have caught. So a cassette records the fingerprint
-of the Scaffold it was made against, and replaying against a changed Scaffold is
-**refused**, with the re-record commands printed.
-
-### A stale cassette is unavailable, not a debt
-
-That refusal used to be read as an obligation — change a Skill and you owe a live
-run of everything. Two months of doing that produced a plain result: **the
-cassettes have never once been replayed.** Every defect these runs have found
-came from the run, not from a replay of it — the Skill authority contradiction,
-the harness's fake parallelism, a correct refusal scored as a missing Artifact,
-the `major` fixture that had never been asked how it scans. The recording is a
-by-product that has not yet been cashed in.
-
-It is also not free. One standalone scenario costs roughly 300k tokens and four
-minutes; a six-scenario re-record is tens of millions of tokens and the better
-part of an hour. Twice that was paid to validate one edit to one standalone
-Skill's prose.
-
-So the fingerprint refusal stands, and what it means is narrower: *this cassette
-cannot speak for the current Scaffold.* Nothing is owed. Run the scenario that
-exercises what you changed:
-
-| Changed | Run |
-|---|---|
-| A standalone Skill (`architect`, `upgrade-scaffold`, `status`, `kanban`…) | that Skill's own scenario — one run, minutes |
-| A Skill a Flow Stage names (`design`, `apply`, `check`, `verify`…) | one scenario that walks that Flow |
-| A Flow, Gate, or the control plane | several, chosen for what they touch |
-| Preparing a release | all six, deliberately |
-
-The `Rejected` fix of 2026-08-17 is the worked example: it changed
-`xforge-architect` alone, `standalone-architect` alone validated it in four
-minutes, and both halves of the new rule were observed. The other five scenarios
-would have added nothing.
-
-**The fingerprint is coarser than this table.** Any payload change invalidates
-every cassette, including a standalone Skill no Flow Stage references. Making a
-cassette record only the assets its own run actually read would fix that, and is
-worth doing — carefully, because a fingerprint that misses an input fails green,
-and a replay trusted wrongly is worse than one refused unnecessarily.
-
-**One recording hazard worth knowing.** Replay re-signs approvals, so a replayed
-receipt lands at a fresh UUID filename and a citation of the recorded filename
-cannot resolve. `constitution-check` fails a principle that cites **only**
-references it cannot locate, so this bites exactly when a Check Agent offers an
-approval receipt as a principle's sole evidence.
-
-**`record-cassette.mjs` now decides this at record time**, reading the recorded
-`constitution-check.yaml` and writing `unreplayableReason` into the manifest
-when a principle cites an approval receipt and nothing else. `--replay` then
-refuses up front with that reason, instead of failing as a gate error deep
-inside Check that reads like a product defect. It is a property of the
-recording, not of the scenario: a later run that cites a Requirement id
-alongside the receipt records as replayable with no code change.
-
-**As of 2026-08-16 this was what `solid` did, and the cassette was record-only.**
-Two consecutive recordings cited the receipt as the Governance principle's only
-reference, so treating it as model variance and re-recording was not worth
-paying for: for a principle *about governance*, an approval receipt is the
-natural evidence, and the model kept choosing it.
-
-**Fixed 2026-08-17, at the source.** `constitution-check` now refuses a
-principle whose citations are *all* approval receipts, with a message naming
-what a receipt does prove; `xforge-check`'s `SKILL.md`/`SKILL_cn.md` and the
-`constitution-check` artifact `instruction` in `solid.yaml`/`major.yaml` say the
-same thing before the Gate has to. So the next `solid` recording should be
-replayable, and `unreplayableReason` stays as the backstop that catches it at
-record time if it is not.
-
-Note which half of that is load-bearing. This directory's own history is the
-argument: the hazard was documented here, in prose, and documenting it did not
-prevent a single recurrence. A rule an Agent is asked to remember is not the
-same rule as one the Gate applies — so the Skill text explains the reason and
-the Gate is what enforces it.
-
-Fixing it properly was not a one-line change, and three of the four candidate
-fixes were ruled out by evidence rather than by taste:
-
-- **Preserve the recorded receipt filename.** `receiptId` lives inside the
-  receipt and is bound into the audit hash chain, so a renamed receipt is one
-  `audit verify` should reject. Forging it to pass a test is not an option.
-- **Restore recorded receipts instead of re-signing.** That removes the approval
-  path from what replay exercises, which is most of the point of replaying.
-- **Re-address the citation to this run's UUID, waiving `contentRevision` for
-  that Stage.** Tried; it does not hold. The gate passes, but rewriting the UUID
-  changes governed content, and `constitution-check.yaml` stays governed for the
-  rest of the Flow — so the divergence propagates to *every* later Stage and the
-  waiver stops being narrow. It would have to disable the assertion the replay
-  exists to make.
-- **Constrain citations to stable identifiers** — the one that works, and also
-  better governance evidence: a receipt proves someone approved, not why the
-  Change complies. This is what was done, extended from Skill wording alone to
-  Gate enforcement for the reason given above. It changes the Scaffold
-  fingerprint and invalidates every cassette at once, which is why it was done
-  *with* a Skill change so the set is re-recorded once rather than twice.
 
 `run-matrix.mjs` prints a pass/fail summary (acceptance exit code, spend,
 budget accounting) when it finishes. Per-stage engine output — cost, tokens,

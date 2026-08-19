@@ -88,16 +88,18 @@ for (const name of entries) {
 }
 
 // 2. Regenerable live-engine scratch. The isolated project directories and `live-engine-results`
-//    are deliberately spared: `record-cassette.mjs` reads both, and a run is worth nothing until it
-//    has been recorded. `--all` is for when you know there is no recording owed.
+//    are deliberately spared, and now for the only reason left: a live run costs real money and
+//    calls a real model, and its project tree plus its timeline are the entire record of what
+//    happened. Nothing packages them afterwards any more, so sweeping them is not "cleanup before
+//    the recording" — it is the destruction of the run itself. `--all` is the explicit opt-in.
 const liveEngineTemp = path.join(repositoryRoot, 'tests', '.tmp');
 if (all) {
   remove(liveEngineTemp, 'tests/.tmp');
 } else if (existsSync(liveEngineTemp)) {
   for (const name of readdirSync(liveEngineTemp)) {
     const target = path.join(liveEngineTemp, name);
-    // Clones made from a cassette bundle at replay time, and per-run logs.
-    if (name.endsWith('-cassette') || name.endsWith('.log')) remove(target, `tests/.tmp/${name}`);
+    // Per-run logs, which the results directory already summarizes.
+    if (name.endsWith('.log')) remove(target, `tests/.tmp/${name}`);
   }
   // npm-pack keeps one tarball per version forever; only the current one can be installed from.
   const packRoot = path.join(liveEngineTemp, 'live-engine-npm-pack');

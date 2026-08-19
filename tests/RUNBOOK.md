@@ -13,16 +13,16 @@
 | `scaffold/payload/**` | **`npm run relock`**，然后 `npm test` | 见 §2，不 relock 连 build 都会失败 |
 | `tests/**`（非 live-engine） | `npm run test:product` | 根级黑盒套件 |
 | `xforge/test/**` | `npm test` | 实现套件 |
-| **Skill / Flow / Gate / Rule / Policy** | 上述之外，**四盘录像全部作废，欠一次 live-engine 实跑**（§4） | 见 §3 |
+| **Skill / Flow / Gate / Rule / Policy** | 上述之外，**挑受影响的场景做一次 live-engine 实跑**（§4） | 见 §3 |
 | 发版前 | `npm run verify` | build + scaffold 校验 + 全部套件 + 覆盖率阈值 |
 
-**为什么改 Skill 就欠一次实跑**：录像回放只重放 Git 差异，模型根本不参与。
-**回放能验证工具链，验证不了"Skill 写得是否可被理解、Agent 是否遵守它"**——
-所以录像里记了它录制时的 Scaffold 指纹，指纹一变就拒绝回放。这是强制而非提醒。
+**为什么改 Skill 要实跑**：静态测试能证明 CLI、Gate、控制面按约定工作，
+**证明不了"Skill 写得是否可被理解、Agent 是否遵守它"**——只有让真实模型读一遍才知道。
+这也是这里不再保留录制/回放的原因：回放用录像顶替模型的输出，恰恰跳过了唯一要验证的东西。
 
-**发版不会作废录像。** 指纹只摘"模型会读到的内容"：整个 payload，减去 `lock.yaml`
-与 `manifest.yaml` 的版本字段。`scaffold.skills` **在摘要之内**——启用或移除一个 Skill
-仍然会、也应该让旧录像失效。`tests/live-engine-fingerprint.test.ts` 把这两半都钉住了。
+**不必全跑。** 改一个 standalone Skill 就跑它自己的场景（几分钟），改 Flow Stage 用的
+Skill 就跑一个走该 Flow 的场景，改 Flow/Gate/控制面才需要多个。对照表见
+`tests/live-engine/README.md`。
 
 ---
 
@@ -59,8 +59,9 @@ npm run build                →  再构建一次；上一步改了 lock，而�
 4. 检查其它 Skill 的正文是否指向它（`grep -rn "<name>" scaffold/payload`）
 5. `tests/live-engine/coverage-matrix.yaml` 增删对应条目
    —— `node tests/live-engine/check-coverage.mjs` 会拿 manifest 交叉核对，不一致即失败
-6. 若它被 live-engine 场景用作 prompt，处理 `tests/live-engine/scenarios/` 与
-   `run-matrix.mjs` 的 `SCENARIOS` 配置
+6. 若它被 live-engine 场景用作 prompt，处理 `tests/live-engine/scenarios/`、
+   `run-matrix.mjs` 的 `SCENARIOS`，**以及 `scenario-catalogue.mjs`**
+   —— 三者任意两个不一致都会立刻失败（runner 启动即拒绝，或 check-coverage 报错）
 7. 检查测试 fixture：某些测试拿一个具体 Skill 当"有代表性的 Skill"，删掉它会连带失败
 8. 检查硬编码的数量断言（`grep -rn "toHaveLength(1[0-9])" xforge/test tests`）
 9. `README.md`、`docs/README.md`、`docs/governance-concepts{,.zh-CN}.md`
@@ -103,19 +104,34 @@ npm run doctor
 ```sh
 # 实跑（改动未发布时必须用 local）
 node tests/live-engine/run-matrix.mjs --scenario quick --cli-source local
-
-# 录制（不调模型，只打包刚才那次运行的 Git 历史）
-node tests/live-engine/record-cassette.mjs --scenario quick
-
-# 回放验收（零模型调用、零成本）
-node tests/live-engine/run-matrix.mjs --scenario quick --replay quick --cli-source local
 ```
+
+> **只有实跑一种模式。** 录制/回放已经移除：它两个月里一次都没被回放过，而每改一个
+> payload 文件就让全部录像失效，于是录像总是过期的；更根本的是回放用录像顶替了模型的
+> 输出，因此它恰恰测不到「Agent 是否读得懂这些 Skill」——而那正是这套 harness 唯一
+> 存在的理由。详见 `tests/live-engine/README.md`。
 
 > **`--cli-source local` 不是可选项。** 默认的 `npm` 模式会从 registry 装已发布版本，
 > 于是你测的是线上那一版，而不是你刚改的东西。
 
-四个场景：`quick` · `solid` · `solid-rework` · `major`。
+**十个场景**，分两类：
+
+- **Flow 场景**（走完整 Stage 图）：`quick` · `quick-python` · `quick-undeclared` ·
+  `solid` · `solid-rework` · `major`
+- **standalone 场景**（准备一个项目 + 一次模型调用 + 一条断言，没有 Change）：
+  `standalone-scaffold` · `standalone-architect` · `standalone-kanban` ·
+  `standalone-upgrade-scaffold`
+
 注意 `solid-rework` 与 `solid` 共用一个 Flow，所以**必须用 `--scenario` 而不是 `--flow`**。
+
+另有三个**注入式** standalone（`standalone-status`、`standalone-status-blocked`、
+`standalone-revise`）——它们跑在别的场景中间，不能用 `--scenario` 单独选。
+
+**「被覆盖」现在等于「真的跑得起来」。** `coverage-matrix.yaml` 里点名的场景必须存在于
+`scenario-catalogue.mjs`，否则 `check-coverage.mjs` 直接失败；而 `run-matrix.mjs` 启动时会
+拿自己的场景表和 catalogue 对账，两边不一致就拒绝启动。这条是补出来的：`xforge-scaffold`
+与 `xforge-upgrade-scaffold` 曾经在矩阵里被标为已覆盖，prompt 文件也在，但 runner 里根本
+没有对应条目，而 `check-coverage.mjs` 一直报 `ok: true`——它只核对 Skill **名字**。
 
 ### 4.4 并行
 
@@ -155,11 +171,31 @@ ls tests/.tmp/live-engine-npm-pack/xforge-cli-<version>.tgz
 | --- | --- | --- |
 | `--budget` | 3 | 单阶段美元上限 |
 | `--suite-budget` | 30 | 单场景美元上限 |
-| `--timeout-seconds` | 900 | 单阶段超时 |
+| `--timeout-seconds` | 900，**按 provider 延迟自动放大** | 单阶段超时 |
 | `--max-attempts` | 2 | 单阶段尝试次数 |
+
+**超时会自己适配 provider，不需要手调。** 未显式传 `--timeout-seconds` 时，runner 先向
+`.env` 里配置的 endpoint 发一次平凡请求测延迟，再按 `ceil(延迟/3s)`（上限 ×4）放大默认值。
+显式传了就完全照你说的办，不做任何缩放。
+
+**为什么需要这个**：一个阶段约 95% 的墙钟时间是在等 API。major 的 check 阶段有 49 个 turn，
+在本项目 `.env` 配置的网关上（实测平凡调用 13.3 秒、约 7 秒/turn）光 API 就要 5.8 分钟——
+900 秒容不下一次慢 turn。2026-08-18 它就是这样在 900 秒被杀了两次、零输出；换 2700 秒后
+每个阶段都第一次尝试就过。换成 1–2 秒/turn 的 provider，同一次运行 15–20 分钟就跑完，
+900 秒绰绰有余。
+
+**超时不是产品失败。** `timedOut: true` + exit 143 说明这次调用没有产生任何结论，重跑是第一次
+真正的测量，不是碰运气；而断言失败（outcome/返工数/Gate）是有结论的，那种情况**不许重跑**。
+
+**结果会带上它自己的运行条件。** timeline 与最终 envelope 都含 `limits`：实际生效的四个限值、
+出厂默认值、你显式指定了哪些、探测到的延迟与放大倍数，以及 `atDefaults`。非默认时 runner
+还会额外打一条 `warning: relaxed-limits`。读结论前先看 `limits.atDefaults`——放宽条件下拿到的
+`archived` 和默认条件下的不是同一个成色。
 
 **实测成本（2026-08-15，含缓存读取）**：quick ≈ $3.5、solid ≈ $8、solid-rework ≈ $10.5、
 major ≈ $8.3。全套约 $30，加上一两次失败重跑要按 $45 预留。
+2026-08-18 实测（DeepSeek 网关）：quick $3.08、quick-python $3.35、quick-undeclared $2.62、
+solid $8.54、solid-rework $11.64、major $14.39（含一次返工，45 分钟）。
 
 ---
 
@@ -174,9 +210,7 @@ major ≈ $8.3。全套约 $30，加上一两次失败重跑要按 $45 预留。
 | `reworked N times (limit M)` | **断言冲突** | 见下 |
 | `XFORGE_GATE_FAILED` | 读 `evidence/<gate>.json` 的 **`stderr`** 字段，那里有确切原因 | 按原因定 |
 | `XFORGE_AGENT_SKILL_DISABLED` | **自己的疏漏**：删 Skill 时漏改 agents | §3 第 3 条 |
-| `Agent did not self-transition X -> Y` | 回放时门禁挡住了实跑时通过的转换 | 读门禁证据的 stderr |
-| `Timeline ... predates the last commit` | 上次运行没跑完，录像会拿旧 timeline 配新历史 | 重跑到完成再录 |
-| `scaffold fingerprint mismatch` | 录像比 Scaffold 旧 | 按 §1 重录 |
+| `Agent did not self-transition X -> Y` | Agent 没按指示自转换，或门禁挡住了它 | 读消息里附的 blocked-by 与门禁证据 stderr |
 
 ### 返工数断言失败怎么判
 
@@ -202,64 +236,22 @@ major ≈ $8.3。全套约 $30，加上一两次失败重跑要按 $45 预留。
 但 `tests/.tmp/live-engine-results/` 会一直累积。后果有两个：
 
 - 上次运行的阶段结果文件仍在，按修改时间辨别新旧
-- **回放会覆盖同名的 policy 文件，抹掉实跑的成本记录**——要做成本统计就先备份
+- **同一场景重跑会覆盖同名的 policy 与 timeline 文件，抹掉上一次的成本记录**——
+  要做成本统计就先备份
 
 **监控脚本别直接 `git -C tests/.tmp/live-engine-<scenario> log`。** 项目目录刚被 setup
 清空时它没有 `.git`，git 会向上找到 XForge 仓库本身，于是状态行里显示的是你自己的提交信息。
 先判断 `.git` 是否存在。
 
-**`solid-rework` 可录制但不可回放。** 原因与两条修复路径都记在
-`tests/live-engine/README.md`，此处不重复。
+**只引用审批回执的原则会被 `constitution-check` 拒绝。** 这是产品规则，不是 harness
+的限制：回执记录的是「有人批准了某次 transition」，不是「本 Change 为何满足该原则」。
+同一条原则只要同时并列一个稳定引用（Requirement id、真实路径或 `gate:<name>`）即可。
+`xforge-check` 的 `SKILL.md`/`SKILL_cn.md` 与 `solid.yaml`/`major.yaml` 里
+`constitution-check` 的 `instruction` 都在 Gate 之前先说了这件事。
 
-**一盘录像里，只引用了审批回执的原则会让回放必挂——现在录制时就会判出来。**
-`record-cassette.mjs` 会读录制下来的 `constitution-check.yaml`，命中就往 manifest
-写 `unreplayableReason`，`--replay` 随即在安装项目之前直接拒绝并说明原因：
-
-```
-Error: Cassette "solid" is record-only and cannot be replayed.
-  ...principle "Governance" cites an approval receipt and nothing else...
-```
-
-**看到这条不要重录**，录像本身是有效的。下面是它的来历（历史上它表现为回放停在
-`check -> apply` 的 `gate:constitution-check:failed`，证据 stderr 写着）：
-
-```
-principle "Governance" cites only references this project cannot locate
-(approvals/<gate>/<uuid>.json)
-```
-
-**这不是产品缺陷，实跑当时是通过的。** 回放会重新签发审批，UUID 随之改变；而
-`approvals/` 不在 Agent 的 stage diff 里，录像根本没记过这个路径，回放无从还原它。
-于是 Agent 在 `constitution-check.yaml` 里写下的那个 UUID 永远指不到东西。
-
-判据：只有当某条原则**除它之外没有别的引用**时才会挂。同一条原则若同时引用了
-Requirement id、真实路径或 `gate:<name>`，回放正常。
-
-**不要重录来赌它。** 2026-08-16 连录两盘 `solid`，Agent 两次都把审批回执写成
-Governance 这条原则的唯一引用（`bc412e1c…`、`bce529bd…`）。对"治理"这条原则，
-审批回执本来就是最自然的证据，所以这是稳定选择而不是方差。
-
-**三条修不通的路，都试过了，别再试：**
-
-1. **回放时把引用重定址到本次的 UUID。** gate 确实过了，但改写 UUID 就改变了受治理
-   内容，`contentRevision` 断言随即失败。
-2. **只对发生重定址的那个 Stage 豁免 `contentRevision`。** 豁免不住：
-   `constitution-check.yaml` 此后一直属于受治理内容，**divergence 会传播到 check
-   之后的每一个 Stage**，豁免范围等于废掉整个断言。
-3. **让回放把审批写成录制时的 UUID。** `receiptId` 在回执内部且被审计哈希链绑定，
-   改名就是伪造，`audit verify` 理应拒绝它。
-
-**结论：`solid` 目前与 `solid-rework` 同级——可录制，不可回放。** 录像本身有效
-（它记录了一次真实的完整通过运行），回放回归覆盖由 `quick`（3 阶段）与
-`major`（6 阶段）承担。
-
-**真要恢复 `solid` 的回放覆盖，唯一可行的是改提示词**：引导 Agent 在引用审批回执的
-同时并列一个稳定引用（Requirement id / 路径 / `gate:<name>`）。这本身也是更好的
-治理证据——审批回执证明"有人批了"，不证明"为什么合规"。**代价是它改指纹，四盘全部
-作废，要整套重录（约 $30）**，所以应当和下一次 Skill 改动合并做，不要单独为它跑一趟。
-
-**录像的 `cli` 字段恒为 `null`。** `run-matrix.mjs` 写的是 `setup.cli ?? null`，
-而 setup 返回的对象里没有这个键。只影响"用哪个 CLI 录的"这条元信息，不影响回放断言。
+2026-08-16 连录两盘 `solid`，Agent 两次都把审批回执写成 Governance 这条原则的唯一引用
+（`bc412e1c…`、`bce529bd…`）——对「治理」这条原则，审批回执本来就是最自然的证据，所以
+这是稳定选择而不是方差，也正因如此它值得由 Gate 来挡而不是靠 Skill 提醒。
 
 ---
 
@@ -273,7 +265,7 @@ Governance 这条原则的唯一引用（`bc412e1c…`、`bce529bd…`）。对"
 5. node tests/live-engine/check-coverage.mjs
 6. 若动了 Skill/Flow/Gate/Rule/Policy：
      npm run doctor          # 先确认环境里没有旧版工具（§4.2）
-     逐个场景实跑 → record-cassette → --replay 验收
+     挑受影响的场景实跑（对照表见 live-engine/README.md）
 7. git commit
 ```
 

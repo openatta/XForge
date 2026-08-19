@@ -54,17 +54,17 @@ describe('scripts clean up the scratch they mint', () => {
   });
 
   /*
-   * The sweeper must never delete what a live run has not yet handed to `record-cassette.mjs`. A
-   * recording is the only durable product of a paid live run, and a sweep that took the project
-   * directory or the results with it would destroy roughly $30 of work with no way to recover it.
+   * The sweeper must never delete a live run's own output. With recording gone, the project tree and
+   * `live-engine-results` are the *only* record that a paid run happened at all — roughly $30 of
+   * real model calls with nothing packaging them afterwards, so a sweep that took either would
+   * destroy the run with no way to recover it.
    */
   it('spares the live-engine project directories and results by default', async () => {
     const source = await readFile(path.join(scriptsRoot, 'clean-tmp.mjs'), 'utf8');
     const guarded = source.slice(source.indexOf('const liveEngineTemp'));
     const defaultBranch = guarded.slice(guarded.indexOf('} else if'));
     expect(defaultBranch).not.toContain('live-engine-results');
-    // Only clones and logs, both regenerable, are named in the default sweep.
-    expect(defaultBranch).toContain("name.endsWith('-cassette')");
+    // Only per-run logs, which are regenerable, are named in the default sweep.
     expect(defaultBranch).toContain("name.endsWith('.log')");
   });
 

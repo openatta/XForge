@@ -3,6 +3,29 @@
 // list now, so Quick/Major stage graphs (which differ from Solid's) are not hardcoded here.
 export const LIVE_ENGINE_STAGES = ['plan', 'apply', 'verify'];
 
+/** Below this round-trip, the shipped per-stage timeout stands unchanged. */
+export const PROBE_BASELINE_MS = 3_000;
+/** A provider slower than this multiple is a problem to report, not one to wait out. */
+export const PROBE_MAX_SCALE = 4;
+
+/**
+ * How much to lengthen the per-stage timeout for the provider this run is actually configured with.
+ *
+ * The ceiling is a bet on provider speed, and a fixed one lost on a real endpoint: `major`'s check
+ * stage runs 49 turns, and at the ~7s per turn this project's configured gateway delivers, its API
+ * time alone is 5.8 minutes — so 900s could not absorb one slow turn, and the stage was killed twice
+ * at exactly 900s having produced nothing. Roughly 95% of a stage's wall clock is time waiting on
+ * the provider, so one trivial round trip predicts the ceiling well enough to size it.
+ *
+ * Only ever lengthens (`max(1, …)`): a fast provider does not get a tighter deadline than the one
+ * shipped, because the default encodes more than latency. `null` — the probe could not be made —
+ * leaves the default alone rather than guessing in either direction.
+ */
+export function timeoutScaleForLatency(probedLatencyMs) {
+  if (probedLatencyMs === null || !Number.isFinite(probedLatencyMs) || probedLatencyMs <= 0) return 1;
+  return Math.min(PROBE_MAX_SCALE, Math.max(1, Math.ceil(probedLatencyMs / PROBE_BASELINE_MS)));
+}
+
 export class LiveEnginePolicyError extends Error {
   constructor(code, message) {
     super(message);

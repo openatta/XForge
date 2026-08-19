@@ -1,13 +1,13 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { readFileSync, readdirSync, existsSync, rmSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { parse } from '../../xforge/node_modules/yaml/dist/index.js';
+import { parse, stringify } from '../../xforge/node_modules/yaml/dist/index.js';
 import { spawnXforge, runXforgeJson, tryXforgeJson } from './xforge-cli.mjs';
-import { assertLiveEnginePolicy, createLiveEnginePolicy, resetLiveEngineStageAttempts } from './policy.mjs';
-import { assertCassetteReplayable, assertCassetteStillApplies, readCassette } from './cassette.mjs';
+import { assertLiveEnginePolicy, createLiveEnginePolicy, resetLiveEngineStageAttempts, timeoutScaleForLatency } from './policy.mjs';
 import { stoppedAwaitingDeclaration as stoppedAwaitingDeclarationHere } from './outcome.mjs';
+import { SCENARIO_IDS } from './scenario-catalogue.mjs';
 
 /**
  * Data-driven live-engine matrix runner. For a Flow scenario (quick/solid/major), this reads
@@ -148,16 +148,220 @@ const SCENARIOS = {
     expect: { outcome: ['archived', 'stopped-at-check'] },
     inject: { afterStage: 'check', prompt: 'standalone/status-blocked.md', stageLabel: 'standalone-status-blocked' },
   },
+
+  /*
+   * Standalone Skills: one prepared project, one model call, one assertion.
+   *
+   * These four had prompts, coverage-matrix entries, and no runner row, so `check-coverage.mjs`
+   * certified them as covered while they had never executed. A Skill no Flow Stage names cannot be
+   * reached by the Stage walk at all, so without an entry here it is coverage on paper only.
+   *
+   * Each `assert` checks the Skill's *observable effect*, never its prose. What the Agent wrote in
+   * its final message is not evidence; what it left on disk is.
+   */
+  'standalone-scaffold': {
+    standalone: true,
+    seed: 'standalone',
+    prompt: 'standalone/scaffold.md',
+    intent: 'authoring',
+    /* The prompt asks for a project-owned Rule, registered in the Manifest so it projects. Both
+       halves are checked: a Rule file nobody selected changes nothing, and a selection naming a
+       file that does not exist breaks install. */
+    assert: async (projectRoot) => {
+      const rulePath = path.join(projectRoot, 'xforge', 'scaffold', 'rules', 'no-console-log.yaml');
+      const manifest = parse(await readFile(path.join(projectRoot, 'xforge', 'manifest.yaml'), 'utf8'));
+      const selectedRules = manifest.scaffold?.rules ?? [];
+      return [
+        { name: 'rule-file-written', ok: existsSync(rulePath), detail: 'xforge/scaffold/rules/no-console-log.yaml' },
+        { name: 'rule-registered-in-manifest', ok: selectedRules.includes('no-console-log'), detail: `scaffold.rules = ${JSON.stringify(selectedRules)}` },
+      ];
+    },
+  },
+  'standalone-architect': {
+    standalone: true,
+    seed: 'standalone',
+    prompt: 'standalone/architect.md',
+    intent: 'authoring',
+    /* The Skill's whole point is that a project with no architecture file is not in violation: it
+       writes one by questioning, and says the absence blocked nothing. */
+    assert: async (projectRoot) => {
+      const architecturePath = path.join(projectRoot, 'xforge', 'architecture.md');
+      const written = existsSync(architecturePath) ? await readFile(architecturePath, 'utf8') : '';
+      return [
+        { name: 'architecture-written', ok: written.trim().length > 0, detail: 'xforge/architecture.md' },
+        { name: 'has-sections', ok: /^##\s/m.test(written), detail: 'at least one ## section' },
+      ];
+    },
+  },
+  'standalone-kanban': {
+    standalone: true,
+    seed: 'standalone',
+    prompt: 'standalone/kanban.md',
+    intent: 'read-only',
+    /*
+     * Read-only by contract, so the assertion is inverted: what matters is that it reported without
+     * writing governance state. A Skill that surveys a portfolio and quietly edits it is the defect.
+     */
+    assert: async (projectRoot) => {
+      const status = run('git', ['status', '--porcelain'], projectRoot).trim();
+      const touchedGovernance = status.split('\n').filter(Boolean)
+        .map((line) => line.slice(3))
+        .filter((file) => file.startsWith('xforge/changes/') || file.startsWith('xforge/manifest.yaml') || file.startsWith('xforge/lock.yaml'));
+      return [
+        { name: 'no-governance-writes', ok: touchedGovernance.length === 0, detail: touchedGovernance.join(', ') || 'clean' },
+      ];
+    },
+  },
+  'standalone-upgrade-scaffold': {
+    standalone: true,
+    seed: 'standalone',
+    prompt: 'standalone/upgrade-scaffold.md',
+    intent: 'merge',
+    /*
+     * The one scenario needing a prepared past: a project on an older Scaffold, carrying a Gate a
+     * person adapted, with an upgrade already staged. The merge has to keep this project's real test
+     * command while adopting what the release changed — taking the incoming file wholesale is the
+     * failure, however tidy it looks.
+     */
+    prepare: async (projectRoot) => {
+      const gateRelative = path.join('xforge', 'scaffold', 'gates', 'unit-tests.yaml');
+      const gatePath = path.join(projectRoot, gateRelative);
+      const adapted = [
+        '# Adapted by this project: the placeholder XForge shipped never ran anything here.',
+        'apiVersion: xforge.dev/v1alpha1',
+        'kind: Gate',
+        'metadata:',
+        '  name: unit-tests',
+        '  version: 2',
+        'spec:',
+        '  required: true',
+        `  command: ${JSON.stringify(PROJECT_ADAPTED_TEST_COMMAND)}`,
+        '  shell: false',
+        '  workingDirectory: .',
+        '  timeoutSeconds: 900',
+        '  evidence: tests.json',
+        '',
+      ].join('\n');
+      await writeFile(gatePath, adapted);
+      /*
+       * Age the Manifest's Scaffold pin so this is a genuine upgrade rather than a no-op, and leave
+       * the CLI pin current — that split is exactly the state `xforge update` now leaves behind, and
+       * the state a project sits in while a merge is outstanding.
+       *
+       * Re-stringified rather than patched line-by-line: this is a fixture the harness owns, so
+       * losing the shipped comments costs nothing, and a regex over YAML that has to find the right
+       * `version:` among three of them is the kind of fragility a test fixture should not carry.
+       */
+      const manifestPath = path.join(projectRoot, 'xforge', 'manifest.yaml');
+      const manifest = parse(await readFile(manifestPath, 'utf8'));
+      manifest.scaffold.version = AGED_SCAFFOLD_VERSION;
+      manifest.scaffold.source.version = AGED_SCAFFOLD_VERSION;
+      await writeFile(manifestPath, stringify(manifest));
+      commit(projectRoot, 'Project adapted the unit-tests Gate to its own command');
+      /* Stage the upgrade the Skill is asked to complete. */
+      const staged = spawnXforge(projectRoot, ['upgrade-scaffold']);
+      if (staged.status !== 0) throw new Error(`Could not stage an upgrade for ${'standalone-upgrade-scaffold'}: ${staged.stderr || staged.stdout}`);
+      commit(projectRoot, 'Staged a Scaffold upgrade for the merge exercise');
+    },
+    assert: async (projectRoot) => {
+      const gatePath = path.join(projectRoot, 'xforge', 'scaffold', 'gates', 'unit-tests.yaml');
+      const merged = existsSync(gatePath) ? await readFile(gatePath, 'utf8') : '';
+      const stagedLeft = readdirSync(path.join(projectRoot, 'xforge')).filter((name) => name.startsWith('scaffold-'));
+      return [
+        /* The whole point: the project's own command survived a merge that also adopted the release. */
+        { name: 'kept-project-command', ok: merged.includes(PROJECT_ADAPTED_TEST_COMMAND[0]), detail: `expected ${PROJECT_ADAPTED_TEST_COMMAND.join(' ')} to survive` },
+        { name: 'upgrade-completed', ok: stagedLeft.length === 0, detail: stagedLeft.join(', ') || 'no staged directory left behind' },
+      ];
+    },
+  },
 };
 
+/** The command the `standalone-upgrade-scaffold` project "already had", which its merge must keep. */
+const PROJECT_ADAPTED_TEST_COMMAND = ['node', '--test', 'test/'];
+/** Old enough to make the staged merge a real one; the exact number does not matter, only that it lags. */
+const AGED_SCAFFOLD_VERSION = '0.7.12';
+
+const OPTION_DEFAULTS = { 'cli-source': 'npm', 'suite-budget': '30', budget: '3', 'max-attempts': '2', 'timeout-seconds': '900' };
+
+/**
+ * A trivial round trip to the configured provider, in milliseconds, or `null` if it cannot be made.
+ *
+ * The per-stage timeout is a bet on how fast the provider is, and until now it was a fixed one. That
+ * bet lost on a real endpoint: `major`'s check stage runs 49 turns, and at the ~7s per turn this
+ * project's configured gateway actually delivers, the API time alone is 5.8 minutes — so a 900s
+ * ceiling could not survive one slow turn or one retry, and the stage was killed twice at exactly
+ * 900s with the run reporting nothing. Ninety-five percent of a stage's wall clock is time spent
+ * waiting on this endpoint, so measuring it once is the cheapest possible way to size the ceiling.
+ *
+ * Deliberately measured rather than configured: an operator who knows better passes
+ * `--timeout-seconds` and is never second-guessed (see `explicit` above). This only replaces a
+ * default that was calibrated against a provider this run may not be using.
+ */
+async function probeProviderLatency() {
+  try {
+    const source = await readFile(path.join(repositoryRoot, '.env'), 'utf8');
+    const config = {};
+    for (const raw of source.split(/\r?\n/)) {
+      const line = raw.trim();
+      if (!line || line.startsWith('#')) continue;
+      const match = line.match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+      if (!match) continue;
+      let value = match[2];
+      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) value = value.slice(1, -1);
+      config[match[1]] = value;
+    }
+    if (!config.ANTHROPIC_AUTH_TOKEN || !config.ANTHROPIC_BASE_URL) return null;
+    const started = Date.now();
+    const response = await fetch(`${config.ANTHROPIC_BASE_URL.replace(/\/$/, '')}/v1/messages`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': config.ANTHROPIC_AUTH_TOKEN, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: config.ANTHROPIC_MODEL ?? 'claude-sonnet-4-20250514', max_tokens: 8, messages: [{ role: 'user', content: 'ok' }] }),
+      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+    });
+    if (!response.ok) return null;
+    await response.text();
+    return Date.now() - started;
+  } catch { return null; }
+}
+
+const PROBE_TIMEOUT_MS = 60_000;
+
+/*
+ * The catalogue and this table must name the same scenarios.
+ *
+ * `check-coverage.mjs` answers "is this Skill covered" from the catalogue, so a catalogue entry with
+ * no row here would let it certify a scenario that cannot run — which is precisely the failure that
+ * made the catalogue necessary. Refusing at startup keeps the two honest in both directions: a
+ * scenario added here and not there is invisible to coverage, and one added there and not here is a
+ * claim nothing can satisfy.
+ */
+function assertCatalogueMatchesTable() {
+  const declared = [...SCENARIO_IDS].sort();
+  const implemented = Object.keys(SCENARIOS).sort();
+  const missing = declared.filter((id) => !implemented.includes(id));
+  const extra = implemented.filter((id) => !declared.includes(id));
+  if (missing.length === 0 && extra.length === 0) return;
+  throw new Error([
+    'scenario-catalogue.mjs and run-matrix.mjs disagree about which scenarios exist.',
+    missing.length ? `  Catalogued but not implemented here: ${missing.join(', ')}` : null,
+    extra.length ? `  Implemented here but not catalogued: ${extra.join(', ')}` : null,
+    '  Coverage is answered from the catalogue, so a catalogued scenario with no runner row is coverage nobody can run.',
+  ].filter(Boolean).join('\n'));
+}
+
 function options(argv) {
-  const result = { 'cli-source': 'npm', 'suite-budget': '30', budget: '3', 'max-attempts': '2', 'timeout-seconds': '900' };
+  const result = { ...OPTION_DEFAULTS };
+  /* Which limits the caller actually stated. An explicit value is a decision and is never scaled;
+     a default is a guess this file is entitled to correct once it has measured the provider. */
+  const explicit = new Set();
   for (let index = 0; index < argv.length; index += 2) {
     const key = argv[index];
     const value = argv[index + 1];
     if (!key?.startsWith('--') || value === undefined) throw new Error('Expected key/value options.');
     result[key.slice(2)] = value;
+    explicit.add(key.slice(2));
   }
+  result.explicit = explicit;
   /* `--flow` still selects a scenario by name, because for three of the four the two coincide and
      every existing invocation spells it that way. `--scenario` is what a scenario sharing another's
      Flow needs, and it wins when both are given. */
@@ -234,105 +438,7 @@ async function reopenStageAttempts(policyPath, stageIds) {
   await writeFile(policyPath, `${JSON.stringify(policy, null, 2)}\n`);
 }
 
-/**
- * Splits a recorded Stage's files into what the Agent wrote and what the CLI produced for it.
- *
- * A Stage commit holds both, because an Agent authors an Artifact and then runs `xforge check` or
- * `xforge transition` in the same turn. Only the first half may be restored on a replay. The second
- * half is the tooling under test: transition receipts are a hash chain, and restoring one recorded
- * against the previous run's chain while this run builds its own forks it outright
- * (`XFORGE_TRANSITION_CHAIN_INVALID`, which is how this was found). Gate Evidence, the audit log and
- * the work-package records are the same kind of thing — regenerating them is the point of replaying.
- *
- * `change.yaml` stays on the authored side despite living beside them: it holds the Flow, the
- * classification and the scope the Agent declared, and no governance state at all — that is entirely
- * in the receipts. Excluding it made the Change cease to exist and `state` return nothing.
- */
-function isAgentAuthored(file) {
-  const machineOwned = [
-    /\/evidence\/receipts\//,
-    /\/evidence\/audit\//,
-    /\/evidence\/agents\//,
-    /\/evidence\/[^/]+\.json$/,
-  ];
-  return !machineOwned.some((pattern) => pattern.test(`/${file}`));
-}
-
-/**
- * Replays one recorded Stage in place of calling the model.
- *
- * Only the Agent's own contribution is applied — the diff between the recorded Stage commit and its
- * parent — never the whole recorded tree. Everything the harness and the CLI did around it is
- * re-executed for real on this run, which is the entire point: approvals are re-signed, Gates are
- * re-run, work packages are re-dispatched, the archive transaction happens again. A whole-tree
- * checkout would restore their outputs instead of testing them.
- */
-function applyRecordedStage(projectRoot, stageId) {
-  /*
-   * The nth visit to a Stage takes the nth recording of it. A Flow that reworks walks the same Stage
-   * more than once and each visit produced different content — `solid-rework` records `design`
-   * twice, the second time with the planted contradiction removed. Looking a Stage up by name alone
-   * replayed the first visit both times and put the defect back, which the `contentRevision`
-   * assertion then caught. Nothing else in the cassette is positional, so the counter lives here.
-   */
-  const occurrence = (replayVisits.get(stageId) ?? 0);
-  replayVisits.set(stageId, occurrence + 1);
-  const step = replay.steps.filter((candidate) => candidate.stage === stageId)[occurrence];
-  if (!step) {
-    /*
-     * A Stage the recording walked but committed nothing for wrote nothing, and replaying it is
-     * correctly a no-op. The read-only Skills are like this — `standalone-status` runs `xforge
-     * status` and reports, so `commit` finds an unchanged tree and skips. The timeline still has an
-     * entry for it, which is what separates "produced nothing" from "never happened": a Stage in
-     * neither list is a Flow that reached somewhere the recording never did, and that is a real
-     * divergence rather than a missing file.
-     */
-    const recorded = (replay.stages ?? []).some((candidate) => candidate.stage === stageId);
-    /* The archive prompt is the other shape of this: a standalone Skill exercise the Agent is
-       expected to end by reporting that closing Approval blocks it, so it writes nothing and older
-       cassettes carry no timeline entry for it either. Newer ones do — the entry is written below —
-       and until those replace these, its name is enough to tell it apart from a real divergence. */
-    if (recorded || stageId === 'archive') {
-      process.stdout.write(`${JSON.stringify({ replayed: stageId, files: 0, note: 'nothing recorded to apply; the Stage wrote nothing' })}\n`);
-      return;
-    }
-    throw new Error(`Cassette "${replay.scenario}" never reached ${stageId}. The Flow walked to a Stage the recording did not, which is a divergence, not a missing file.`);
-  }
-  const changes = cassetteGit(['diff', '--name-status', step.parent, step.commit]).trim();
-  const applied = [];
-  const regenerated = [];
-  for (const line of changes ? changes.split('\n') : []) {
-    const [status, ...rest] = line.split('\t');
-    const file = rest[rest.length - 1];
-    if (!isAgentAuthored(file)) { regenerated.push(file); continue; }
-    if (status.startsWith('D')) {
-      rmSync(path.join(projectRoot, file), { force: true });
-    } else {
-      cassetteGit(['--work-tree', projectRoot, 'checkout', step.commit, '--', file]);
-    }
-    applied.push(file);
-  }
-  /* `git checkout` against a foreign work tree stages what it writes into the cassette's index;
-     resetting keeps that index from carrying over into the next step's diff. */
-  cassetteGit(['reset', '--quiet']);
-  /*
-   * Re-run `xforge check` only where the recording shows the Agent ran it — that is, where its turn
-   * produced Gate Evidence. Running it after every Stage instead looks harmless and is not: at Apply
-   * it regenerates the work package's verification record before the delivery is bound, so the
-   * delivery diff then contains a file outside the package's `write_paths` and `apply -> verify`
-   * blocks on a boundary the Worker never crossed. When the tooling runs matters as much as whether
-   * it runs, and the recording is the statement of when.
-   */
-  if (regenerated.some((file) => /\/evidence\/[^/]+\.json$/.test(`/${file}`))) {
-    tryXforgeJson(projectRoot, ['check', '--change', scenarioConfig.changeId]);
-  }
-  process.stdout.write(`${JSON.stringify({
-    replayed: stageId, commit: step.commit.slice(0, 8), restored: applied.length, regenerated: regenerated.length,
-  })}\n`);
-}
-
 async function runEngine({ projectRoot, scenario, stageId, promptRelative, policyPath, options: cliOptions }) {
-  if (replay) return applyRecordedStage(projectRoot, stageId);
   const promptPath = path.join(scenariosRoot, promptRelative);
   const outputPath = path.join(resultsRoot, `${scenario}-${stageId}.json`);
   const args = [
@@ -590,6 +696,7 @@ async function runApprovals({ projectRoot, policyIds, transition, changeId, simu
   }
 }
 
+assertCatalogueMatchesTable();
 const selected = options(process.argv.slice(2));
 const scenarioConfig = SCENARIOS[selected.scenario];
 const scenarioName = selected.scenario;
@@ -599,73 +706,136 @@ process.env.XFORGE_LIVE_ENGINE_SCENARIO = scenarioName;
 await mkdir(resultsRoot, { recursive: true });
 
 /*
- * Replay mode. The cassette stands in for the model and for nothing else — every CLI call, Gate,
- * Approval and commit below runs for real against a freshly installed project. That is what makes a
- * replay a regression test of the tooling rather than a re-enactment of a recording.
+ * One entry per Stage the Agent drove. The value that matters is `contentRevision`:
+ * `core/revision.ts` derives it from the Change's governed content and the policy snapshot, with no
+ * commit id or timestamp in it, so identical trees must produce an identical revision. Recording it
+ * after every Stage is what lets a failed run be read afterwards: the timeline is the only durable
+ * account of what a paid run actually did, stage by stage.
  */
-const replay = selected.replay ? readCassette(selected.replay) : null;
-/* How many times each Stage has been replayed / asserted, so a reworked Flow takes the nth
-   recording of its nth visit rather than the first one every time. */
-const replayVisits = new Map();
-const timelineVisits = new Map();
-let cassetteRepo = null;
-if (replay) {
-  if (replay.scenario !== scenarioName) {
-    throw new Error(`Cassette "${replay.scenario}" cannot drive scenario "${scenarioName}".`);
-  }
-  /*
-   * A recording can be valid and still not replayable, and the recording is where that was decided
-   * — see `unreplayableReason` in record-cassette.mjs. Refusing here, before a project is installed
-   * and a Flow is walked, turns what used to be a gate failure deep inside Check into one line
-   * naming the cause. Older cassettes carry no such field and are replayed as before.
-   */
-  assertCassetteReplayable(replay);
-  assertCassetteStillApplies(replay);
-  cassetteRepo = path.join(temporaryRoot, `live-engine-${scenarioName}-cassette`);
-  rmSync(cassetteRepo, { recursive: true, force: true });
-  run('git', ['clone', '--quiet', '--no-checkout', replay.files.bundle, cassetteRepo], repositoryRoot);
-}
-function cassetteGit(args) {
-  return run('git', ['--git-dir', path.join(cassetteRepo, '.git'), ...args], repositoryRoot);
+/*
+ * Size the per-stage ceiling to the provider actually configured, unless the caller stated one.
+ *
+ * `major` is the worked example: killed twice at exactly 900s with no output, re-run at 2700s and
+ * passed on the first attempt of every stage. Nothing about the product had changed — the default
+ * was simply shorter than the stage could physically take on this endpoint. Deriving it removes the
+ * hand-tuning that discovery otherwise requires, and removes the temptation to read a timeout as a
+ * product failure.
+ */
+const probedLatencyMs = selected.explicit.has('timeout-seconds') ? null : await probeProviderLatency();
+const timeoutScale = timeoutScaleForLatency(probedLatencyMs);
+if (timeoutScale > 1) {
+  selected['timeout-seconds'] = String(Number(selected['timeout-seconds']) * timeoutScale);
 }
 
-/*
- * One entry per Stage the Agent drove, written on a live run and asserted on a replay. The value
- * that matters is `contentRevision`: `core/revision.ts` derives it from the Change's governed
- * content and the policy snapshot, with no commit id or timestamp in it, so identical trees must
- * produce an identical revision. Comparing it after every Stage turns any drift in how content is
- * digested into an immediate, located failure instead of a vague one at archive time.
+/**
+ * The limits this run actually ran under, carried beside its verdict.
+ *
+ * `outcome: stopped-at-check` reached at a hand-raised ceiling and one reached at the shipped
+ * default are the same three words in the result file, and they are not the same claim. The policy
+ * file always recorded these; the timeline and the summary envelope — the two artifacts a reader
+ * consults to answer "did this pass" — did not, so a relaxed pass travelled indistinguishably from
+ * a strict one. A result that does not carry its conditions cannot be read later.
  */
-const timeline = { scenario: scenarioName, flow: flowName, changeId: null, cli: null, outcome: null, reworks: 0, stages: [] };
+const limits = {
+  timeoutSeconds: Number(selected['timeout-seconds']),
+  maxAttemptsPerStage: Number(selected['max-attempts']),
+  suiteBudgetUsd: Number(selected['suite-budget']),
+  stageBudgetUsd: Number(selected.budget),
+  /* Everything below is why the numbers above are not the shipped ones. */
+  defaults: {
+    timeoutSeconds: Number(OPTION_DEFAULTS['timeout-seconds']),
+    maxAttemptsPerStage: Number(OPTION_DEFAULTS['max-attempts']),
+    suiteBudgetUsd: Number(OPTION_DEFAULTS['suite-budget']),
+    stageBudgetUsd: Number(OPTION_DEFAULTS.budget),
+  },
+  explicit: [...selected.explicit].filter((key) => key in OPTION_DEFAULTS).sort(),
+  probedLatencyMs,
+  timeoutScale,
+};
+limits.atDefaults = ['timeoutSeconds', 'maxAttemptsPerStage', 'suiteBudgetUsd', 'stageBudgetUsd']
+  .every((key) => limits[key] === limits.defaults[key]);
+if (!limits.atDefaults) {
+  process.stdout.write(`${JSON.stringify({
+    warning: 'relaxed-limits',
+    detail: 'This run did not use the shipped limits, so its verdict is not comparable to one that did.',
+    ...limits,
+  })}\n`);
+}
+
+const timeline = { scenario: scenarioName, flow: flowName, changeId: null, cli: null, limits, outcome: null, reworks: 0, stages: [] };
 function timelineStep(projectRoot, stageId) {
   const change = changeState(projectRoot);
-  const entry = {
+  timeline.stages.push({
     stage: stageId,
     contentRevision: change.governance?.revision?.contentRevision ?? null,
     currentStage: change.governance?.currentStage ?? null,
-  };
-  if (!replay) { timeline.stages.push(entry); return; }
-  const visit = (timelineVisits.get(stageId) ?? 0);
-  timelineVisits.set(stageId, visit + 1);
-  const recorded = (replay.stages ?? []).filter((candidate) => candidate.stage === stageId)[visit];
-  if (!recorded) return;
-  if (recorded.contentRevision !== entry.contentRevision) {
-    throw new Error(`Replay diverged at ${stageId}: contentRevision ${entry.contentRevision} does not match the recorded ${recorded.contentRevision}. The same content produced a different revision, so something in how governed content is digested has changed.`);
-  }
-  /*
-   * `currentStage` is recorded but deliberately not asserted. An Agent transitions inside the turn
-   * that produced its Artifacts, so the recording observed the Stage it moved to; a replay makes
-   * that move a few steps later, from the harness, and would report the Stage it moved from. The
-   * difference is one of timing, not of behaviour, and the Stage sequence is already asserted by the
-   * loop having to reach each recorded Stage at all. `contentRevision` above carries the weight, and
-   * it is independent of where the Change sits.
-   */
+  });
 }
 
 const setup = JSON.parse(run('node', [
   path.join(scriptsRoot, 'setup.mjs'), '--scenario', scenarioName, '--seed', scenarioConfig.seed ?? flowName, '--cli-source', selected['cli-source'],
 ], repositoryRoot));
 const projectRoot = setup.project;
+
+/*
+ * Standalone Skills leave here and never touch the Stage loop below.
+ *
+ * A standalone Skill has no Flow Stage to reach it from, so the graph-driven walk cannot invoke it
+ * at all — which is why four of them sat in `coverage-matrix.yaml` as covered while never having
+ * been run once. The shape they need is much smaller than a Flow walk: prepare a project, make one
+ * model call, and check what the Skill left behind.
+ */
+if (scenarioConfig.standalone) {
+  const policyPath = path.join(resultsRoot, `${scenarioName}-policy.json`);
+  await writeFile(policyPath, `${JSON.stringify(createLiveEnginePolicy({
+    suiteBudgetUsd: Number(selected['suite-budget']),
+    maxAttemptsPerStage: Number(selected['max-attempts']),
+    timeoutSeconds: Number(selected['timeout-seconds']),
+    stages: [scenarioName],
+  }), null, 2)}\n`);
+
+  /* Whatever the Skill needs to be true before it runs — an aged Scaffold, a staged upgrade, a
+     Gate somebody adapted. Kept beside the scenario rather than in `setup.mjs`, because it is a
+     statement about this scenario, not about how projects are built. */
+  if (scenarioConfig.prepare) await scenarioConfig.prepare(projectRoot, { cliEnv: setup.cliBin });
+
+  await runEngine({
+    projectRoot, scenario: scenarioName, stageId: scenarioName,
+    promptRelative: scenarioConfig.prompt, policyPath, options: selected,
+  });
+  commit(projectRoot, `Live engine standalone scenario: ${scenarioName}`);
+
+  /*
+   * The assertion is the scenario. Without one this would report that a model was called, which is
+   * not a result — the same reason `expect` exists on every Flow scenario.
+   */
+  const observed = await scenarioConfig.assert(projectRoot);
+  const finalPolicy = assertLiveEnginePolicy(JSON.parse(await readFile(policyPath, 'utf8')));
+  const failures = observed.filter((check) => !check.ok);
+  timeline.changeId = null;
+  timeline.outcome = failures.length === 0 ? 'standalone-satisfied' : 'standalone-unsatisfied';
+  timeline.cli = setup.cli ?? null;
+  timeline.stages.push({ stage: scenarioName, checks: observed });
+  await writeFile(path.join(resultsRoot, `${scenarioName}-timeline.json`), `${JSON.stringify(timeline, null, 2)}\n`);
+
+  const standalonePassed = failures.length === 0
+    && finalPolicy.budgetAccountingComplete
+    && finalPolicy.spentUsd <= finalPolicy.suiteBudgetUsd;
+  process.stdout.write(`${JSON.stringify({
+    ok: standalonePassed,
+    scenario: scenarioName,
+    flow: null,
+    intent: scenarioConfig.intent ?? null,
+    limits,
+    outcome: timeline.outcome,
+    checks: observed,
+    project: projectRoot,
+    suiteTokens: finalPolicy.tokens ?? null,
+    budgetAccountingComplete: finalPolicy.budgetAccountingComplete,
+    policyPath,
+  }, null, 2)}\n`);
+  process.exitCode = standalonePassed ? 0 : 1;
+} else {
 
 const flow = parse(await readFile(path.join(projectRoot, 'xforge', 'flows', `${flowName}.yaml`), 'utf8'));
 const stages = flow.stages;
@@ -894,10 +1064,10 @@ for (let index = 0; index < stages.length; ) {
        *
        * This branch recognises a rework by the last Transition receipt pointing backwards, which is
        * sound only until the Flow stands still afterwards: the same receipt is then the newest one
-       * on the next iteration too, and gets counted again. A replay of Major hit it immediately —
-       * the harness performs the rework itself, lands on the target Stage, finds no forward move to
-       * attribute, and re-read its own receipt as a second rework. A live run can reach it just as
-       * well: `solid-rework` once had Check record its blocker and stop without transitioning.
+       * on the next iteration too, and gets counted again. `solid-rework` reached exactly that: Check
+       * recorded its blocker and stopped without transitioning, the Flow stood still, and the same
+       * receipt was re-read as a second rework. `countedReceipt` is what stops one receipt counting
+       * twice.
        */
       const isDeclaredRework = target >= 0 && target <= index
         && Boolean(backward) && backward.to === current
@@ -916,38 +1086,22 @@ for (let index = 0; index < stages.length; ) {
        */
       let reworkFrom = backward?.from;
       let reworkTo = current;
-      let movedForward = false;
       if (!isDeclaredRework) {
         const probe = tryXforgeJson(projectRoot, ['transition', '--change', scenarioConfig.changeId, '--to', nextStage.id, '--dry-run']);
-        /*
-         * On a replay there is no Agent to have moved the Change, and the receipt it wrote during
-         * the recording is deliberately not restored — receipts chain, and grafting one run's chain
-         * onto another's forks it. So the harness makes the move the recording shows the Agent
-         * making, once the Gates agree it is allowed. What is being tested here is that the CLI
-         * still permits it on this content, not that a model remembered to ask.
-         */
-        if (replay && probe.data?.ready) {
-          runXforgeJson(projectRoot, ['transition', '--change', scenarioConfig.changeId, '--to', nextStage.id]);
-          commit(projectRoot, `Replayed the Agent's transition into ${nextStage.id}`);
-          movedForward = true;
-        } else {
-          const held = current === stage.id ? declaredReworkTarget(projectRoot, probe, stage) : null;
-          if (!held) {
-            const blocks = probe.diagnostics?.filter((item) => item.severity === 'error').map((item) => item.message).join(' ');
-            throw new Error(`Agent did not self-transition ${stage.id} -> ${nextStage.id} as instructed (currentStage=${current}, lastReceipt=${backward ? `${backward.from}->${backward.to}` : 'none'})${blocks ? `; the Stage is blocked by: ${blocks}` : ' and nothing blocks it'}.`);
-          }
-          runXforgeJson(projectRoot, ['transition', '--change', scenarioConfig.changeId, '--to', held]);
-          reworkFrom = stage.id;
-          reworkTo = held;
+        const held = current === stage.id ? declaredReworkTarget(projectRoot, probe, stage) : null;
+        if (!held) {
+          const blocks = probe.diagnostics?.filter((item) => item.severity === 'error').map((item) => item.message).join(' ');
+          throw new Error(`Agent did not self-transition ${stage.id} -> ${nextStage.id} as instructed (currentStage=${current}, lastReceipt=${backward ? `${backward.from}->${backward.to}` : 'none'})${blocks ? `; the Stage is blocked by: ${blocks}` : ' and nothing blocks it'}.`);
         }
+        runXforgeJson(projectRoot, ['transition', '--change', scenarioConfig.changeId, '--to', held]);
+        reworkFrom = stage.id;
+        reworkTo = held;
       }
-      if (!movedForward) {
       reworks += 1;
       if (reworks > maxReworks) {
         /* The same verdict the Approval-gated arm reaches, and reachable from here too: whether a
            Stage's exit is gated decides which branch notices the block, not whether running out of
-           reworks at Check is a governance result. Major replays through this arm and was failing on
-           an outcome its live run had earned through the other. */
+           reworks at Check is a governance result. */
         /* Judged by where the rework came *from*, not by the loop's cursor: an Agent can move
            forward and back inside one turn, so the Stage that declared the rework is the one the
            receipt names, and that is what "ran out of reworks at Check" means. */
@@ -965,7 +1119,6 @@ for (let index = 0; index < stages.length; ) {
       index = stages.findIndex((candidate) => candidate.id === reworkTo);
       await reopenStageAttempts(policyPath, stages.slice(index).map((candidate) => candidate.id));
       advanced = false;
-      }
     }
   }
 
@@ -1075,9 +1228,7 @@ timeline.changeId = scenarioConfig.changeId;
 timeline.outcome = outcome;
 timeline.reworks = reworks;
 timeline.cli = setup.cli ?? null;
-if (!replay) {
-  await writeFile(path.join(resultsRoot, `${scenarioName}-timeline.json`), `${JSON.stringify(timeline, null, 2)}\n`);
-}
+await writeFile(path.join(resultsRoot, `${scenarioName}-timeline.json`), `${JSON.stringify(timeline, null, 2)}\n`);
 
 /*
  * The acceptance suite is run the way the project itself says to run it. Hardcoding `npm test` here
@@ -1103,6 +1254,9 @@ process.stdout.write(`${JSON.stringify({
   scenario: scenarioName,
   flow: flowName,
   intent: scenarioConfig.intent ?? null,
+  /* Beside the verdict, never below it: `atDefaults: false` is the difference between "this passed"
+     and "this passed under limits somebody widened", and the two must not read alike. */
+  limits,
   outcome,
   reworks,
   stoppedAtCheck,
@@ -1117,3 +1271,5 @@ process.stdout.write(`${JSON.stringify({
   policyPath,
 }, null, 2)}\n`);
 process.exitCode = passed ? 0 : 1;
+
+}

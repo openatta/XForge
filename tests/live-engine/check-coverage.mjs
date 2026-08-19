@@ -2,6 +2,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from '../../xforge/node_modules/yaml/dist/index.js';
+import { COVERABLE_SCENARIO_IDS } from './scenario-catalogue.mjs';
 
 /**
  * Coverage is derived from the same data the runtime itself reads (manifest.yaml's
@@ -66,11 +67,37 @@ for (const skill of matrixBySkill.keys()) {
   if (!declaredSkills.has(skill)) problems.push(`Coverage matrix references Skill "${skill}", which is not declared in manifest.yaml's scaffold.skills.`);
 }
 
+/*
+ * A named scenario must be a runnable one.
+ *
+ * Everything above checks that a Skill *has* a matrix entry. None of it asked whether the scenario
+ * that entry names can be executed, and the answer was no for two of them: `standalone-scaffold`
+ * and `standalone-upgrade-scaffold` had prompts on disk, entries in this matrix, and no row in
+ * `run-matrix.mjs`'s scenario table. This file reported `ok: true` throughout, so two Skills were
+ * documented as covered by runs that had never happened and could not happen.
+ *
+ * That is the specific way a coverage report fails worst — not by missing something, but by
+ * asserting coverage that does not exist. Checking the name against the runner's own catalogue is
+ * what makes "covered" mean "a live model call really does reach this".
+ */
+const runnable = new Set(COVERABLE_SCENARIO_IDS);
+for (const [skill, entries] of matrixBySkill) {
+  for (const entry of entries) {
+    if (runnable.has(entry.scenario)) continue;
+    problems.push(
+      `Coverage matrix claims Skill "${skill}" is covered by scenario "${entry.scenario}", which run-matrix.mjs cannot run `
+      + `(not in tests/live-engine/scenario-catalogue.mjs). A prompt file alone is not coverage — add the scenario to the `
+      + `runner, or stop claiming the Skill is covered.`,
+    );
+  }
+}
+
 const ok = problems.length === 0;
 process.stdout.write(`${JSON.stringify({
   ok,
   declaredSkillCount: declaredSkills.size,
   matrixSkillCount: matrixBySkill.size,
+  runnableScenarioCount: runnable.size,
   problems,
 }, null, 2)}\n`);
 process.exitCode = ok ? 0 : 1;
