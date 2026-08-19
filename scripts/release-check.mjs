@@ -68,6 +68,18 @@ for (const required of ['README.md', 'dist/LICENSE', 'dist/NOTICE', 'dist/cli.js
 for (const file of packedFiles) {
   assert(!file.startsWith('src/'), `Packed npm artifact unexpectedly includes ${file}.`);
   assert(!file.startsWith('test/'), `Packed npm artifact unexpectedly includes ${file}.`);
+  // The npm artifact ships compiled output only. `dist/**/*.d.ts` is the compiler's
+  // declaration output, not source. One deliberate exception: the Scaffold's
+  // `project-context` example script is project-facing template content — init copies
+  // it into the user's project to demonstrate declaring a TypeScript script — not the
+  // CLI's source, and its digest is chained in lock.yaml. A TypeScript file anywhere
+  // else means the source tree is leaking into the published package.
+  assert(
+    !/\.tsx?$/.test(file)
+      || file.startsWith('dist/')
+      || file === 'scaffold/payload/xforge/scripts/project-context/main.ts',
+    `Packed npm artifact unexpectedly includes TypeScript ${file}.`,
+  );
 }
 
 run(process.execPath, ['scripts/package-smoke.mjs']);
