@@ -96,6 +96,14 @@ export function renderBriefText(data: BriefData): string {
     lines.push(`  ${approval.policyId} for ${approval.transition} — ${approval.minApprovers} approver(s), roles ${approval.roles.join('/') || '(any)'}, separation of duties ${approval.separationOfDuties ? 'on' : 'off'}, still missing ${approval.missing}`);
   }
   for (const blocker of data.decision.openBlockers) lines.push(`  Open blocking finding: ${blocker}`);
+  /* Printed with their text, not as bare ids: an approver who has to look up what CHK-010 was is
+     an approver who will sign without looking it up. */
+  for (const item of data.decision.awaitingDecision) {
+    lines.push(`  Awaiting your answer: ${item.id} — ${item.summary}`);
+  }
+  if (data.decision.awaitingDecision.length > 0) {
+    lines.push('  These name no Stage to return to, so nothing sends them back: they close when you answer them.');
+  }
 
   lines.push('');
   lines.push('COMPUTED — derived from structured data; re-runs on the same revision are identical.');

@@ -97,6 +97,16 @@ export interface BriefData {
     reason: string;
     approvals: BriefApproval[];
     openBlockers: string[];
+    /**
+     * Open findings that name no Stage to go back to — the ones deferred to whoever signs here.
+     *
+     * They are structurally invisible otherwise. A blocker must name a `reworkTo` Stage, so an item
+     * routed to the approver instead cannot be one; only blockers are enforced by the findings
+     * Gate; and `openBlockers` above lists blockers alone. A live Major run left two of these open
+     * through ten approvals, every one of whose `reason` read "good" — the questions were pointed
+     * at the approver by name and never reached them.
+     */
+    awaitingDecision: Array<{ id: string; summary: string }>;
   };
   computed: BriefItem[];
   extracted: BriefItem[];
@@ -714,6 +724,7 @@ export async function readBrief(project: ProjectContext, options: BriefOptions):
           reason: 'This Change runs a Flow without governed Stages, so it has no approval for a brief to inform.',
           approvals: [],
           openBlockers: [],
+          awaitingDecision: [],
         },
         computed: [],
         extracted: [],
@@ -756,13 +767,22 @@ export async function readBrief(project: ProjectContext, options: BriefOptions):
   const openBlockers = findingsResult.findings
     .filter((finding) => finding.severity === 'blocker' && finding.status !== 'resolved')
     .map((finding) => finding.id);
+  /* Unresolved, and naming nowhere to go back to: by construction that is an item somebody has to
+     answer rather than route, and this Stage's approver is who the Artifact pointed it at. */
+  const awaitingDecision = findingsResult.findings
+    .filter((finding) => finding.status !== 'resolved' && !finding.reworkTo.trim())
+    .map((finding) => ({ id: finding.id, summary: finding.summary }));
 
   /*
    * A brief is produced where a person has something to decide: an approval this Stage declares,
    * or a blocking finding somebody must route. Producing one at every Stage exit would answer the
    * complaint that started this feature — too much to read — with more to read.
    */
-  const applicable = approvals.length > 0 || openBlockers.length > 0;
+  /* `awaitingDecision` counts here for the same reason the other two do: this file's rule is that a
+     brief is produced where a person has something to decide, and an item that names no Stage to
+     return to is waiting on a person's answer by construction. Leaving it out meant the one kind of
+     item the Artifact had addressed to a human was the one kind that could not summon a brief. */
+  const applicable = approvals.length > 0 || openBlockers.length > 0 || awaitingDecision.length > 0;
   if (!applicable) {
     return {
       data: {
@@ -775,6 +795,7 @@ export async function readBrief(project: ProjectContext, options: BriefOptions):
           reason: `Stage ${stage} declares no approval and has no open blocking finding; nothing here is a human decision.`,
           approvals: [],
           openBlockers: [],
+          awaitingDecision: [],
         },
         computed: [],
         extracted: [],
@@ -1004,6 +1025,7 @@ export async function readBrief(project: ProjectContext, options: BriefOptions):
           : `Stage ${stage} has ${openBlockers.length} open blocking finding(s) somebody must route.`,
         approvals,
         openBlockers,
+        awaitingDecision,
       },
       computed,
       extracted,

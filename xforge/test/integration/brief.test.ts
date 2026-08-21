@@ -87,6 +87,59 @@ describe('xforge brief', () => {
     expect(result.data.decision.openBlockers).toEqual(['F-1']);
   });
 
+  /*
+   * An item Design routes to the approver rather than back to a Stage was invisible everywhere: it
+   * cannot be a blocker (a blocker must name a reworkTo Stage), only blockers are enforced, and the
+   * brief listed blockers alone. A live Major run carried two of these through ten approvals whose
+   * `reason` all read "good" — the questions were addressed to the approver and never reached one.
+   */
+  it('lists the open items that name no Stage to return to, with their text', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await write(root, `xforge/changes/${CHANGE}/${CHECK_FINDINGS_PATH}`, [
+      'findings:',
+      '  - id: CHK-010',
+      '    severity: warning',
+      '    summary: Accept the single-instance deployment shape, or name the signal that forces a move?',
+      '    refs: [design.md]',
+      '    status: open',
+      '    reworkTo: null',
+      '  - id: F-2',
+      '    severity: blocker',
+      '    summary: Routed back to Propose, not asked of anybody here.',
+      '    refs: [design.md]',
+      '    status: open',
+      '    reworkTo: propose',
+      '',
+    ].join('\n'));
+
+    const result = await brief(root);
+    /* Only the one with nowhere to go back to — the blocker is somebody's to route, not to answer. */
+    expect(result.data.decision.awaitingDecision.map((item) => item.id)).toEqual(['CHK-010']);
+    /* Carried with its text: an approver who must look up what CHK-010 was will sign without doing so. */
+    expect(result.data.decision.awaitingDecision[0]!.summary).toContain('single-instance');
+    expect(result.data.decision.openBlockers).toEqual(['F-2']);
+  });
+
+  it('becomes applicable on an item awaiting an answer, even with no approval and no blocker', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await write(root, `xforge/changes/${CHANGE}/${CHECK_FINDINGS_PATH}`, [
+      'findings:',
+      '  - id: CHK-011',
+      '    severity: suggestion',
+      '    summary: Should this discipline become a project Rule?',
+      '    refs: [design.md]',
+      '    status: open',
+      '    reworkTo: null',
+      '',
+    ].join('\n'));
+
+    const result = await brief(root);
+    expect(result.data.decision.applicable).toBe(true);
+    expect(result.data.decision.awaitingDecision.map((item) => item.id)).toEqual(['CHK-011']);
+  });
+
   it('labels every entry with where it came from, and quotes rather than restates', async () => {
     const root = await fixture();
     await atDesignApproval(root);
