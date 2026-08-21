@@ -121,7 +121,14 @@ describe('xforge brief', () => {
     expect(result.data.decision.openBlockers).toEqual(['F-2']);
   });
 
-  it('becomes applicable on an item awaiting an answer, even with no approval and no blocker', async () => {
+  /*
+   * The narrow read of this is that an awaiting item no longer summons a brief. The reason it does
+   * not is that such an entry is usually a non-blocking note nothing ever resolves, so making it
+   * applicable produced a brief at every later Stage — the outcome the gate exists to prevent. What
+   * the reported failure actually was is covered above: the briefs approvers already read never
+   * mentioned these items.
+   */
+  it('does not make a brief applicable on its own, but is carried by one that is', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
     await write(root, `xforge/changes/${CHANGE}/${CHECK_FINDINGS_PATH}`, [
@@ -130,14 +137,31 @@ describe('xforge brief', () => {
       '    severity: suggestion',
       '    summary: Should this discipline become a project Rule?',
       '    refs: [design.md]',
-      '    status: open',
-      '    reworkTo: null',
       '',
     ].join('\n'));
 
-    const result = await brief(root);
-    expect(result.data.decision.applicable).toBe(true);
-    expect(result.data.decision.awaitingDecision.map((item) => item.id)).toEqual(['CHK-011']);
+    /* A `suggestion` written to the shipped instruction carries no `status` at all — the shape the
+       narrowed filter used to drop, and the shape this must keep. */
+    const alone = await brief(root);
+    expect(alone.data.decision.applicable).toBe(false);
+
+    await write(root, `xforge/changes/${CHANGE}/${CHECK_FINDINGS_PATH}`, [
+      'findings:',
+      '  - id: CHK-011',
+      '    severity: suggestion',
+      '    summary: Should this discipline become a project Rule?',
+      '    refs: [design.md]',
+      '  - id: F-9',
+      '    severity: blocker',
+      '    summary: Something somebody must route.',
+      '    refs: [design.md]',
+      '    status: open',
+      '    reworkTo: propose',
+      '',
+    ].join('\n'));
+    const together = await brief(root);
+    expect(together.data.decision.applicable).toBe(true);
+    expect(together.data.decision.awaitingDecision.map((item) => item.id)).toEqual(['CHK-011']);
   });
 
   it('labels every entry with where it came from, and quotes rather than restates', async () => {

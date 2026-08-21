@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { readFile, stat } from 'node:fs/promises';
+import { readFile, rm, stat } from 'node:fs/promises';
 import type { Diagnostic, FileChange, ProjectContext } from '../types.js';
 import { XForgeError, diagnostic } from '../core/errors.js';
 import { atomicWrite } from '../core/files.js';
@@ -12,7 +12,7 @@ import { resolveControlPlane } from '../core/control-plane.js';
 import { resolveWorkPackages } from '../core/work-packages.js';
 import { acknowledgementAttestationDigest, recordAudit } from '../core/audit.js';
 import { validateSchema } from '../core/validator.js';
-import { REVIEW_ACK_DIRECTORY, type ReviewAckReceipt } from '../core/review-acknowledgement.js';
+import { REVIEW_ACK_DIRECTORY, reviewEvidenceDigest, type ReviewAckReceipt } from '../core/review-acknowledgement.js';
 
 /**
  * Records that somebody reviewed this Change's delivered work, for Changes delivered without a
@@ -78,7 +78,7 @@ export async function executeReviewAcknowledge(project: ProjectContext, options:
     change: options.change,
     contentRevision: revision.contentRevision,
     evidence,
-    evidenceDigest: sha256(await readFile(evidenceAbsolute)),
+    evidenceDigest: reviewEvidenceDigest(await readFile(evidenceAbsolute)),
     actor: { id: process.env.USER ?? 'unknown', provider: 'local-os', role: 'reviewer', type: 'agent' as const },
     acknowledgedAt: new Date().toISOString(),
   };
@@ -98,12 +98,24 @@ export async function executeReviewAcknowledge(project: ProjectContext, options:
   const changes: FileChange[] = [{ action: 'create', path: target, digest: sha256(content), source: 'review:acknowledge' }];
   if (!options.dryRun) {
     await atomicWrite(project.root, target, content);
-    await recordAudit(project, {
-      eventType: 'review.acknowledged', change: options.change, flow: resolved.flow.metadata.name,
-      stage: currentStage, revision, outcome: 'succeeded',
-      inputDigest: acknowledgementAttestationDigest(receipt.digest), input: null,
-      output: { contentRevision: receipt.contentRevision, evidence, actor: receipt.actor.id },
-    });
+    /*
+     * The receipt is worthless without the event, so a failed audit write takes the receipt with it.
+     * `readReviewAcknowledgements` counts nothing the chain does not attest, and the filename is a
+     * fresh uuid, so an orphan left here is not replaced by a retry — it accumulates, and every
+     * later command reports it as a forgery for a review that genuinely happened, with no command
+     * that clears it. `work-package acknowledge` unwinds for exactly this reason.
+     */
+    try {
+      await recordAudit(project, {
+        eventType: 'review.acknowledged', change: options.change, flow: resolved.flow.metadata.name,
+        stage: currentStage, revision, outcome: 'succeeded',
+        inputDigest: acknowledgementAttestationDigest(receipt.digest), input: null,
+        output: { contentRevision: receipt.contentRevision, evidence, actor: receipt.actor.id },
+      });
+    } catch (error) {
+      await rm(await safeResolve(project.root, target), { force: true }).catch(() => undefined);
+      throw error;
+    }
   }
   return {
     data: { change: options.change, contentRevision: receipt.contentRevision, evidence, receipt: target, dryRun: options.dryRun },

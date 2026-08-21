@@ -768,17 +768,21 @@ export async function readBrief(project: ProjectContext, options: BriefOptions):
     .filter((finding) => finding.severity === 'blocker' && finding.status !== 'resolved')
     .map((finding) => finding.id);
   /*
-   * Explicitly `open`, and naming nowhere to go back to: by construction that is an item somebody
-   * has to answer rather than route, and this Stage's approver is who the Artifact pointed it at.
+   * Unresolved, and naming nowhere to go back to: by construction that is an item somebody has to
+   * answer rather than route, and this Stage's approver is who the Artifact pointed it at.
    *
-   * `status !== 'resolved'` was too wide. `core/check-findings.ts` only reads `status` for blockers,
-   * so an ordinary warning or suggestion usually carries none and `readFindings` defaults it to
-   * `(unset)` — every such note then read as a question awaiting an answer and forced a brief at
-   * every later Stage, which is the "too much to read" failure the applicable gate exists to stop.
-   * An entry that never declared a status was not asking anybody anything.
+   * `status !== 'resolved'` matches the four other readers of this field in this file, and matters:
+   * `flows/major.yaml` asks for `status` *only on blockers*, so an ordinary warning or suggestion
+   * written to instruction carries none. Narrowing this to the literal `open` therefore emptied the
+   * set of exactly the entries it exists to surface — `core/check-findings.ts` reads the same
+   * absence as `open`, and two readers disagreeing about what a missing field means is how the
+   * original defect got past everybody.
+   *
+   * The noise this was narrowed to avoid is handled where it actually came from: these no longer
+   * make a brief applicable on their own. See `applicable` below.
    */
   const awaitingDecision = findingsResult.findings
-    .filter((finding) => finding.status.trim() === 'open' && !finding.reworkTo.trim())
+    .filter((finding) => finding.status !== 'resolved' && !finding.reworkTo.trim())
     .map((finding) => ({ id: finding.id, summary: finding.summary }));
 
   /*
@@ -786,11 +790,17 @@ export async function readBrief(project: ProjectContext, options: BriefOptions):
    * or a blocking finding somebody must route. Producing one at every Stage exit would answer the
    * complaint that started this feature — too much to read — with more to read.
    */
-  /* `awaitingDecision` counts here for the same reason the other two do: this file's rule is that a
-     brief is produced where a person has something to decide, and an item that names no Stage to
-     return to is waiting on a person's answer by construction. Leaving it out meant the one kind of
-     item the Artifact had addressed to a human was the one kind that could not summon a brief. */
-  const applicable = approvals.length > 0 || openBlockers.length > 0 || awaitingDecision.length > 0;
+  /*
+   * Deliberately not widened to `awaitingDecision`.
+   *
+   * Making an awaiting item summon a brief on its own sounded right and was the noise complaint:
+   * such an entry is normally a non-blocking note that nothing ever resolves, so it forced a brief
+   * at every Stage from then on — the "too much to read" outcome this gate exists to prevent. The
+   * reported failure was never that these items could not summon a brief; it was that the briefs
+   * approvers *did* read never mentioned them. Listing them in the decision block fixes that, and
+   * a brief is still produced wherever somebody actually signs.
+   */
+  const applicable = approvals.length > 0 || openBlockers.length > 0;
   if (!applicable) {
     return {
       data: {
@@ -1030,11 +1040,7 @@ export async function readBrief(project: ProjectContext, options: BriefOptions):
         applicable: true,
         reason: approvals.length > 0
           ? `Stage ${stage} cannot be left without ${approvals.map((entry) => entry.policyId).join(', ')}.`
-          : openBlockers.length > 0
-            ? `Stage ${stage} has ${openBlockers.length} open blocking finding(s) somebody must route.`
-            /* Applicable on an awaiting item alone: "0 open blocking findings" led with a false
-               count and the wrong category of work. */
-            : `Stage ${stage} has ${awaitingDecision.length} open item(s) awaiting an answer.`,
+          : `Stage ${stage} has ${openBlockers.length} open blocking finding(s) somebody must route.`,
         approvals,
         openBlockers,
         awaitingDecision,

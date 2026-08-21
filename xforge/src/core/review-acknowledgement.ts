@@ -33,6 +33,18 @@ import { readAcknowledgementAttestations } from './audit.js';
  */
 export const REVIEW_ACK_DIRECTORY = 'evidence/review';
 
+/**
+ * The transcript's digest, over normalized line endings.
+ *
+ * Hashing raw bytes made the receipt fail on any machine that checked the file out with CRLF — a
+ * generated project has no `.gitattributes`, so a Windows clone with `core.autocrlf` reports
+ * EVIDENCE_CHANGED for a file nobody touched and blocks archive until somebody re-acknowledges
+ * there. The transcript is prose; its line endings are not part of what was reviewed.
+ */
+export function reviewEvidenceDigest(content: Buffer): string {
+  return sha256(content.toString('utf8').replace(/\r\n/g, '\n'));
+}
+
 export interface ReviewAckReceipt {
   apiVersion: 'xforge.dev/v1alpha2';
   kind: 'ReviewAckReceipt';
@@ -64,7 +76,6 @@ export async function readReviewAcknowledgements(
   project: ProjectContext,
   changeId: string,
 ): Promise<{ receipts: ReviewAckReceipt[]; diagnostics: Diagnostic[] }> {
-  const attestations = await readAcknowledgementAttestations(project, changeId);
   const relative = `${project.changesPath}/${changeId}/${REVIEW_ACK_DIRECTORY}/ack`;
   const diagnostics: Diagnostic[] = [];
   let directory: string;
@@ -73,6 +84,14 @@ export async function readReviewAcknowledgements(
   let names: string[];
   try { names = (await readdir(directory)).filter((name) => name.endsWith('.json')).sort(); }
   catch { return { receipts: [], diagnostics }; }
+
+  if (names.length === 0) return { receipts: [], diagnostics };
+
+  /* Read once, and only once there is something to attest. This runs on every control-plane
+     resolve of every plan-less Change — every `state`, `check`, `brief` and `transition` — and the
+     overwhelmingly common case has no receipts at all, where the chain read is pure cost. */
+  const attestations = await readAcknowledgementAttestations(project, changeId);
+  const evidenceRoot = `${project.changesPath}/${changeId}/${REVIEW_ACK_DIRECTORY}/`;
 
   const receipts: ReviewAckReceipt[] = [];
   for (const name of names) {
@@ -111,8 +130,15 @@ export async function readReviewAcknowledgements(
      * deleted or rewrote its review notes kept a receipt that still satisfied the condition — while
      * this module's own contract says the receipt proves a review happened and left a file.
      */
+    /* Re-applied on read, not trusted from the write path. `attests` has a deliberate escape for a
+       Change with no audit data at all (a fresh clone whose chain is gitignored), and under it a
+       hand-written receipt citing any file in the repository would otherwise satisfy the condition. */
+    if (!receipt.evidence.startsWith(evidenceRoot)) {
+      diagnostics.push(diagnostic('XFORGE_REVIEW_ACK_EVIDENCE_SCOPE', `Review acknowledgement cites ${receipt.evidence}, which is outside ${evidenceRoot}.`, projectPath, 'warning'));
+      continue;
+    }
     let evidenceDigest: string | null = null;
-    try { evidenceDigest = sha256(await readFile(await safeResolve(project.root, receipt.evidence))); }
+    try { evidenceDigest = reviewEvidenceDigest(await readFile(await safeResolve(project.root, receipt.evidence))); }
     catch { evidenceDigest = null; }
     if (evidenceDigest === null) {
       diagnostics.push(diagnostic('XFORGE_REVIEW_ACK_EVIDENCE_MISSING', `Review acknowledgement cites ${receipt.evidence}, which no longer exists.`, projectPath, 'warning'));

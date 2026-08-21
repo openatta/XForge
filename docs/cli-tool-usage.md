@@ -161,6 +161,19 @@ xforge transition --change add-login --to design --dry-run
 xforge transition --change add-login --to design
 ```
 
+进入 `ready-to-archive` 之后若发现 Artifact 仍需修改，该 Stage 是合成的、不在
+`flow.stages` 中，因此没有任何合法转换目标。此时用 repair 丢弃收尾那张回执，把
+Change 退回该转换离开的 Stage：
+
+```bash
+xforge transition repair --change add-login --receipt <receiptId> --dry-run
+xforge transition repair --change add-login --receipt <receiptId>
+```
+
+它**不是 `--force`**：只允许丢弃叶子回执（有后继回执引用的那张是承重的，会被拒绝），
+并把丢弃了什么记进审计链。退回必然使归档审批失效——审批绑定的是它被给予时的内容。
+`xforge archive --dry-run` 在受阻时会直接给出这条命令和对应的 receiptId。
+
 CLI 只允许 Flow 声明的下一 Stage 或 rework Stage，并检查当前 revision 的 Artifact、exit condition、Gate、Approval 和 Audit chain。成功后在：
 
 ```text
@@ -238,6 +251,44 @@ xforge work-package acknowledge \
 工作包状态链为 `ready → running → succeeded → integrated → reviewed`，失败与阻塞
 保持显式；`state` 同时返回静态 DAG `waves` 和当前 `parallelCandidates`，供宿主原生
 子 Agent runtime 调度。
+
+没有 `work-packages.yaml` 的 Change 用不了上面的 per-package 确认——`xforge-apply`
+允许"单一小任务用主 Agent 短计划"这种交付形态。此时 Flow 若声明了
+`independentReview`（`major` 即声明），该条件改为要求一份 Change 级评审：
+
+```bash
+xforge review acknowledge \
+  --change add-login \
+  --evidence xforge/changes/add-login/evidence/review/notes.md
+```
+
+它绑定 `contentRevision`（评审后再改 Artifact 即失效）、要求证据文件真实存在且位于
+该 Change 的 `evidence/review/` 之下，并把回执交由审计链背书——一份链上无证明的
+回执按伪造处理。存在工作包计划时本命令拒绝执行：两条满足同一条件的路径，会让一个
+工作包无人评审的 Change 用一张 Change 级便条蒙混过去。
+
+## 7b. Verification receipt 与字段取值
+
+Verify Stage 的 `verificationReceipt` exit condition 需要一份收据。其中只有 `status`
+是人的断言，其余都是 XForge 已经掌握的事实，因此不要手抄：
+
+```bash
+xforge verification draft-receipt --change add-login
+```
+
+它输出 `change`、`contentRevision`、`gitHead` 和完整的 Gate 引用集合，**不产出
+`status`、也不写文件**——由 CLI 填那个字段，就等于让它替你决定这份收据本身要记录
+的那件事。引用只写 Gate 名,绝不写 digest：每个 per-run digest 都会随正常推进变化。
+
+需要单独取某个值时用 `--field`，不要 grep JSON——`xforge state` 里每份历史回执各带
+一个 `contentRevision`，行匹配拿到的是先出现的那个：
+
+```bash
+xforge state --change add-login --field change.governance.revision.contentRevision
+```
+
+路径不存在时命令**报错退出**并列出该层实际有的键，而不是打印空行——一个被 shell
+赋给变量的空字符串正是这个选项要消灭的东西。
 
 ## 8. Audit
 

@@ -206,6 +206,18 @@ export async function executeVerificationDraftReceipt(project: ProjectContext, o
   const workPackages = await resolveWorkPackages(project, options.change, resolved.config, resources);
   resolved.state.workPackages = workPackages.state;
   const control = await resolveControlPlane(project, options.change, resolved.flow, resolved.state, resources, resolved.config);
+  /*
+   * All four sources, and a refusal on any error — the shape `work-package draft` and `review
+   * acknowledge` already use. The draft is read straight off `control.transitionRequirements`, so a
+   * broken transition chain or a rejected review receipt surfaces only in `control.diagnostics`:
+   * carrying just the plan's diagnostics still let this return a confident, complete-looking draft
+   * built from a control plane that had failed. Throwing also avoids the mixed signal of reporting
+   * `ok: false` while handing back a full receipt.
+   */
+  const resolveDiagnostics = [...resolved.diagnostics, ...resources.diagnostics, ...workPackages.diagnostics, ...control.diagnostics];
+  if (resolveDiagnostics.some((item) => item.severity === 'error')) {
+    throw new XForgeError(resolveDiagnostics, { root: project.root });
+  }
   const { currentStage, revision } = control.governance;
   const stage = resolved.flow.stages.find((item) => item.id === currentStage);
   if (stage?.exit?.conditions?.[VERIFICATION_RECEIPT_CONDITION] === undefined) {
@@ -225,7 +237,7 @@ export async function executeVerificationDraftReceipt(project: ProjectContext, o
    */
   const forward = legalTransitionTargets(resolved.flow, currentStage)[0];
   const requirement = forward ? control.transitionRequirements.get(forward) : undefined;
-  const diagnostics: Diagnostic[] = [...workPackages.diagnostics];
+  const diagnostics: Diagnostic[] = [...resolveDiagnostics];
   const gates = (requirement?.gates ?? []).map((evidence) => ({ gate: evidence.gate, status: 'passed' as const }));
   for (const block of requirement?.blockedBy ?? []) {
     const [kind, gateId, reason] = block.split(':');
