@@ -767,10 +767,18 @@ export async function readBrief(project: ProjectContext, options: BriefOptions):
   const openBlockers = findingsResult.findings
     .filter((finding) => finding.severity === 'blocker' && finding.status !== 'resolved')
     .map((finding) => finding.id);
-  /* Unresolved, and naming nowhere to go back to: by construction that is an item somebody has to
-     answer rather than route, and this Stage's approver is who the Artifact pointed it at. */
+  /*
+   * Explicitly `open`, and naming nowhere to go back to: by construction that is an item somebody
+   * has to answer rather than route, and this Stage's approver is who the Artifact pointed it at.
+   *
+   * `status !== 'resolved'` was too wide. `core/check-findings.ts` only reads `status` for blockers,
+   * so an ordinary warning or suggestion usually carries none and `readFindings` defaults it to
+   * `(unset)` — every such note then read as a question awaiting an answer and forced a brief at
+   * every later Stage, which is the "too much to read" failure the applicable gate exists to stop.
+   * An entry that never declared a status was not asking anybody anything.
+   */
   const awaitingDecision = findingsResult.findings
-    .filter((finding) => finding.status !== 'resolved' && !finding.reworkTo.trim())
+    .filter((finding) => finding.status.trim() === 'open' && !finding.reworkTo.trim())
     .map((finding) => ({ id: finding.id, summary: finding.summary }));
 
   /*
@@ -1022,7 +1030,11 @@ export async function readBrief(project: ProjectContext, options: BriefOptions):
         applicable: true,
         reason: approvals.length > 0
           ? `Stage ${stage} cannot be left without ${approvals.map((entry) => entry.policyId).join(', ')}.`
-          : `Stage ${stage} has ${openBlockers.length} open blocking finding(s) somebody must route.`,
+          : openBlockers.length > 0
+            ? `Stage ${stage} has ${openBlockers.length} open blocking finding(s) somebody must route.`
+            /* Applicable on an awaiting item alone: "0 open blocking findings" led with a false
+               count and the wrong category of work. */
+            : `Stage ${stage} has ${awaitingDecision.length} open item(s) awaiting an answer.`,
         approvals,
         openBlockers,
         awaitingDecision,

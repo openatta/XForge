@@ -889,8 +889,10 @@ export async function approvalVerifiedInChain(
 /** The lifecycle event `xforge approve` records; nothing else attests an Approval receipt. */
 const APPROVAL_EVENT_TYPE = 'approval.decided';
 
-/** The lifecycle events `xforge work-package acknowledge` records; nothing else attests a receipt. */
-const ACKNOWLEDGEMENT_EVENT_TYPES = new Set(['work-package.integrated', 'work-package.reviewed']);
+/** The lifecycle events `work-package acknowledge` and `review acknowledge` record; nothing else
+    attests a receipt of either kind. Both are plain committed JSON whose every field is computable
+    by whoever wrote them, so both have to be attested rather than believed. */
+const ACKNOWLEDGEMENT_EVENT_TYPES = new Set(['work-package.integrated', 'work-package.reviewed', 'review.acknowledged']);
 
 /**
  * The `inputDigest` an acknowledgement audit event must carry to attest a receipt with this digest.

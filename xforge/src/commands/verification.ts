@@ -199,9 +199,10 @@ export async function executeVerificationDraftReceipt(project: ProjectContext, o
     throw new XForgeError(diagnostic('XFORGE_GOVERNANCE_FLOW_REQUIRED', 'verification draft-receipt requires a Protocol 2 governed Flow.'));
   }
   const resources = await loadSelectedResources(project);
-  /* Populated before resolving, as every other caller does. `resolveChangeState` always returns a
-     null plan, so resolving without this makes the control plane read a Change that has no work
-     packages — which now decides which branch `independentReview` takes. */
+  /* `resolveChangeState` always returns a null plan, so resolving without this would make the
+     control plane read a Change that has no work packages — which now decides which branch
+     `independentReview` takes. Its diagnostics are carried rather than dropped: a plan that failed
+     to load must not produce a confidently drafted receipt. */
   const workPackages = await resolveWorkPackages(project, options.change, resolved.config, resources);
   resolved.state.workPackages = workPackages.state;
   const control = await resolveControlPlane(project, options.change, resolved.flow, resolved.state, resources, resolved.config);
@@ -224,7 +225,7 @@ export async function executeVerificationDraftReceipt(project: ProjectContext, o
    */
   const forward = legalTransitionTargets(resolved.flow, currentStage)[0];
   const requirement = forward ? control.transitionRequirements.get(forward) : undefined;
-  const diagnostics: Diagnostic[] = [];
+  const diagnostics: Diagnostic[] = [...workPackages.diagnostics];
   const gates = (requirement?.gates ?? []).map((evidence) => ({ gate: evidence.gate, status: 'passed' as const }));
   for (const block of requirement?.blockedBy ?? []) {
     const [kind, gateId, reason] = block.split(':');

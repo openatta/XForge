@@ -4,6 +4,7 @@ import { diagnostic } from './errors.js';
 import { sha256, stableStringify } from './hash.js';
 import { safeResolve } from './path-safety.js';
 import { validateSchema } from './validator.js';
+import { readAcknowledgementAttestations } from './audit.js';
 
 /**
  * A Change-level record that somebody reviewed the delivered work, for Changes that delivered
@@ -40,7 +41,7 @@ export interface ReviewAckReceipt {
   /** The content revision this review was given for; an edit after it invalidates the receipt. */
   contentRevision: string;
   evidence: string;
-  evidenceDigest?: string;
+  evidenceDigest: string;
   actor: { id: string; provider: string; role: string; type: 'human' | 'agent' | 'system' };
   acknowledgedAt: string;
   digest: string;
@@ -63,6 +64,7 @@ export async function readReviewAcknowledgements(
   project: ProjectContext,
   changeId: string,
 ): Promise<{ receipts: ReviewAckReceipt[]; diagnostics: Diagnostic[] }> {
+  const attestations = await readAcknowledgementAttestations(project, changeId);
   const relative = `${project.changesPath}/${changeId}/${REVIEW_ACK_DIRECTORY}/ack`;
   const diagnostics: Diagnostic[] = [];
   let directory: string;
@@ -93,6 +95,39 @@ export async function readReviewAcknowledgements(
     }
     if (receipt.change !== changeId) {
       diagnostics.push(diagnostic('XFORGE_REVIEW_ACK_RECEIPT_SUBJECT_MISMATCH', `Review acknowledgement receipt names Change ${receipt.change}, not ${changeId}.`, projectPath, 'warning'));
+      continue;
+    }
+    /*
+     * The check that actually separates a receipt from a claim, and the one the digest above cannot
+     * make. Every field here — including `digest` — is computable by whoever wrote the file, so a
+     * self-covering hash proves only internal consistency: recompute it correctly and a hand-written
+     * receipt passes. What it cannot forge is the audit chain, so `review acknowledge` records
+     * `sha256({ackReceipt: <digest>})` on a `review.acknowledged` event and this recomputes it. Same
+     * mechanism, same escape hatch, as the per-package reader in `core/work-packages.ts`.
+     */
+    /*
+     * The transcript still has to be there, and still has to be the one that was reviewed. Existence
+     * was checked when the receipt was written and never again, so a Change that reworked and
+     * deleted or rewrote its review notes kept a receipt that still satisfied the condition — while
+     * this module's own contract says the receipt proves a review happened and left a file.
+     */
+    let evidenceDigest: string | null = null;
+    try { evidenceDigest = sha256(await readFile(await safeResolve(project.root, receipt.evidence))); }
+    catch { evidenceDigest = null; }
+    if (evidenceDigest === null) {
+      diagnostics.push(diagnostic('XFORGE_REVIEW_ACK_EVIDENCE_MISSING', `Review acknowledgement cites ${receipt.evidence}, which no longer exists.`, projectPath, 'warning'));
+      continue;
+    }
+    if (evidenceDigest !== receipt.evidenceDigest) {
+      diagnostics.push(diagnostic('XFORGE_REVIEW_ACK_EVIDENCE_CHANGED', `Review acknowledgement cites ${receipt.evidence}, which has changed since it was reviewed.`, projectPath, 'warning'));
+      continue;
+    }
+    if (!attestations.attests(receipt.digest)) {
+      diagnostics.push(diagnostic(
+        'XFORGE_REVIEW_ACK_UNATTESTED',
+        'Review acknowledgement receipt is not attested by the audit chain and is ignored. A receipt no `review acknowledge` run produced is a claim, not a review.',
+        projectPath, 'warning',
+      ));
       continue;
     }
     receipts.push(receipt);

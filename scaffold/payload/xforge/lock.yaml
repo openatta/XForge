@@ -11,7 +11,7 @@ resources:
     kind: agent
     license: project
     version: 2
-  - digest: 1754bbb9aafc4a437b41e18a2f470b58a4b1d40cae885431d4393f3e819cff34
+  - digest: b20c2e992e387c1961814ec016c56d80709f579d24b8d99d4bf36c48e3390461
     id: reviewer
     kind: agent
     license: project
@@ -86,7 +86,7 @@ resources:
     kind: script
     license: project
     version: 1
-  - digest: d028377c981bff6d7496b2b53f4fedc9324166e9a385b178d7c0e511b0ada491
+  - digest: a27533e8d4109bcccf5ab380056bae783722161ac3451604a8bcdcdbfee32530
     id: xforge-apply
     kind: skill
     license: project
@@ -160,7 +160,7 @@ targets:
   - opencode
   - github-copilot
 xforge:
-  integrity: sha256:9a8f13df1b2276d40ba0092a7773f6967d540efa91107998f8e3e6b078d31137
+  integrity: sha256:5f07311d27b5c9bc9164b9b23b7e126c3e1235851f517fea881af17e60549a43
   package: "@xforge/cli"
   protocol: "2"
   source: npm

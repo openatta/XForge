@@ -317,7 +317,10 @@ export async function git(root: string, args: string[]): Promise<GitResult> {
 function isControlPlaneBookkeeping(filePath: string, changeRoot: string): boolean {
   if (!filePath.startsWith(`${changeRoot}/evidence/`)) return false;
   const tail = filePath.slice(`${changeRoot}/evidence/`.length);
-  return tail.startsWith('audit/') || /^agents\/[^/]+\/(?:dispatch|ack)\//.test(tail);
+  /* `review/ack/` joined this list when Change-level review receipts moved out of
+     `evidence/agents/review/`: without it a work package could cite a review receipt as its own
+     `done_when` evidence, which is the circular claim this function exists to reject. */
+  return tail.startsWith('audit/') || /^(?:agents\/[^/]+|review)\/(?:dispatch|ack)\//.test(tail);
 }
 
 /**

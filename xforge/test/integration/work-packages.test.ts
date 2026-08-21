@@ -1292,10 +1292,12 @@ describe('independentReview without a work-package plan', () => {
 
     const state = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
     const contentRevision = state.json.data.change.governance.revision.contentRevision;
+    await write(root, 'xforge/changes/add-feature/evidence/review/notes.md', '# Review\n');
     /* Everything the condition reads, correct — except that nothing signed it. */
     await write(root, `xforge/changes/add-feature/evidence/review/ack/forged.json`, `${JSON.stringify({
       apiVersion: 'xforge.dev/v1alpha2', kind: 'ReviewAckReceipt', receiptId: randomUUID(),
       change: 'add-feature', contentRevision, evidence: 'xforge/changes/add-feature/evidence/review/notes.md',
+      evidenceDigest: sha256(Buffer.from('# Review\n')),
       actor: { id: 'someone', provider: 'local-os', role: 'reviewer', type: 'agent' },
       acknowledgedAt: new Date().toISOString(), digest: 'f'.repeat(64),
     }, null, 2)}\n`);
@@ -1306,6 +1308,39 @@ describe('independentReview without a work-package plan', () => {
     expect(blocked).toContain('condition:independentReview:review-missing');
     /* And says why it was dropped, rather than ignoring the file in silence. */
     expect((after.json.diagnostics as any[]).map((item) => item.code)).toContain('XFORGE_REVIEW_ACK_RECEIPT_DIGEST_INVALID');
+  });
+
+  /*
+   * The harder forgery, and the one a self-covering digest cannot catch: every field computed
+   * correctly, including the hash. Nothing about the file is internally wrong — it simply was never
+   * produced by an `acknowledge` run, and only the audit chain knows that. A digest check alone
+   * would pass this and close the Change.
+   */
+  it('does not count a correctly-hashed receipt the audit chain never attested', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await declareReview(root);
+    await advanceSolidToApply(root, 'add-feature');
+    expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'verify'], approvalTestEnv)).code).toBe(0);
+
+    const state = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
+    const contentRevision = state.json.data.change.governance.revision.contentRevision;
+    await write(root, 'xforge/changes/add-feature/evidence/review/notes.md', '# Review\n');
+    const unsigned = {
+      apiVersion: 'xforge.dev/v1alpha2', kind: 'ReviewAckReceipt', receiptId: randomUUID(),
+      change: 'add-feature', contentRevision, evidence: 'xforge/changes/add-feature/evidence/review/notes.md',
+      evidenceDigest: sha256(Buffer.from('# Review\n')),
+      actor: { id: 'someone', provider: 'local-os', role: 'reviewer', type: 'agent' },
+      acknowledgedAt: new Date().toISOString(),
+    };
+    const forged = { ...unsigned, digest: sha256(stableStringify(unsigned)) };
+    await write(root, `xforge/changes/add-feature/evidence/review/ack/${forged.receiptId}.json`, `${JSON.stringify(forged, null, 2)}\n`);
+
+    const after = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
+    const blocked = (after.json.data.change.governance.readyTransitions as any[])
+      .find((item) => item.to === 'ready-to-archive')?.blockedBy ?? [];
+    expect(blocked, 'a correctly-hashed but unattested receipt must not satisfy the condition').toContain('condition:independentReview:review-missing');
+    expect((after.json.diagnostics as any[]).map((item) => item.code)).toContain('XFORGE_REVIEW_ACK_UNATTESTED');
   });
 
   /*

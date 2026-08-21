@@ -243,7 +243,7 @@ describe('documented --field paths resolve', () => {
     for (const root of roots) {
       for (const entry of await readdir(root, { withFileTypes: true, recursive: true })) {
         if (!entry.isFile() || !entry.name.endsWith('.md')) continue;
-        const file = path.join(entry.parentPath ?? root, entry.name);
+        const file = path.join(entry.parentPath ?? (entry as unknown as { path?: string }).path ?? root, entry.name);
         const text = await readFile(file, 'utf8');
         for (const match of text.matchAll(FIELD)) found.push({ source: path.relative(repositoryRoot, file), path: match[1]! });
       }

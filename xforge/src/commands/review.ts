@@ -10,7 +10,7 @@ import { isStageFlow, resolveChangeState } from '../core/flow-resolver.js';
 import { loadSelectedResources } from '../core/resource-loader.js';
 import { resolveControlPlane } from '../core/control-plane.js';
 import { resolveWorkPackages } from '../core/work-packages.js';
-import { recordAudit } from '../core/audit.js';
+import { acknowledgementAttestationDigest, recordAudit } from '../core/audit.js';
 import { validateSchema } from '../core/validator.js';
 import { REVIEW_ACK_DIRECTORY, type ReviewAckReceipt } from '../core/review-acknowledgement.js';
 
@@ -101,7 +101,7 @@ export async function executeReviewAcknowledge(project: ProjectContext, options:
     await recordAudit(project, {
       eventType: 'review.acknowledged', change: options.change, flow: resolved.flow.metadata.name,
       stage: currentStage, revision, outcome: 'succeeded',
-      inputDigest: receipt.digest, input: null,
+      inputDigest: acknowledgementAttestationDigest(receipt.digest), input: null,
       output: { contentRevision: receipt.contentRevision, evidence, actor: receipt.actor.id },
     });
   }

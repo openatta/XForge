@@ -25,7 +25,7 @@ verbatim into `<change>/evidence/agents/<package>/review-<execution>.yaml` and
 then runs `xforge work-package acknowledge --change <id>
 --package <package> --as reviewer --evidence <that path>`. When the Change was
 delivered without a work-package plan there is no package to name: the
-transcript goes to `<change>/evidence/agents/review/<name>.md` and the Main
+transcript goes to `<change>/evidence/review/<name>.md` and the Main
 Agent runs `xforge review acknowledge --change <id> --evidence <that path>`
 instead. Both bind the review to the content reviewed; neither takes a
 reviewer's name, because a session can supply any name it likes. Do not summarize

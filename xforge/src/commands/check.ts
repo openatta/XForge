@@ -469,7 +469,7 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
       : ' They are advisory now and cost nothing to fix here.';
     diagnostics.push(diagnostic(
       'XFORGE_CHECK_PASSED_WITH_WARNINGS',
-      `Every Gate in this run passed, and the same run reported ${advisories.length} warning${advisories.length === 1 ? '' : 's'}: ${codes.join(', ')}. A passing Gate is not a clean check.${tail}`,
+      `No Gate in this run failed, and the same run reported ${advisories.length} warning${advisories.length === 1 ? '' : 's'}: ${codes.join(', ')}. A passing Gate is not a clean check.${tail}`,
       `${project.changesPath}/${options.change}`,
       'info',
     ));
