@@ -1,4 +1,4 @@
-import { access, readFile, rm } from 'node:fs/promises';
+import { access, readFile, readdir, rm } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
@@ -1306,6 +1306,57 @@ describe('independentReview without a work-package plan', () => {
     expect(blocked).toContain('condition:independentReview:review-missing');
     /* And says why it was dropped, rather than ignoring the file in silence. */
     expect((after.json.diagnostics as any[]).map((item) => item.code)).toContain('XFORGE_REVIEW_ACK_RECEIPT_DIGEST_INVALID');
+  });
+
+  /*
+   * The receipt name was keyed on the content revision, and the evidence file is not an Artifact
+   * output, so it does not move that revision: a reviewer correcting a transcript and acknowledging
+   * again overwrote the first receipt while still reporting `action: 'create'`, and two reviewers at
+   * one revision collapsed into one. Governance evidence disappearing quietly is the failure mode
+   * this whole area exists to prevent.
+   */
+  it('keeps every acknowledgement at one content revision, rather than overwriting', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await declareReview(root);
+    await advanceSolidToApply(root, 'add-feature');
+    expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'verify'], approvalTestEnv)).code).toBe(0);
+
+    const evidence = 'xforge/changes/add-feature/evidence/review/notes.md';
+    await write(root, evidence, '# Review\n\nFirst pass.\n');
+    const first = await runCli(root, ['review', 'acknowledge', '--change', 'add-feature', '--evidence', evidence], approvalTestEnv);
+    expect(first.code, JSON.stringify(first.json?.diagnostics)).toBe(0);
+    await write(root, evidence, '# Review\n\nCorrected transcript.\n');
+    const second = await runCli(root, ['review', 'acknowledge', '--change', 'add-feature', '--evidence', evidence], approvalTestEnv);
+    expect(second.code, JSON.stringify(second.json?.diagnostics)).toBe(0);
+
+    const receipts = await readdir(path.join(root, 'xforge', 'changes', 'add-feature', 'evidence', 'review', 'ack'));
+    expect(receipts.filter((name) => name.endsWith('.json'))).toHaveLength(2);
+  });
+
+  /*
+   * `evidence/agents/<id>/ack/*.json` is globbed by the per-package reader. A Change-level receipt
+   * in that shape was read back as a malformed work-package acknowledgement — not at first, but from
+   * the moment the Change later gained a plan, which is the worst moment to begin warning about a
+   * file that is entirely valid.
+   */
+  it('is not read back as a work-package acknowledgement once a plan appears', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await declareReview(root);
+    await advanceSolidToApply(root, 'add-feature');
+    expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'verify'], approvalTestEnv)).code).toBe(0);
+    await write(root, 'xforge/changes/add-feature/evidence/review/notes.md', '# Review\n');
+    expect((await runCli(root, ['review', 'acknowledge', '--change', 'add-feature',
+      '--evidence', 'xforge/changes/add-feature/evidence/review/notes.md'], approvalTestEnv)).code).toBe(0);
+
+    /* The Change reworks and gains a plan; the review receipt is still on disk and still valid. */
+    await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([workPackage('T001')]));
+    const after = await runCli(root, ['check', '--change', 'add-feature'], approvalTestEnv);
+    const codes = (after.json.diagnostics as any[]).map((item) => item.code);
+    expect(codes).not.toContain('XFORGE_WORK_PACKAGE_ACK_RECEIPT_INVALID');
+    expect(codes).not.toContain('XFORGE_SCHEMA_INVALID');
+    expect(codes).not.toContain('XFORGE_WORK_PACKAGE_ACK_RECEIPT_PATH_MISMATCH');
   });
 
   /* Evidence has to exist and archive with the Change; a receipt pointing at nothing is a claim. */

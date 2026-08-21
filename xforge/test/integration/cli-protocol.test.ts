@@ -1,7 +1,10 @@
-import { readFile, rm } from 'node:fs/promises';
+import { readFile, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createCompleteSolidChange, fixture, runCli, updateYaml, yamlFile } from '../helpers.js';
+import { fileURLToPath } from 'node:url';
+
+const repositoryRoot = path.resolve(fileURLToPath(new URL('../../..', import.meta.url)));
 
 describe('CLI protocol', () => {
   it('emits exactly one JSON document on stdout and nothing on stderr', async () => {
@@ -213,5 +216,66 @@ describe('state --field', () => {
     expect(found, JSON.stringify(missing.json.diagnostics)).toBeTruthy();
     /* And says what is actually there, so the next attempt is informed rather than another guess. */
     expect(found.message).toContain('currentStage');
+  });
+});
+
+/*
+ * Every `--field` path this product tells somebody to type, typed.
+ *
+ * The instruction shipped in 0.7.17 said `--field governance.revision.contentRevision`. That path
+ * does not resolve — `state` nests it under `change.` — so an Agent following the Skill added to
+ * stop it reading the revision by hand got exit 1 instead. Nothing caught it: the test suite used
+ * the correct path, the Skill used a wrong one, and no test compared the two. A unit test cannot
+ * read a Skill's prose, but it can take the strings out of it and run them, which is all this needs
+ * to be. The same applies to the CLI's own help: an example nobody executes is a guess.
+ */
+describe('documented --field paths resolve', () => {
+  /* Dotted paths only. `--field` is also followed by prose in the help description ("--field prints
+     one value…"), and matching that made the test report the word "prints" as a broken path. */
+  const FIELD = /--field ([A-Za-z][A-Za-z0-9]*(?:\.[A-Za-z0-9]+)+)/g;
+
+  async function documentedPaths(): Promise<Array<{ source: string; path: string }>> {
+    const found: Array<{ source: string; path: string }> = [];
+    const roots = [
+      path.join(repositoryRoot, 'scaffold', 'payload', 'xforge', 'scaffold', 'skills'),
+      path.join(repositoryRoot, 'scaffold', 'payload', 'xforge', 'scaffold', 'agents'),
+    ];
+    for (const root of roots) {
+      for (const entry of await readdir(root, { withFileTypes: true, recursive: true })) {
+        if (!entry.isFile() || !entry.name.endsWith('.md')) continue;
+        const file = path.join(entry.parentPath ?? root, entry.name);
+        const text = await readFile(file, 'utf8');
+        for (const match of text.matchAll(FIELD)) found.push({ source: path.relative(repositoryRoot, file), path: match[1]! });
+      }
+    }
+    return found;
+  }
+
+  it('resolves every --field example shipped in a Skill, an Agent doc, or the CLI help', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    /* A Stage with real governance underneath it, so readyTransitions and revision are both live. */
+    expect((await runCli(root, ['check', '--change', 'add-feature', '--gate', 'structure'])).code).toBe(0);
+
+    const help = await runCli(root, ['help', 'state']);
+    const fromHelp = [...String(help.json.data.commandHelp.description).matchAll(FIELD)]
+      .map((match) => ({ source: 'cli.ts HELP.state', path: match[1]! }));
+    const documented = [...await documentedPaths(), ...fromHelp];
+    /* If this ever finds nothing, the regex has drifted from how the examples are written and the
+       test is passing by looking at an empty list. */
+    expect(documented.length).toBeGreaterThan(0);
+
+    /* The check has teeth only if a wrong path fails, so the exact string that shipped in 0.7.17 is
+       asserted to fail here. Without this, a resolver that accepted everything would pass silently
+       and this whole test would be decoration. */
+    const shipped = await runCli(root, ['state', '--change', 'add-feature', '--field', 'governance.revision.contentRevision']);
+    expect(shipped.code, 'the prefix-less path must still fail, or this test proves nothing').toBe(1);
+
+    const broken: string[] = [];
+    for (const item of documented) {
+      const result = await runCli(root, ['state', '--change', 'add-feature', '--field', item.path]);
+      if (result.code !== 0) broken.push(`${item.source}: --field ${item.path}`);
+    }
+    expect(broken, `these documented --field paths do not resolve:\n${broken.join('\n')}`).toEqual([]);
   });
 });

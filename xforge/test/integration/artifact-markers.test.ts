@@ -255,6 +255,26 @@ describe('a passing Gate does not mean a clean check', () => {
     expect(codes).not.toContain('XFORGE_CHECK_PASSED_WITH_WARNINGS');
   });
 
+  /*
+   * The notice required at least one Gate to have run, which silenced it at every Stage that
+   * declares none — in the shipped `solid` Flow that is design and apply, exactly where an Artifact
+   * warning is easiest to walk past. Nothing failing is the condition; having run something is not.
+   */
+  it('still speaks at a Stage that declares no Gates of its own', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await setMarkers(root, [{ id: 'coverage', section: 'A Section This File Does Not Have', role: 'requirement-coverage' }]);
+    expect((await runCli(root, ['install'])).code).toBe(0);
+    expect((await runCli(root, ['check', '--change', CHANGE, '--gate', 'structure'])).code).toBe(0);
+    expect((await runCli(root, ['transition', '--change', CHANGE, '--to', 'design'])).code).toBe(0);
+
+    const result = await runCli(root, ['check', '--change', CHANGE]);
+    expect((result.json.data.gates as any[]).length, 'design declares no Gates').toBe(0);
+    const codes = (result.json.diagnostics as any[]).map((item) => item.code);
+    expect(codes).toContain('XFORGE_ARTIFACT_MARKER_SECTION_MISSING');
+    expect(codes).toContain('XFORGE_CHECK_PASSED_WITH_WARNINGS');
+  });
+
   it('stays quiet on a clean run, so the notice keeps meaning something', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
