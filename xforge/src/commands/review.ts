@@ -97,6 +97,9 @@ export async function executeReviewAcknowledge(project: ProjectContext, options:
   const content = `${JSON.stringify(receipt, null, 2)}\n`;
   const changes: FileChange[] = [{ action: 'create', path: target, digest: sha256(content), source: 'review:acknowledge' }];
   if (!options.dryRun) {
+    /* Resolved before the write, so the unwind below cannot fail on path resolution and replace the
+       audit error with a less useful one while leaving the orphan it exists to remove. */
+    const absoluteTarget = await safeResolve(project.root, target);
     await atomicWrite(project.root, target, content);
     /*
      * The receipt is worthless without the event, so a failed audit write takes the receipt with it.
@@ -113,7 +116,7 @@ export async function executeReviewAcknowledge(project: ProjectContext, options:
         output: { contentRevision: receipt.contentRevision, evidence, actor: receipt.actor.id },
       });
     } catch (error) {
-      await rm(await safeResolve(project.root, target), { force: true }).catch(() => undefined);
+      await rm(absoluteTarget, { force: true }).catch(() => undefined);
       throw error;
     }
   }

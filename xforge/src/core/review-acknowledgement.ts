@@ -2,7 +2,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import type { Diagnostic, ProjectContext } from '../types.js';
 import { diagnostic } from './errors.js';
 import { sha256, stableStringify } from './hash.js';
-import { safeResolve } from './path-safety.js';
+import { normalizeRelative, safeResolve } from './path-safety.js';
 import { validateSchema } from './validator.js';
 import { readAcknowledgementAttestations } from './audit.js';
 
@@ -42,7 +42,20 @@ export const REVIEW_ACK_DIRECTORY = 'evidence/review';
  * there. The transcript is prose; its line endings are not part of what was reviewed.
  */
 export function reviewEvidenceDigest(content: Buffer): string {
-  return sha256(content.toString('utf8').replace(/\r\n/g, '\n'));
+  /*
+   * Byte-level, not `toString('utf8')`. Decoding first collapsed every invalid sequence to U+FFFD,
+   * so two screenshots differing only in undecodable bytes hashed identically — the binding to what
+   * was reviewed stopped working for exactly the files it could not read. `acknowledge` accepts any
+   * regular file, so that is not a hypothetical shape.
+   */
+  const out = Buffer.alloc(content.length);
+  let length = 0;
+  for (let index = 0; index < content.length; index += 1) {
+    if (content[index] === 0x0d && content[index + 1] === 0x0a) continue;
+    out[length] = content[index]!;
+    length += 1;
+  }
+  return sha256(out.subarray(0, length));
 }
 
 export interface ReviewAckReceipt {
@@ -133,12 +146,22 @@ export async function readReviewAcknowledgements(
     /* Re-applied on read, not trusted from the write path. `attests` has a deliberate escape for a
        Change with no audit data at all (a fresh clone whose chain is gitignored), and under it a
        hand-written receipt citing any file in the repository would otherwise satisfy the condition. */
-    if (!receipt.evidence.startsWith(evidenceRoot)) {
-      diagnostics.push(diagnostic('XFORGE_REVIEW_ACK_EVIDENCE_SCOPE', `Review acknowledgement cites ${receipt.evidence}, which is outside ${evidenceRoot}.`, projectPath, 'warning'));
+    /* Normalized before comparing, because the read below normalizes too: comparing the raw string
+       let `evidence/review/../../../../../README.md` satisfy `startsWith` and then resolve to
+       `README.md`. The write path already normalizes first; the reader has to agree with it, or the
+       guard only stops the honest spelling of the thing it exists to stop. */
+    let citedPath: string;
+    try { citedPath = normalizeRelative(receipt.evidence, 'review acknowledgement evidence'); }
+    catch {
+      diagnostics.push(diagnostic('XFORGE_REVIEW_ACK_EVIDENCE_SCOPE', `Review acknowledgement cites ${receipt.evidence}, which is not a safe project-relative path.`, projectPath, 'warning'));
+      continue;
+    }
+    if (!citedPath.startsWith(evidenceRoot)) {
+      diagnostics.push(diagnostic('XFORGE_REVIEW_ACK_EVIDENCE_SCOPE', `Review acknowledgement cites ${receipt.evidence}, which resolves to ${citedPath} — outside ${evidenceRoot}.`, projectPath, 'warning'));
       continue;
     }
     let evidenceDigest: string | null = null;
-    try { evidenceDigest = reviewEvidenceDigest(await readFile(await safeResolve(project.root, receipt.evidence))); }
+    try { evidenceDigest = reviewEvidenceDigest(await readFile(await safeResolve(project.root, citedPath))); }
     catch { evidenceDigest = null; }
     if (evidenceDigest === null) {
       diagnostics.push(diagnostic('XFORGE_REVIEW_ACK_EVIDENCE_MISSING', `Review acknowledgement cites ${receipt.evidence}, which no longer exists.`, projectPath, 'warning'));

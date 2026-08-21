@@ -1411,7 +1411,11 @@ describe('independentReview without a work-package plan', () => {
     await write(root, 'README.md', '# Not a review\n');
     const unsigned = {
       apiVersion: 'xforge.dev/v1alpha2', kind: 'ReviewAckReceipt', receiptId: randomUUID(),
-      change: 'add-feature', contentRevision, evidence: 'README.md',
+      change: 'add-feature', contentRevision,
+      /* The traversal spelling, not the bare one: comparing the raw string let this pass
+         `startsWith(evidenceRoot)` and then resolve to README.md. The bare form the first version of
+         this test used was the only spelling the broken guard did catch. */
+      evidence: 'xforge/changes/add-feature/evidence/review/../../../../../README.md',
       evidenceDigest: sha256('# Not a review\n'),
       actor: { id: 'someone', provider: 'local-os', role: 'reviewer', type: 'agent' },
       acknowledgedAt: new Date().toISOString(),
