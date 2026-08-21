@@ -1278,6 +1278,36 @@ describe('independentReview without a work-package plan', () => {
     expect((refused.json.diagnostics as any[]).map((item) => item.code)).toContain('XFORGE_REVIEW_ACK_PLAN_PRESENT');
   });
 
+  /*
+   * A receipt is worth what its checks are worth. The per-package reader validates schema and
+   * recomputes the digest before counting an acknowledgement; this one has to do the same, or the
+   * condition that exists to require a real reviewer is satisfied by a file anyone can type.
+   */
+  it('does not count a receipt whose digest does not recompute', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await declareReview(root);
+    await advanceSolidToApply(root, 'add-feature');
+    expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'verify'], approvalTestEnv)).code).toBe(0);
+
+    const state = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
+    const contentRevision = state.json.data.change.governance.revision.contentRevision;
+    /* Everything the condition reads, correct — except that nothing signed it. */
+    await write(root, `xforge/changes/add-feature/evidence/agents/review/ack/forged.json`, `${JSON.stringify({
+      apiVersion: 'xforge.dev/v1alpha2', kind: 'ReviewAckReceipt', receiptId: randomUUID(),
+      change: 'add-feature', contentRevision, evidence: 'xforge/changes/add-feature/evidence/agents/review/notes.md',
+      actor: { id: 'someone', provider: 'local-os', role: 'reviewer', type: 'agent' },
+      acknowledgedAt: new Date().toISOString(), digest: 'f'.repeat(64),
+    }, null, 2)}\n`);
+
+    const after = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
+    const blocked = (after.json.data.change.governance.readyTransitions as any[])
+      .find((item) => item.to === 'ready-to-archive')?.blockedBy ?? [];
+    expect(blocked).toContain('condition:independentReview:review-missing');
+    /* And says why it was dropped, rather than ignoring the file in silence. */
+    expect((after.json.diagnostics as any[]).map((item) => item.code)).toContain('XFORGE_REVIEW_ACK_RECEIPT_DIGEST_INVALID');
+  });
+
   /* Evidence has to exist and archive with the Change; a receipt pointing at nothing is a claim. */
   it('refuses evidence that does not exist or sits outside the Change', async () => {
     const root = await fixture();

@@ -477,6 +477,7 @@ async function independentReviewCondition(
   state: ChangeState,
   expected: string,
   contentRevision: string,
+  reviewDiagnostics: Diagnostic[],
 ): Promise<{ satisfied: boolean; reason: string }> {
   if (expected !== 'complete') return { satisfied: false, reason: `unsupported-expected-${expected}` };
   const packages = state.workPackages?.packages ?? [];
@@ -494,8 +495,11 @@ async function independentReviewCondition(
    */
   if (packages.length === 0) {
     const acknowledgements = await readReviewAcknowledgements(project, changeId);
-    if (acknowledgements.length === 0) return { satisfied: false, reason: 'review-missing' };
-    if (!reviewCovers(acknowledgements, contentRevision)) return { satisfied: false, reason: 'review-stale' };
+    /* Rejected receipts are reported, not counted: a file that fails its digest or schema is not
+       evidence of a review, and the condition stays unsatisfied so the Change is not closed on it. */
+    reviewDiagnostics.push(...acknowledgements.diagnostics);
+    if (acknowledgements.receipts.length === 0) return { satisfied: false, reason: 'review-missing' };
+    if (!reviewCovers(acknowledgements.receipts, contentRevision)) return { satisfied: false, reason: 'review-stale' };
     return { satisfied: true, reason: 'satisfied-change-level' };
   }
   const unreviewed = packages
@@ -615,7 +619,7 @@ export async function resolveControlPlane(
         const condition = key === VERIFICATION_RECEIPT_CONDITION
           ? await evaluateVerificationReceiptCondition(project, changeId, expected, revision.contentRevision, gateEvidence)
           : key === INDEPENDENT_REVIEW_CONDITION
-            ? await independentReviewCondition(project, changeId, state, expected, revision.contentRevision)
+            ? await independentReviewCondition(project, changeId, state, expected, revision.contentRevision, diagnostics)
             : await evaluateExitCondition(project, changeId, key, expected, identities);
         if (!condition.satisfied) blockedBy.push(`condition:${key}:${condition.reason}`);
       }

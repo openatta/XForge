@@ -1,6 +1,9 @@
 import { readFile, readdir } from 'node:fs/promises';
-import type { ProjectContext } from '../types.js';
+import type { Diagnostic, ProjectContext } from '../types.js';
+import { diagnostic } from './errors.js';
+import { sha256, stableStringify } from './hash.js';
 import { safeResolve } from './path-safety.js';
+import { validateSchema } from './validator.js';
 
 /**
  * A Change-level record that somebody reviewed the delivered work, for Changes that delivered
@@ -36,26 +39,59 @@ export interface ReviewAckReceipt {
   digest: string;
 }
 
-/** Every structurally readable Change-level review receipt, newest first. */
+/**
+ * Every Change-level review receipt that survives validation, newest first, with what was rejected.
+ *
+ * Held to the same bar as the per-package acknowledgement receipts in `core/work-packages.ts`,
+ * and for the same reason: a receipt is only worth what its checks are worth. Parse failure, a
+ * digest that does not recompute, or a subject naming another Change each drop the receipt and
+ * report it — a receipt that fails any of them is not evidence of a review, and counting it would
+ * let a hand-written file satisfy the one condition that exists to require an actual reviewer.
+ *
+ * Rejections are warnings rather than errors, matching the work-package reader: a malformed
+ * acknowledgement is skipped, never fatal to every other command on the Change. It still blocks,
+ * because skipping it leaves the condition unsatisfied.
+ */
 export async function readReviewAcknowledgements(
   project: ProjectContext,
   changeId: string,
-): Promise<ReviewAckReceipt[]> {
+): Promise<{ receipts: ReviewAckReceipt[]; diagnostics: Diagnostic[] }> {
   const relative = `${project.changesPath}/${changeId}/${REVIEW_ACK_DIRECTORY}/ack`;
+  const diagnostics: Diagnostic[] = [];
   let directory: string;
   try { directory = await safeResolve(project.root, relative); }
-  catch { return []; }
+  catch { return { receipts: [], diagnostics }; }
   let names: string[];
   try { names = (await readdir(directory)).filter((name) => name.endsWith('.json')).sort(); }
-  catch { return []; }
+  catch { return { receipts: [], diagnostics }; }
+
   const receipts: ReviewAckReceipt[] = [];
   for (const name of names) {
+    const projectPath = `${relative}/${name}`;
+    let receipt: ReviewAckReceipt;
     try {
-      const parsed = JSON.parse(await readFile(await safeResolve(project.root, `${relative}/${name}`), 'utf8')) as ReviewAckReceipt;
-      if (parsed?.kind === 'ReviewAckReceipt') receipts.push(parsed);
-    } catch { /* An unreadable receipt is reported by `check`'s schema pass, not counted here. */ }
+      receipt = JSON.parse(await readFile(await safeResolve(project.root, projectPath), 'utf8')) as ReviewAckReceipt;
+    } catch (error) {
+      diagnostics.push(diagnostic('XFORGE_REVIEW_ACK_RECEIPT_INVALID', `Review acknowledgement receipt is not valid JSON: ${(error as Error).message}`, projectPath, 'warning'));
+      continue;
+    }
+    const schemaDiagnostics = await validateSchema('review-ack-receipt', receipt, projectPath);
+    const schemaFailed = schemaDiagnostics.some((item) => item.severity === 'error');
+    diagnostics.push(...schemaDiagnostics.map((item) => ({ ...item, severity: 'warning' as const })));
+    if (schemaFailed) continue;
+    const { digest, ...unsigned } = receipt;
+    if (digest !== sha256(stableStringify(unsigned))) {
+      diagnostics.push(diagnostic('XFORGE_REVIEW_ACK_RECEIPT_DIGEST_INVALID', 'Review acknowledgement receipt digest is invalid.', projectPath, 'warning'));
+      continue;
+    }
+    if (receipt.change !== changeId) {
+      diagnostics.push(diagnostic('XFORGE_REVIEW_ACK_RECEIPT_SUBJECT_MISMATCH', `Review acknowledgement receipt names Change ${receipt.change}, not ${changeId}.`, projectPath, 'warning'));
+      continue;
+    }
+    receipts.push(receipt);
   }
-  return receipts.sort((left, right) => right.acknowledgedAt.localeCompare(left.acknowledgedAt));
+  receipts.sort((left, right) => right.acknowledgedAt.localeCompare(left.acknowledgedAt));
+  return { receipts, diagnostics };
 }
 
 /**
