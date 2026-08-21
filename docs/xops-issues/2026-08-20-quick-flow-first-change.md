@@ -1,5 +1,8 @@
 # XOps 首个 Change 的完整实测反馈
 
+> **处理状态：已处理，随 [v0.7.17](https://github.com/openatta/XForge/releases/tag/v0.7.17) 发布。**
+> 逐条处置与三处对报告本身的更正见文末[处置记录](#处置记录)。
+>
 > 来源：XOps 项目（`github.com/openatta/XOps`）的 Change `repo-skeleton`
 >
 > 日期：2026-08-20
@@ -263,3 +266,48 @@ XFORGE_DOCTOR_UNUSED_FLOW: Flow quick is not the Manifest default and is not use
 | P3 | ISSUE-4、ISSUE-8 | 体验问题 |
 
 ISSUE-1 与 ISSUE-2 属于同一类：**工具已经知道答案，但选择在代价最高的时刻才说出来。**
+
+---
+
+## 处置记录
+
+> 由 XForge 维护方于 2026-08-20 处理，发布于 0.7.17。全部改动经完整 CLI 套件与三条 Flow 的真实模型端到端运行验证。
+
+| ISSUE | 处置 | 落点 |
+|---|---|---|
+| **1** ready-to-archive 死路 | **已修** | `transition repair` 接入 CLI；`blockRemedy` 新增 `ready-receipt-stale` 分支，在 `archive --dry-run` 处指明出路 |
+| **2** 检查时机 | **已修（归因已更正）** | 新增 `XFORGE_CHECK_PASSED_WITH_WARNINGS`；`outline` 语义写入文档 |
+| **3** 缺 draft 命令 | **已修** | 新增 `xforge verification draft-receipt`；改写 `xforge-verify` Skill；文档补充循环依赖说明 |
+| **4** Flow outline 未本地化 | **不按报告方式修**（见下） | — |
+| **5** `--text` 不是 text | **已修** | 新增 `state --field <path>` |
+| **6** doctor 不报审批可用性 | **已修** | 新增 `XFORGE_DOCTOR_APPROVALS_INTERACTIVE_ONLY`（info） |
+| **7** 强制 gate 声明过晚 | **已修** | 新增 `XFORGE_DOCTOR_VERIFICATION_UNDECLARED`（info） |
+| **8** doctor 信噪比 | **已修** | 无 active Change 时抑制 `XFORGE_DOCTOR_UNUSED_FLOW` |
+
+### ISSUE-4：不按报告方式修复
+
+Flow 保持**单语**。双语维护只用于人会反复阅读的资产（Skills、Constitution、architecture 记录）；Flow 是可执行的治理规则，两份副本一旦在 `minApprovers` 这类字段上漂移，代价高于它修复的问题。
+
+因此中文项目仍需在 Artifact 中使用 `outline` 声明的英文 `## ` 小标题。**但失配不再是静默的** —— ISSUE-2 的修复使 marker 告警在产出该 Artifact 的那个 Stage 就被点名，而不是拖到归档前。
+
+报告建议的备选方案（marker 按段序而非标题文本定位）经评估**否决**：比现状更脆。若日后要在单语前提下真正修复，仓库中已有现成范式 —— `markers[].pattern` 本就是列表，正是为了让单一 Flow 同时匹配两种语言的正文。
+
+### 三处对报告本身的更正
+
+1. **ISSUE-1 的成因不是设计取舍。** 报告推断"不存在恢复路径"是 Flow 的设计选择，并据此为 fail-closed 无后门辩护。实际上 `repairTransitionChain` 一直存在、有集成测试，且**不要求链已损坏** —— 它始终能救这个场景，只是从未接入 CLI。出口早已建好，只是没通电。
+
+2. **ISSUE-2 的 marker 诊断并非"直到 archive 才首次报告"。** `xforge check --change` 在每个 Stage 都会调用 `validateArtifactMarkers`，assurance 一写出就会报。真正的问题是它被定为 `warning`，而同一信封里 structure Gate 输出 `Structural validation passed.` —— 读者停在那一行。修复的是**可见性**，不是检查时机。
+
+3. **ISSUE-3 中"需要抄 gate evidence digest"是 Skill 教错了，不是 CLI 要求。** 收据的引用只认 Gate **名字**：`evidence` 字段在 `core/verification-receipt.ts` 中仅出现于接口声明，从无一处校验。实测中那次"抄 digest 导致循环依赖"是照 Skill 做的，该模板已在本次一并改写。
+
+### 顺带修正的既有缺陷
+
+- `GateResource.spec.builtin` 的类型漏了 `'declared'`，而 `gate.schema.json` 一直接受它。
+- doctor 的未声明 Gate 检查曾把 dismissal 当作已回答，与 Gate runner 的实际拒绝条件（`runs.length === 0`）不一致。
+- `state --field` 曾解析原型链属性，会为数据中不存在的路径返回貌似合理的值。
+
+### 值得肯定的部分：全部保持不变
+
+报告中"建议保持不变"的五条设计（declared Gate 拒绝无声明通过、`brief` 的三段式分割、审批不接受 flag、fail-closed 无后门、占位资源诚实失败）**一条未动**。
+
+其中第 4 条的辩护建立在 ISSUE-1 的错误前提上（见更正 1），但结论本身仍然成立：`transition repair` 走的是"丢弃叶子回执 + 记入审计链"，本来就不是 `--force`。
