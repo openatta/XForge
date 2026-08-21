@@ -24,26 +24,26 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 2. 按完整性、正确性和一致性审查：把每个 Requirement/Scenario 映射到实现与自动化测试，把 Design/Constitution/Rules 映射到最终 diff。
 3. 若存在工作包，要求每个包有有效完成 delivery，核对依赖 commit、实际写入边界、验证命令，并确认每项 `done_when` 都有精确一次的非空证据映射；高风险或跨系统结果使用独立 Reviewer。Reviewer 只读，无法自行写证据文件——必须由你逐字转录它的结论后再确认（见 `xforge-apply` 第 8 步）。
 4. 运行 `xforge check --change <id>`，重新执行工作包验证和所有 mandatory Gates；重开 Evidence，核对 Change、命令、时间、退出状态、digest 与当前 revision。
-5. 生成 assurance。然后写 verification receipt——必须在第 4 步的 Gate 全部通过**之后**再写，绝不能提前，因为它要引用那次运行产生的 digest。`evidence/verification-receipt.yaml` 不是内容 Artifact，而是本 Stage 的 `verificationReceipt` exit condition，由 CLI 对照磁盘上的 Evidence 判定：
+5. 生成 assurance。然后生成 verification receipt——必须在第 4 步的 Gate 全部通过**之后**，绝不能提前，因为它要点名那次运行记录下的 Gate。`evidence/verification-receipt.yaml` 不是内容 Artifact，而是本 Stage 的 `verificationReceipt` exit condition，由 CLI 对照磁盘上的 Evidence 判定。
+
+   不要手抄。运行 `xforge verification draft-receipt --change <id>`：`change`、`contentRevision`、`gitHead` 以及完整的 Gate 引用集合都是 XForge 已经掌握的事实，且它输出的正是稍后判定该 exit condition 所依据的同一份 Gate 集合。把结果中的 `receipt` 写到上述路径，并且只补一个字段：
 
    ```yaml
-   status: passed
-   contentRevision: <取自 `xforge state --change <id>` 的 governance.revision.contentRevision>
-   gitHead: <Gate Evidence 上记录的 gitHead，不是当前 HEAD>
-   gates:
-     - gate: unit-tests
-       evidence: <evidence/tests.json 的 digest 字段>
-       status: passed
+   status: passed   # 唯一由你填写的字段：你对"本 Stage 已验证这项工作"的断言
    ```
 
-   本 Stage 每个通过的 Gate 都要引用一次，且必须是当前 digest——不得遗漏、不得引用其它 Stage 的 Gate、不得使用早先运行的 digest。`gates` 只放 Gate；work-package 交付写在 `workPackageDeliveries`（`package`、`delivery`、`dispatch`、`status`、`verifyCommand`、`exitCode`），写成 `gates` 的一行会被以 `gate-unverifiable-<name>` 拒绝。之后若再改动任何 Artifact，必须重跑 Gate 并重写 receipt。任一 mandatory Gate、Requirement 或关键约束未验证时请求 `apply` rework Transition；不得手写 Gate PASS。
+   该命令刻意不产出 `status`，也不写文件——由 XForge 计算这个字段，就等于让它替你决定这份 receipt 本身要记录的那件事。
+
+   它替你避开两个真实运行中付过代价的坑。其一，`xforge state` 里每份历史回执各带一个 `contentRevision`，靠肉眼或 `grep` 取值会拿到已被取代的那个；确需单独取值时用 `--field governance.revision.contentRevision`。其二，引用只写 Gate 名，绝不写 digest——每个 per-run digest 都会随正常推进而变化，抄下来的那一刻起就在失效。不要加 `evidence:` 这一行，没有任何代码会读它。
+
+   本 Stage 每个通过的 Gate 都要引用一次——不得遗漏、不得引用其它 Stage 的 Gate。`gates` 只放 Gate；work-package 交付写在 `workPackageDeliveries`（`package`、`delivery`、`dispatch`、`status`、`verifyCommand`、`exitCode`），写成 `gates` 的一行会被以 `gate-unverifiable-<name>` 拒绝。之后若再改动任何 Artifact，必须重跑 Gate 并重新 draft——写入动作本身会改变 `contentRevision` 并使 Evidence 变 stale。任一 mandatory Gate、Requirement 或关键约束未验证时请求 `apply` rework Transition；不得手写 Gate PASS。
 6. Gate 和 Artifact 满足后调用 `xforge transition --change <id> --to ready-to-archive`；`verify-only` 到此停止，并报告 Closing Approval 与 Audit blockers。
 7. 已获当前 revision 的人类/外部 Closing Approval 后运行 `xforge audit verify --change <id>` 和 `xforge archive --change <id> --dry-run`，展示完整 Specs merge/move 计划、冲突和显著兼容影响；仅在 Approval、Audit、Gate 全部当前且计划无错误时运行 `xforge archive --change <id>`。
 8. 归档后运行 `xforge state`，确认 Change 离开 active set、主 Specs 可见且 Evidence 位于归档目录。
 
 # 证据
 
-- 输出 Requirement/Scenario、实现、测试、Design、工作包和 Gate 的可定位映射，以及 receipt 的 `contentRevision`、`gitHead` 和它引用的 Gate digest。
+- 输出 Requirement/Scenario、实现、测试、Design、工作包和 Gate 的可定位映射，以及 receipt 的 `contentRevision`、`gitHead` 和它引用的 Gate。
 - 只有所有当前 mandatory Gate 成功且没有 blocker 时，才能声明 ready for archive；只有 CLI 原子事务成功才能声明 closed。
 - 在关闭审批之前，运行 `xforge brief --change <id> --text` 并把输出**逐字**交给用户。不得转述、重排或概括：简报把 CLI 算出的事实与原文引用分开呈现，用你自己的话复述会毁掉读者区分二者的唯一依据。
 

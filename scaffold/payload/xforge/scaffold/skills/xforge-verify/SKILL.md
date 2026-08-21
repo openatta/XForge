@@ -24,26 +24,26 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 2. Review completeness, correctness, and consistency by mapping every Requirement/Scenario to implementation and automated tests, and Design/Constitution/Rules to the final diff.
 3. For work packages, require valid completed deliveries, dependency commits, actual write boundaries, verification commands, and an exact evidence mapping for every `done_when`; use an independent Reviewer for high-risk or cross-system results. The Reviewer is read-only and cannot write its own evidence file — transcribe its verbatim result yourself before acknowledging it (see `xforge-apply` step 8).
 4. Run `xforge check --change <id>` to rerun package verification and mandatory Gates; reopen Evidence and validate Change, command, time, exit, digest, and current revision.
-5. Generate assurance. Then write the verification receipt — **after** step 4's Gates have passed, never before, because it must cite the digest they produced. `evidence/verification-receipt.yaml` is not a content Artifact; it is the Stage's `verificationReceipt` exit condition, and the CLI decides it against the Evidence on disk:
+5. Generate assurance. Then produce the verification receipt — **after** step 4's Gates have passed, never before, because it names the Gates that run recorded. `evidence/verification-receipt.yaml` is not a content Artifact; it is the Stage's `verificationReceipt` exit condition, and the CLI decides it against the Evidence on disk.
+
+   Do not transcribe it. Run `xforge verification draft-receipt --change <id>`: `change`, `contentRevision`, `gitHead` and the full cited Gate set are facts XForge is already holding, and it emits them from the same resolved Gate set the exit condition is later decided against. Write its `receipt` to the path above and add exactly one field:
 
    ```yaml
-   status: passed
-   contentRevision: <governance.revision.contentRevision from `xforge state --change <id>`>
-   gitHead: <the gitHead recorded on the Gate Evidence, not the live HEAD>
-   gates:
-     - gate: unit-tests
-       evidence: <the digest field of evidence/tests.json>
-       status: passed
+   status: passed   # the only field you supply: your assertion that this Stage verified the work
    ```
 
-   Cite every Gate that passed for this Stage, exactly once, with its current digest — no omissions, no Gates from another Stage, no digest from an earlier run. `gates` holds Gates and only Gates; a work-package delivery goes under `workPackageDeliveries` (`package`, `delivery`, `dispatch`, `status`, `verifyCommand`, `exitCode`), and written as a Gate row it is refused as `gate-unverifiable-<name>`. Rerun the Gates and rewrite the receipt if you touch any Artifact afterwards. Request Apply rework if any mandatory Gate, Requirement, or critical constraint is unverified; never hand-write a Gate PASS.
+   The command deliberately omits `status` and writes no file — computing that field would be XForge deciding the thing the receipt exists to record.
+
+   Two things it protects you from, both of which have cost live runs. `contentRevision` appears once per historical receipt in `xforge state`, so reading it by eye or by `grep` returns a superseded revision; use `--field governance.revision.contentRevision` if you ever need it alone. And a citation names its Gate, never a digest — every per-run digest moves under ordinary progress, so a transcribed one is stale by the time it is read. Do not add an `evidence:` line; nothing reads it.
+
+   Cite every Gate that passed for this Stage, exactly once — no omissions, no Gates from another Stage. `gates` holds Gates and only Gates; a work-package delivery goes under `workPackageDeliveries` (`package`, `delivery`, `dispatch`, `status`, `verifyCommand`, `exitCode`), and written as a Gate row it is refused as `gate-unverifiable-<name>`. Rerun the Gates and draft the receipt again if you touch any Artifact afterwards — the write moves `contentRevision` and stales the Evidence. Request Apply rework if any mandatory Gate, Requirement, or critical constraint is unverified; never hand-write a Gate PASS.
 6. When Gates and Artifacts are satisfied, run `xforge transition --change <id> --to ready-to-archive`. In `verify-only`, stop there and report Closing Approval and Audit blockers.
 7. With current human/external Closing Approval, run `xforge audit verify --change <id>` and `xforge archive --change <id> --dry-run`; show the full Spec merge/move plan, conflicts, and material compatibility impact, then run `xforge archive --change <id>` only when Approval, Audit, Gates, and plan are current and error-free.
 8. Run `xforge state` after archive and confirm the Change left the active set, canonical Specs are visible, and Evidence moved with the archive.
 
 # Evidence
 
-- Return traceable Requirement/Scenario, implementation, test, Design, work-package, and Gate mappings, plus the receipt's `contentRevision`, `gitHead`, and the Gate digests it cites.
+- Return traceable Requirement/Scenario, implementation, test, Design, work-package, and Gate mappings, plus the receipt's `contentRevision`, `gitHead`, and the Gates it cites.
 - Claim ready for archive only with all current mandatory Gates passing and no blocker; claim closed only after the CLI atomic transaction succeeds.
 - Before the closing approval, run `xforge brief --change <id> --text` and give the user its output **verbatim**. Do not summarize, reorder, or paraphrase it — the brief separates what the CLI computed from what it quoted, and restating it in your own words destroys the only signal the reader has for telling those apart.
 
