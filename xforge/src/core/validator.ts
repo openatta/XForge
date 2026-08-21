@@ -6,7 +6,7 @@ import addFormatsModule from 'ajv-formats';
 import type { Diagnostic } from '../types.js';
 import { diagnostic } from './errors.js';
 
-export type SchemaName = 'manifest' | 'lock' | 'flow' | 'change' | 'agent' | 'gate' | 'rule' | 'permission-policy' | 'hook' | 'approval-receipt' | 'transition-receipt' | 'audit-event' | 'script' | 'scaffold' | 'work-package' | 'work-package-delivery' | 'work-package-dispatch' | 'work-package-ack-receipt' | 'mcp-server';
+export type SchemaName = 'manifest' | 'lock' | 'flow' | 'change' | 'agent' | 'gate' | 'rule' | 'permission-policy' | 'hook' | 'approval-receipt' | 'transition-receipt' | 'audit-event' | 'script' | 'scaffold' | 'work-package' | 'work-package-delivery' | 'work-package-dispatch' | 'work-package-ack-receipt' | 'review-ack-receipt' | 'mcp-server';
 
 /* See identity.ts's packageRoot comment: fileURLToPath, not .pathname + path.resolve, for Windows. */
 const schemaRoot = path.resolve(fileURLToPath(new URL('../../schemas', import.meta.url)));
@@ -26,7 +26,7 @@ async function buildValidators(): Promise<Map<SchemaName, ValidateFunction>> {
   const ajv = new Ajv2020({ allErrors: true, strict: false });
   const addFormats = addFormatsModule as unknown as (instance: Ajv2020) => Ajv2020;
   addFormats(ajv);
-  const names: SchemaName[] = ['manifest', 'lock', 'flow', 'change', 'agent', 'gate', 'rule', 'permission-policy', 'hook', 'approval-receipt', 'transition-receipt', 'audit-event', 'script', 'scaffold', 'work-package', 'work-package-delivery', 'work-package-dispatch', 'work-package-ack-receipt', 'mcp-server'];
+  const names: SchemaName[] = ['manifest', 'lock', 'flow', 'change', 'agent', 'gate', 'rule', 'permission-policy', 'hook', 'approval-receipt', 'transition-receipt', 'audit-event', 'script', 'scaffold', 'work-package', 'work-package-delivery', 'work-package-dispatch', 'work-package-ack-receipt', 'review-ack-receipt', 'mcp-server'];
   const result = new Map<SchemaName, ValidateFunction>();
   for (const name of names) {
     const schema = JSON.parse(await readFile(path.join(schemaRoot, `${name}.schema.json`), 'utf8')) as object;

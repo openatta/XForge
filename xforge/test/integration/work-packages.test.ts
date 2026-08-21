@@ -1153,3 +1153,146 @@ describe('work-package protocol', () => {
     expect(result.json.data.change.workPackages.packages[0].status).toBe('succeeded');
   });
 });
+
+/*
+ * Delivering without a plan is permitted — `xforge-apply` says so — and until now it was also
+ * silent. A live Major run delivered a high-risk Change with no plan and learned only afterwards
+ * that dispatch receipts, delivery records and the worktree write boundary had never been in
+ * force, and that the Flow's independentReview condition had nothing left to review.
+ */
+describe('delivering without a work-package plan', () => {
+  const declareReview = async (root: string): Promise<void> => {
+    await updateYaml(root, 'xforge/flows/solid.yaml', (flow) => {
+      const verify = flow.stages.find((stage: any) => stage.id === 'verify');
+      verify.exit = { ...(verify.exit ?? {}), conditions: { ...(verify.exit?.conditions ?? {}), independentReview: 'complete' } };
+    });
+    expect((await runCli(root, ['install'])).code).toBe(0);
+  };
+
+  it('names what stopped applying, once the Change is delivering', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await declareReview(root);
+    await advanceSolidToApply(root, 'add-feature');
+
+    const result = await runCli(root, ['check', '--change', 'add-feature'], approvalTestEnv);
+    const notice = (result.json.diagnostics as any[]).find((item) => item.code === 'XFORGE_WORK_PACKAGE_PLAN_ABSENT');
+    expect(notice, JSON.stringify((result.json.diagnostics as any[]).map((item) => item.code))).toBeTruthy();
+    /* Info, not a warning: this is a permitted delivery shape, not a misconfiguration. */
+    expect(notice.severity).toBe('info');
+    /* It has to name the mechanisms, or it is just a label. */
+    expect(notice.message).toContain('dispatch receipts');
+    expect(notice.message).toContain('worktree write boundary');
+    /* And the condition that quietly loses its subject — the reason this is P0 rather than a note. */
+    expect(notice.message).toContain('independentReview');
+  });
+
+  /* Before implementation begins there is nothing to have planned, so saying this at Propose would
+     be advice about a decision the Change has not reached. */
+  it('says nothing before the Change reaches an implementing Stage', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await declareReview(root);
+    const result = await runCli(root, ['check', '--change', 'add-feature'], approvalTestEnv);
+    expect((result.json.diagnostics as any[]).map((item) => item.code)).not.toContain('XFORGE_WORK_PACKAGE_PLAN_ABSENT');
+  });
+
+  /*
+   * And nothing at all for a Flow that never declared independentReview. No plan is the norm on a
+   * Quick Change and nothing is lost by it; a finding that fires on every such Change would be the
+   * permanent, unactionable kind this codebase declines to emit.
+   */
+  it('says nothing for a Flow that does not declare independentReview', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await advanceSolidToApply(root, 'add-feature');
+    const result = await runCli(root, ['check', '--change', 'add-feature'], approvalTestEnv);
+    expect((result.json.diagnostics as any[]).map((item) => item.code)).not.toContain('XFORGE_WORK_PACKAGE_PLAN_ABSENT');
+  });
+});
+
+/*
+ * The hole this closes: `independentReview` returned satisfied with reason `no-work-packages`, so
+ * the one condition Major added to stop "designed, implemented, reviewed and signed off by a
+ * single executor" asked for nothing on exactly that shape. A live Major run archived through it
+ * with no reviewer acknowledgement of any kind, and the condition never once appeared in
+ * `blockedBy` — which is what made it invisible as well as inert.
+ */
+describe('independentReview without a work-package plan', () => {
+  const declareReview = async (root: string): Promise<void> => {
+    await updateYaml(root, 'xforge/flows/solid.yaml', (flow) => {
+      const verify = flow.stages.find((stage: any) => stage.id === 'verify');
+      verify.exit = { ...(verify.exit ?? {}), conditions: { ...(verify.exit?.conditions ?? {}), independentReview: 'complete' } };
+    });
+    expect((await runCli(root, ['install'])).code).toBe(0);
+  };
+  const blockedLeavingVerify = async (root: string): Promise<string[]> => {
+    const state = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
+    const targets = state.json.data.change.governance.readyTransitions as any[];
+    return targets.find((item) => item.to === 'ready-to-archive')?.blockedBy ?? [];
+  };
+
+  it('blocks, and says so in blockedBy, when nothing reviewed the work', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await declareReview(root);
+    await advanceSolidToApply(root, 'add-feature');
+    expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'verify'], approvalTestEnv)).code).toBe(0);
+
+    /* Visible, which the old behaviour never was: a condition that cannot appear in blockedBy is
+       indistinguishable from a condition that does not exist. */
+    expect(await blockedLeavingVerify(root)).toContain('condition:independentReview:review-missing');
+  });
+
+  it('accepts a Change-level review, and stops accepting it when the content moves', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await declareReview(root);
+    await advanceSolidToApply(root, 'add-feature');
+    expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'verify'], approvalTestEnv)).code).toBe(0);
+
+    await write(root, 'xforge/changes/add-feature/evidence/agents/review/notes.md', '# Review\n\nRead the delivered work against the Spec.\n');
+    const recorded = await runCli(root, ['review', 'acknowledge', '--change', 'add-feature',
+      '--evidence', 'xforge/changes/add-feature/evidence/agents/review/notes.md'], approvalTestEnv);
+    expect(recorded.code, JSON.stringify(recorded.json?.diagnostics)).toBe(0);
+    expect(await blockedLeavingVerify(root)).not.toContain('condition:independentReview:review-missing');
+
+    /* Bound to content, like every other receipt here: a review of an Artifact that has since been
+       edited is a review of a different Change. */
+    await write(root, 'xforge/changes/add-feature/assurance.md', '# Assurance\n\nEdited after the review.\n');
+    expect(await blockedLeavingVerify(root)).toContain('condition:independentReview:review-stale');
+  });
+
+  /* Two ways to satisfy one condition would let a Change with unreviewed packages buy its way past
+     them with a single Change-level note. */
+  it('refuses a Change-level review when a plan exists', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await declareReview(root);
+    await advanceSolidToApply(root, 'add-feature');
+    await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([workPackage('T001')]));
+    await write(root, 'xforge/changes/add-feature/evidence/agents/review/notes.md', '# Review\n');
+    const refused = await runCli(root, ['review', 'acknowledge', '--change', 'add-feature',
+      '--evidence', 'xforge/changes/add-feature/evidence/agents/review/notes.md'], approvalTestEnv);
+    expect(refused.code).toBe(1);
+    expect((refused.json.diagnostics as any[]).map((item) => item.code)).toContain('XFORGE_REVIEW_ACK_PLAN_PRESENT');
+  });
+
+  /* Evidence has to exist and archive with the Change; a receipt pointing at nothing is a claim. */
+  it('refuses evidence that does not exist or sits outside the Change', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await declareReview(root);
+    await advanceSolidToApply(root, 'add-feature');
+
+    const missing = await runCli(root, ['review', 'acknowledge', '--change', 'add-feature',
+      '--evidence', 'xforge/changes/add-feature/evidence/agents/review/absent.md'], approvalTestEnv);
+    expect(missing.code).toBe(1);
+    expect((missing.json.diagnostics as any[]).map((item) => item.code)).toContain('XFORGE_REVIEW_ACK_EVIDENCE_MISSING');
+
+    await write(root, 'outside.md', '# elsewhere\n');
+    const outside = await runCli(root, ['review', 'acknowledge', '--change', 'add-feature', '--evidence', 'outside.md'], approvalTestEnv);
+    expect(outside.code).toBe(1);
+    expect((outside.json.diagnostics as any[]).map((item) => item.code)).toContain('XFORGE_REVIEW_ACK_EVIDENCE_SCOPE');
+  });
+});

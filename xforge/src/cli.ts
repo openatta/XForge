@@ -16,6 +16,7 @@ import { executeSync } from './commands/sync.js';
 import { executeUninstall } from './commands/uninstall.js';
 import { executeUpdate } from './commands/update.js';
 import { executeTransition, repairTransitionChain } from './commands/transition.js';
+import { executeReviewAcknowledge } from './commands/review.js';
 import { executeHookDispatch, hookFailureOutput, hookPlatformOutput, repairAffordance } from './commands/hook.js';
 import { executeInit } from './commands/init.js';
 import { executeWorkPackageAcknowledge, executeWorkPackageDispatch, executeWorkPackageDraft } from './commands/work-package.js';
@@ -28,7 +29,7 @@ import { detectScaffoldLanguage, parseScaffoldLanguage } from './core/language.j
 import { envelope, present } from './protocol/envelope.js';
 import type { Diagnostic, Envelope, FlowAuthority, NextAction, ScaffoldLanguage } from './types.js';
 
-type CommandName = 'help' | 'version' | 'init' | 'state' | 'install' | 'sync' | 'update' | 'uninstall' | 'check' | 'brief' | 'verification' | 'transition' | 'approve' | 'audit' | 'work-package' | 'hook' | 'archive' | 'doctor' | 'upgrade-scaffold';
+type CommandName = 'help' | 'version' | 'init' | 'state' | 'install' | 'sync' | 'update' | 'uninstall' | 'check' | 'brief' | 'verification' | 'transition' | 'approve' | 'audit' | 'work-package' | 'hook' | 'archive' | 'doctor' | 'upgrade-scaffold' | 'review';
 
 interface ParsedArguments {
   command: string;
@@ -79,7 +80,7 @@ interface ParsedArguments {
   field?: string;
 }
 
-const COMMANDS: CommandName[] = ['help', 'version', 'init', 'state', 'install', 'sync', 'update', 'uninstall', 'check', 'brief', 'verification', 'transition', 'approve', 'audit', 'work-package', 'hook', 'archive', 'doctor', 'upgrade-scaffold'];
+const COMMANDS: CommandName[] = ['help', 'version', 'init', 'state', 'install', 'sync', 'update', 'uninstall', 'check', 'brief', 'verification', 'transition', 'approve', 'audit', 'work-package', 'hook', 'archive', 'doctor', 'upgrade-scaffold', 'review'];
 const VALID_KINDS = ['skills', 'agents', 'rules', 'policies', 'hooks', 'gates', 'scripts', 'flows', 'approvals', 'mcp-servers'] as const;
 const VALUE_OPTIONS = ['--root', '--change', '--kind', '--target', '--gate', '--to', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--provider', '--output', '--event', '--package', '--language', '--as', '--evidence', '--stage', '--attach-triage', '--gate-name', '--command', '--module', '--covers', '--working-directory', '--timeout-seconds', '--not-applicable', '--justification', '--by', '--receipt', '--field'] as const;
 
@@ -185,6 +186,11 @@ const HELP: Record<CommandName, { usage: string; description: string; options: s
     usage: 'xforge [--root <path>] upgrade-scaffold [--complete | --rollback] [--with-active-changes] [--force] [--dry-run] [--text]',
     description: 'Stage the Scaffold this CLI ships beside the project\'s own and classify every file, so a person or an Agent can merge it.',
     options: ['--root', '--complete', '--rollback', '--with-active-changes', '--force', '--dry-run', '--text'],
+  },
+  review: {
+    usage: 'xforge [--root <path>] review acknowledge --change <id> --evidence <path> [--dry-run] [--text]',
+    description: "Record that this Change's delivered work was reviewed, for Changes delivered without a work-package plan. The per-package form is `work-package acknowledge --as reviewer`, and this is refused when a plan exists. There is no --by: the actor comes from the environment, because a field inviting a reviewer's name invites a fabricated one.",
+    options: ['--root', '--change', '--evidence', '--dry-run', '--text'],
   },
   doctor: { usage: 'xforge [--root <path>] doctor [--kind <kind>] [--strict] [--text]', description: 'Report unreferenced and dangling Flow/Skill/Rule/Gate/Hook/PermissionPolicy/Approval/McpServer extensions.', options: ['--root', '--kind', '--strict', '--text'] },
 };
@@ -309,7 +315,7 @@ function parseArguments(argv: string[]): ParsedArguments {
     if (parsed.command === 'help') {
       parsed.helpCommand = positionals[1];
       if (positionals.length > 2) throw new XForgeError(diagnostic('XFORGE_ARGUMENT_UNEXPECTED', `Unexpected positional argument: ${positionals[2]}`));
-    } else if (parsed.command === 'audit' || parsed.command === 'hook' || parsed.command === 'work-package' || parsed.command === 'verification' || parsed.command === 'transition') {
+    } else if (parsed.command === 'audit' || parsed.command === 'hook' || parsed.command === 'work-package' || parsed.command === 'verification' || parsed.command === 'transition' || parsed.command === 'review') {
       /* `transition` joined this list without breaking its original form, because that form carries
          no positional: `transition --change X --to Y` leaves positionals[1] undefined, which is
          exactly what the plain-transition branch below tests for. */
@@ -337,6 +343,10 @@ function parseArguments(argv: string[]): ParsedArguments {
     if (!['declare', 'draft-receipt'].includes(parsed.subcommand ?? '')) throw new XForgeError(diagnostic('XFORGE_VERIFICATION_ACTION_REQUIRED', 'verification requires the declare or draft-receipt action.'));
     if (parsed.subcommand === 'declare' && (!parsed.gateName || !parsed.by)) throw new XForgeError(diagnostic('XFORGE_VERIFICATION_ARGUMENTS_REQUIRED', 'verification declare requires --gate-name <gate> and --by <person>. The person is required because nothing can decide mechanically whether a command verifies anything; this records who answered.'));
     if (parsed.subcommand === 'draft-receipt' && !parsed.change) throw new XForgeError(diagnostic('XFORGE_CHANGE_REQUIRED', 'verification draft-receipt requires --change <id>.'));
+  }
+  if (parsed.command === 'review') {
+    if (parsed.subcommand !== 'acknowledge') throw new XForgeError(diagnostic('XFORGE_REVIEW_ACTION_REQUIRED', 'review requires the acknowledge action.'));
+    if (!parsed.change || !parsed.evidence) throw new XForgeError(diagnostic('XFORGE_REVIEW_ARGUMENTS_REQUIRED', 'review acknowledge requires --change <id> and --evidence <path>.'));
   }
   if (parsed.command === 'brief' && !parsed.change) throw new XForgeError(diagnostic('XFORGE_CHANGE_REQUIRED', 'brief requires --change <id>.'));
   if (parsed.command === 'transition') {
@@ -652,6 +662,10 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
   }
   if (command === 'brief') {
     const result = await executeBrief(project, { change: parsed.change!, attachTriage: parsed.attachTriage });
+    return envelope({ command, root: project.root, ...result });
+  }
+  if (command === 'review') {
+    const result = await executeReviewAcknowledge(project, { change: parsed.change!, evidence: parsed.evidence!, dryRun: parsed.dryRun });
     return envelope({ command, root: project.root, ...result });
   }
   if (command === 'transition') {

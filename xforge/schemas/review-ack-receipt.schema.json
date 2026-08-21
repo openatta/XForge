@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xforge.dev/schemas/v1alpha2/review-ack-receipt.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "receiptId", "change", "contentRevision", "evidence", "actor", "acknowledgedAt", "digest"],
+  "properties": {
+    "apiVersion": { "const": "xforge.dev/v1alpha2" },
+    "kind": { "const": "ReviewAckReceipt" },
+    "receiptId": { "type": "string", "format": "uuid" },
+    "change": { "type": "string", "minLength": 1 },
+    "contentRevision": { "$ref": "#/$defs/hash" },
+    "evidence": { "type": "string", "minLength": 1 },
+    "evidenceDigest": { "$ref": "#/$defs/hash" },
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "provider", "role", "type"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "provider": { "type": "string", "minLength": 1 },
+        "role": { "type": "string", "minLength": 1 },
+        "type": { "enum": ["human", "agent", "system"] }
+      }
+    },
+    "acknowledgedAt": { "type": "string", "format": "date-time" },
+    "digest": { "$ref": "#/$defs/hash" }
+  },
+  "$defs": {
+    "hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

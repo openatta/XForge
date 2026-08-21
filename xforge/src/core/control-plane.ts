@@ -15,6 +15,7 @@ import { diagnostic } from './errors.js';
 import { normalizeRule, policyApplies, ruleApplies } from './governance.js';
 import { sha256, stableStringify } from './hash.js';
 import { safeResolve } from './path-safety.js';
+import { readReviewAcknowledgements, reviewCovers } from './review-acknowledgement.js';
 import type { SelectedResources } from './resource-loader.js';
 import { changeImplementers, computeGovernanceRevision } from './revision.js';
 import { validateSchema } from './validator.js';
@@ -470,12 +471,33 @@ export const INDEPENDENT_REVIEW_CONDITION = 'independentReview';
  * would be enforcing a property the CLI cannot observe. Both names are reported in State instead,
  * where the approver signing the Change can see them.
  */
-function independentReviewCondition(state: ChangeState, expected: string): { satisfied: boolean; reason: string } {
+async function independentReviewCondition(
+  project: ProjectContext,
+  changeId: string,
+  state: ChangeState,
+  expected: string,
+  contentRevision: string,
+): Promise<{ satisfied: boolean; reason: string }> {
   if (expected !== 'complete') return { satisfied: false, reason: `unsupported-expected-${expected}` };
   const packages = state.workPackages?.packages ?? [];
-  /* A Change that dispatched no work packages has nothing here to review; its semantic review is
-     the Check Stage's, which its own Gates already decide. */
-  if (packages.length === 0) return { satisfied: true, reason: 'no-work-packages' };
+  /*
+   * A Change with no work packages used to satisfy this outright, on the reasoning that its
+   * semantic review was the Check Stage's. That reasoning does not hold: Check runs *before*
+   * implementation, so what it reviews is a design, and the delivered work went unreviewed by
+   * anyone. This condition exists to stop exactly one thing — a high-risk Change designed,
+   * implemented, reviewed and signed off by a single executor — and the plan-less shape, which
+   * `xforge-apply` expressly permits, was the one shape where it asked for nothing at all. A live
+   * Major run archived through it having recorded no reviewer acknowledgement of any kind.
+   *
+   * So that shape now carries its own requirement rather than an exemption: a Change-level review
+   * acknowledgement, bound to the content it reviewed.
+   */
+  if (packages.length === 0) {
+    const acknowledgements = await readReviewAcknowledgements(project, changeId);
+    if (acknowledgements.length === 0) return { satisfied: false, reason: 'review-missing' };
+    if (!reviewCovers(acknowledgements, contentRevision)) return { satisfied: false, reason: 'review-stale' };
+    return { satisfied: true, reason: 'satisfied-change-level' };
+  }
   const unreviewed = packages
     .filter((item) => ['succeeded', 'integrated', 'reviewed'].includes(item.status))
     .filter((item) => !item.acknowledgements?.reviewedBy)
@@ -593,7 +615,7 @@ export async function resolveControlPlane(
         const condition = key === VERIFICATION_RECEIPT_CONDITION
           ? await evaluateVerificationReceiptCondition(project, changeId, expected, revision.contentRevision, gateEvidence)
           : key === INDEPENDENT_REVIEW_CONDITION
-            ? independentReviewCondition(state, expected)
+            ? await independentReviewCondition(project, changeId, state, expected, revision.contentRevision)
             : await evaluateExitCondition(project, changeId, key, expected, identities);
         if (!condition.satisfied) blockedBy.push(`condition:${key}:${condition.reason}`);
       }
