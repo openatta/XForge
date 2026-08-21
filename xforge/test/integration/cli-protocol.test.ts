@@ -34,7 +34,7 @@ describe('CLI protocol', () => {
     expect(help.json.data.commandHelp.usage).toContain('sync');
     const version = await runCli(root, ['version']);
     expect(version.code).toBe(0);
-    expect(version.json.data).toMatchObject({ name: '@xforge/cli', version: '0.7.16', protocolVersion: '2' });
+    expect(version.json.data).toMatchObject({ name: '@xforge/cli', version: '0.7.17', protocolVersion: '2' });
 
     const result = await runCli(root, ['frobnicate']);
     expect(result.code).toBe(1);
@@ -121,9 +121,9 @@ describe('CLI protocol', () => {
 
     const update = await runCli(root, ['update']);
     expect(update.code, JSON.stringify(update.json.diagnostics)).toBe(0);
-    expect(update.json.changes).toContainEqual(expect.objectContaining({ action: 'modify', path: 'xforge/manifest.yaml', source: 'xforge:declared-version-upgrade:0.7.7->0.7.16' }));
+    expect(update.json.changes).toContainEqual(expect.objectContaining({ action: 'modify', path: 'xforge/manifest.yaml', source: 'xforge:declared-version-upgrade:0.7.7->0.7.17' }));
     const manifest = await yamlFile(root, 'xforge/manifest.yaml');
-    expect(manifest.xforge.version).toBe('0.7.16');
+    expect(manifest.xforge.version).toBe('0.7.17');
     /* Only the CLI pin. The Scaffold's version follows the Scaffold's content, which `update` does
        not merge — see reconcileDeclaredCliVersion. Reconciling the CLI must still leave the project
        Managed, which is the point of the state assertion below: the two pins disagreeing is a normal
