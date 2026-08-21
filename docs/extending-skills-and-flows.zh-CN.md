@@ -178,32 +178,6 @@ draft-receipt` 会生成其中全部机器已知的部分，因此没有任何�
 活跃 Change 的 revision 发生变化。Flow 的修改属于 `xforge init`，不属于一个
 进行中的 Change。
 
-### 本地化一个 Flow
-
-`outline` 的小标题与 `markers[].section` 都是散文，而 `section` 是按标题的
-**确切文本**定位的。因此一个用 `--language zh-CN` 搭建、正文写中文的项目，配上
-英文的 outline 小标题，结果是**一个 marker 都定位不到**——作者自然会写中文标题，
-于是所有 marker 悄无声息地失效。
-
-Flow 为每个文件附带一个 `_cn` 变体（`quick_cn.yaml` 与 `quick.yaml` 并列）。
-`xforge init` 会把这一对折叠：所选语言的内容落到规范文件名下，变体被删除，因此
-任何已安装的项目都不会同时持有两份；`core/flow-resolver.ts` 在扫描目录时也会
-跳过 `_cn` 文件。
-
-编辑它们时有三条规则：
-
-- **`outline` 与 `markers[].section` 必须一起改。** 它们是同一个事实写了两遍，
-  只翻译其中一个正是最初那个 bug。
-- **只翻译散文。** `## ADDED Requirements`、`### Requirement:`、
-  `#### Scenario:`、`**WHEN**`/`**THEN**`，以及 outline 内部所有台账字段名
-  （`severity`、`reworkTo`、`resolvedBy`、`decidedBy`、`references` 等）都由
-  `core/spec-delta.ts`、`core/spec-merger.ts` 和各台账求值器按字面匹配。翻译
-  它们不会本地化任何东西，只会让 Spec 无法合并。
-- **绝不让治理内容出现差异。** `test/integration/flow-localization.test.ts` 会
-  从两个文件中剥掉 `description`、`instruction`、`outline` 与 `section`，然后
-  要求剩下的部分完全一致。Flow 是可执行的治理规则，两份 `minApprovers` 各自漂移
-  是比变体所修复的问题更严重的故障。
-
 ## 检查清单
 
 新增 Skill：

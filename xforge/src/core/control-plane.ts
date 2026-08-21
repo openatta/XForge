@@ -713,7 +713,10 @@ export function gateBlockReason(evidence: GateEvidence | null | undefined, conte
 export function blockRemedy(
   blocks: readonly string[],
   changeId: string,
-  context: { readyReceipt?: { receiptId: string; from: string; contentRevision: string } } = {},
+  context: {
+    readyReceipt?: { receiptId: string; from: string; contentRevision: string; policySnapshotDigest: string };
+    current?: { contentRevision: string; policySnapshotDigest: string };
+  } = {},
 ): { code: string; message: string } | null {
   /*
    * Ordered before the Gate remedy deliberately. Editing an Artifact after the closing transition
@@ -726,10 +729,29 @@ export function blockRemedy(
    */
   const stale = context.readyReceipt;
   if (stale && blocks.includes('transition:ready-receipt-stale')) {
-    return {
-      code: 'XFORGE_READY_RECEIPT_STALE_REMEDY',
-      message: `The closing transition receipt is bound to content revision ${stale.contentRevision}, and the Change has been edited since. Two routes, and they differ in what they preserve: restore the Artifacts to ${stale.contentRevision} to keep the existing approval, or run \`xforge transition repair --change ${changeId} --receipt ${stale.receiptId}\` to discard that receipt, return the Change to ${stale.from}, and rework — which necessarily voids the archive approval, because an approval is bound to the content it was given for.`,
-    };
+    /*
+     * Two different causes reach this one block, and they do not share a remedy.
+     *
+     * `terminalGovernanceBlocks` raises it when the receipt's `contentRevision` *or* its
+     * `policySnapshotDigest` has moved — and `policySnapshotDigest` is itself an input to
+     * `contentRevision` (`core/revision.ts`), so editing a Rule, Gate, policy or the Constitution,
+     * or completing an `upgrade-scaffold`, moves both while no Artifact has been touched. Telling
+     * that operator to restore the Artifacts is advice that cannot work: the bytes are already
+     * right, and putting them back does not put the policy snapshot back. The only route left in
+     * the message would then be `repair`, which discards a receipt and voids an approval that is
+     * still perfectly good for the content it was given for.
+     */
+    const policyMoved = Boolean(context.current) && stale.policySnapshotDigest !== context.current!.policySnapshotDigest;
+    const repair = `\`xforge transition repair --change ${changeId} --receipt ${stale.receiptId}\` discards that receipt and returns the Change to ${stale.from} for rework, which voids the archive approval — an approval is bound to what it was given for.`;
+    return policyMoved
+      ? {
+        code: 'XFORGE_READY_RECEIPT_STALE_REMEDY',
+        message: `The closing transition receipt is stale because the governing policy snapshot changed, not because this Change was edited: the receipt carries ${stale.policySnapshotDigest} and the project now resolves ${context.current!.policySnapshotDigest}. A Rule, Gate, PermissionPolicy, Hook, Flow or the Constitution changed under it — a completed \`upgrade-scaffold\` does this too. Restoring the Artifacts cannot clear it, because the policy snapshot is an input to the content revision. The cheap route is to put the governing resource back as it was and re-run \`xforge check --change ${changeId}\`; the Change then closes on the approval it already has. Otherwise, ${repair}`,
+      }
+      : {
+        code: 'XFORGE_READY_RECEIPT_STALE_REMEDY',
+        message: `The closing transition receipt is bound to content revision ${stale.contentRevision}, and this Change has been edited since. Two routes, and they differ in what they preserve: restore the Artifacts to ${stale.contentRevision} to keep the existing approval, or ${repair}`,
+      };
   }
 
   if (blocks.some((block) => /^gate:.+:stale$/.test(block))) {

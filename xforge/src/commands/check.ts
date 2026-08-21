@@ -445,12 +445,29 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
    * no Gate's verdict actually changed.
    */
   const advisories = diagnostics.filter((item) => item.severity === 'warning');
-  if (advisories.length > 0 && gateResults.some((item) => item.status === 'passed')) {
+  /*
+   * Only when the run is otherwise green, and only for a Change.
+   *
+   * `some(passed)` was wrong twice over: a run with one passing and three failing Gates asserted
+   * "Gates passed", and a `--gate` selection without `--change` never executes a Gate at all — it
+   * pushes `passed` unrun — so the sentence vouched for Gates that had not run. Neither case is the
+   * one this notice is for. A failing Gate is already a loud result; nothing is being masked, and
+   * adding a cheerful line to a failure is worse than saying nothing.
+   */
+  const gatesAllPassed = gateResults.length > 0 && gateResults.every((item) => item.status === 'passed');
+  if (advisories.length > 0 && gatesAllPassed && options.change && !diagnostics.some((item) => item.severity === 'error')) {
     const codes = [...new Set(advisories.map((item) => item.code))].sort();
+    /* The archive clause is claimed only where it is true. Artifact content is what archive
+       re-decides; a stale lock or an unknown module is reported by other commands, on other
+       schedules, and promising this one would be a guess dressed as a schedule. */
+    const artifactAdvisory = advisories.some((item) => item.code.startsWith('XFORGE_ARTIFACT_'));
+    const tail = artifactAdvisory
+      ? ' They are advisory now and cost nothing to fix here; an Artifact problem left unfixed is next reported by archive, after the Stage has transitioned and after anyone has approved it.'
+      : ' They are advisory now and cost nothing to fix here.';
     diagnostics.push(diagnostic(
       'XFORGE_CHECK_PASSED_WITH_WARNINGS',
-      `Gates passed, and this run also reported ${advisories.length} warning${advisories.length === 1 ? '' : 's'}: ${codes.join(', ')}. A passing Gate is not a clean check — these are advisory now and cost nothing to fix here, but an Artifact problem left unfixed is next reported by archive, after the Stage has transitioned and after anyone has approved it.`,
-      options.change ? `${project.changesPath}/${options.change}` : undefined,
+      `Every Gate in this run passed, and the same run reported ${advisories.length} warning${advisories.length === 1 ? '' : 's'}: ${codes.join(', ')}. A passing Gate is not a clean check.${tail}`,
+      `${project.changesPath}/${options.change}`,
       'info',
     ));
   }

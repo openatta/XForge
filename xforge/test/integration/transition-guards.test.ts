@@ -7,7 +7,7 @@ import { sha256, stableStringify } from '../../src/core/hash.js';
 import { loadProject } from '../../src/core/project-loader.js';
 import { executeTransition, repairTransitionChain } from '../../src/commands/transition.js';
 import type { TransitionReceipt } from '../../src/types.js';
-import { advanceSolidToReadyToArchive, createCompleteSolidChange, fixture, runCli, write } from '../helpers.js';
+import { advanceSolidToReadyToArchive, createCompleteSolidChange, fixture, runCli, updateYaml, write } from '../helpers.js';
 
 const CHANGE = 'add-feature';
 const transitionsRelative = `xforge/changes/${CHANGE}/evidence/receipts/transitions`;
@@ -354,6 +354,39 @@ describe('recovering from ready-to-archive', () => {
     const after = await runCli(root, ['state', '--change', CHANGE]);
     expect(after.json.data.change.governance.currentStage).toBe('verify');
     expect((await receipts(root)).map((item) => item.receiptId)).not.toContain(closing.receiptId);
+  });
+
+  /*
+   * The same block, a different cause, and the first message was wrong about it.
+   *
+   * `terminalGovernanceBlocks` raises `ready-receipt-stale` on a `contentRevision` *or* a
+   * `policySnapshotDigest` mismatch, and the policy snapshot is an input to the content revision.
+   * So changing a Rule under a Change parked at `ready-to-archive` produces this block with no
+   * Artifact touched — and "restore the Artifacts" is then advice that cannot work.
+   */
+  it('names the policy snapshot, not the Artifacts, when a governed resource moved instead', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await advanceSolidToReadyToArchive(root);
+
+    /* A governed resource changes; every Artifact is left exactly as approved. */
+    await updateYaml(root, 'xforge/scaffold/rules/prefer-small-explicit-contracts.yaml', (rule) => {
+      rule.spec.instruction = `${rule.spec.instruction} An extra sentence that changes the policy snapshot.`;
+    });
+    expect((await runCli(root, ['install'])).code).toBe(0);
+
+    const blocked = await runCli(root, ['archive', '--change', CHANGE, '--dry-run']);
+    expect(blocked.code).toBe(1);
+    const diagnostics = blocked.json.diagnostics as any[];
+    expect(diagnostics.some((item) => item.message.includes('transition:ready-receipt-stale'))).toBe(true);
+
+    const remedy = diagnostics.find((item) => item.code === 'XFORGE_READY_RECEIPT_STALE_REMEDY');
+    expect(remedy, JSON.stringify(diagnostics.map((item) => item.code))).toBeTruthy();
+    expect(remedy.message).toContain('policy snapshot changed');
+    /* It must not send the operator to restore files that were never edited. */
+    expect(remedy.message).not.toContain('restore the Artifacts');
+    /* The cheap route is putting the resource back, keeping the approval already given. */
+    expect(remedy.message).toContain('the approval it already has');
   });
 
   /* Newly reachable from the CLI, so its dry run is verified through that path rather than assumed

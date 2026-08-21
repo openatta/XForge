@@ -293,9 +293,9 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
    * project's first Change, as a blocked maintenance action. The question is answerable on day one
    * and nothing about it depends on a Change existing.
    *
-   * `resolveVerificationPlan` is the runner's own resolver, used here so the two cannot drift: a
-   * dismissal counts as an answer exactly as it does at Gate time. This stays a suggestion, not a
-   * finding — an unanswered question is not a misconfiguration, and the Gate itself still refuses.
+   * The condition below mirrors the runner's own refusal so the two cannot drift; see it for why a
+   * dismissal does not count as an answer. This stays a suggestion, not a finding — an unanswered
+   * question is not a misconfiguration, and the Gate itself still refuses.
    */
   for (const gateId of project.manifest.scaffold.gates) {
     const resource = structure.resources.gates.get(gateId);
@@ -331,18 +331,32 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
    * work in, worth stating once at setup, and it was previously discoverable only by hitting
    * XFORGE_APPROVAL_INTERACTIVE_REQUIRED at the first approval — twice, in the run that reported it.
    */
-  const approvalPolicies = [...flowResult.flows.values()]
-    .filter(isStageFlow)
-    .flatMap((flow) => flow.governance?.approvalPolicies ?? []);
-  const nonInteractive = approvalPolicies.some((policy) => policy.providers.some(
-    (providerId) => providerId !== 'local' && providerUsability(providerId).usable,
-  ));
-  if (approvalPolicies.length > 0 && !nonInteractive) {
+  /*
+   * Asked per policy, over the Flows this project actually uses.
+   *
+   * Flattening every Flow's policies into one set and suppressing on any usable provider anywhere
+   * got the customized case backwards: a project running `quick` (local only) that also ships a
+   * `release` Flow with a configured mcp provider was told nothing, and still met
+   * XFORGE_APPROVAL_INTERACTIVE_REQUIRED at its first approval — the failure this exists to warn
+   * about. Scoped to `usedFlows` for the same reason the unused-Flow check is: a policy in a Flow
+   * nobody has chosen is not a constraint anybody is under. Still one finding rather than one per
+   * Flow, naming which policies are affected, because a per-Flow fan-out on a stock project would
+   * be three copies of one fact.
+   */
+  const interactiveOnly: string[] = [];
+  for (const [name, flow] of flowResult.flows) {
+    if (!usedFlows.has(name) || !isStageFlow(flow)) continue;
+    for (const policy of flow.governance?.approvalPolicies ?? []) {
+      const reachable = policy.providers.some((providerId) => providerId !== 'local' && providerUsability(providerId).usable);
+      if (!reachable) interactiveOnly.push(`${name}/${policy.id}`);
+    }
+  }
+  if (interactiveOnly.length > 0) {
     suggestions.push({
       scope: 'approvals',
       code: 'XFORGE_DOCTOR_APPROVALS_INTERACTIVE_ONLY',
       id: 'local',
-      message: 'Every approval policy in this project can be satisfied only at an interactive terminal: no mcp provider is both declared and configured. Approvals will therefore not be collectable from inside an Agent session — the approver has to open a real terminal each time. That is a working constraint, not a misconfiguration; the alternative is to configure an mcp approval provider. See docs/extending-approvals-with-mcp.md.',
+      message: `${interactiveOnly.length} approval polic${interactiveOnly.length === 1 ? 'y' : 'ies'} in the Flows this project uses can be satisfied only at an interactive terminal, because no mcp provider is both declared and configured for ${interactiveOnly.length === 1 ? 'it' : 'them'}: ${interactiveOnly.join(', ')}. Those approvals cannot be collected from inside an Agent session — the approver has to open a real terminal each time. That is a working constraint, not a misconfiguration; the alternative is to configure an mcp approval provider. See docs/extending-approvals-with-mcp.md.`,
       path: 'xforge/manifest.yaml',
       severity: 'info',
     });

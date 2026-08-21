@@ -199,36 +199,6 @@ The same trap applies to the Flow file itself: `contentRevision` digests
 comments* — restates the revision of every active Change using it. Flow edits
 belong to `xforge init`, not to a running Change.
 
-### Localizing a Flow
-
-`outline` headings and `markers[].section` are prose, and `section` locates a
-heading by its exact text. A project scaffolded with `--language zh-CN` writing
-Chinese Artifacts under English outline headings therefore resolved no markers
-at all — the author naturally wrote Chinese headings, and every marker silently
-stopped locating anything.
-
-Flows ship a `_cn` variant beside each file (`quick_cn.yaml` next to
-`quick.yaml`). `xforge init` collapses the pair: the chosen language's content
-lands under the canonical name and the variant is deleted, so no installed
-project holds both, and `core/flow-resolver.ts` skips `_cn` files when scanning
-the directory.
-
-Three rules when editing them:
-
-- **Change `outline` and `markers[].section` together.** They are one fact
-  written twice; translating either alone is the original bug.
-- **Translate prose only.** `## ADDED Requirements`, `### Requirement:`,
-  `#### Scenario:`, `**WHEN**`/`**THEN**` and every ledger key inside an outline
-  (`severity`, `reworkTo`, `resolvedBy`, `decidedBy`, `references`, …) are
-  matched literally by `core/spec-delta.ts`, `core/spec-merger.ts` and the
-  ledger evaluators. Translating them does not localize anything; it stops Specs
-  merging.
-- **Never let governance differ.** `test/integration/flow-localization.test.ts`
-  strips `description`, `instruction`, `outline` and `section` from both files
-  and requires what remains to be identical. A Flow is executable governance,
-  and two copies of `minApprovers` that drift apart is a worse failure than the
-  one the variants fix.
-
 **Anti-pattern:** a Skill's own prose branching on a literal Flow name (`"For
 Solid, ... For Major, ..."`). This is fragile in a way the three mechanisms
 above are not — a new custom Flow (e.g. `hotfix.yaml`) gets silently

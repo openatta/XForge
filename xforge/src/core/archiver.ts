@@ -137,8 +137,15 @@ export async function planArchive(project: ProjectContext, changeId: string, opt
       const ready = control.governance.transitions.at(-1);
       const remedy = blockRemedy(governanceBlocks, changeId, {
         readyReceipt: ready && ready.to === 'ready-to-archive'
-          ? { receiptId: ready.receiptId, from: ready.from, contentRevision: ready.contentRevision }
+          ? {
+            receiptId: ready.receiptId, from: ready.from,
+            contentRevision: ready.contentRevision, policySnapshotDigest: ready.policySnapshotDigest,
+          }
           : undefined,
+        current: {
+          contentRevision: control.governance.revision.contentRevision,
+          policySnapshotDigest: control.governance.revision.policySnapshotDigest,
+        },
       });
       if (remedy) diagnostics.push(diagnostic(remedy.code, remedy.message, `${project.changesPath}/${changeId}`, 'info'));
     }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { documentSections, markerOccurrences, validateArtifactMarkers } from '../../src/core/artifact-markers.js';
 import { loadProject } from '../../src/core/project-loader.js';
-import { createCompleteSolidChange, fixture, runCli, updateYaml, write } from '../helpers.js';
+import { clearVerification, createCompleteSolidChange, fixture, runCli, updateYaml, write } from '../helpers.js';
 
 const CHANGE = 'add-feature';
 
@@ -233,6 +233,26 @@ describe('a passing Gate does not mean a clean check', () => {
     expect(notice.message).toContain('XFORGE_ARTIFACT_MARKER_SECTION_MISSING');
     /* And says why fixing it here is cheaper than being told later. */
     expect(notice.message).toContain('archive');
+  });
+
+  /* `some(passed)` claimed "Gates passed" on a run where one Gate passed and three failed. A
+     failing Gate is already a loud result; nothing is masked, and a cheerful line on a failure is
+     worse than silence. */
+  it('says nothing when any Gate in the run failed', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await setMarkers(root, [{ id: 'coverage', section: 'A Section This File Does Not Have', role: 'requirement-coverage' }]);
+    /* Makes `unit-tests` refuse for want of a declaration, which is a real Gate failure rather than
+       a fabricated one — the fixture otherwise declares a passing command for it. */
+    await clearVerification(root);
+    expect((await runCli(root, ['install'])).code).toBe(0);
+
+    const result = await runCli(root, ['check', '--change', CHANGE, '--all-gates']);
+    const gates = result.json.data.gates as any[];
+    expect(gates.some((item) => item.status !== 'passed'), JSON.stringify(gates)).toBe(true);
+    const codes = (result.json.diagnostics as any[]).map((item) => item.code);
+    expect(codes).toContain('XFORGE_ARTIFACT_MARKER_SECTION_MISSING');
+    expect(codes).not.toContain('XFORGE_CHECK_PASSED_WITH_WARNINGS');
   });
 
   it('stays quiet on a clean run, so the notice keeps meaning something', async () => {
