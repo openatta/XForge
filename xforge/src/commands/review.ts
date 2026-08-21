@@ -86,7 +86,14 @@ export async function executeReviewAcknowledge(project: ProjectContext, options:
   const schemaDiagnostics = await validateSchema('review-ack-receipt', receipt, evidence);
   if (schemaDiagnostics.some((item) => item.severity === 'error')) throw new XForgeError(schemaDiagnostics, { root: project.root });
 
-  const target = `${project.changesPath}/${options.change}/${REVIEW_ACK_DIRECTORY}/ack/${receipt.contentRevision.slice(0, 16)}-reviewer.json`;
+  /*
+   * Keyed on the receiptId, not the content revision. The evidence file lives outside the Artifact
+   * outputs, so it is not an input to `contentRevision` — a reviewer correcting their transcript
+   * and acknowledging again produces the same revision, and a revision-keyed name would overwrite
+   * the earlier receipt while still reporting `action: 'create'`. Two reviewers at one revision
+   * collapsed the same way. The per-package equivalent avoids this by keying on a unique execution.
+   */
+  const target = `${project.changesPath}/${options.change}/${REVIEW_ACK_DIRECTORY}/ack/${receipt.receiptId}.json`;
   const content = `${JSON.stringify(receipt, null, 2)}\n`;
   const changes: FileChange[] = [{ action: 'create', path: target, digest: sha256(content), source: 'review:acknowledge' }];
   if (!options.dryRun) {

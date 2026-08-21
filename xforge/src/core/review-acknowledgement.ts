@@ -23,7 +23,14 @@ import { validateSchema } from './validator.js';
  * asserted by the receipt. What this does establish is that a review happened, that it produced a
  * file somebody can read, and that both are bound to the content that was reviewed.
  */
-export const REVIEW_ACK_DIRECTORY = 'evidence/agents/review';
+/*
+ * Deliberately not under `evidence/agents/`: `core/work-packages.ts` globs
+ * `evidence/agents/<id>/ack/*.json` for per-package acknowledgements, and a Change-level receipt
+ * sitting in that shape would be read back as a malformed work-package ack — permanently, and only
+ * once the Change later gained a plan, which is the worst moment to start emitting warnings about
+ * a file that is perfectly valid.
+ */
+export const REVIEW_ACK_DIRECTORY = 'evidence/review';
 
 export interface ReviewAckReceipt {
   apiVersion: 'xforge.dev/v1alpha2';

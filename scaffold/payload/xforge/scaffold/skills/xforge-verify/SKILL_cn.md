@@ -34,7 +34,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
    该命令刻意不产出 `status`，也不写文件——由 XForge 计算这个字段，就等于让它替你决定这份 receipt 本身要记录的那件事。
 
-   它替你避开两个真实运行中付过代价的坑。其一，`xforge state` 里每份历史回执各带一个 `contentRevision`，靠肉眼或 `grep` 取值会拿到已被取代的那个；确需单独取值时用 `--field governance.revision.contentRevision`。其二，引用只写 Gate 名，绝不写 digest——每个 per-run digest 都会随正常推进而变化，抄下来的那一刻起就在失效。不要加 `evidence:` 这一行，没有任何代码会读它。
+   它替你避开两个真实运行中付过代价的坑。其一，`xforge state` 里每份历史回执各带一个 `contentRevision`，靠肉眼或 `grep` 取值会拿到已被取代的那个；确需单独取值时用 `--field change.governance.revision.contentRevision`（并带上 `--change <id>`）。其二，引用只写 Gate 名，绝不写 digest——每个 per-run digest 都会随正常推进而变化，抄下来的那一刻起就在失效。不要加 `evidence:` 这一行，没有任何代码会读它。
 
    本 Stage 每个通过的 Gate 都要引用一次——不得遗漏、不得引用其它 Stage 的 Gate。`gates` 只放 Gate；work-package 交付写在 `workPackageDeliveries`（`package`、`delivery`、`dispatch`、`status`、`verifyCommand`、`exitCode`），写成 `gates` 的一行会被以 `gate-unverifiable-<name>` 拒绝。之后若再改动任何 Artifact，必须重跑 Gate 并重新 draft——写入动作本身会改变 `contentRevision` 并使 Evidence 变 stale。任一 mandatory Gate、Requirement 或关键约束未验证时请求 `apply` rework Transition；不得手写 Gate PASS。
 6. Gate 和 Artifact 满足后调用 `xforge transition --change <id> --to ready-to-archive`；`verify-only` 到此停止，并报告 Closing Approval 与 Audit blockers。

@@ -10,6 +10,7 @@ import { dumpYaml } from '../core/yaml.js';
 import { parse as parseYaml } from 'yaml';
 import { isStageFlow, resolveChangeState } from '../core/flow-resolver.js';
 import { loadSelectedResources } from '../core/resource-loader.js';
+import { resolveWorkPackages } from '../core/work-packages.js';
 import { legalTransitionTargets, resolveControlPlane } from '../core/control-plane.js';
 import { VERIFICATION_RECEIPT_CONDITION, VERIFICATION_RECEIPT_PATH } from '../core/verification-receipt.js';
 
@@ -198,6 +199,11 @@ export async function executeVerificationDraftReceipt(project: ProjectContext, o
     throw new XForgeError(diagnostic('XFORGE_GOVERNANCE_FLOW_REQUIRED', 'verification draft-receipt requires a Protocol 2 governed Flow.'));
   }
   const resources = await loadSelectedResources(project);
+  /* Populated before resolving, as every other caller does. `resolveChangeState` always returns a
+     null plan, so resolving without this makes the control plane read a Change that has no work
+     packages — which now decides which branch `independentReview` takes. */
+  const workPackages = await resolveWorkPackages(project, options.change, resolved.config, resources);
+  resolved.state.workPackages = workPackages.state;
   const control = await resolveControlPlane(project, options.change, resolved.flow, resolved.state, resources, resolved.config);
   const { currentStage, revision } = control.governance;
   const stage = resolved.flow.stages.find((item) => item.id === currentStage);

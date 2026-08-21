@@ -102,7 +102,7 @@ export function renderBriefText(data: BriefData): string {
     lines.push(`  Awaiting your answer: ${item.id} — ${item.summary}`);
   }
   if (data.decision.awaitingDecision.length > 0) {
-    lines.push('  These name no Stage to return to, so nothing sends them back: they close when you answer them.');
+    lines.push('  These name no Stage to return to, so nothing sends them back. Recording the answer and setting the entry to `status: resolved` in the findings ledger is what clears them; left open, they are reported at every later Stage.');
   }
 
   lines.push('');

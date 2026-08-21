@@ -454,7 +454,10 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
    * one this notice is for. A failing Gate is already a loud result; nothing is being masked, and
    * adding a cheerful line to a failure is worse than saying nothing.
    */
-  const gatesAllPassed = gateResults.length > 0 && gateResults.every((item) => item.status === 'passed');
+  /* No `length > 0` requirement: `solid`'s design and apply Stages declare no Gates at all, and
+     requiring one silenced the notice at exactly the Stages where an Artifact warning is easiest to
+     walk past. Nothing failing is the condition; having run something is not. */
+  const gatesAllPassed = gateResults.every((item) => item.status === 'passed');
   if (advisories.length > 0 && gatesAllPassed && options.change && !diagnostics.some((item) => item.severity === 'error')) {
     const codes = [...new Set(advisories.map((item) => item.code))].sort();
     /* The archive clause is claimed only where it is true. Artifact content is what archive

@@ -76,7 +76,7 @@ for (const file of packedFiles) {
   // else means the source tree is leaking into the published package.
   assert(
     !/\.tsx?$/.test(file)
-      || file.startsWith('dist/')
+      || (file.startsWith('dist/') && file.endsWith('.d.ts'))
       || file === 'scaffold/payload/xforge/scripts/project-context/main.ts',
     `Packed npm artifact unexpectedly includes TypeScript ${file}.`,
   );

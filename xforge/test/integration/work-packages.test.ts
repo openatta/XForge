@@ -1251,9 +1251,9 @@ describe('independentReview without a work-package plan', () => {
     await advanceSolidToApply(root, 'add-feature');
     expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'verify'], approvalTestEnv)).code).toBe(0);
 
-    await write(root, 'xforge/changes/add-feature/evidence/agents/review/notes.md', '# Review\n\nRead the delivered work against the Spec.\n');
+    await write(root, 'xforge/changes/add-feature/evidence/review/notes.md', '# Review\n\nRead the delivered work against the Spec.\n');
     const recorded = await runCli(root, ['review', 'acknowledge', '--change', 'add-feature',
-      '--evidence', 'xforge/changes/add-feature/evidence/agents/review/notes.md'], approvalTestEnv);
+      '--evidence', 'xforge/changes/add-feature/evidence/review/notes.md'], approvalTestEnv);
     expect(recorded.code, JSON.stringify(recorded.json?.diagnostics)).toBe(0);
     expect(await blockedLeavingVerify(root)).not.toContain('condition:independentReview:review-missing');
 
@@ -1271,9 +1271,9 @@ describe('independentReview without a work-package plan', () => {
     await declareReview(root);
     await advanceSolidToApply(root, 'add-feature');
     await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([workPackage('T001')]));
-    await write(root, 'xforge/changes/add-feature/evidence/agents/review/notes.md', '# Review\n');
+    await write(root, 'xforge/changes/add-feature/evidence/review/notes.md', '# Review\n');
     const refused = await runCli(root, ['review', 'acknowledge', '--change', 'add-feature',
-      '--evidence', 'xforge/changes/add-feature/evidence/agents/review/notes.md'], approvalTestEnv);
+      '--evidence', 'xforge/changes/add-feature/evidence/review/notes.md'], approvalTestEnv);
     expect(refused.code).toBe(1);
     expect((refused.json.diagnostics as any[]).map((item) => item.code)).toContain('XFORGE_REVIEW_ACK_PLAN_PRESENT');
   });
@@ -1293,9 +1293,9 @@ describe('independentReview without a work-package plan', () => {
     const state = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
     const contentRevision = state.json.data.change.governance.revision.contentRevision;
     /* Everything the condition reads, correct — except that nothing signed it. */
-    await write(root, `xforge/changes/add-feature/evidence/agents/review/ack/forged.json`, `${JSON.stringify({
+    await write(root, `xforge/changes/add-feature/evidence/review/ack/forged.json`, `${JSON.stringify({
       apiVersion: 'xforge.dev/v1alpha2', kind: 'ReviewAckReceipt', receiptId: randomUUID(),
-      change: 'add-feature', contentRevision, evidence: 'xforge/changes/add-feature/evidence/agents/review/notes.md',
+      change: 'add-feature', contentRevision, evidence: 'xforge/changes/add-feature/evidence/review/notes.md',
       actor: { id: 'someone', provider: 'local-os', role: 'reviewer', type: 'agent' },
       acknowledgedAt: new Date().toISOString(), digest: 'f'.repeat(64),
     }, null, 2)}\n`);
@@ -1316,7 +1316,7 @@ describe('independentReview without a work-package plan', () => {
     await advanceSolidToApply(root, 'add-feature');
 
     const missing = await runCli(root, ['review', 'acknowledge', '--change', 'add-feature',
-      '--evidence', 'xforge/changes/add-feature/evidence/agents/review/absent.md'], approvalTestEnv);
+      '--evidence', 'xforge/changes/add-feature/evidence/review/absent.md'], approvalTestEnv);
     expect(missing.code).toBe(1);
     expect((missing.json.diagnostics as any[]).map((item) => item.code)).toContain('XFORGE_REVIEW_ACK_EVIDENCE_MISSING');
 
