@@ -1,7 +1,7 @@
 import { rm } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { changeYaml, createCompleteSolidChange, fixture, runCli, updateYaml, write } from '../helpers.js';
+import { changeYaml, clearVerification, createCompleteSolidChange, fixture, runCli, updateYaml, write } from '../helpers.js';
 
 async function addGate(root: string, id: string): Promise<void> {
   await write(root, `xforge/scaffold/gates/${id}.yaml`, [
@@ -171,7 +171,29 @@ describe('doctor', () => {
     const result = await runCli(root, ['doctor']);
     expect(result.code).toBe(0);
     expect(result.json.ok).toBe(true);
-    expect(result.json.data.unusedFlows.map((item: any) => item.id).sort()).toEqual(['major', 'quick']);
+    /* And says nothing about unused Flows, because with no Change in existence there is nothing
+       for a Flow to be unused *by*. See the suppression test below for why that matters. */
+    expect(result.json.data.unusedFlows).toEqual([]);
+  });
+
+  /*
+   * Three Flows ship and one is the Manifest default, so before this a freshly initialised project
+   * always got exactly two unused-Flow findings — including, in the run that reported it, the very
+   * Flow the operator was about to use. Nothing could be done about them, and a finding that is
+   * always present and never actionable is the thing that teaches people to skim past findings that
+   * are. `doctor` already declines to report XFORGE_POLICY_STATIC_LAYER_DEGRADED for this reason.
+   */
+  it('says nothing about unused Flows until a Change exists to leave one unused', async () => {
+    const root = await fixture();
+    const fresh = await runCli(root, ['doctor']);
+    expect(fresh.code).toBe(0);
+    expect(fresh.json.data.unusedFlows).toEqual([]);
+    expect(fresh.json.data.summary.unusedFlows).toBe(0);
+
+    /* Once a Change picks one, the other two are genuinely unchosen and the finding is earned. */
+    await write(root, 'xforge/changes/pick-solid/change.yaml', changeYaml('solid'));
+    const chosen = await runCli(root, ['doctor']);
+    expect(chosen.json.data.unusedFlows.map((item: any) => item.id).sort()).toEqual(['major', 'quick']);
   });
 
   it('skips an active Change whose change.yaml is malformed YAML instead of crashing', async () => {
@@ -182,6 +204,55 @@ describe('doctor', () => {
     expect(result.code).toBe(0);
     expect(result.json.ok).toBe(true);
     expect(result.json.data.unusedFlows.map((item: any) => item.id)).toEqual(['major']);
+  });
+
+  /*
+   * Both of these are questions a project can answer on day one, and both used to surface only when
+   * a Change ran into them: the undeclared Gate as a blocked maintenance action partway through the
+   * first Change, the approval shape as XFORGE_APPROVAL_INTERACTIVE_REQUIRED at the first approval.
+   * They are `info` suggestions, not findings — an unanswered question is not a misconfiguration,
+   * and in both cases the mechanism that actually enforces the answer is still in place.
+   */
+  it('suggests declaring a command for a required declared Gate before a Change needs it', async () => {
+    const root = await fixture();
+    /* The fixture answers this question already, which is the normal state for a working project.
+       A project that has never answered it is the one this suggestion exists for. */
+    await clearVerification(root);
+    const result = await runCli(root, ['doctor']);
+    expect(result.code).toBe(0);
+    const undeclaredIds = (result.json.data.suggestions as any[])
+      .filter((item) => item.code === 'XFORGE_DOCTOR_VERIFICATION_UNDECLARED').map((item) => item.id).sort();
+    /* Both required `declared` Gates the Scaffold enables, each named separately: they are two
+       different questions and answering one says nothing about the other. */
+    expect(undeclaredIds, JSON.stringify(result.json.data.suggestions)).toEqual(['security-scan', 'unit-tests']);
+    const undeclared = (result.json.data.suggestions as any[]).find((item) => item.id === 'unit-tests');
+    expect(undeclared.severity).toBe('info');
+    /* It must carry the command that answers it, and the warning against answering it carelessly:
+       a test command on a repository with no tests passes the Gate while asserting nothing. */
+    expect(undeclared.message).toContain('xforge verification declare');
+    expect(undeclared.message).toContain('asserting nothing');
+
+    /* Answering it closes the suggestion. */
+    const declared = await runCli(root, ['verification', 'declare', '--gate-name', 'unit-tests', '--command', '["npm","test"]', '--by', 'Dana Reed']);
+    expect(declared.code, JSON.stringify(declared.json?.diagnostics ?? declared)).toBe(0);
+    const answered = await runCli(root, ['doctor']);
+    /* Only the Gate that was answered goes quiet. */
+    expect((answered.json.data.suggestions as any[])
+      .filter((item) => item.code === 'XFORGE_DOCTOR_VERIFICATION_UNDECLARED').map((item) => item.id)).toEqual(['security-scan']);
+  });
+
+  it('reports that approvals can only be collected at a terminal, without calling local unusable', async () => {
+    const root = await fixture();
+    const result = await runCli(root, ['doctor']);
+    expect(result.code).toBe(0);
+    const interactive = (result.json.data.suggestions as any[]).find((item) => item.code === 'XFORGE_DOCTOR_APPROVALS_INTERACTIVE_ONLY');
+    expect(interactive, JSON.stringify(result.json.data.suggestions)).toBeTruthy();
+    expect(interactive.severity).toBe('info');
+
+    /* The existing policy-unusable finding must stay silent: `local` is a working provider, and a
+       person opening a terminal to type a decision is the design, not a defect. Reclassifying it
+       would report every default project as having no way to approve anything. */
+    expect((result.json.data.unusableApprovals as any[]).map((item) => item.id)).toEqual([]);
   });
 
   it('flags a Flow Stage gates entry pointing at a non-enabled Gate', async () => {

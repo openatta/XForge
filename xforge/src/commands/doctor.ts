@@ -9,6 +9,7 @@ import { normalizeRule } from '../core/governance.js';
 import { safeResolve } from '../core/path-safety.js';
 import { loadYaml } from '../core/yaml.js';
 import { capabilityGapDiagnostics } from '../install/planner.js';
+import { resolveVerificationPlan } from '../core/verification.js';
 
 export type DoctorKind = 'skills' | 'agents' | 'rules' | 'policies' | 'hooks' | 'gates' | 'scripts' | 'flows' | 'approvals' | 'mcp-servers';
 type DoctorScope = 'skills' | 'agents' | 'rules' | 'policies' | 'hooks' | 'gates' | 'flows' | 'approvals' | 'mcp-servers';
@@ -239,7 +240,17 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
       // Malformed change.yaml is reported elsewhere by checkStructure; doctor only reads the flow field.
     }
   }
-  for (const name of flowResult.flows.keys()) {
+  /*
+   * Only asked once the project has a Change to answer it with.
+   *
+   * Three Flows ship and one is the Manifest default, so on a project with nothing in flight this
+   * check reported exactly two findings, every run, on every project — including the Flow the
+   * operator was about to use. Nothing can be done about them, which makes them the permanent
+   * finding this file already refuses to emit elsewhere: see the note on
+   * XFORGE_POLICY_STATIC_LAYER_DEGRADED above, which is excluded for precisely this reason. An
+   * unused Flow is only evidence of anything once Changes exist and still none of them chose it.
+   */
+  if (changeDirectories.length > 0) for (const name of flowResult.flows.keys()) {
     if (!usedFlows.has(name)) unusedFlows.push({
       scope: 'flows',
       code: 'XFORGE_DOCTOR_UNUSED_FLOW',
@@ -268,6 +279,64 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
       id: 'xforge-architect',
       message: 'This project has no xforge/architecture.md, so each Change designs without a durable record of the decisions the last one made. Run the xforge-architect Skill to write one — from the existing code, by answering a few questions, or from a description. It is a suggestion, not a requirement: nothing is blocked without it.',
       path: 'xforge/architecture.md',
+      severity: 'info',
+    });
+  }
+
+  /*
+   * ISSUE-7: a required `declared` Gate that has never been answered, reported at project setup
+   * rather than mid-Change.
+   *
+   * `builtin: declared` Gates refuse rather than guess, which is the right refusal and the reason
+   * `unit-tests` stopped being a decoration on non-npm projects. But the refusal arrives the first
+   * time a Change reaches the Stage that runs the Gate — in a live XOps run, partway through the
+   * project's first Change, as a blocked maintenance action. The question is answerable on day one
+   * and nothing about it depends on a Change existing.
+   *
+   * `resolveVerificationPlan` is the runner's own resolver, used here so the two cannot drift: a
+   * dismissal counts as an answer exactly as it does at Gate time. This stays a suggestion, not a
+   * finding — an unanswered question is not a misconfiguration, and the Gate itself still refuses.
+   */
+  for (const gateId of project.manifest.scaffold.gates) {
+    const resource = structure.resources.gates.get(gateId);
+    if (resource?.value.spec.builtin !== 'declared' || !resource.value.spec.required) continue;
+    if (!referencedGates.has(gateId)) continue;
+    const plan = await resolveVerificationPlan(project, gateId);
+    if (plan.runs.length > 0 || plan.dismissals.length > 0) continue;
+    suggestions.push({
+      scope: 'gates',
+      code: 'XFORGE_DOCTOR_VERIFICATION_UNDECLARED',
+      id: gateId,
+      message: `Gate ${gateId} is required and runs whatever this project declares under manifest.verification.${gateId}, which is currently empty. It will refuse the first time a Change reaches the Stage that runs it. Answer it now with \`xforge verification declare --gate-name ${gateId} --command '[\"cargo\",\"test\"]' --by <person>\`, substituting the command this project actually verifies itself with. Do not answer it with whatever command happens to exist: a test command on a repository that has no tests passes this Gate while asserting nothing.`,
+      path: 'xforge/manifest.yaml',
+      severity: 'info',
+    });
+  }
+
+  /*
+   * ISSUE-6: whether this project can collect an approval without a human at a terminal.
+   *
+   * Deliberately not folded into XFORGE_DOCTOR_APPROVAL_POLICY_UNUSABLE above, and deliberately not
+   * done by making `local` unusable. `local` *is* usable — a person opens a terminal and types the
+   * decision, which is the anchor of the whole approval design and not a defect. What an
+   * agent-driven project needs to know is the shape of that: every approval will interrupt the
+   * session and require someone to leave it. That is a fact about how the project will feel to
+   * work in, worth stating once at setup, and it was previously discoverable only by hitting
+   * XFORGE_APPROVAL_INTERACTIVE_REQUIRED at the first approval — twice, in the run that reported it.
+   */
+  const approvalPolicies = [...flowResult.flows.values()]
+    .filter(isStageFlow)
+    .flatMap((flow) => flow.governance?.approvalPolicies ?? []);
+  const nonInteractive = approvalPolicies.some((policy) => policy.providers.some(
+    (providerId) => providerId !== 'local' && providerUsability(providerId).usable,
+  ));
+  if (approvalPolicies.length > 0 && !nonInteractive) {
+    suggestions.push({
+      scope: 'approvals',
+      code: 'XFORGE_DOCTOR_APPROVALS_INTERACTIVE_ONLY',
+      id: 'local',
+      message: 'Every approval policy in this project can be satisfied only at an interactive terminal: no mcp provider is both declared and configured. Approvals will therefore not be collectable from inside an Agent session — the approver has to open a real terminal each time. That is a working constraint, not a misconfiguration; the alternative is to configure an mcp approval provider. See docs/extending-approvals-with-mcp.md.',
+      path: 'xforge/manifest.yaml',
       severity: 'info',
     });
   }

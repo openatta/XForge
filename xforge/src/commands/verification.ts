@@ -8,6 +8,10 @@ import { assertManaged } from '../core/project-loader.js';
 import { validateSchema } from '../core/validator.js';
 import { dumpYaml } from '../core/yaml.js';
 import { parse as parseYaml } from 'yaml';
+import { isStageFlow, resolveChangeState } from '../core/flow-resolver.js';
+import { loadSelectedResources } from '../core/resource-loader.js';
+import { legalTransitionTargets, resolveControlPlane } from '../core/control-plane.js';
+import { VERIFICATION_RECEIPT_CONDITION, VERIFICATION_RECEIPT_PATH } from '../core/verification-receipt.js';
 
 /**
  * Writes `manifest.verification` on the project's behalf, instead of asking an Agent to hand-edit
@@ -152,5 +156,95 @@ export async function executeVerificationDeclare(
     data: { gate: options.gate, entry, dryRun: options.dryRun, declarations: verification[options.gate]!.length },
     diagnostics: [],
     changes: next === source ? [] : [{ action: 'modify', path: relative, digest: sha256(next), source: `verification:${options.gate}` }],
+  };
+}
+
+/**
+ * The verification receipt's machine-known half, computed instead of transcribed.
+ *
+ * `work-package draft` exists because a Worker retyping `execution_id`, `base_commit` and three
+ * bindings that XForge itself issued bought nothing and cost transcription errors. The verification
+ * receipt is the same shape of problem and had no equivalent: of the five things
+ * `core/verification-receipt.ts` decides a receipt on, exactly one — `status` — is a claim a person
+ * or an Agent makes. `change`, `contentRevision`, `gitHead` and the cited Gate set are all facts
+ * this process is already holding at the moment it asks somebody to write them down.
+ *
+ * A live XOps run wrote one by hand and made two errors doing it, and both were errors this
+ * function cannot make:
+ *
+ * - It read `contentRevision` out of `xforge state` with `grep -m1`. That output carries one
+ *   `contentRevision` per historical receipt, so the first match was an old one.
+ * - It copied Gate Evidence digests into the receipt. Citations name the Gate, never a digest —
+ *   see the note in `core/verification-receipt.ts` on why every per-run digest moves under ordinary
+ *   progress — so the transcription was both laborious and wrong.
+ *
+ * What it deliberately does not produce, on the same principle as `work-package draft`:
+ *
+ * - `status` is absent. It is the assertion the receipt exists to record, and a CLI that filled it
+ *   in would be deciding the thing it is asking about.
+ * - Nothing is written to disk. The receipt is the Verify Stage's claim; filing it here would be
+ *   signing that claim on the Stage's behalf.
+ *
+ * A Gate that has not passed at the current revision is reported rather than quietly omitted: a
+ * draft that silently dropped it would produce a receipt that looks complete and cites less than
+ * the Stage ran, which is the one thing `evaluate()` is there to catch.
+ */
+export async function executeVerificationDraftReceipt(project: ProjectContext, options: {
+  change: string;
+}): Promise<{ data: Record<string, unknown>; diagnostics: Diagnostic[]; changes: FileChange[] }> {
+  assertManaged(project, 'verification draft-receipt');
+  const resolved = await resolveChangeState(project, options.change);
+  if (!isStageFlow(resolved.flow) || !resolved.flow.governance) {
+    throw new XForgeError(diagnostic('XFORGE_GOVERNANCE_FLOW_REQUIRED', 'verification draft-receipt requires a Protocol 2 governed Flow.'));
+  }
+  const resources = await loadSelectedResources(project);
+  const control = await resolveControlPlane(project, options.change, resolved.flow, resolved.state, resources, resolved.config);
+  const { currentStage, revision } = control.governance;
+  const stage = resolved.flow.stages.find((item) => item.id === currentStage);
+  if (stage?.exit?.conditions?.[VERIFICATION_RECEIPT_CONDITION] === undefined) {
+    throw new XForgeError(diagnostic(
+      'XFORGE_VERIFICATION_RECEIPT_NOT_REQUIRED',
+      `Stage ${currentStage} of Flow ${resolved.flow.metadata.name} declares no ${VERIFICATION_RECEIPT_CONDITION} exit condition, so a receipt drafted here would satisfy nothing. Draft it at the Stage that declares it.`,
+      `xforge/flows/${resolved.flow.metadata.name}.yaml`,
+    ));
+  }
+
+  /*
+   * Read off the forward transition rather than re-derived. `resolveControlPlane` has already
+   * decided which Gate Evidence counts for leaving this Stage, applying `gateBlockReason` against
+   * the current content revision; recomputing it here would be a second implementation of the same
+   * judgement, free to disagree with the one that actually governs the transition. The forward
+   * target is first in `legalTransitionTargets` by construction — reworks are appended after it.
+   */
+  const forward = legalTransitionTargets(resolved.flow, currentStage)[0];
+  const requirement = forward ? control.transitionRequirements.get(forward) : undefined;
+  const diagnostics: Diagnostic[] = [];
+  const gates = (requirement?.gates ?? []).map((evidence) => ({ gate: evidence.gate, status: 'passed' as const }));
+  for (const block of requirement?.blockedBy ?? []) {
+    const [kind, gateId, reason] = block.split(':');
+    if (kind !== 'gate') continue;
+    diagnostics.push(diagnostic(
+      'XFORGE_VERIFICATION_DRAFT_GATE_UNAVAILABLE',
+      `Gate ${gateId} is ${reason} at the current content revision, so this draft cannot cite it — and a receipt omitting a Gate the Stage runs is refused. Run \`xforge check --change ${options.change}\` after your last write, then draft again.`,
+      `${project.changesPath}/${options.change}`,
+      'warning',
+    ));
+  }
+
+  return {
+    data: {
+      change: options.change,
+      target: `${project.changesPath}/${options.change}/${VERIFICATION_RECEIPT_PATH}`,
+      /* Named rather than implied: the one field a person supplies, and what it means. */
+      supply: ['status: passed — your assertion that this Stage verified the work. XForge will not write it for you.'],
+      receipt: {
+        change: options.change,
+        contentRevision: revision.contentRevision,
+        gitHead: revision.gitHead,
+        gates,
+      },
+    },
+    diagnostics,
+    changes: [],
   };
 }

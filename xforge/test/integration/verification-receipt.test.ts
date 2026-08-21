@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { stringify } from 'yaml';
 import { evaluateVerificationReceipt } from '../../src/core/verification-receipt.js';
 import { loadProject } from '../../src/core/project-loader.js';
 import type { GateEvidence, ProjectContext } from '../../src/types.js';
@@ -174,5 +175,68 @@ describe('verification receipt as a Stage exit condition', () => {
     /* The receipt is no longer an Artifact output, so writing it does not move the content revision
        and does not make the Gates it cites stale — the property the Flow change exists to give. */
     expect(await blockedFor()).toEqual([]);
+  });
+});
+
+/*
+ * The receipt's machine-known half, computed rather than transcribed.
+ *
+ * Of the five things `evaluate()` decides a receipt on, only `status` is a claim anybody makes.
+ * A live XOps run hand-wrote the other four and got two of them wrong — it grepped a historical
+ * `contentRevision` out of `xforge state`, and it transcribed Gate Evidence digests into citations
+ * that never wanted digests. Both are errors this command structurally cannot make.
+ */
+describe('verification draft-receipt', () => {
+  it('drafts every field the evaluator checks except the one only a person can assert', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await updateYaml(root, 'xforge/flows/solid.yaml', (flow) => {
+      flow.artifacts = flow.artifacts.filter((artifact: any) => artifact.id !== 'verification-receipt');
+      const verify = flow.stages.find((stage: any) => stage.id === 'verify');
+      verify.produces = ['assurance'];
+      verify.exit = { conditions: { verificationReceipt: 'passed' } };
+    });
+    expect((await runCli(root, ['install'])).code).toBe(0);
+    await advanceSolidToApply(root, CHANGE);
+    expect((await runCli(root, ['transition', '--change', CHANGE, '--to', 'verify'], approvalTestEnv)).code).toBe(0);
+    expect((await runCli(root, ['check', '--change', CHANGE])).code).toBe(0);
+
+    const drafted = await runCli(root, ['verification', 'draft-receipt', '--change', CHANGE], approvalTestEnv);
+    expect(drafted.code, JSON.stringify(drafted.json?.diagnostics)).toBe(0);
+    const receipt = drafted.json.data.receipt as any;
+
+    /* The revision it names is the current one, not one of the several `xforge state` reports. */
+    const state = await runCli(root, ['state', '--change', CHANGE], approvalTestEnv);
+    expect(receipt.contentRevision).toBe(state.json.data.change.governance.revision.contentRevision);
+    expect(receipt.gitHead).toBeTruthy();
+    expect(receipt.gates.map((item: any) => item.gate).sort()).toEqual(['structure', 'unit-tests']);
+    /* Citations name Gates. A digest here would be wrong, and was what the live run wrote. */
+    for (const citation of receipt.gates) expect(citation).not.toHaveProperty('evidence');
+
+    /* Absent, deliberately: computing it would decide the thing the receipt exists to record. */
+    expect(receipt).not.toHaveProperty('status');
+    expect(drafted.json.data.supply.join(' ')).toContain('status');
+    /* And nothing was filed — the receipt is the Stage's assertion, not the CLI's. */
+    expect(drafted.json.changes).toEqual([]);
+
+    /* The real proof: the draft plus the one supplied field satisfies the actual evaluator. */
+    const project = await loadProject(root, { exactRoot: true });
+    const passed = await Promise.all(['structure.json', 'tests.json'].map(async (name) =>
+      JSON.parse(await readFile(path.join(root, 'xforge', 'changes', CHANGE, 'evidence', name), 'utf8')) as GateEvidence));
+    await write(root, `xforge/changes/${CHANGE}/evidence/verification-receipt.yaml`, stringify({ ...receipt, status: 'passed' }));
+    const evaluated = await evaluateVerificationReceipt(project, CHANGE, {
+      contentRevision: receipt.contentRevision, gates: passed,
+    });
+    expect(evaluated.problems).toEqual([]);
+    expect(evaluated.status).toBe('passed');
+  });
+
+  /* Drafting where no Flow asks for a receipt would hand back something that satisfies nothing. */
+  it('refuses at a Stage whose Flow declares no verificationReceipt condition', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const refused = await runCli(root, ['verification', 'draft-receipt', '--change', CHANGE], approvalTestEnv);
+    expect(refused.code).toBe(1);
+    expect((refused.json.diagnostics as any[]).map((item) => item.code)).toContain('XFORGE_VERIFICATION_RECEIPT_NOT_REQUIRED');
   });
 });

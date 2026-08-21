@@ -7,7 +7,7 @@ import { sha256, stableStringify } from '../../src/core/hash.js';
 import { loadProject } from '../../src/core/project-loader.js';
 import { executeTransition, repairTransitionChain } from '../../src/commands/transition.js';
 import type { TransitionReceipt } from '../../src/types.js';
-import { createCompleteSolidChange, fixture, runCli, write } from '../helpers.js';
+import { advanceSolidToReadyToArchive, createCompleteSolidChange, fixture, runCli, write } from '../helpers.js';
 
 const CHANGE = 'add-feature';
 const transitionsRelative = `xforge/changes/${CHANGE}/evidence/receipts/transitions`;
@@ -303,5 +303,72 @@ describe('transition orphan-receipt scan', () => {
     const result = await runCli(root, ['transition', '--change', CHANGE, '--to', 'check', '--dry-run']);
     expect(codes(result)).not.toContain('XFORGE_TRANSITION_ORPHAN_RECEIPT');
     expect(codes(result)).not.toContain('XFORGE_TRANSITION_RECEIPT_UNATTESTED');
+  });
+});
+
+/*
+ * The dead end an XOps run hit on 0.7.16, and the route out of it.
+ *
+ * `ready-to-archive` is synthetic — it is not in `flow.stages` — so `legalTransitionTargets`
+ * returns nothing for it and neither forward progress nor rework exists. Editing an Artifact after
+ * the closing transition therefore stranded the Change: `archive` refused on a stale receipt, every
+ * transition was refused by the graph, and the only recovery anyone found was restoring the
+ * Artifacts byte-for-byte from Git. `repairTransitionChain` could always have done it, but it had
+ * no CLI surface and nothing named it, so it may as well not have existed.
+ */
+describe('recovering from ready-to-archive', () => {
+  it('names the route out when the closing receipt goes stale, and the route works', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await advanceSolidToReadyToArchive(root);
+    const closing = (await receipts(root)).at(-1)!;
+    expect(closing.to).toBe('ready-to-archive');
+
+    /* The operator error that starts it: one edit to an Artifact after the transition. */
+    await write(root, `xforge/changes/${CHANGE}/assurance.md`, '# Assurance\n\nEdited after the closing transition.\n');
+
+    const blocked = await runCli(root, ['archive', '--change', CHANGE, '--dry-run']);
+    expect(blocked.code).toBe(1);
+    const diagnostics = blocked.json.diagnostics as any[];
+    expect(diagnostics.some((item) => item.message.includes('transition:ready-receipt-stale'))).toBe(true);
+
+    /* Confirm the dead end is real rather than assumed: nothing is reachable from here. */
+    const stranded = await runCli(root, ['state', '--change', CHANGE]);
+    expect(stranded.json.data.change.governance.currentStage).toBe('ready-to-archive');
+    expect(stranded.json.data.change.governance.readyTransitions).toEqual([]);
+
+    /* The remedy has to carry both the revision the approver signed for and the command, because
+       `xforge state` reports one contentRevision per historical receipt and a reader picking by
+       hand picks the wrong one. */
+    const remedy = diagnostics.find((item) => item.code === 'XFORGE_READY_RECEIPT_STALE_REMEDY');
+    expect(remedy, JSON.stringify(diagnostics)).toBeTruthy();
+    expect(remedy.severity).toBe('info');
+    expect(remedy.message).toContain(closing.contentRevision);
+    expect(remedy.message).toContain(`--receipt ${closing.receiptId}`);
+
+    /* And the command it names is reachable from the real CLI, which is the part that was missing. */
+    const repaired = await runCli(root, ['transition', 'repair', '--change', CHANGE, '--receipt', closing.receiptId]);
+    expect(repaired.code, JSON.stringify(repaired.json?.diagnostics)).toBe(0);
+    expect(repaired.json.data.dropped.receiptId).toBe(closing.receiptId);
+
+    const after = await runCli(root, ['state', '--change', CHANGE]);
+    expect(after.json.data.change.governance.currentStage).toBe('verify');
+    expect((await receipts(root)).map((item) => item.receiptId)).not.toContain(closing.receiptId);
+  });
+
+  /* Repair is not a --force. It must not become the fast way past an approval. */
+  it('refuses --to, and leaves the original transition form untouched', async () => {
+    const root = await fixture();
+    await structurePassed(root);
+    const forced = await runCli(root, ['transition', 'repair', '--change', CHANGE, '--to', 'design', '--receipt', 'anything']);
+    expect(forced.code).toBe(1);
+    expect(codes(forced)).toContain('XFORGE_OPTION_NOT_ALLOWED');
+
+    const unknown = await runCli(root, ['transition', 'wat', '--change', CHANGE, '--to', 'design']);
+    expect(unknown.code).toBe(1);
+    expect(codes(unknown)).toContain('XFORGE_TRANSITION_ACTION_UNKNOWN');
+
+    /* The pre-existing form carries no positional, which is why it survives the subcommand split. */
+    expect((await runCli(root, ['transition', '--change', CHANGE, '--to', 'design'])).code).toBe(0);
   });
 });

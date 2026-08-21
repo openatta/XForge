@@ -710,7 +710,28 @@ export function gateBlockReason(evidence: GateEvidence | null | undefined, conte
  * declares a Stage work-package-driven, so an Agent that authors a plan at Design and then works
  * the packages itself hits a block whose only clue was the word "ready".
  */
-export function blockRemedy(blocks: readonly string[], changeId: string): { code: string; message: string } | null {
+export function blockRemedy(
+  blocks: readonly string[],
+  changeId: string,
+  context: { readyReceipt?: { receiptId: string; from: string; contentRevision: string } } = {},
+): { code: string; message: string } | null {
+  /*
+   * Ordered before the Gate remedy deliberately. Editing an Artifact after the closing transition
+   * produces both blocks at once — the receipt goes stale and every Gate it bound goes stale with
+   * it — and only one remedy is reported. Re-running the Gates is the advice for the second block
+   * and useless for the first: `ready-to-archive` is a synthetic Stage, absent from `flow.stages`,
+   * so `legalTransitionTargets` returns nothing for it and no forward or rework move exists. A live
+   * run read the Gate advice, re-ran `check`, watched the same block persist, and concluded the
+   * Change was unrecoverable — it was not; the route was simply never named.
+   */
+  const stale = context.readyReceipt;
+  if (stale && blocks.includes('transition:ready-receipt-stale')) {
+    return {
+      code: 'XFORGE_READY_RECEIPT_STALE_REMEDY',
+      message: `The closing transition receipt is bound to content revision ${stale.contentRevision}, and the Change has been edited since. Two routes, and they differ in what they preserve: restore the Artifacts to ${stale.contentRevision} to keep the existing approval, or run \`xforge transition repair --change ${changeId} --receipt ${stale.receiptId}\` to discard that receipt, return the Change to ${stale.from}, and rework — which necessarily voids the archive approval, because an approval is bound to the content it was given for.`,
+    };
+  }
+
   if (blocks.some((block) => /^gate:.+:stale$/.test(block))) {
     /* Plain `check` runs the current Stage's whole Gate set. `--all-gates` would also run Gates
        belonging to Stages the Change has not reached, which cannot pass yet and is not the advice. */

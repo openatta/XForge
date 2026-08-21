@@ -583,7 +583,9 @@ export interface GateResource {
   metadata: Metadata;
   spec: {
     required: boolean;
-    builtin?: 'structure' | 'check-findings' | 'constitution-check';
+    /* Kept in step with gate.schema.json's enum, which has always accepted `declared`; the type
+       omitted it, so every `builtin === 'declared'` test outside the runner failed to compile. */
+    builtin?: 'structure' | 'check-findings' | 'constitution-check' | 'declared';
     command?: string[];
     shell?: boolean;
     workingDirectory?: string;

@@ -130,7 +130,16 @@ export async function planArchive(project: ProjectContext, changeId: string, opt
       diagnostics.push(...control.diagnostics);
       const governanceBlocks = await terminalGovernanceBlocks(project, control, { auditFacts: options.auditFacts });
       for (const block of governanceBlocks) diagnostics.push(diagnostic('XFORGE_ARCHIVE_GOVERNANCE_BLOCKED', `Archive governance is blocked by ${block}.`, `${project.changesPath}/${changeId}`));
-      const remedy = blockRemedy(governanceBlocks, changeId);
+      /* The receipt itself, not just the block string: the remedy has to name the revision the
+         approver actually signed for, and `xforge state` reports several `contentRevision` values
+         — one per historical receipt — so telling the reader to "find it" is how the wrong one
+         gets picked. A live run did exactly that with `grep -m1`. */
+      const ready = control.governance.transitions.at(-1);
+      const remedy = blockRemedy(governanceBlocks, changeId, {
+        readyReceipt: ready && ready.to === 'ready-to-archive'
+          ? { receiptId: ready.receiptId, from: ready.from, contentRevision: ready.contentRevision }
+          : undefined,
+      });
       if (remedy) diagnostics.push(diagnostic(remedy.code, remedy.message, `${project.changesPath}/${changeId}`, 'info'));
     }
     const tracker = structure.change.apply.tracks;

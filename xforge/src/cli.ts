@@ -9,13 +9,13 @@ import { executeApprove, type ApprovalTerminal } from './commands/approve.js';
 import { executeAudit } from './commands/audit.js';
 import { executeBrief, renderBriefText } from './commands/brief.js';
 import { executeCheck } from './commands/check.js';
-import { executeVerificationDeclare } from './commands/verification.js';
+import { executeVerificationDeclare, executeVerificationDraftReceipt } from './commands/verification.js';
 import { executeInstall } from './commands/install.js';
 import { executeState } from './commands/state.js';
 import { executeSync } from './commands/sync.js';
 import { executeUninstall } from './commands/uninstall.js';
 import { executeUpdate } from './commands/update.js';
-import { executeTransition } from './commands/transition.js';
+import { executeTransition, repairTransitionChain } from './commands/transition.js';
 import { executeHookDispatch, hookFailureOutput, hookPlatformOutput, repairAffordance } from './commands/hook.js';
 import { executeInit } from './commands/init.js';
 import { executeWorkPackageAcknowledge, executeWorkPackageDispatch, executeWorkPackageDraft } from './commands/work-package.js';
@@ -75,11 +75,12 @@ interface ParsedArguments {
   notApplicable?: string;
   justification?: string;
   by?: string;
+  receiptId?: string;
 }
 
 const COMMANDS: CommandName[] = ['help', 'version', 'init', 'state', 'install', 'sync', 'update', 'uninstall', 'check', 'brief', 'verification', 'transition', 'approve', 'audit', 'work-package', 'hook', 'archive', 'doctor', 'upgrade-scaffold'];
 const VALID_KINDS = ['skills', 'agents', 'rules', 'policies', 'hooks', 'gates', 'scripts', 'flows', 'approvals', 'mcp-servers'] as const;
-const VALUE_OPTIONS = ['--root', '--change', '--kind', '--target', '--gate', '--to', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--provider', '--output', '--event', '--package', '--language', '--as', '--evidence', '--stage', '--attach-triage', '--gate-name', '--command', '--module', '--covers', '--working-directory', '--timeout-seconds', '--not-applicable', '--justification', '--by'] as const;
+const VALUE_OPTIONS = ['--root', '--change', '--kind', '--target', '--gate', '--to', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--provider', '--output', '--event', '--package', '--language', '--as', '--evidence', '--stage', '--attach-triage', '--gate-name', '--command', '--module', '--covers', '--working-directory', '--timeout-seconds', '--not-applicable', '--justification', '--by', '--receipt'] as const;
 
 function isValueOption(token: string): boolean {
   return VALUE_OPTIONS.includes(token as (typeof VALUE_OPTIONS)[number]);
@@ -140,12 +141,12 @@ const HELP: Record<CommandName, { usage: string; description: string; options: s
   uninstall: { usage: 'xforge [--root <path>] uninstall [--target <target>] [--force] [--dry-run] [--text]', description: 'Remove managed target files, refusing on a digest mismatch unless --force.', options: ['--root', '--target', '--force', '--dry-run', '--text'] },
   check: { usage: 'xforge [--root <path>] check [--change <id>] [--gate <id>] [--stage <id> | --all-gates] [--force] [--text]', description: 'Validate project structure, deliveries, and the Gates the current Stage requires.', options: ['--root', '--change', '--gate', '--stage', '--all-gates', '--force', '--text'] },
   verification: {
-    usage: 'xforge [--root <path>] verification declare --gate-name <gate> (--command \'["prog","arg"]\' | --not-applicable <marker> --justification <text>) --by <person> [--module <id>] [--covers \'["marker"]\'] [--working-directory <path>] [--timeout-seconds <n>] [--dry-run] [--text]',
-    description: 'Declare how this project runs a declared-verification Gate, without hand-editing the Manifest.',
-    options: ['--root', '--gate-name', '--command', '--module', '--covers', '--working-directory', '--timeout-seconds', '--not-applicable', '--justification', '--by', '--dry-run', '--text'],
+    usage: 'xforge [--root <path>] verification declare --gate-name <gate> (--command \'["prog","arg"]\' | --not-applicable <marker> --justification <text>) --by <person> [--module <id>] [--covers \'["marker"]\'] [--working-directory <path>] [--timeout-seconds <n>] [--dry-run] [--text]\n       xforge [--root <path>] verification draft-receipt --change <id> [--text]',
+    description: 'Declare how this project runs a declared-verification Gate, without hand-editing the Manifest; or draft the current Stage\'s verification receipt from what XForge already knows. The draft omits `status` and writes nothing: that field is the Stage\'s assertion that the work was verified, and a CLI filling it in would be deciding the thing the receipt exists to record.',
+    options: ['--root', '--change', '--gate-name', '--command', '--module', '--covers', '--working-directory', '--timeout-seconds', '--not-applicable', '--justification', '--by', '--dry-run', '--text'],
   },
   brief: { usage: 'xforge [--root <path>] brief --change <id> [--attach-triage <path>] [--text]', description: 'Report what a human approval at this Stage turns on, separating computed facts from quoted Artifact text.', options: ['--root', '--change', '--attach-triage', '--text'] },
-  transition: { usage: 'xforge [--root <path>] transition --change <id> --to <stage> [--dry-run] [--text]', description: 'Evaluate and record a governed Stage transition.', options: ['--root', '--change', '--to', '--dry-run', '--text'] },
+  transition: { usage: 'xforge [--root <path>] transition --change <id> --to <stage> [--dry-run] [--text]\n       xforge [--root <path>] transition repair --change <id> --receipt <receiptId> [--dry-run] [--text]', description: 'Evaluate and record a governed Stage transition, or repair the receipt chain by dropping one leaf receipt. Repair is not a --force: it discards a recorded transition, reverting the Change to the Stage that transition left, and records what it discarded in the audit chain. Only a leaf may go — a receipt some later receipt chains to is load-bearing and is refused.', options: ['--root', '--change', '--to', '--receipt', '--dry-run', '--text'] },
   approve: { usage: 'xforge [--root <path>] approve --change <id> --for <transition-id|archive> [--policy <id>] [--provider <mcp-provider-id> | local fields] [--dry-run] [--text]', description: 'Record an interactive human approval at the terminal, or submit/poll an mcp provider. There is no other approval mechanism. --for takes the id of the transition the approval unlocks (the value xforge state reports in nextActions[].command), not a literal word.', options: ['--root', '--change', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--provider', '--dry-run', '--text'] },
   audit: { usage: 'xforge [--root <path>] audit <status|verify|export|retry|prune> [--change <id>] [--output <path>] [--text]', description: 'Inspect, verify, export, redeliver, or prune the append-only audit chain.', options: ['--root', '--change', '--output', '--text'] },
   'work-package': { usage: 'xforge [--root <path>] work-package <dispatch|draft|acknowledge> --change <id> --package <id> [--as <integrator|reviewer> --evidence <path>] [--dry-run] [--text]', description: 'Dispatch a work package, draft its delivery record from what XForge already knows, or acknowledge integration/review evidence.', options: ['--root', '--change', '--package', '--as', '--evidence', '--dry-run', '--text'] },
@@ -212,6 +213,7 @@ function parseArguments(argv: string[]): ParsedArguments {
     if (token === '--command') parsed.commandArgv = value;
     if (token === '--module') parsed.module = value;
     if (token === '--covers') parsed.covers = value;
+    if (token === '--receipt') parsed.receiptId = value;
     if (token === '--working-directory') parsed.workingDirectory = value;
     if (token === '--timeout-seconds') parsed.timeoutSeconds = value;
     if (token === '--not-applicable') parsed.notApplicable = value;
@@ -277,7 +279,10 @@ function parseArguments(argv: string[]): ParsedArguments {
     if (parsed.command === 'help') {
       parsed.helpCommand = positionals[1];
       if (positionals.length > 2) throw new XForgeError(diagnostic('XFORGE_ARGUMENT_UNEXPECTED', `Unexpected positional argument: ${positionals[2]}`));
-    } else if (parsed.command === 'audit' || parsed.command === 'hook' || parsed.command === 'work-package' || parsed.command === 'verification') {
+    } else if (parsed.command === 'audit' || parsed.command === 'hook' || parsed.command === 'work-package' || parsed.command === 'verification' || parsed.command === 'transition') {
+      /* `transition` joined this list without breaking its original form, because that form carries
+         no positional: `transition --change X --to Y` leaves positionals[1] undefined, which is
+         exactly what the plain-transition branch below tests for. */
       parsed.subcommand = positionals[1];
       if (positionals.length > 2) throw new XForgeError(diagnostic('XFORGE_ARGUMENT_UNEXPECTED', `Unexpected positional argument: ${positionals[2]}`));
     } else if (positionals.length > 1) {
@@ -299,11 +304,24 @@ function parseArguments(argv: string[]): ParsedArguments {
   }
   if (parsed.command === 'archive' && !parsed.change) throw new XForgeError(diagnostic('XFORGE_CHANGE_REQUIRED', 'archive requires --change <id>.'));
   if (parsed.command === 'verification') {
-    if (parsed.subcommand !== 'declare') throw new XForgeError(diagnostic('XFORGE_VERIFICATION_ACTION_REQUIRED', 'verification requires the declare action.'));
-    if (!parsed.gateName || !parsed.by) throw new XForgeError(diagnostic('XFORGE_VERIFICATION_ARGUMENTS_REQUIRED', 'verification declare requires --gate-name <gate> and --by <person>. The person is required because nothing can decide mechanically whether a command verifies anything; this records who answered.'));
+    if (!['declare', 'draft-receipt'].includes(parsed.subcommand ?? '')) throw new XForgeError(diagnostic('XFORGE_VERIFICATION_ACTION_REQUIRED', 'verification requires the declare or draft-receipt action.'));
+    if (parsed.subcommand === 'declare' && (!parsed.gateName || !parsed.by)) throw new XForgeError(diagnostic('XFORGE_VERIFICATION_ARGUMENTS_REQUIRED', 'verification declare requires --gate-name <gate> and --by <person>. The person is required because nothing can decide mechanically whether a command verifies anything; this records who answered.'));
+    if (parsed.subcommand === 'draft-receipt' && !parsed.change) throw new XForgeError(diagnostic('XFORGE_CHANGE_REQUIRED', 'verification draft-receipt requires --change <id>.'));
   }
   if (parsed.command === 'brief' && !parsed.change) throw new XForgeError(diagnostic('XFORGE_CHANGE_REQUIRED', 'brief requires --change <id>.'));
-  if (parsed.command === 'transition' && (!parsed.change || !parsed.to)) throw new XForgeError(diagnostic('XFORGE_TRANSITION_ARGUMENTS_REQUIRED', 'transition requires --change <id> and --to <stage>.'));
+  if (parsed.command === 'transition') {
+    if (parsed.subcommand !== undefined && parsed.subcommand !== 'repair') {
+      throw new XForgeError(diagnostic('XFORGE_TRANSITION_ACTION_UNKNOWN', `transition takes no action word, or the repair action; got ${parsed.subcommand}.`));
+    }
+    if (parsed.subcommand === 'repair') {
+      if (!parsed.change || !parsed.receiptId) {
+        throw new XForgeError(diagnostic('XFORGE_TRANSITION_REPAIR_ARGUMENTS_REQUIRED', 'transition repair requires --change <id> and --receipt <receiptId>. It drops one leaf Transition receipt, named explicitly, because choosing which recorded history to discard is a judgement no default can make.'));
+      }
+      if (parsed.to) throw new XForgeError(diagnostic('XFORGE_OPTION_NOT_ALLOWED', '--to is not valid for transition repair: a repair discards a recorded transition, it does not perform one.'));
+    } else if (!parsed.change || !parsed.to) {
+      throw new XForgeError(diagnostic('XFORGE_TRANSITION_ARGUMENTS_REQUIRED', 'transition requires --change <id> and --to <stage>.'));
+    }
+  }
   if (parsed.command === 'approve' && (!parsed.change || !parsed.transition)) {
     /* Naming what is missing and what was accepted, separately. The old message listed both
        required options whichever one was absent, so somebody who had passed a perfectly valid
@@ -578,6 +596,10 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
     return envelope({ command, root: project.root, ...result });
   }
   if (command === 'verification') {
+    if (parsed.subcommand === 'draft-receipt') {
+      const result = await executeVerificationDraftReceipt(project, { change: parsed.change! });
+      return envelope({ command, root: project.root, ...result });
+    }
     const result = await executeVerificationDeclare(project, {
       gate: parsed.gateName!, command: parsed.commandArgv, module: parsed.module, covers: parsed.covers,
       workingDirectory: parsed.workingDirectory, timeoutSeconds: parsed.timeoutSeconds,
@@ -603,6 +625,10 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
     return envelope({ command, root: project.root, ...result });
   }
   if (command === 'transition') {
+    if (parsed.subcommand === 'repair') {
+      const result = await repairTransitionChain(project, { change: parsed.change!, receiptId: parsed.receiptId!, dryRun: parsed.dryRun });
+      return envelope({ command, root: project.root, ...result });
+    }
     const result = await executeTransition(project, { change: parsed.change!, to: parsed.to!, dryRun: parsed.dryRun });
     return envelope({ command, root: project.root, ...result });
   }
