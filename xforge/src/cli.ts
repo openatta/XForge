@@ -118,7 +118,10 @@ function resolveField(data: unknown, path: string): { found: true; value: unknow
       return { found: false, reason: `${walked.length ? walked.join('.') : 'data'} is ${current === null ? 'null' : typeof current}, which has no "${segment}".` };
     }
     const container = current as Record<string, unknown>;
-    if (!(segment in container)) {
+    /* `hasOwnProperty`, not `in`: `in` walks the prototype chain, so `--field constructor` answered
+       with `function Object() { [native code] }` — a confident value for a path the data does not
+       contain, which is the exact failure this option exists to remove. */
+    if (!Object.prototype.hasOwnProperty.call(container, segment)) {
       const available = Object.keys(container).slice(0, 12);
       return { found: false, reason: `${walked.length ? walked.join('.') : 'data'} has no "${segment}"${available.length ? ` (it has: ${available.join(', ')})` : ''}.` };
     }

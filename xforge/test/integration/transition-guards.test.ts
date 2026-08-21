@@ -356,6 +356,28 @@ describe('recovering from ready-to-archive', () => {
     expect((await receipts(root)).map((item) => item.receiptId)).not.toContain(closing.receiptId);
   });
 
+  /* Newly reachable from the CLI, so its dry run is verified through that path rather than assumed
+     from the function's shape: a repair that mutated on --dry-run would discard governance history
+     the operator was only asking about. */
+  it('changes nothing on --dry-run', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await advanceSolidToReadyToArchive(root);
+    const closing = (await receipts(root)).at(-1)!;
+    const before = (await receipts(root)).map((item) => item.receiptId);
+
+    const planned = await runCli(root, ['transition', 'repair', '--change', CHANGE, '--receipt', closing.receiptId, '--dry-run']);
+    expect(planned.code, JSON.stringify(planned.json?.diagnostics)).toBe(0);
+    expect(planned.json.data.dryRun).toBe(true);
+    expect(planned.json.data.dropped.receiptId).toBe(closing.receiptId);
+    /* It reports the delete it would make, and has not made it. */
+    expect((planned.json.changes as any[]).some((item) => item.action === 'delete')).toBe(true);
+    expect((await receipts(root)).map((item) => item.receiptId)).toEqual(before);
+
+    const after = await runCli(root, ['state', '--change', CHANGE]);
+    expect(after.json.data.change.governance.currentStage).toBe('ready-to-archive');
+  });
+
   /* Repair is not a --force. It must not become the fast way past an approval. */
   it('refuses --to, and leaves the original transition form untouched', async () => {
     const root = await fixture();

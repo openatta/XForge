@@ -32,6 +32,17 @@ export interface VerificationPlan {
   detected: DetectedToolchain[];
 }
 
+/**
+ * What the Manifest declares for one Gate, split by kind.
+ *
+ * Exported so a caller that only needs "has this been answered" can ask without paying for
+ * `resolveVerificationPlan`'s toolchain scan of the working tree — and, more importantly, so it
+ * asks the same question this file's own refusal asks, rather than a second one that can drift.
+ */
+export function verificationEntriesFor(project: ProjectContext, gate: string): { runs: VerificationRun[]; dismissals: VerificationDismissal[] } {
+  return entriesFor(project, gate);
+}
+
 function entriesFor(project: ProjectContext, gate: string): { runs: VerificationRun[]; dismissals: VerificationDismissal[] } {
   const entries = project.manifest.verification?.[gate] ?? [];
   const runs: VerificationRun[] = [];

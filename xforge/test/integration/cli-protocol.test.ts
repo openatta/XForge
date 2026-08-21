@@ -191,6 +191,17 @@ describe('state --field', () => {
     expect(field.stdout).not.toContain('protocolVersion');
   });
 
+  /* `in` would answer `constructor` with `function Object() { [native code] }`: a confident value
+     for a path the data does not contain, which is the failure this option exists to remove. */
+  it('does not resolve inherited properties', async () => {
+    const root = await fixture();
+    for (const path of ['constructor', 'project.toString', 'project.hasOwnProperty']) {
+      const result = await runCli(root, ['state', '--field', path]);
+      expect(result.code, `--field ${path} should not resolve`).toBe(1);
+      expect((result.json.diagnostics as any[]).map((item) => item.code)).toContain('XFORGE_FIELD_NOT_FOUND');
+    }
+  });
+
   it('fails loudly on a path that does not resolve, instead of printing nothing', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);

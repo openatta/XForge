@@ -9,7 +9,7 @@ import { normalizeRule } from '../core/governance.js';
 import { safeResolve } from '../core/path-safety.js';
 import { loadYaml } from '../core/yaml.js';
 import { capabilityGapDiagnostics } from '../install/planner.js';
-import { resolveVerificationPlan } from '../core/verification.js';
+import { verificationEntriesFor } from '../core/verification.js';
 
 export type DoctorKind = 'skills' | 'agents' | 'rules' | 'policies' | 'hooks' | 'gates' | 'scripts' | 'flows' | 'approvals' | 'mcp-servers';
 type DoctorScope = 'skills' | 'agents' | 'rules' | 'policies' | 'hooks' | 'gates' | 'flows' | 'approvals' | 'mcp-servers';
@@ -301,8 +301,15 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
     const resource = structure.resources.gates.get(gateId);
     if (resource?.value.spec.builtin !== 'declared' || !resource.value.spec.required) continue;
     if (!referencedGates.has(gateId)) continue;
-    const plan = await resolveVerificationPlan(project, gateId);
-    if (plan.runs.length > 0 || plan.dismissals.length > 0) continue;
+    /*
+     * `runs` alone, matching the runner's own refusal exactly (`runners/gate.ts`: a `declared` Gate
+     * refuses when `plan.runs.length === 0`). A dismissal records a toolchain the Gate deliberately
+     * does not cover; it is not a command, so a Gate holding only dismissals still has nothing to
+     * run and still refuses. Treating a dismissal as an answer here would have gone quiet about a
+     * Gate that was going to block anyway.
+     */
+    const { runs } = verificationEntriesFor(project, gateId);
+    if (runs.length > 0) continue;
     suggestions.push({
       scope: 'gates',
       code: 'XFORGE_DOCTOR_VERIFICATION_UNDECLARED',

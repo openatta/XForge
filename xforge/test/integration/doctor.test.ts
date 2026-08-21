@@ -241,6 +241,22 @@ describe('doctor', () => {
       .filter((item) => item.code === 'XFORGE_DOCTOR_VERIFICATION_UNDECLARED').map((item) => item.id)).toEqual(['security-scan']);
   });
 
+  /* A dismissal says "this Gate deliberately does not cover that toolchain". It is not a command,
+     so a Gate holding only dismissals still has nothing to run and `runners/gate.ts` still refuses
+     it. doctor has to agree, or it goes quiet about a Gate that is going to block anyway. */
+  it('keeps asking when a declared Gate has only a dismissal and no command', async () => {
+    const root = await fixture();
+    await clearVerification(root);
+    const dismissed = await runCli(root, ['verification', 'declare', '--gate-name', 'unit-tests',
+      '--not-applicable', 'package.json', '--justification', 'No JavaScript in this repository.', '--by', 'Dana Reed']);
+    expect(dismissed.code, JSON.stringify(dismissed.json?.diagnostics)).toBe(0);
+
+    const result = await runCli(root, ['doctor']);
+    expect((result.json.data.suggestions as any[])
+      .filter((item) => item.code === 'XFORGE_DOCTOR_VERIFICATION_UNDECLARED').map((item) => item.id))
+      .toContain('unit-tests');
+  });
+
   it('reports that approvals can only be collected at a terminal, without calling local unusable', async () => {
     const root = await fixture();
     const result = await runCli(root, ['doctor']);
