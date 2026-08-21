@@ -146,6 +146,64 @@ Flow 是纯数据：`xforge/flows/*.yaml`，加载方式是读取该目录下的
 重写一遍"Solid 时……Major 时……"，只是在重复 Flow YAML 里已经有的数据，还会
 悄悄漏掉第四个自定义 Flow。
 
+### `outline` 由谁检查：没有人
+
+`outline` 是写作指引。没有任何 Gate、`check` 或归档步骤会校验 Artifact 是否
+包含 `outline` 声明的小节——一份缺了 `## Impact and rollback` 的 Proposal 在
+任何 Stage 都不会产生诊断。真正被强制的只有 `markers`，且只有上面那两种方式。
+
+之所以要写明，是因为这个字段看起来像 schema，实际不是。一次实测中，Proposal
+缺少 `quick.yaml` 声明的一个小节，从 Propose 一路到归档看到的都是
+`Structural validation passed.`。outline 已经完成了它的职责——告诉作者该写什么
+——而下游没有任何环节对此有意见。
+
+如果你需要某个小节是**必需**的，给它一个带 `minOccurrences` 的 marker。那是
+唯一会让 Change 失败的机制。
+
+### 不要把 digest 写进 Artifact 正文
+
+`contentRevision` 会摘要每个 Artifact 的输出路径（`core/revision.ts`），而
+Gate Evidence 绑定的是 Gate 运行时的 `contentRevision`。所以把某个 Gate 的
+Evidence digest 粘进 `assurance.md`，**粘贴这个动作本身**就会让它失效：写入
+改变了 `contentRevision`，于是 Evidence 变 stale，于是需要重跑 Gate，于是产出
+的 digest 与文件里刚写下的那个不同。这里不存在不动点，一次实测为此花掉了一轮。
+
+按名字引用 Gate，让台账去承载绑定关系。`evidence/verification-receipt.yaml`
+正是出于这个原因**刻意不是**被声明的 Artifact——写它不会改变 `contentRevision`
+——它的 `gates` 条目也只写 Gate 名而非 digest。`xforge verification
+draft-receipt` 会生成其中全部机器已知的部分，因此没有任何东西需要手抄。
+
+同一个陷阱也适用于 Flow 文件本身：`contentRevision` 按**原始字节**摘要
+`xforge/flows/<name>.yaml`，所以编辑它——**包括改注释**——会让所有正在使用它的
+活跃 Change 的 revision 发生变化。Flow 的修改属于 `xforge init`，不属于一个
+进行中的 Change。
+
+### 本地化一个 Flow
+
+`outline` 的小标题与 `markers[].section` 都是散文，而 `section` 是按标题的
+**确切文本**定位的。因此一个用 `--language zh-CN` 搭建、正文写中文的项目，配上
+英文的 outline 小标题，结果是**一个 marker 都定位不到**——作者自然会写中文标题，
+于是所有 marker 悄无声息地失效。
+
+Flow 为每个文件附带一个 `_cn` 变体（`quick_cn.yaml` 与 `quick.yaml` 并列）。
+`xforge init` 会把这一对折叠：所选语言的内容落到规范文件名下，变体被删除，因此
+任何已安装的项目都不会同时持有两份；`core/flow-resolver.ts` 在扫描目录时也会
+跳过 `_cn` 文件。
+
+编辑它们时有三条规则：
+
+- **`outline` 与 `markers[].section` 必须一起改。** 它们是同一个事实写了两遍，
+  只翻译其中一个正是最初那个 bug。
+- **只翻译散文。** `## ADDED Requirements`、`### Requirement:`、
+  `#### Scenario:`、`**WHEN**`/`**THEN**`，以及 outline 内部所有台账字段名
+  （`severity`、`reworkTo`、`resolvedBy`、`decidedBy`、`references` 等）都由
+  `core/spec-delta.ts`、`core/spec-merger.ts` 和各台账求值器按字面匹配。翻译
+  它们不会本地化任何东西，只会让 Spec 无法合并。
+- **绝不让治理内容出现差异。** `test/integration/flow-localization.test.ts` 会
+  从两个文件中剥掉 `description`、`instruction`、`outline` 与 `section`，然后
+  要求剩下的部分完全一致。Flow 是可执行的治理规则，两份 `minApprovers` 各自漂移
+  是比变体所修复的问题更严重的故障。
+
 ## 检查清单
 
 新增 Skill：

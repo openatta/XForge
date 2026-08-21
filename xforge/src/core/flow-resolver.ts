@@ -195,7 +195,18 @@ export async function loadFlows(project: ProjectContext): Promise<{ flows: Map<s
   const flowsDirectory = await safeResolve(project.root, 'xforge/flows');
   let names: string[];
   try {
-    names = (await readdir(flowsDirectory)).filter((name) => name.endsWith('.yaml')).sort();
+    /*
+     * `_cn` files are the localized *source* of a Flow, not a second Flow.
+     *
+     * `xforge init` collapses the pair — the chosen language's content lands under the canonical
+     * name and the variant is deleted — so no installed project ever holds both. The Scaffold
+     * payload does, and it is loaded directly as a project by the release relock and by fixtures,
+     * where an unfiltered scan reported `quick_cn.yaml` as a filename mismatch and a duplicate of
+     * `quick`. Skipping them here matches how `install/planner.ts` already treats `_cn` under
+     * `xforge/scaffold/`: the variant is content for an existing resource, never one of its own.
+     */
+    names = (await readdir(flowsDirectory))
+      .filter((name) => name.endsWith('.yaml') && !/_cn\.yaml$/.test(name)).sort();
   } catch {
     return { flows: new Map(), diagnostics: [diagnostic('XFORGE_FLOWS_MISSING', 'xforge/flows must contain project Flow files.', 'xforge/flows')] };
   }

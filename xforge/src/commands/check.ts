@@ -428,6 +428,33 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
     }
   }
 
+  /*
+   * A passing Gate must not be readable as "nothing to see here".
+   *
+   * The `structure` Gate passes on errors alone, correctly: its warnings are advisory and promoting
+   * them would fail Changes that were valid before the rule that warns existed. But its stdout is
+   * the flat sentence "Structural validation passed.", and a live XOps run read that as the whole
+   * result — the Artifact marker warning sitting in the same envelope went unread at Propose and at
+   * Verify, and surfaced at `archive --dry-run`, after the transition and after a human approval.
+   * The check had in fact reported it at the producing Stage every time. Nobody saw it.
+   *
+   * So this says out loud what the Gate's own output cannot: the Gate passed, and the run still
+   * found things. Deliberately an `info` at the command level, never part of Gate Evidence —
+   * `gateInputDigest` is `sha256({gate, revision, structurePassed})`, so touching what
+   * `structurePassed` means would rewrite every Evidence digest in every project to say something
+   * no Gate's verdict actually changed.
+   */
+  const advisories = diagnostics.filter((item) => item.severity === 'warning');
+  if (advisories.length > 0 && gateResults.some((item) => item.status === 'passed')) {
+    const codes = [...new Set(advisories.map((item) => item.code))].sort();
+    diagnostics.push(diagnostic(
+      'XFORGE_CHECK_PASSED_WITH_WARNINGS',
+      `Gates passed, and this run also reported ${advisories.length} warning${advisories.length === 1 ? '' : 's'}: ${codes.join(', ')}. A passing Gate is not a clean check — these are advisory now and cost nothing to fix here, but an Artifact problem left unfixed is next reported by archive, after the Stage has transitioned and after anyone has approved it.`,
+      options.change ? `${project.changesPath}/${options.change}` : undefined,
+      'info',
+    ));
+  }
+
   return {
     data: {
       structure: { passed: !hasStructureErrors }, change: options.change ?? null,

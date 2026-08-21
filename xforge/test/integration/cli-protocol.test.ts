@@ -165,3 +165,42 @@ describe('CLI protocol', () => {
     expect(manifest.xforge.version).toBe('0.7.7');
   });
 });
+
+/*
+ * `--field` exists because the alternative people reached for was wrong in a way nothing reported.
+ *
+ * `xforge state` carries a `contentRevision` inside every historical receipt as well as the current
+ * one, so `grep -m1 contentRevision` returns whichever the serializer emitted first. A live XOps run
+ * did exactly that and hand-wrote a verification receipt bound to a superseded revision.
+ */
+describe('state --field', () => {
+  const CHANGE = 'add-feature';
+
+  it('prints one value and nothing else, so a shell can capture it', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const full = await runCli(root, ['state', '--change', CHANGE]);
+    expect(full.code).toBe(0);
+    const expected = full.json.data.change.governance.revision.contentRevision;
+
+    const field = await runCli(root, ['state', '--change', CHANGE, '--field', 'change.governance.revision.contentRevision']);
+    expect(field.code).toBe(0);
+    /* Exactly the value, with no envelope around it — that is what makes it capturable. */
+    expect(field.stdout.trim()).toBe(expected);
+    expect(field.stdout).not.toContain('Diagnostics');
+    expect(field.stdout).not.toContain('protocolVersion');
+  });
+
+  it('fails loudly on a path that does not resolve, instead of printing nothing', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const missing = await runCli(root, ['state', '--change', CHANGE, '--field', 'change.governance.notAField']);
+    /* An empty stdout with a zero exit is the failure this option exists to prevent: a shell would
+       assign the empty string and carry on as though it held a revision. */
+    expect(missing.code).toBe(1);
+    const found = (missing.json.diagnostics as any[]).find((item) => item.code === 'XFORGE_FIELD_NOT_FOUND');
+    expect(found, JSON.stringify(missing.json.diagnostics)).toBeTruthy();
+    /* And says what is actually there, so the next attempt is informed rather than another guess. */
+    expect(found.message).toContain('currentStage');
+  });
+});

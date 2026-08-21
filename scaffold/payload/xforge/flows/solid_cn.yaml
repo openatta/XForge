@@ -1,0 +1,166 @@
+apiVersion: xforge.dev/v1alpha2
+kind: Flow
+metadata:
+  name: solid
+  version: 4
+  description: 面向常规产品与工程变更的稳定、可维护的交付
+policy:
+  assuranceLevel: solid
+  eligibleWhen:
+    risk: [low, medium]
+    criticalImpacts: forbidden
+artifacts:
+  - id: proposal
+    generates: proposal.md
+    description: 说明变更的理由、边界与 Flow 选择
+    instruction: 写清 Why、Scope、Non-goals、Success criteria、影响、回滚，以及选择 Solid 的事实依据。
+    outline: |
+      ## 为什么
+      ## 范围
+      ## 非目标
+      ## 成功标准
+      ## Flow 选择
+      ## 影响与回滚
+  - id: delta-specs
+    generates: specs/**/*.md
+    description: 定义可观测的 Requirement 与 Scenario 增量
+    instruction: 为成功、失败、边界与兼容性场景使用稳定的 Requirement ID，不写实现细节。
+    outline: |
+      ## ADDED Requirements
+      ### Requirement: <REQ-ID> <name>
+      #### Scenario: <name>
+      - **WHEN** ...
+      - **THEN** ...
+  - id: design
+    generates: design.md
+    description: 记录技术方案、备选方案与验证说明
+    instruction: 覆盖现状、目标集成点、决策、失效模式、兼容性、迁移、回滚与验证，但不要写成逐文件的任务清单。
+    outline: |
+      ## 背景
+      ## 目标与非目标
+      ## 决策与备选方案
+      ## 失效模式与兼容性
+      ## 迁移与回滚
+      ## 验证说明
+    markers:
+      - id: verification-coverage
+        section: 验证说明
+        role: requirement-coverage
+      - id: rejected-alternative
+        section: 决策与备选方案
+        role: decision-alternative
+        pattern: ['**Rejected alternative:', '**被否决的替代方案：']
+  - id: check-report
+    generates: check-report.md
+    description: 叙述实现前对 Proposal、增量 Spec 与 Design 的评审
+    instruction: 说明完整性、一致性、可测试性与可行性。Stage 能否退出由评审发现台账判定，而不是由这段叙述判定。
+    outline: |
+      ## 完整性
+      ## 一致性
+      ## 可测试性
+      ## 可行性与风险
+      ## 返工
+  - id: check-findings
+    generates: evidence/check-findings.yaml
+    description: Check Gate 能够真正判定的、机器可判定的评审发现台账
+    instruction: 每条评审发现一个条目，含 id、severity（blocker|warning|suggestion）、summary、指向相关 Artifact 的 refs；blocker 还需 status、在未关闭期间的 reworkTo Stage，以及关闭后的 resolvedBy 身份。评审没有发现时，显式记录一个空列表。只要还有 blocker 未关闭，该 Stage 就不能退出。
+    outline: |
+      findings:
+        - id: <finding-id>
+          severity: <blocker|warning|suggestion>
+          summary: <what is wrong>
+          refs: [<artifact or spec path>]
+          status: <open|resolved>
+          reworkTo: <stage id, required while a blocker is open>
+          resolvedBy: <name or email, required once status is resolved for a blocker; must match a known approver or Git author>
+  - id: constitution-check
+    generates: evidence/constitution-check.yaml
+    description: 逐条回答本 Change 对 Constitution 每条原则的符合情况
+    instruction: 对 xforge/constitution.md 中每条 `## ` 原则各写一个条目，status 取 compliant|violation|not-applicable。每个条目都必须在 `references` 中至少引用一个机器可定位的依据——本 Change 增量 Spec 中的某个 Requirement id、一个确实存在的文件路径，或某个已通过 Gate 的 `gate:<name>`。violation 还需要 justification 和具名的 approvedBy；not-applicable 需要 justification。笼统地声称符合不能满足该 Gate，仅有一份审批回执同样不能——回执记录的是有人批准了一次转换，而不是本 Change 为何符合该原则。
+    outline: |
+      principles:
+        - principle: <exact `## ` heading from constitution.md>
+          status: <compliant|violation|not-applicable>
+          references: [<Requirement id | existing path | gate:<name>>]
+          justification: <required for violation and not-applicable>
+          approvedBy: <named person, required for violation>
+  - id: assurance
+    generates: assurance.md
+    description: 记录针对 Requirement、设计、测试与约束的验证结果
+    instruction: 以可追溯的证据总结完整性、正确性、连贯性与各 Gate 的结果。
+    outline: |
+      ## 完整性
+      ## 正确性
+      ## 连贯性
+      ## Gate 与证据
+      ## 评审发现
+    markers:
+      - id: verification-coverage
+        section: 完整性
+        role: requirement-coverage
+governance:
+  approvalPolicies:
+    - id: planning-solid
+      minApprovers: 1
+      roles: [owner, maintainer]
+      separationOfDuties: false
+      providers: [local, enterprise-approvals]
+    - id: closing-solid
+      minApprovers: 1
+      roles: [owner, maintainer]
+      separationOfDuties: false
+      providers: [local, enterprise-approvals]
+  audit:
+    requiredEventTypes: [gate.after, stage.entered, approval.decided]
+    runtimeCoverage: optional
+    remoteDelivery: optional
+stages:
+  - id: propose
+    skill: xforge-propose
+    authority: planning-write
+    requires: []
+    produces: [proposal, delta-specs]
+    gates: [structure]
+
+  - id: design
+    skill: xforge-design
+    authority: planning-write
+    requires: [propose]
+    produces: [design]
+    reworkTo: [propose]
+    exit:
+      approvals: [planning-solid]
+  - id: check
+    skill: xforge-check
+    authority: assurance-write
+    requires: [design]
+    produces: [check-report, check-findings, constitution-check]
+    gates: [structure, check-findings, constitution-check]
+    reworkTo: [propose, design]
+  - id: apply
+    skill: xforge-apply
+    authority: implementation-write
+    requires: [check]
+    produces: []
+    reworkTo: [propose, design, check]
+  - id: verify
+    skill: xforge-verify
+    authority: assurance-write
+    requires: [apply]
+    produces: [assurance]
+    gates: [structure, unit-tests]
+    reworkTo: [apply]
+    exit:
+      conditions:
+        verificationReceipt: passed
+terminal:
+  archive:
+    handler: xforge-verify
+    authority: archive-write
+    requires: [verify]
+    syncSpecs: true
+    approvals: [closing-solid]
+    auditPolicy:
+      requiredEventTypes: [gate.after, stage.entered, approval.decided]
+      runtimeCoverage: optional
+      remoteDelivery: optional

@@ -37,7 +37,24 @@ async function exists(filePath: string): Promise<boolean> {
  * opening `xforge/constitution.md` reasonably concluded there was no Chinese version, and an edit
  * to the file they were looking at did nothing.
  */
-const COLLAPSED_DOCUMENTS = ['xforge/constitution.md', 'xforge/XFORGE.md'];
+/*
+ * Flows join the Constitution and XFORGE.md here because a Flow is half prose.
+ *
+ * `outline` names the `## ` sections an Artifact should have, and `markers[].section` locates one
+ * of them *by that heading's exact text*. Left in English under `--language zh-CN`, that obliged a
+ * Chinese document to carry English subheadings or lose every marker — and an author writing the
+ * document naturally wrote Chinese ones and silently resolved nothing. The `_cn` variants translate
+ * the two together, and `flow-localization.test.ts` holds them to differing in nothing else.
+ *
+ * Flows are init-time assets: they install to `xforge/flows/`, which `upgrade-scaffold` does not
+ * touch (it reads `xforge/scaffold/` only). So this reaches new projects and leaves the Flow files
+ * of existing ones alone — which is what keeps it from restating every in-flight Change's
+ * contentRevision, since that digests the Flow file's bytes.
+ */
+const COLLAPSED_DOCUMENTS = [
+  'xforge/constitution.md', 'xforge/XFORGE.md',
+  'xforge/flows/quick.yaml', 'xforge/flows/solid.yaml', 'xforge/flows/major.yaml',
+];
 
 function pinBundleLanguage(bundle: BundledScaffold, language: ScaffoldLanguage): BundledScaffold {
   const files = new Map(bundle.files);

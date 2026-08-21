@@ -36,7 +36,9 @@ describe('the architecture file', () => {
 
     await write(root, 'xforge/architecture.md', '# Architecture — test\n');
     const present = await runCli(root, ['doctor', '--strict']);
-    expect(present.json.data.suggestions).toEqual([]);
+    /* Asserted by code rather than as an empty list: `suggestions` is a shared channel and other
+       setup questions land in it, none of which this test is about. */
+    expect((present.json.data.suggestions as any[]).map((item) => item.code)).not.toContain('XFORGE_DOCTOR_ARCHITECTURE_ABSENT');
 
     /*
      * Compared against itself with and without the file, rather than asserted absolutely: the
@@ -65,7 +67,7 @@ describe('the architecture file', () => {
     /* Suggesting an asset owned by a Skill the project deselected is advice about somebody else's
        project. Deselection is an answer, and this respects it. */
     const result = await doctor(root);
-    expect(result.data.suggestions).toEqual([]);
+    expect(result.data.suggestions.map((item: any) => item.code)).not.toContain('XFORGE_DOCTOR_ARCHITECTURE_ABSENT');
   });
 
   it('leaves every Change command working on a project that has no architecture', async () => {

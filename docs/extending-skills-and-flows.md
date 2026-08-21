@@ -161,6 +161,74 @@ shipped Flows therefore declare `requirement-coverage` sections with no
 A rule keyed on a marker the Flow never declared reports **nothing**. It never
 falls back to guessing which section was meant.
 
+### What checks `outline`: nothing
+
+`outline` is instruction. No Gate, no `check`, and no archive step ever verifies
+that an Artifact contains the sections its `outline` names — a Proposal missing
+a declared `## Impact and rollback` produces no diagnostic at any Stage. Only
+`markers` are enforced, and only in the two ways above.
+
+This is worth stating plainly because the field reads like a schema and is not
+one. A live run wrote a Proposal without one of `quick.yaml`'s declared sections
+and saw `Structural validation passed.` from Propose through to archive. The
+outline had done its job — it told the author what to write — and nothing
+downstream had an opinion.
+
+If you need a section to be *required*, give it a marker with `minOccurrences`.
+That is the only mechanism that fails a Change.
+
+### Never write a digest into an Artifact body
+
+`contentRevision` digests every Artifact output path (`core/revision.ts`), and
+Gate Evidence is bound to the `contentRevision` current when the Gate ran. So
+pasting a Gate's Evidence digest into `assurance.md` invalidates it *by the act
+of pasting*: the write moves `contentRevision`, which makes the Evidence stale,
+which means re-running the Gate, which produces a different digest from the one
+now written in the file. There is no fixed point, and a live run spent a cycle
+discovering that.
+
+Cite Gates by name and let the ledgers carry the bindings.
+`evidence/verification-receipt.yaml` is deliberately *not* a declared Artifact
+for exactly this reason — writing it does not move `contentRevision` — and its
+`gates` entries name Gates rather than digests. `xforge verification
+draft-receipt` produces the whole machine-known part of it, so there is nothing
+to transcribe by hand.
+
+The same trap applies to the Flow file itself: `contentRevision` digests
+`xforge/flows/<name>.yaml` as raw bytes, so editing one — *including its
+comments* — restates the revision of every active Change using it. Flow edits
+belong to `xforge init`, not to a running Change.
+
+### Localizing a Flow
+
+`outline` headings and `markers[].section` are prose, and `section` locates a
+heading by its exact text. A project scaffolded with `--language zh-CN` writing
+Chinese Artifacts under English outline headings therefore resolved no markers
+at all — the author naturally wrote Chinese headings, and every marker silently
+stopped locating anything.
+
+Flows ship a `_cn` variant beside each file (`quick_cn.yaml` next to
+`quick.yaml`). `xforge init` collapses the pair: the chosen language's content
+lands under the canonical name and the variant is deleted, so no installed
+project holds both, and `core/flow-resolver.ts` skips `_cn` files when scanning
+the directory.
+
+Three rules when editing them:
+
+- **Change `outline` and `markers[].section` together.** They are one fact
+  written twice; translating either alone is the original bug.
+- **Translate prose only.** `## ADDED Requirements`, `### Requirement:`,
+  `#### Scenario:`, `**WHEN**`/`**THEN**` and every ledger key inside an outline
+  (`severity`, `reworkTo`, `resolvedBy`, `decidedBy`, `references`, …) are
+  matched literally by `core/spec-delta.ts`, `core/spec-merger.ts` and the
+  ledger evaluators. Translating them does not localize anything; it stops Specs
+  merging.
+- **Never let governance differ.** `test/integration/flow-localization.test.ts`
+  strips `description`, `instruction`, `outline` and `section` from both files
+  and requires what remains to be identical. A Flow is executable governance,
+  and two copies of `minApprovers` that drift apart is a worse failure than the
+  one the variants fix.
+
 **Anti-pattern:** a Skill's own prose branching on a literal Flow name (`"For
 Solid, ... For Major, ..."`). This is fragile in a way the three mechanisms
 above are not — a new custom Flow (e.g. `hotfix.yaml`) gets silently

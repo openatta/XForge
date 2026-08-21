@@ -1,0 +1,228 @@
+apiVersion: xforge.dev/v1alpha2
+kind: Flow
+metadata:
+  name: major
+  version: 4
+  description: 面向高风险、跨系统或具关键影响的变更的高保障治理
+policy:
+  assuranceLevel: major
+  eligibleWhen:
+    risk: [low, medium, high]
+    criticalImpacts: allowed
+  requiredWhen:
+    risk: [high]
+    anyImpact: [security, privacy, publicApi, dataMigration]
+artifacts:
+  - id: proposal
+    generates: proposal.md
+    description: 说明受治理变更的理由、边界与成功标准
+    instruction: 写清 Why、Scope、Non-goals、参与方、Success criteria、关键影响、Flow 选择与回滚边界。
+    outline: |
+      ## 为什么
+      ## 范围
+      ## 非目标
+      ## 参与方与成功标准
+      ## Flow 选择
+      ## 关键影响与回滚
+  - id: delta-specs
+    generates: specs/**/*.md
+    description: 定义可观测的 Requirement 与 Scenario 增量
+    instruction: 为成功、失败、边界、安全、隐私与兼容性场景使用稳定的 Requirement ID，不写实现细节。
+    outline: |
+      ## ADDED Requirements
+      ### Requirement: <REQ-ID> <name>
+      #### Scenario: <name>
+      - **WHEN** ...
+      - **THEN** ...
+  - id: clarifications
+    generates: clarifications.md
+    description: 记录影响范围、风险、兼容性或验收的关键问题与决策
+    instruction: 叙述问题、影响、决策与来源，然后原子地更新 Proposal 与增量 Spec。Stage 能否退出由关键问题台账判定，而不是由这段叙述判定。
+    outline: |
+      ## 关键问题
+      ## 决策
+      ## 来源
+      ## 已落实的更新
+  - id: material-questions
+    generates: evidence/conditions/materialQuestions.yaml
+    description: 机器可判定的关键问题记录，含每个问题由谁决定
+    instruction: 每个关键问题一个条目，含 question、impact、decision、decidedBy（具名的人）与 decidedAt（ISO 8601）。只要还有条目未决定，该 Stage 就不能退出；clarifications.md 中的叙述不能替代它。
+    outline: |
+      condition: materialQuestions
+      entries:
+        - id: <q-id>
+          question: <what was unclear>
+          impact: <scope|risk|compatibility|acceptance>
+          decision: <what was decided>
+          decidedBy: <person>
+          decidedAt: <ISO 8601>
+  - id: design
+    generates: design.md
+    description: 记录高保障技术设计、风险控制与交付边界
+    instruction: 覆盖架构决策、备选方案、信任边界、失效模式、兼容性、缓解措施、测试、发布、监控、停止信号、负责人、并行边界与回滚。
+    outline: |
+      ## 背景与约束
+      ## 决策与备选方案
+      ## 信任边界
+      ## 风险与缓解
+      ## 测试策略
+      ## 发布、监控与停止信号
+      ## 负责人与并行边界
+      ## 迁移与回滚
+    markers:
+      - id: verification-coverage
+        section: 测试策略
+        role: requirement-coverage
+      - id: rejected-alternative
+        section: 决策与备选方案
+        role: decision-alternative
+        pattern: ['**Rejected alternative:', '**被否决的替代方案：']
+      - id: deferred-question
+        section: 风险与缓解
+        role: declared-gap
+        pattern: ['**Deferred to Check:', '**留待 Check 决议：']
+  - id: check-report
+    generates: check-report.md
+    description: 叙述实现前对各 Artifact 的语义评审
+    instruction: 说明完整性、一致性、可测试性、风险与可行性。Stage 能否退出由评审发现台账判定，而不是由这段叙述判定。
+    outline: |
+      ## 完整性
+      ## 一致性
+      ## 可测试性
+      ## 可行性与风险
+      ## 返工
+  - id: check-findings
+    generates: evidence/check-findings.yaml
+    description: Check Gate 能够真正判定的、机器可判定的评审发现台账
+    instruction: 每条评审发现一个条目，含 id、severity（blocker|warning|suggestion）、summary、指向相关 Artifact 的 refs；blocker 还需 status、在未关闭期间的 reworkTo Stage，以及关闭后的 resolvedBy 身份。评审没有发现时，显式记录一个空列表。只要还有 blocker 未关闭，该 Stage 就不能退出。
+    outline: |
+      findings:
+        - id: <finding-id>
+          severity: <blocker|warning|suggestion>
+          summary: <what is wrong>
+          refs: [<artifact or spec path>]
+          status: <open|resolved>
+          reworkTo: <stage id, required while a blocker is open>
+          resolvedBy: <name or email, required once status is resolved for a blocker; must match a known approver or Git author>
+  - id: constitution-check
+    generates: evidence/constitution-check.yaml
+    description: 逐条回答本 Change 对 Constitution 每条原则的符合情况
+    instruction: 对 xforge/constitution.md 中每条 `## ` 原则各写一个条目，status 取 compliant|violation|not-applicable。每个条目都必须在 `references` 中至少引用一个机器可定位的依据——本 Change 增量 Spec 中的某个 Requirement id、一个确实存在的文件路径，或某个已通过 Gate 的 `gate:<name>`。violation 还需要 justification 和具名的 approvedBy；not-applicable 需要 justification。笼统地声称符合不能满足该 Gate，仅有一份审批回执同样不能——回执记录的是有人批准了一次转换，而不是本 Change 为何符合该原则。
+    outline: |
+      principles:
+        - principle: <exact `## ` heading from constitution.md>
+          status: <compliant|violation|not-applicable>
+          references: [<Requirement id | existing path | gate:<name>>]
+          justification: <required for violation and not-applicable>
+          approvedBy: <named person, required for violation>
+  - id: assurance
+    generates: assurance.md
+    description: 记录针对 Requirement、设计、风险与约束的验证结果
+    instruction: 以可追溯的证据总结完整性、正确性、连贯性、风险与各 Gate 的结果。
+    outline: |
+      ## 完整性
+      ## 正确性
+      ## 连贯性
+      ## 风险控制
+      ## Gate 与证据
+      ## 评审发现
+    markers:
+      - id: verification-coverage
+        section: 完整性
+        role: requirement-coverage
+governance:
+  # `local` sits alongside `enterprise-approvals` (unlike a hypothetical enterprise-only
+  # policy) so a fresh project isn't locked out of Major entirely until an external
+  # approval system is registered: `minApprovers: 2` + `separationOfDuties: true` still
+  # require two distinct, role-diverse human decisions either way — local approval does
+  # not relax that bar, it only changes where the decision is captured.
+  approvalPolicies:
+    - id: implementation-major
+      minApprovers: 2
+      roles: [owner, maintainer, security]
+      separationOfDuties: true
+      providers: [local, enterprise-approvals]
+    - id: closing-major
+      minApprovers: 2
+      roles: [owner, maintainer, security]
+      separationOfDuties: true
+      providers: [local, enterprise-approvals]
+  # `remoteDelivery: optional` is the shipped default on purpose. Setting it to `required` blocks
+  # archive with `audit:remote-pending` until every workflow event has been accepted by an HTTP
+  # receiver, and `XFORGE_AUDIT_ENDPOINT` is unset on a fresh install, so a default project would
+  # drive a Major Change through propose → verify, collect two human approvals, and then never be
+  # able to close it — `xforge audit retry` cannot clear a queue that has nowhere to go. Remote
+  # delivery is an enterprise opt-in: point `manifest.yaml`'s `audit.remote.endpointEnv` at a real
+  # sink, then set this (and `terminal.archive.auditPolicy.remoteDelivery`) to `required`, or add
+  # `major` to the manifest's `audit.remote.requiredFor`.
+  audit:
+    requiredEventTypes: [gate.after, stage.entered, approval.decided]
+    runtimeCoverage: optional
+    remoteDelivery: optional
+stages:
+  - id: propose
+    skill: xforge-propose
+    authority: planning-write
+    requires: []
+    produces: [proposal, delta-specs]
+    gates: [structure]
+
+  - id: clarify
+    skill: xforge-clarify
+    authority: planning-write
+    requires: [propose]
+    produces: [clarifications, material-questions]
+    revises: [proposal, delta-specs]
+    reworkTo: [propose]
+    exit:
+      conditions:
+        materialQuestions: resolved
+  - id: design
+    skill: xforge-design
+    authority: planning-write
+    requires: [clarify]
+    produces: [design]
+    reworkTo: [propose, clarify]
+  - id: check
+    skill: xforge-check
+    authority: assurance-write
+    requires: [design]
+    produces: [check-report, check-findings, constitution-check]
+    gates: [structure, check-findings, constitution-check]
+    reworkTo: [propose, clarify, design]
+    exit:
+      approvals: [implementation-major]
+  - id: apply
+    skill: xforge-apply
+    authority: implementation-write
+    requires: [check]
+    produces: []
+    reworkTo: [propose, clarify, design]
+  - id: verify
+    skill: xforge-verify
+    authority: assurance-write
+    requires: [apply]
+    produces: [assurance]
+    gates: [structure, unit-tests, security-scan]
+    reworkTo: [apply]
+    exit:
+      conditions:
+        verificationReceipt: passed
+        # Major declares three semantic reviews and ships a reviewer sub-Agent, but nothing ever
+        # required one: `succeeded` alone satisfied the control plane, so a high-risk Change could
+        # be designed, implemented, reviewed and signed off by a single executor. This makes the
+        # Reviewer acknowledgement a condition of leaving Verify. It enforces that a review
+        # happened and is attributed; whether the reviewer is genuinely independent is reported in
+        # State rather than asserted here, because one session can name any actor it likes.
+        independentReview: complete
+terminal:
+  archive:
+    handler: xforge-verify
+    authority: archive-write
+    requires: [verify]
+    syncSpecs: true
+    approvals: [closing-major]
+    auditPolicy:
+      requiredEventTypes: [gate.after, stage.entered, approval.decided]
+      runtimeCoverage: optional
+      remoteDelivery: optional

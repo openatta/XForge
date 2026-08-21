@@ -203,3 +203,51 @@ describe('Artifact markers', () => {
     });
   });
 });
+
+/*
+ * The XOps failure was not that the marker warning went unreported. It was reported, by `check`, at
+ * the Stage that produced the Artifact. It went unread, because the same envelope carried a Gate
+ * saying "Structural validation passed." and that is the line a reader stops at. The cost landed at
+ * `archive --dry-run`: after the transition, after a human approval.
+ */
+describe('a passing Gate does not mean a clean check', () => {
+  it('says so when Gates pass and the same run reported warnings', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await setMarkers(root, [{ id: 'coverage', section: 'A Section This File Does Not Have', role: 'requirement-coverage' }]);
+    expect((await runCli(root, ['install'])).code).toBe(0);
+
+    const result = await runCli(root, ['check', '--change', CHANGE, '--gate', 'structure']);
+    /* The Gate still passes: the marker warning is advisory and promoting it would fail Changes
+       written before markers existed. That trade-off is not what this test changes. */
+    expect(result.code).toBe(0);
+    const gate = (result.json.data.gates as any[]).find((item) => item.id === 'structure');
+    expect(gate.status).toBe('passed');
+    const diagnostics = result.json.diagnostics as any[];
+    expect(diagnostics.some((item) => item.code === 'XFORGE_ARTIFACT_MARKER_SECTION_MISSING')).toBe(true);
+
+    /* What changes is that the run now states the combination out loud, and names what to read. */
+    const notice = diagnostics.find((item) => item.code === 'XFORGE_CHECK_PASSED_WITH_WARNINGS');
+    expect(notice, JSON.stringify(diagnostics.map((item) => item.code))).toBeTruthy();
+    expect(notice.severity).toBe('info');
+    expect(notice.message).toContain('XFORGE_ARTIFACT_MARKER_SECTION_MISSING');
+    /* And says why fixing it here is cheaper than being told later. */
+    expect(notice.message).toContain('archive');
+  });
+
+  it('stays quiet on a clean run, so the notice keeps meaning something', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    /* Markers cleared to reach a genuinely warning-free run. Worth recording why that is needed:
+       the shipped `solid` Flow declares markers in `Verification notes` and `Decisions and
+       alternatives`, and a design document that does not happen to use those exact headings warns
+       twice — which is the reported problem itself, seen from the inside. */
+    await setMarkers(root, []);
+    expect((await runCli(root, ['install'])).code).toBe(0);
+    const result = await runCli(root, ['check', '--change', CHANGE, '--gate', 'structure']);
+    expect(result.code).toBe(0);
+    const codes = (result.json.diagnostics as any[]).map((item) => item.code);
+    expect(codes).not.toContain('XFORGE_ARTIFACT_MARKER_SECTION_MISSING');
+    expect(codes).not.toContain('XFORGE_CHECK_PASSED_WITH_WARNINGS');
+  });
+});

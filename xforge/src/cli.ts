@@ -76,11 +76,12 @@ interface ParsedArguments {
   justification?: string;
   by?: string;
   receiptId?: string;
+  field?: string;
 }
 
 const COMMANDS: CommandName[] = ['help', 'version', 'init', 'state', 'install', 'sync', 'update', 'uninstall', 'check', 'brief', 'verification', 'transition', 'approve', 'audit', 'work-package', 'hook', 'archive', 'doctor', 'upgrade-scaffold'];
 const VALID_KINDS = ['skills', 'agents', 'rules', 'policies', 'hooks', 'gates', 'scripts', 'flows', 'approvals', 'mcp-servers'] as const;
-const VALUE_OPTIONS = ['--root', '--change', '--kind', '--target', '--gate', '--to', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--provider', '--output', '--event', '--package', '--language', '--as', '--evidence', '--stage', '--attach-triage', '--gate-name', '--command', '--module', '--covers', '--working-directory', '--timeout-seconds', '--not-applicable', '--justification', '--by', '--receipt'] as const;
+const VALUE_OPTIONS = ['--root', '--change', '--kind', '--target', '--gate', '--to', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--provider', '--output', '--event', '--package', '--language', '--as', '--evidence', '--stage', '--attach-triage', '--gate-name', '--command', '--module', '--covers', '--working-directory', '--timeout-seconds', '--not-applicable', '--justification', '--by', '--receipt', '--field'] as const;
 
 function isValueOption(token: string): boolean {
   return VALUE_OPTIONS.includes(token as (typeof VALUE_OPTIONS)[number]);
@@ -100,6 +101,31 @@ function commandPosition(argv: string[]): string | undefined {
     if (isValueOption(token)) index += 1;
   }
   return undefined;
+}
+
+/**
+ * One value out of an Envelope's `data`, addressed by a dotted path.
+ *
+ * Array indices are plain segments (`readyTransitions.0.to`). The walk reports *where* it stopped
+ * rather than a bare miss, because the whole point is to be told when the path is wrong instead of
+ * receiving an empty string that a shell will happily assign to a variable.
+ */
+function resolveField(data: unknown, path: string): { found: true; value: unknown } | { found: false; reason: string } {
+  let current: unknown = data;
+  const walked: string[] = [];
+  for (const segment of path.split('.')) {
+    if (current === null || typeof current !== 'object') {
+      return { found: false, reason: `${walked.length ? walked.join('.') : 'data'} is ${current === null ? 'null' : typeof current}, which has no "${segment}".` };
+    }
+    const container = current as Record<string, unknown>;
+    if (!(segment in container)) {
+      const available = Object.keys(container).slice(0, 12);
+      return { found: false, reason: `${walked.length ? walked.join('.') : 'data'} has no "${segment}"${available.length ? ` (it has: ${available.join(', ')})` : ''}.` };
+    }
+    current = container[segment];
+    walked.push(segment);
+  }
+  return { found: true, value: current };
 }
 
 /** Raw value of an option, without validating anything else about the command line. */
@@ -134,7 +160,7 @@ const HELP: Record<CommandName, { usage: string; description: string; options: s
   help: { usage: 'xforge help [command] [--text]', description: 'Show general or command-specific help.', options: ['--text'] },
   version: { usage: 'xforge version [--text]', description: 'Show CLI, protocol, runtime, and build identity.', options: ['--text'] },
   init: { usage: 'xforge [--root <path>] init [--language <en|zh-CN>] [--target <target>] [--dry-run] [--text]', description: 'Initialize the bundled npm Scaffold and optionally project it into one Agent tool.', options: ['--root', '--language', '--target', '--dry-run', '--text'] },
-  state: { usage: 'xforge [--root <path>] state [--change <id>] [--kind <kind>] [--target <target>] [--text]', description: 'Read resolved project and Change state.', options: ['--root', '--change', '--kind', '--target', '--text'] },
+  state: { usage: 'xforge [--root <path>] state [--change <id>] [--kind <kind>] [--target <target>] [--text] [--field <path>]', description: 'Read resolved project and Change state. --field prints one value and nothing else, addressed as a dotted path through data (for example change.governance.revision.contentRevision, or readyTransitions.0.to). Use it instead of grepping the JSON: several governance fields repeat under every historical receipt, so a line-oriented match returns whichever came first rather than the current one.', options: ['--root', '--change', '--kind', '--target', '--text', '--field'] },
   install: { usage: 'xforge [--root <path>] install [--target <target>] [--adopt] [--dry-run] [--text]', description: 'Install or idempotently reconcile selected project assets.', options: ['--root', '--target', '--adopt', '--dry-run', '--text'] },
   sync: { usage: 'xforge [--root <path>] sync [--target <target>] [--adopt] [--dry-run] [--verify-digests] [--text]', description: 'Incrementally sync localized Scaffold changes to installed targets.', options: ['--root', '--target', '--adopt', '--dry-run', '--verify-digests', '--text'] },
   update: { usage: 'xforge [--root <path>] update [--target <target>] [--adopt] [--dry-run] [--text]', description: 'Fully reconcile installed targets, identities, and Adapter output.', options: ['--root', '--target', '--adopt', '--dry-run', '--text'] },
@@ -214,6 +240,7 @@ function parseArguments(argv: string[]): ParsedArguments {
     if (token === '--module') parsed.module = value;
     if (token === '--covers') parsed.covers = value;
     if (token === '--receipt') parsed.receiptId = value;
+    if (token === '--field') parsed.field = value;
     if (token === '--working-directory') parsed.workingDirectory = value;
     if (token === '--timeout-seconds') parsed.timeoutSeconds = value;
     if (token === '--not-applicable') parsed.notApplicable = value;
@@ -763,6 +790,31 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
     /* The plan is the whole output of a staged upgrade, and a wall of JSON is not a thing anyone
        reads before deciding what to merge. */
     render = (data: unknown) => renderUpgradeText({ data: data as Record<string, unknown>, diagnostics: [], changes: [] });
+  }
+  /*
+   * `--field` prints one value and nothing else, so `$(xforge state --field ...)` is safe.
+   *
+   * The alternative people actually used was `grep` over the JSON, and it silently returned the
+   * wrong answer: `contentRevision` appears once per historical receipt in `xforge state`, so
+   * `grep -m1` reported an old revision as the current one and a live run hand-wrote a receipt
+   * against it. A miss therefore fails loudly rather than printing an empty line — an empty
+   * capture that looks like a value is the failure mode this exists to remove.
+   */
+  if (parsed?.field && result.ok) {
+    const resolved = resolveField(result.data, parsed.field);
+    if (!resolved.found) {
+      process.stdout.write(present({
+        ...result, ok: false,
+        diagnostics: [...result.diagnostics, diagnostic(
+          'XFORGE_FIELD_NOT_FOUND',
+          `No value at --field ${parsed.field}. ${resolved.reason} Run the command without --field to see the shape of data.`,
+        )],
+      }, textMode, render));
+      return 1;
+    }
+    const value = resolved.value;
+    process.stdout.write(`${value === null || typeof value === 'object' ? JSON.stringify(value) : String(value)}\n`);
+    return 0;
   }
   process.stdout.write(present(result, textMode, render));
   return result.ok ? 0 : 1;
