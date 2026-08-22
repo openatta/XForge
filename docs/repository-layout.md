@@ -3,7 +3,7 @@
 > 一个受治理的 Change 在推进过程中会产出十几种中间文件。这份文档回答的是：
 > **每一个落在哪、归谁写、被谁读、被谁校验、以及它算不算证据。**
 >
-> 对应实现：`@xforge/cli 0.7.17`、`protocolVersion: "2"`、`xforge.dev/v1alpha2`。
+> 对应实现：`@xforge/cli 0.7.18`、`protocolVersion: "2"`、`xforge.dev/v1alpha2`。
 >
 > Protocol 2 的核心区分是：**Markdown 是人 / Agent 的规划表面，
 > YAML / JSON 资源与 CLI receipt 才是机器权威。**

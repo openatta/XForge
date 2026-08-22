@@ -17,7 +17,7 @@ Cursor, OpenCode, and GitHub Copilot without becoming another Agent runtime.
 Install an exact version in the target project:
 
 ```bash
-npm install --save-dev --save-exact @xforge/cli@0.7.17
+npm install --save-dev --save-exact @xforge/cli@0.7.18
 xforge version --text
 ```
 
@@ -42,7 +42,7 @@ tool. Source checkouts, local tarballs, Git/HTTP Scaffold distributions, and
 source-built installation are not supported.
 
 Follow the [Agent installation
-runbook](https://github.com/openatta/XForge/blob/v0.7.17/AGENT_INSTALL.md) for the
+runbook](https://github.com/openatta/XForge/blob/v0.7.18/AGENT_INSTALL.md) for the
 full npm-only procedure. Generated runtime Hooks invoke `xforge
 xforge` from the project root, resolving the exact local package without a
 network fallback.
@@ -77,10 +77,10 @@ change command semantics or exit status.
 Run `xforge help --text` for the complete command list. Project documentation
 lives in the [XForge repository](https://github.com/openatta/XForge) and is
 written in Simplified Chinese: start from the
-[documentation index](https://github.com/openatta/XForge/blob/v0.7.17/docs/index.md),
+[documentation index](https://github.com/openatta/XForge/blob/v0.7.18/docs/index.md),
 or go straight to
-[concepts and architecture](https://github.com/openatta/XForge/blob/v0.7.17/docs/concepts-and-architecture.md)
-and the [governance model](https://github.com/openatta/XForge/blob/v0.7.17/docs/governance-model.md).
+[concepts and architecture](https://github.com/openatta/XForge/blob/v0.7.18/docs/concepts-and-architecture.md)
+and the [governance model](https://github.com/openatta/XForge/blob/v0.7.18/docs/governance-model.md).
 
 ## Important boundary
 
@@ -90,5 +90,5 @@ deployment and production access.
 
 ## License
 
-Apache-2.0. See the repository [LICENSE](https://github.com/openatta/XForge/blob/v0.7.17/LICENSE)
-and [NOTICE](https://github.com/openatta/XForge/blob/v0.7.17/NOTICE).
+Apache-2.0. See the repository [LICENSE](https://github.com/openatta/XForge/blob/v0.7.18/LICENSE)
+and [NOTICE](https://github.com/openatta/XForge/blob/v0.7.18/NOTICE).
