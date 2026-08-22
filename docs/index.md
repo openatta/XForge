@@ -68,11 +68,11 @@
 
 ## 其它
 
-- [CLI 用法](internal/cli-tool-usage.md)——命令与参数
-- [产品规格](internal/XFORGE_PRODUCT_SPEC.md)
-- [测试设计](internal/TEST_DESIGN.md)
-- [发布流程](internal/RELEASING.zh-CN.md)
-- `internal/`——设计评审、审计报告、历史文档，以及本次重构前的旧文档
+- **命令与参数**：`xforge help --text`，单条命令用 `xforge help <command> --text`。
+  CLI 自带的命令列表由实现生成，比任何一份手册都更接近真实行为。
+- **发布流程**：[RELEASING.md](../RELEASING.md)（仅英文）。
 
-> `internal/` 下的文档是历史记录与内部材料，**不保证与当前实现一致**。
-> 五份核心文档以源码为准。
+产品规格、CLI 设计、测试设计、设计评审与审计报告属于内部材料，**不在本仓库发布**，
+本目录也不再保留它们的副本。这五份核心文档就是 XForge 公开文档的全部。
+
+> 五份核心文档以源码为准。发现文档与实现不一致时，以源码为准并提 issue。

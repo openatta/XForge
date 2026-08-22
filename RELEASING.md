@@ -1,5 +1,3 @@
-[简体中文](docs/RELEASING.zh-CN.md) | English
-
 # Releasing XForge
 
 This runbook releases `@xforge/cli` without storing npm credentials or personal

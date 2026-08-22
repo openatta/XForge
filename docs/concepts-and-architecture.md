@@ -2,7 +2,7 @@
 
 > 面向要在项目里使用 XForge 的程序员。这份文档讲**概念与机制**——XForge 是什么、
 > 它按什么逻辑运转、你脑子里要装哪几个模型才能顺畅地用它工作。
-> 它不是命令手册；命令与参数见 [CLI 用法](internal/cli-tool-usage.md)。
+> 它不是命令手册；命令与参数以 `xforge help --text` 为准。
 >
 > 对应实现：`@xforge/cli 0.7.17`、File Protocol 2、`xforge.dev/v1alpha2`。
 

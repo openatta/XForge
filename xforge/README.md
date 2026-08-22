@@ -74,10 +74,13 @@ change command semantics or exit status.
 - Read-only reporting: an in-flight Change portfolio via `xforge-status`, and
   `xforge-kanban` outside the Change lifecycle
 
-Run `xforge help --text` for the complete command list. Full documentation is
-available in the [XForge repository](https://github.com/openatta/XForge),
-including the [CLI guide](https://github.com/openatta/XForge/blob/v0.7.17/docs/cli-tool-usage.md)
-and [governance design](https://github.com/openatta/XForge/blob/v0.7.17/docs/governance-control-plane-design.md).
+Run `xforge help --text` for the complete command list. Project documentation
+lives in the [XForge repository](https://github.com/openatta/XForge) and is
+written in Simplified Chinese: start from the
+[documentation index](https://github.com/openatta/XForge/blob/v0.7.17/docs/index.md),
+or go straight to
+[concepts and architecture](https://github.com/openatta/XForge/blob/v0.7.17/docs/concepts-and-architecture.md)
+and the [governance model](https://github.com/openatta/XForge/blob/v0.7.17/docs/governance-model.md).
 
 ## Important boundary
 
