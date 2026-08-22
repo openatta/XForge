@@ -271,6 +271,27 @@ describe('doctor', () => {
     expect((result.json.data.unusableApprovals as any[]).map((item) => item.id)).toEqual([]);
   });
 
+  /*
+   * "Only at a terminal" is a claim about `local`, and a policy that does not declare `local` has
+   * no terminal to be reachable at. `reachable` never checked for it, so a policy backed by one
+   * unconfigured mcp provider drew both findings at once: the unusable one, which is true, and this
+   * one, which told the reader to open a real terminal for an approval `xforge approve` refuses
+   * outright with XFORGE_APPROVAL_PROVIDER_FORBIDDEN.
+   */
+  it('does not call a policy interactive-only when no terminal can satisfy it either', async () => {
+    const root = await fixture();
+    await updateYaml(root, 'xforge/flows/solid.yaml', (flow) => {
+      flow.governance.approvalPolicies.find((policy: any) => policy.id === 'planning-solid').providers = ['enterprise-approvals'];
+    });
+    const result = await runCli(root, ['doctor']);
+    expect((result.json.data.unusableApprovals as any[]).map((item) => item.id)).toContain('planning-solid');
+    const interactive = (result.json.data.suggestions as any[]).find((item) => item.code === 'XFORGE_DOCTOR_APPROVALS_INTERACTIVE_ONLY');
+    /* `closing-solid` still declares local and is still interactive-only, so the finding survives —
+       what must not survive is the policy that has no local provider at all. */
+    expect(interactive.message).toContain('solid/closing-solid');
+    expect(interactive.message).not.toContain('solid/planning-solid');
+  });
+
   it('flags a Flow Stage gates entry pointing at a non-enabled Gate', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);

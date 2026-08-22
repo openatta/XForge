@@ -20,14 +20,14 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 1. 建模当前系统、目标行为、集成点、数据与接口边界。
 2. 记录主要决策、可行替代方案及拒绝理由，覆盖失败模式、兼容性、迁移和回滚。
 3. 严格按照当前 Action 的 Design artifact `instruction` 与 outline 执行——Solid 与 Major 的深度差异（例如 Major 的 trust boundaries、风险与缓解、测试策略、rollout、monitoring、stop signals、owner 和并行边界）已经在其中表达，不要补充或省略 Action 未定义的章节。
-4. 刷新 State 并运行 `xforge check --change <id>`；只修复 Design 权限内的结构问题。若下一步需要 Approval，停止并请求人类决定；receipt 满足后才调用 typed nextAction 中的 Transition。
+4. 刷新 State 并运行 `xforge check --change <id>`；只修复 Design 权限内的结构问题，然后调用 typed nextAction 中通往 Check 的 Transition。所有随附 Flow 都不在 Design 出口收取审批——`planning-solid` 与 `implementation-major` 都改在 Check 出口收取——所以不要在这里等一份没人会发起的 receipt，也不要尝试为本 Stage 审批：`xforge approve` 会拒绝任何策略都不治理的 transition。
 
 # 证据
 
 - 存在 `xforge/architecture.md` 时读取它，并说明本 Change 对它触及的每条决策的立场——在其之内，或给出理由地偏离。当设计需要*修改*某条决策时，把提议写进你自己拥有的 Design Artifact，然后停下来等人。不要自己写 `evidence/conditions/architectureDeltas.yaml`：那条记录要填具名的 `decidedBy`，Agent 去填一个人的名字，就是在记录一份没人给过的授权——正是该账本存在要拦的东西。由人授权并调用 `xforge-architect`，它是架构文件及其账本的唯一写者。文件不存在时说明一次并继续：那是一个尚未写下架构的项目，不是一个违规的项目。
 - 每项关键决策映射到 Requirement、项目约束或代码事实，并给出可验证结果。
 - 按 Action 的 `doneWhen` 报告覆盖范围、残余风险和下一合法 Action。
-- 当本 Stage 以人类审批退出时，运行 `xforge brief --change <id> --text` 并把输出**逐字**交给用户。不得转述、重排或概括：简报把 CLI 算出的事实与原文引用分开呈现，用你自己的话复述会毁掉读者区分二者的唯一依据。
+- 若某个项目自有的 Flow 确实在 Design 出口声明了审批（随附的三个 Flow 都没有），运行 `xforge brief --change <id> --text` 并把输出**逐字**交给用户。不得转述、重排或概括：简报把 CLI 算出的事实与原文引用分开呈现，用你自己的话复述会毁掉读者区分二者的唯一依据。
 
 # 停止与返工
 

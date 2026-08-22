@@ -40,8 +40,7 @@ export async function executeWorkPackageDispatch(project: ProjectContext, option
   const resources = await loadSelectedResources(project);
   const workPackages = await resolveWorkPackages(project, options.change, resolved.config, resources);
   if (!workPackages.state) throw new XForgeError(diagnostic('XFORGE_WORK_PACKAGE_PLAN_REQUIRED', 'The Change does not contain work-packages.yaml.'));
-  resolved.state.workPackages = workPackages.state;
-  const control = await resolveControlPlane(project, options.change, resolved.flow, resolved.state, resources, resolved.config);
+  const control = await resolveControlPlane(project, options.change, resolved.flow, resolved.state, resources, resolved.config, { workPackages });
   assertTransitionChain(control);
   if (control.governance.currentStage !== 'apply') throw new XForgeError(diagnostic('XFORGE_WORK_PACKAGE_STAGE_FORBIDDEN', `Work packages may only be dispatched in apply; current Stage is ${control.governance.currentStage}.`));
   const selected = workPackages.state.packages.find((item) => item.id === options.packageId);
@@ -272,8 +271,7 @@ export async function executeWorkPackageAcknowledge(project: ProjectContext, opt
   const resources = await loadSelectedResources(project);
   const workPackages = await resolveWorkPackages(project, options.change, resolved.config, resources);
   if (!workPackages.state) throw new XForgeError(diagnostic('XFORGE_WORK_PACKAGE_PLAN_REQUIRED', 'The Change does not contain work-packages.yaml.'));
-  resolved.state.workPackages = workPackages.state;
-  const control = await resolveControlPlane(project, options.change, resolved.flow, resolved.state, resources, resolved.config);
+  const control = await resolveControlPlane(project, options.change, resolved.flow, resolved.state, resources, resolved.config, { workPackages });
   assertTransitionChain(control);
   const diagnostics = [...resolved.diagnostics, ...resources.diagnostics, ...workPackages.diagnostics, ...control.diagnostics];
   if (diagnostics.some((item) => item.severity === 'error')) throw new XForgeError(diagnostics, { root: project.root });

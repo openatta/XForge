@@ -1538,3 +1538,127 @@ describe('independentReview without a work-package plan', () => {
     expect((outside.json.diagnostics as any[]).map((item) => item.code)).toContain('XFORGE_REVIEW_ACK_EVIDENCE_SCOPE');
   });
 });
+
+/*
+ * Archive re-decides the closing Stage's exit conditions rather than trusting the receipt that
+ * claimed them, and it has to decide them against the same Change the transition did.
+ *
+ * It did not. `resolveChangeState` hard-codes `workPackages: null` and the archive path never
+ * filled it in, so `independentReview` was re-decided against an empty package list — the
+ * plan-less shape — for a Change that had delivered against a plan with every package reviewed.
+ * The Change passed `transition --to ready-to-archive`, `xforge state` reported it ready, and
+ * `xforge archive` then refused it on `condition:independentReview:review-missing` with a remedy,
+ * `xforge review acknowledge`, that refuses outright while a plan file exists. A dead end with no
+ * route out, reachable by every Major Change that used the mechanism the Flow recommends.
+ */
+describe('archive decides independentReview against the plan the Change delivered against', () => {
+  it('archives a Change whose delivered package carries a Reviewer acknowledgement', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([
+      workPackage('T001', { write_paths: ['src/order/**'] }),
+    ]));
+    /* Solid stands in for Major here: the condition is a Flow declaration, not a Flow, and the rest
+       of the Major ladder adds Stages without adding anything this decides. */
+    await updateYaml(root, 'xforge/flows/solid.yaml', (flow) => {
+      const verify = flow.stages.find((stage: any) => stage.id === 'verify');
+      verify.exit = { ...(verify.exit ?? {}), conditions: { ...(verify.exit?.conditions ?? {}), independentReview: 'complete' } };
+    });
+    await updateYaml(root, 'xforge/scaffold/gates/unit-tests.yaml', (gate) => {
+      gate.spec.command = [process.execPath, '-e', 'process.exit(0)']; delete gate.spec.builtin;
+    });
+    expect((await runCli(root, ['install'])).code).toBe(0);
+    const base = await initializeGit(root);
+    await advanceSolidToApply(root);
+
+    const dispatch = await runCli(root, ['work-package', 'dispatch', '--change', 'add-feature', '--package', 'T001'], approvalTestEnv);
+    expect(dispatch.code, JSON.stringify(dispatch.json?.diagnostics)).toBe(0);
+    const binding = dispatch.json.data.receipt;
+    await write(root, 'src/order/refund.ts', 'export const refund = true;\n');
+    await git(root, ['add', 'src/order/refund.ts']);
+    await git(root, ['commit', '-qm', 'worker T001']);
+    await write(root, `xforge/changes/add-feature/evidence/agents/T001/${binding.executionId}.yaml`, stringify({
+      execution_id: binding.executionId,
+      recorded_at: '2026-08-21T00:00:00.000Z',
+      status: 'succeeded',
+      package_id: 'T001',
+      base_commit: base,
+      head_commit: await git(root, ['rev-parse', 'HEAD']),
+      changed_paths: ['src/order/refund.ts'],
+      validation: [{ command: JSON.stringify(VERIFY_OK), exit_code: 0 }],
+      issues: [],
+      done_when_evidence: [{ criterion: 'T001 is covered by an automated check', evidence: [JSON.stringify(VERIFY_OK), 'src/order/refund.ts'] }],
+      state_revision: binding.stateRevision,
+      policy_snapshot_digest: binding.policySnapshotDigest,
+      audit_correlation_id: binding.auditCorrelationId,
+    }));
+    expect((await runCli(root, ['check', '--change', 'add-feature'], approvalTestEnv)).code).toBe(0);
+    for (const role of ['integrator', 'reviewer']) {
+      const evidence = `xforge/changes/add-feature/evidence/agents/T001/${role}.md`;
+      await write(root, evidence, `${role} pass on T001.\n`);
+      const acknowledged = await runCli(root, ['work-package', 'acknowledge', '--change', 'add-feature',
+        '--package', 'T001', '--as', role, '--evidence', evidence], approvalTestEnv);
+      expect(acknowledged.code, JSON.stringify(acknowledged.json?.diagnostics)).toBe(0);
+    }
+
+    expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'verify'], approvalTestEnv)).code).toBe(0);
+    expect((await runCli(root, ['check', '--change', 'add-feature'], approvalTestEnv)).code).toBe(0);
+    await writeVerificationReceipt(root, 'add-feature');
+    const ready = await runCli(root, ['transition', '--change', 'add-feature', '--to', 'ready-to-archive'], approvalTestEnv);
+    expect(ready.code, JSON.stringify(ready.json?.diagnostics)).toBe(0);
+    await approveCurrentRevision(root, 'add-feature', 'archive', 'closing-solid');
+
+    const archived = await runCli(root, ['archive', '--change', 'add-feature', '--dry-run'], approvalTestEnv);
+    /* The specific refusal first: a generic exit-code assertion would pass for a Change blocked on
+       something else entirely, and this is the block the fix is about. */
+    expect((archived.json.diagnostics as any[]).map((item) => item.message).filter((message) => message.includes('independentReview')))
+      .toEqual([]);
+    expect(archived.code, JSON.stringify((archived.json.diagnostics as any[]).map((item) => item.message))).toBe(0);
+  });
+});
+
+/*
+ * `resolveWorkPackages` returns no plan state for three different reasons — no file, a file that
+ * will not parse, a file that fails its schema — and callers that had to tell them apart guessed.
+ */
+describe('a work-package plan that exists but cannot be read', () => {
+  const declareReview = async (root: string): Promise<void> => {
+    await updateYaml(root, 'xforge/flows/solid.yaml', (flow) => {
+      const verify = flow.stages.find((stage: any) => stage.id === 'verify');
+      verify.exit = { ...(verify.exit ?? {}), conditions: { ...(verify.exit?.conditions ?? {}), independentReview: 'complete' } };
+    });
+    expect((await runCli(root, ['install'])).code).toBe(0);
+  };
+  /* Valid YAML syntax, invalid plan: the schema rejects it, which is the other road to `state: null`. */
+  const unreadablePlan = 'apiVersion: xforge.dev/v1alpha1\nkind: WorkPackagePlan\npackages: "not a list"\n';
+
+  it('is not reported as the permitted plan-less delivery shape', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await declareReview(root);
+    await advanceSolidToApply(root, 'add-feature');
+    await write(root, 'xforge/changes/add-feature/work-packages.yaml', unreadablePlan);
+
+    const result = await runCli(root, ['check', '--change', 'add-feature'], approvalTestEnv);
+    const codes = (result.json.diagnostics as any[]).map((item) => item.code);
+    /* The plan is reported as broken ... */
+    expect(result.code, JSON.stringify(codes)).toBe(1);
+    /* ... and not, in the same envelope, as a Change that chose to deliver without one. Both at
+       once sends the reader to arrange a Change-level review instead of to the schema error. */
+    expect(codes).not.toContain('XFORGE_WORK_PACKAGE_PLAN_ABSENT');
+  });
+
+  it('refuses a Change-level review acknowledgement rather than accepting one in its place', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await declareReview(root);
+    await advanceSolidToApply(root, 'add-feature');
+    await write(root, 'xforge/changes/add-feature/work-packages.yaml', unreadablePlan);
+    await write(root, 'xforge/changes/add-feature/evidence/review/notes.md', '# Review\n');
+
+    const refused = await runCli(root, ['review', 'acknowledge', '--change', 'add-feature',
+      '--evidence', 'xforge/changes/add-feature/evidence/review/notes.md'], approvalTestEnv);
+    expect(refused.code).toBe(1);
+    expect((refused.json.diagnostics as any[]).map((item) => item.code)).toContain('XFORGE_REVIEW_ACK_PLAN_UNREADABLE');
+  });
+});

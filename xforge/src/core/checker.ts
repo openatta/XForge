@@ -7,17 +7,24 @@ import { stableStringify } from './hash.js';
 import { normalizeRelative } from './path-safety.js';
 import { loadSelectedResources, type SelectedResources } from './resource-loader.js';
 import { resolveChangeState } from './flow-resolver.js';
-import { resolveWorkPackages } from './work-packages.js';
+import { resolveWorkPackages, type WorkPackageResolution } from './work-packages.js';
 import { normalizeRule } from './governance.js';
 import { loadTransitionReceipts } from './control-plane.js';
 import { validateChangeSpecDeltas } from './spec-delta.js';
 import { validateArtifactMarkers } from './artifact-markers.js';
-import { flowSkillConformanceDiagnostics } from './flow-skill-conformance.js';
 
 export interface StructureResult {
   diagnostics: Diagnostic[];
   resources: SelectedResources;
   change: ChangeState | null;
+  /**
+   * The work-package resolution for the selected Change, or `null` when no Change was selected.
+   *
+   * Carried so callers that go on to resolve a control plane hand this over rather than resolving
+   * the plan a second time — and so they cannot mistake `change.workPackages === null` for "this
+   * Change has no plan" when it may mean the plan did not parse.
+   */
+  workPackages: WorkPackageResolution | null;
 }
 
 const IMPACT_KEYS = ['security', 'privacy', 'publicApi', 'dataMigration'] as const;
@@ -151,7 +158,6 @@ export async function checkStructure(project: ProjectContext, changeId?: string)
           diagnostics.push(diagnostic('XFORGE_FLOW_SKILL_MISSING', `Flow ${flow.metadata.name} Stage ${stage.id} references missing Skill ${stage.skill}.`, `xforge/flows/${flow.metadata.name}.yaml`));
         }
       }
-      diagnostics.push(...await flowSkillConformanceDiagnostics(flow, resources));
       if (!project.manifest.scaffold.skills.includes(flow.terminal.archive.handler)) {
         diagnostics.push(diagnostic('XFORGE_FLOW_SKILL_DISABLED', `Flow ${flow.metadata.name} archive handler is not enabled: ${flow.terminal.archive.handler}.`, `xforge/flows/${flow.metadata.name}.yaml`));
       } else if (!resources.skills.has(flow.terminal.archive.handler)) {
@@ -196,6 +202,7 @@ export async function checkStructure(project: ProjectContext, changeId?: string)
   }
 
   let change: ChangeState | null = null;
+  let workPackages: WorkPackageResolution | null = null;
   if (changeId) {
     const resolved = await resolveChangeState(project, changeId, flowResult.flows);
     diagnostics.push(...resolved.diagnostics);
@@ -230,13 +237,17 @@ export async function checkStructure(project: ProjectContext, changeId?: string)
       reachedImplementation = implementing >= 0 && (current >= implementing || currentStage === 'ready-to-archive');
       reviewedFlow = resolved.flow;
     }
-    const workPackages = await resolveWorkPackages(project, changeId, resolved.config, resources, { requireDeliveries });
+    workPackages = await resolveWorkPackages(project, changeId, resolved.config, resources, { requireDeliveries });
     diagnostics.push(...workPackages.diagnostics);
     change.workPackages = workPackages.state;
-    if (reviewedFlow && reachedImplementation && !workPackages.state) {
+    /* `absent`, not `!state`: a plan that fails to parse also resolves to no state, and telling a
+       Change with a broken plan that it "is delivering without work-packages.yaml, which is a
+       permitted shape" sends its author to arrange a Change-level review instead of to the YAML
+       error reported alongside. The plan-less shape is a choice; an unreadable plan is a fault. */
+    if (reviewedFlow && reachedImplementation && workPackages.status === 'absent') {
       diagnostics.push(...workPackageDegradation(reviewedFlow, changeId, project.changesPath));
     }
   }
 
-  return { diagnostics, resources, change };
+  return { diagnostics, resources, change, workPackages };
 }

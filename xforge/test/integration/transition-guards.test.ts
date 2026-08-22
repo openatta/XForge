@@ -389,6 +389,37 @@ describe('recovering from ready-to-archive', () => {
     expect(remedy.message).toContain('the approval it already has');
   });
 
+  /*
+   * And the third case, which the message used to deny existed.
+   *
+   * A policy move and an Artifact edit are not exclusive — the policy snapshot is an *input* to the
+   * content revision, not an alternative to it — so an operator who edits an Artifact and completes
+   * an `upgrade-scaffold` produces both. The message asserted "not because this Change was edited"
+   * on the strength of one comparison it had not made, and promised that putting the resource back
+   * would close the Change on the approval it already had. Following that leaves the block exactly
+   * where it was, with nothing to explain why.
+   */
+  it('says both when both moved, rather than asserting the cause it did not check', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await advanceSolidToReadyToArchive(root);
+
+    await updateYaml(root, 'xforge/scaffold/rules/prefer-small-explicit-contracts.yaml', (rule) => {
+      rule.spec.instruction = `${rule.spec.instruction} An extra sentence that changes the policy snapshot.`;
+    });
+    expect((await runCli(root, ['install'])).code).toBe(0);
+    await write(root, `xforge/changes/${CHANGE}/assurance.md`, '# Assurance\n\nEdited after the closing transition.\n');
+
+    const blocked = await runCli(root, ['archive', '--change', CHANGE, '--dry-run']);
+    expect(blocked.code).toBe(1);
+    const remedy = (blocked.json.diagnostics as any[]).find((item) => item.code === 'XFORGE_READY_RECEIPT_STALE_REMEDY');
+    expect(remedy, JSON.stringify((blocked.json.diagnostics as any[]).map((item) => item.code))).toBeTruthy();
+    expect(remedy.message).toContain('stale on both counts');
+    /* Neither single-cause promise may survive here: undoing either one alone leaves the block. */
+    expect(remedy.message).not.toContain('not because this Change was edited');
+    expect(remedy.message).toContain('Undoing either one alone leaves the block in place.');
+  });
+
   /* Newly reachable from the CLI, so its dry run is verified through that path rather than assumed
      from the function's shape: a repair that mutated on --dry-run would discard governance history
      the operator was only asking about. */

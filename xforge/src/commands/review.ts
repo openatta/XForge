@@ -58,6 +58,20 @@ export async function executeReviewAcknowledge(project: ProjectContext, options:
   }
   const resources = await loadSelectedResources(project);
   const workPackages = await resolveWorkPackages(project, options.change, resolved.config, resources);
+  /* A plan that exists but does not parse refuses here too. It is still a Change whose reviews are
+     recorded per package; accepting a Change-level acknowledgement because the file happened to be
+     broken would record the one thing the plan exists to prevent, and the fix is the parse error
+     the resolution already reported. */
+  if (workPackages.status === 'unusable') {
+    throw new XForgeError([
+      ...workPackages.diagnostics,
+      diagnostic(
+        'XFORGE_REVIEW_ACK_PLAN_UNREADABLE',
+        `This Change has a work-packages.yaml that cannot be read, so whether its reviews belong per package cannot be decided. Fix the plan file, then record reviews with \`xforge work-package acknowledge\`.`,
+        `${project.changesPath}/${options.change}/work-packages.yaml`,
+      ),
+    ], { root: project.root });
+  }
   if (workPackages.state && workPackages.state.packages.length > 0) {
     throw new XForgeError(diagnostic(
       'XFORGE_REVIEW_ACK_PLAN_PRESENT',
@@ -65,8 +79,7 @@ export async function executeReviewAcknowledge(project: ProjectContext, options:
       `${project.changesPath}/${options.change}/work-packages.yaml`,
     ));
   }
-  resolved.state.workPackages = workPackages.state;
-  const control = await resolveControlPlane(project, options.change, resolved.flow, resolved.state, resources, resolved.config);
+  const control = await resolveControlPlane(project, options.change, resolved.flow, resolved.state, resources, resolved.config, { workPackages });
   const diagnostics = [...resolved.diagnostics, ...resources.diagnostics, ...workPackages.diagnostics, ...control.diagnostics];
   if (diagnostics.some((item) => item.severity === 'error')) throw new XForgeError(diagnostics, { root: project.root });
 

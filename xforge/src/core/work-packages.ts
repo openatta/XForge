@@ -993,16 +993,37 @@ export interface ResolveWorkPackagesOptions {
   requireDeliveries?: boolean;
 }
 
+/**
+ * The outcome of asking a Change for its work-package plan, with the reason no plan came back.
+ *
+ * `state: null` used to carry three different facts at once — the Change has no plan, the plan is
+ * there but unreadable, and nobody resolved the plan at all — and every consumer that had to tell
+ * them apart guessed. Two defects came out of that single conflation: `checker` told a Change whose
+ * YAML failed to parse that it was "delivering without work-packages.yaml, which is a permitted
+ * shape", and the archive path judged `independentReview` against a plan it had never loaded and
+ * refused every Major Change that used one. Naming the reason is what makes both undecidable
+ * questions decidable.
+ *
+ * `unresolved` is not a member: a value of this type only exists because someone resolved. That
+ * case is expressed by the absence of the value, which the type system can see.
+ */
+export interface WorkPackageResolution {
+  /** `absent`: no plan file. `unusable`: a plan that failed to parse or validate. `resolved`: a plan. */
+  status: 'absent' | 'unusable' | 'resolved';
+  state: WorkPackagePlanState | null;
+  diagnostics: Diagnostic[];
+}
+
 export async function resolveWorkPackages(
   project: ProjectContext,
   changeId: string,
   config: ChangeConfig,
   resources: SelectedResources,
   options: ResolveWorkPackagesOptions = {},
-): Promise<{ state: WorkPackagePlanState | null; diagnostics: Diagnostic[] }> {
+): Promise<WorkPackageResolution> {
   const planPath = `${project.changesPath}/${changeId}/work-packages.yaml`;
   const absolutePlanPath = await safeResolve(project.root, planPath);
-  if (!await exists(absolutePlanPath)) return { state: null, diagnostics: [] };
+  if (!await exists(absolutePlanPath)) return { status: 'absent', state: null, diagnostics: [] };
 
   let plan: WorkPackagePlan;
   try {
@@ -1010,10 +1031,10 @@ export async function resolveWorkPackages(
   } catch (error) {
     const diagnostics: Diagnostic[] = [];
     appendErrorDiagnostics(diagnostics, error);
-    return { state: null, diagnostics };
+    return { status: 'unusable', state: null, diagnostics };
   }
   const diagnostics = await validateSchema('work-package', plan, planPath);
-  if (diagnostics.some((item) => item.severity === 'error')) return { state: null, diagnostics };
+  if (diagnostics.some((item) => item.severity === 'error')) return { status: 'unusable', state: null, diagnostics };
 
   const ids = plan.packages.map((item) => item.id);
   const uniqueIds = new Set(ids);
@@ -1373,6 +1394,7 @@ export async function resolveWorkPackages(
   }
 
   return {
+    status: 'resolved',
     state: {
       path: planPath,
       baseCommit,

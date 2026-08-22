@@ -53,6 +53,45 @@ function governingArtifactPaths(flow: StageFlow, state: ChangeState, stageId: st
   return paths;
 }
 
+/**
+ * The paths whose bytes a Change's content revision stands for: its config, its Flow, its Artifacts.
+ */
+async function contentInputPaths(project: ProjectContext, changeId: string, flow: StageFlow, state: ChangeState): Promise<Set<string>> {
+  const changeRoot = `${project.changesPath}/${changeId}`;
+  const paths = new Set<string>([`${changeRoot}/change.yaml`, `xforge/flows/${flow.metadata.name}.yaml`]);
+  for (const artifact of state.artifacts) for (const output of artifact.outputPaths) paths.add(`${changeRoot}/${output}`);
+  return paths;
+}
+
+/** The content revision formula, in one place, so nothing can compute it two ways. */
+function contentRevisionOf(changeId: string, flowName: string, inputs: Array<{ path: string; digest: string }>, policySnapshotDigest: string): string {
+  return sha256(stableStringify({ change: changeId, flow: flowName, inputs, policySnapshotDigest }));
+}
+
+/**
+ * The content revision this Change would have if the policy snapshot were `policySnapshotDigest`.
+ *
+ * Answers the one question a stale closing receipt cannot answer for itself: the policy snapshot is
+ * an input to the content revision, so a receipt whose `contentRevision` no longer matches may have
+ * gone stale because a Rule moved, because an Artifact was edited, or because both happened. Re-run
+ * the formula over today's bytes with the receipt's own policy digest: matching the receipt proves
+ * the Artifacts are untouched and the policy alone moved. Anything else means the Artifacts moved
+ * too, and the remedy that says "put the governing resource back" would leave the block in place.
+ *
+ * Deliberately not a stored field. Nothing new is written to a receipt, nothing existing is
+ * restated, and the answer is available for receipts that were signed long before this existed.
+ */
+export async function contentRevisionUnderPolicy(
+  project: ProjectContext,
+  changeId: string,
+  flow: StageFlow,
+  state: ChangeState,
+  policySnapshotDigest: string,
+): Promise<string> {
+  const inputs = await digestPaths(project, await contentInputPaths(project, changeId, flow, state));
+  return contentRevisionOf(changeId, flow.metadata.name, inputs, policySnapshotDigest);
+}
+
 export async function computeGovernanceRevision(
   project: ProjectContext,
   changeId: string,
@@ -64,9 +103,7 @@ export async function computeGovernanceRevision(
 ): Promise<GovernanceRevision> {
   const changeRoot = `${project.changesPath}/${changeId}`;
   const flowPath = `xforge/flows/${flow.metadata.name}.yaml`;
-  const governingPaths = new Set<string>([`${changeRoot}/change.yaml`, flowPath]);
-  for (const artifact of state.artifacts) for (const output of artifact.outputPaths) governingPaths.add(`${changeRoot}/${output}`);
-  const inputs = await digestPaths(project, governingPaths);
+  const inputs = await digestPaths(project, await contentInputPaths(project, changeId, flow, state));
 
   const policySnapshotDigest = sha256(stableStringify({
     constitution: { version: project.constitution.version, digest: sha256(project.constitution.content) },
@@ -82,7 +119,7 @@ export async function computeGovernanceRevision(
    * -- including committing the Evidence a Gate had just produced -- invalidated every Gate result
    * and every Approval for the Change, which is incompatible with a Git-native workflow.
    */
-  const contentRevision = sha256(stableStringify({ change: changeId, flow: flow.metadata.name, inputs, policySnapshotDigest }));
+  const contentRevision = contentRevisionOf(changeId, flow.metadata.name, inputs, policySnapshotDigest);
   const stateRevision = sha256(stableStringify({ contentRevision, currentStage, transitionHead }));
 
   const governingInputs = await digestPaths(project, new Set<string>([

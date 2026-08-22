@@ -5,6 +5,7 @@ import { checkStructure } from '../core/checker.js';
 import { diagnostic } from '../core/errors.js';
 import { assertManaged } from '../core/project-loader.js';
 import { flowArchiveOperation, isStageFlow, loadFlows } from '../core/flow-resolver.js';
+import { flowSkillConformanceDiagnostics } from '../core/flow-skill-conformance.js';
 import { normalizeRule } from '../core/governance.js';
 import { safeResolve } from '../core/path-safety.js';
 import { loadYaml } from '../core/yaml.js';
@@ -25,12 +26,21 @@ export interface DoctorFinding {
 
 export interface DoctorData {
   kind: DoctorKind | 'all';
-  summary: { dangling: number; deadCode: number; uncited: number; unusedFlows: number; unusableApprovals: number; suggestions: number };
+  summary: { dangling: number; deadCode: number; uncited: number; unusedFlows: number; unusableApprovals: number; conformance: number; suggestions: number };
   danglingReferences: DoctorFinding[];
   deadCode: DoctorFinding[];
   uncited: DoctorFinding[];
   unusedFlows: DoctorFinding[];
   unusableApprovals: DoctorFinding[];
+  /**
+   * Stages whose Skill does not cover what the Stage requires of it.
+   *
+   * Its own list rather than a dangling reference, because every reference here *resolves*: the
+   * Flow names a Skill that exists and is enabled. What fails is narrower and invisible to every
+   * other check — the Skill an Agent will be holding at that Stage never mentions the file it must
+   * write, the command that clears its Gate, or the condition that holds its door shut.
+   */
+  conformance: DoctorFinding[];
   /**
    * Things a project could have and does not, reported as `info`.
    *
@@ -255,6 +265,24 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
    * XFORGE_POLICY_STATIC_LAYER_DEGRADED above, which is excluded for precisely this reason. An
    * unused Flow is only evidence of anything once Changes exist and still none of them chose it.
    */
+  /*
+   * Flow/Skill conformance, over the Flows this project actually runs.
+   *
+   * `usedFlows` and not every Flow in the project, for the reason spelled out just above: three
+   * Flows ship, and a finding about a Flow nobody has chosen is not something anybody is going to
+   * act on. Unlike the unused-Flow check this is not gated on `changeDirectories.length`, because
+   * the Manifest default is always in `usedFlows` — a project with nothing in flight still has one
+   * Flow it is about to run, and a Skill that cannot clear that Flow's Stages is worth knowing
+   * before the first Change rather than after.
+   */
+  const conformance: DoctorFinding[] = [];
+  for (const [name, flow] of flowResult.flows) {
+    if (!usedFlows.has(name) || !isStageFlow(flow)) continue;
+    for (const item of await flowSkillConformanceDiagnostics(flow, structure.resources)) {
+      conformance.push({ scope: 'skills', code: item.code, message: item.message, path: item.path });
+    }
+  }
+
   if (changeDirectories.length > 0) for (const name of flowResult.flows.keys()) {
     if (!usedFlows.has(name)) unusedFlows.push({
       scope: 'flows',
@@ -352,8 +380,17 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
   for (const [name, flow] of flowResult.flows) {
     if (!usedFlows.has(name) || !isStageFlow(flow)) continue;
     for (const policy of flow.governance?.approvalPolicies ?? []) {
-      const reachable = policy.providers.some((providerId) => providerId !== 'local' && providerUsability(providerId).usable);
-      if (!reachable) interactiveOnly.push(`${name}/${policy.id}`);
+      if (policy.providers.some((providerId) => providerId !== 'local' && providerUsability(providerId).usable)) continue;
+      /*
+       * "Only at a terminal" is a claim about `local`, so a policy that does not declare `local` is
+       * not this finding. It is the stronger one — XFORGE_DOCTOR_APPROVAL_POLICY_UNUSABLE, already
+       * raised above for the same policy, since no provider it declares is usable either. Reporting
+       * both told the reader to open a real terminal for an approval that `xforge approve` refuses
+       * outright with XFORGE_APPROVAL_PROVIDER_FORBIDDEN: two findings, one of them false, about
+       * one policy.
+       */
+      if (!policy.providers.includes('local')) continue;
+      interactiveOnly.push(`${name}/${policy.id}`);
     }
   }
   if (interactiveOnly.length > 0) {
@@ -370,12 +407,13 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
   const matchesKind = (finding: DoctorFinding): boolean => !options.kind || finding.scope === options.kind;
   const filtered: DoctorData = {
     kind: options.kind ?? 'all',
-    summary: { dangling: 0, deadCode: 0, uncited: 0, unusedFlows: 0, unusableApprovals: 0, suggestions: 0 },
+    summary: { dangling: 0, deadCode: 0, uncited: 0, unusedFlows: 0, unusableApprovals: 0, conformance: 0, suggestions: 0 },
     danglingReferences: danglingReferences.filter(matchesKind),
     deadCode: deadCode.filter(matchesKind),
     uncited: uncited.filter(matchesKind),
     unusedFlows: unusedFlows.filter(matchesKind),
     unusableApprovals: unusableApprovals.filter(matchesKind),
+    conformance: conformance.filter(matchesKind),
     suggestions: suggestions.filter(matchesKind),
   };
   filtered.summary = {
@@ -384,10 +422,11 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
     uncited: filtered.uncited.length,
     unusedFlows: filtered.unusedFlows.length,
     unusableApprovals: filtered.unusableApprovals.length,
+    conformance: filtered.conformance.length,
     suggestions: filtered.suggestions.length,
   };
 
-  for (const finding of [...filtered.danglingReferences, ...filtered.deadCode, ...filtered.uncited, ...filtered.unusedFlows, ...filtered.unusableApprovals]) {
+  for (const finding of [...filtered.danglingReferences, ...filtered.deadCode, ...filtered.uncited, ...filtered.unusedFlows, ...filtered.unusableApprovals, ...filtered.conformance]) {
     diagnostics.push(diagnostic(finding.code, finding.message, finding.path, 'warning'));
   }
   /* Suggestions never reach `hasFindings`, so `--strict` stays a statement about what is broken. */
@@ -395,7 +434,7 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
     diagnostics.push(diagnostic(finding.code, finding.message, finding.path, 'info'));
   }
 
-  const hasFindings = filtered.summary.dangling + filtered.summary.deadCode + filtered.summary.uncited + filtered.summary.unusedFlows + filtered.summary.unusableApprovals > 0;
+  const hasFindings = filtered.summary.dangling + filtered.summary.deadCode + filtered.summary.uncited + filtered.summary.unusedFlows + filtered.summary.unusableApprovals + filtered.summary.conformance > 0;
   if (options.strict && hasFindings) {
     diagnostics.push(diagnostic('XFORGE_DOCTOR_STRICT', 'doctor found issues and --strict is set.', undefined, 'error'));
   }

@@ -410,8 +410,7 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
   if (options.change && structure.change?.workPackages && !diagnostics.some((item) => item.severity === 'error')) {
     const resolved = await resolveChangeState(project, options.change);
     if (isStageFlow(resolved.flow) && resolved.flow.governance) {
-      resolved.state.workPackages = structure.change.workPackages;
-      const control = await resolveControlPlane(project, options.change, resolved.flow, resolved.state, structure.resources, resolved.config);
+      const control = await resolveControlPlane(project, options.change, resolved.flow, resolved.state, structure.resources, resolved.config, { workPackages: structure.workPackages ?? undefined });
       const existing = await readAuditEvents(project);
       for (const item of structure.change.workPackages.packages.filter((candidate) => ['succeeded', 'integrated', 'reviewed'].includes(candidate.status) && candidate.delivery)) {
         const delivery = item.delivery!;
@@ -444,7 +443,22 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
    * `structurePassed` means would rewrite every Evidence digest in every project to say something
    * no Gate's verdict actually changed.
    */
-  const advisories = diagnostics.filter((item) => item.severity === 'warning');
+  /*
+   * The warnings this Change's author can actually act on: the ones located inside the Change.
+   *
+   * Every warning in the run used to count, and the run carries project-level ones — a stale lock,
+   * a Rule whose enforcement this Flow cannot apply, a Flow with no governance block. None of those
+   * belong to the Change, none can be fixed "here", and the sentence below points the reader at the
+   * Change directory to fix them. Padding a signal with findings its reader cannot act on is how
+   * the signal stops being read, which is the exact failure this notice exists to prevent.
+   *
+   * Located by path rather than by a list of codes, so nothing has to be kept in sync: a warning
+   * about this Change is a warning about a file inside it. A warning with no path at all is
+   * project-level by construction — there is no Change file for it to be about.
+   */
+  const changeRoot = options.change ? `${project.changesPath}/${options.change}/` : null;
+  const advisories = diagnostics.filter((item) => item.severity === 'warning'
+    && changeRoot !== null && item.path !== undefined && item.path.startsWith(changeRoot));
   /*
    * Only when the run is otherwise green, and only for a Change.
    *

@@ -27,8 +27,9 @@ inside the plan is project-relative, exactly as `xforge state` prints it —
 
 Run `xforge state --change task-ledger` at the end and read its diagnostics.
 It must come back with no `error` diagnostic; if it reports one against
-anything you wrote, fix that file and run it again until it is clean. Stop with the planning
-Approval still pending — do not attempt to approve or transition past Design
-yourself. Do not commit. In your final response report files changed,
+anything you wrote, fix that file and run it again until it is clean. Solid no longer
+has an Approval gate at Design itself — `planning-solid` is collected at the
+Check exit — so once the CLI reports the transition ready, transition into
+Check. Confirm the current Stage is Check. Do not commit. In your final response report files changed,
 commands run, current Stage, blockers, and no claim unsupported by CLI
 output.

@@ -275,6 +275,30 @@ describe('a passing Gate does not mean a clean check', () => {
     expect(codes).toContain('XFORGE_CHECK_PASSED_WITH_WARNINGS');
   });
 
+  /*
+   * Counted every warning in the run, and the run carries project-level ones the Change cannot
+   * touch: a stale lock, a Rule this Flow cannot enforce, a Skill that does not cover its Stage.
+   * The notice names a count, lists the codes and points at the Change directory, so those arrived
+   * as "N things to fix here" that no Change author can fix anywhere — which is the signal erosion
+   * the notice exists to prevent, produced by the notice itself.
+   */
+  it('counts only the warnings that belong to the Change', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await setMarkers(root, []);
+    /* A project-level warning and nothing else, and one about a Flow this Change does not even run:
+       `quick` left without a governance block. Its path is the Flow file, which is the point — the
+       notice locates what it counts inside the Change. */
+    await updateYaml(root, 'xforge/flows/quick.yaml', (flow) => { delete flow.governance; });
+    expect((await runCli(root, ['install'])).code).toBe(0);
+
+    const result = await runCli(root, ['check', '--change', CHANGE, '--gate', 'structure']);
+    const codes = (result.json.diagnostics as any[]).map((item) => item.code);
+    expect(result.code, JSON.stringify(codes)).toBe(0);
+    expect(codes, JSON.stringify(codes)).toContain('XFORGE_FLOW_GOVERNANCE_MISSING');
+    expect(codes).not.toContain('XFORGE_CHECK_PASSED_WITH_WARNINGS');
+  });
+
   it('stays quiet on a clean run, so the notice keeps meaning something', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);

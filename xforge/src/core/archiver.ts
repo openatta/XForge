@@ -10,6 +10,7 @@ import { assertManaged } from './project-loader.js';
 import { safeResolve } from './path-safety.js';
 import { planSpecMutations, type SpecMutation } from './spec-merger.js';
 import { isStageFlow, resolveChangeState } from './flow-resolver.js';
+import { contentRevisionUnderPolicy } from './revision.js';
 import { loadSelectedResources, type SelectedResources } from './resource-loader.js';
 import { blockRemedy, resolveControlPlane, terminalGovernanceBlocks } from './control-plane.js';
 import { readChangeAuditEvents, recordAudit, type ChangeAuditFacts } from './audit.js';
@@ -126,7 +127,10 @@ export async function planArchive(project: ProjectContext, changeId: string, opt
     const resolved = await resolveChangeState(project, changeId);
     if (isStageFlow(resolved.flow) && resolved.flow.governance) {
       const resources = await loadSelectedResources(project);
-      const control = await resolveControlPlane(project, changeId, resolved.flow, resolved.state, resources, resolved.config);
+      /* The plan `checkStructure` already resolved above, handed over rather than read again. It is
+         also what stops archive re-deciding `independentReview` against an empty package list: the
+         resolve fills it in either way now, and passing it keeps this path to one read. */
+      const control = await resolveControlPlane(project, changeId, resolved.flow, resolved.state, resources, resolved.config, { workPackages: structure.workPackages ?? undefined });
       diagnostics.push(...control.diagnostics);
       const governanceBlocks = await terminalGovernanceBlocks(project, control, { auditFacts: options.auditFacts });
       for (const block of governanceBlocks) diagnostics.push(diagnostic('XFORGE_ARCHIVE_GOVERNANCE_BLOCKED', `Archive governance is blocked by ${block}.`, `${project.changesPath}/${changeId}`));
@@ -135,16 +139,25 @@ export async function planArchive(project: ProjectContext, changeId: string, opt
          — one per historical receipt — so telling the reader to "find it" is how the wrong one
          gets picked. A live run did exactly that with `grep -m1`. */
       const ready = control.governance.transitions.at(-1);
+      const readyReceipt = ready && ready.to === 'ready-to-archive'
+        ? {
+          receiptId: ready.receiptId, from: ready.from,
+          contentRevision: ready.contentRevision, policySnapshotDigest: ready.policySnapshotDigest,
+        }
+        : undefined;
+      /* Asked only where the answer is used: the remedy distinguishes a policy move from an Artifact
+         edit, and the two can have happened together. Re-running the content formula under the
+         receipt's own policy digest is the only way to tell, and it costs one extra pass over the
+         Change's Artifact bytes on a path that is already reading them. */
+      const artifactsMoved = readyReceipt
+        ? await contentRevisionUnderPolicy(project, changeId, resolved.flow, control.state, readyReceipt.policySnapshotDigest) !== readyReceipt.contentRevision
+        : false;
       const remedy = blockRemedy(governanceBlocks, changeId, {
-        readyReceipt: ready && ready.to === 'ready-to-archive'
-          ? {
-            receiptId: ready.receiptId, from: ready.from,
-            contentRevision: ready.contentRevision, policySnapshotDigest: ready.policySnapshotDigest,
-          }
-          : undefined,
+        readyReceipt,
         current: {
           contentRevision: control.governance.revision.contentRevision,
           policySnapshotDigest: control.governance.revision.policySnapshotDigest,
+          artifactsMoved,
         },
       });
       if (remedy) diagnostics.push(diagnostic(remedy.code, remedy.message, `${project.changesPath}/${changeId}`, 'info'));

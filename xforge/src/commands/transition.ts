@@ -106,8 +106,7 @@ export async function executeTransition(project: ProjectContext, options: { chan
   );
   const resources = await loadSelectedResources(project);
   const workPackages = await resolveWorkPackages(project, options.change, resolved.config, resources);
-  resolved.state.workPackages = workPackages.state;
-  const control = await resolveControlPlane(project, options.change, resolved.flow, resolved.state, resources, resolved.config);
+  const control = await resolveControlPlane(project, options.change, resolved.flow, resolved.state, resources, resolved.config, { workPackages });
   const requirement = control.transitionRequirements.get(options.to);
   if (!requirement) {
     throw new XForgeError([

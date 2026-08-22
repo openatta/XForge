@@ -75,11 +75,20 @@ function suiteOf(relative) {
   return relative.startsWith('xforge/test/') ? 'cli' : 'product';
 }
 
+/**
+ * Runs the proof and returns the process exit code.
+ *
+ * Nothing below may call `process.exit`. It does not unwind the stack, so a `finally` never runs
+ * and the throwaway worktree survives -- registered in `.git/worktrees`, where it then breaks the
+ * next `git worktree` command anyone runs. That was the bug: all three exits sat inside the `try`,
+ * so the cleanup was dead code and `--keep` never printed. The exit hook below is the backstop for
+ * a future exit added anyway; this contract is what keeps the normal path readable.
+ */
 function main() {
   const parsed = options(process.argv.slice(2));
   if (parsed.help) {
     console.log('Usage: node scripts/red-first.mjs [--base <ref>] [--keep]');
-    process.exit(0);
+    return 0;
   }
 
   const baseSha = git(['rev-parse', parsed.base]);
@@ -87,7 +96,7 @@ function main() {
   if (tests.length === 0) {
     console.error(`No added or modified test files against ${parsed.base} (${baseSha.slice(0, 8)}).`);
     console.error('A fix ships with a test that fails without it. There is nothing here to prove.');
-    process.exit(2);
+    return 2;
   }
 
   console.log(`Base: ${parsed.base} (${baseSha.slice(0, 8)})`);
@@ -97,6 +106,17 @@ function main() {
   const worktree = mkdtempSync(path.join(tmpdir(), 'xforge-red-first-'));
   rmSync(worktree, { recursive: true, force: true });
   let added = false;
+  let cleaned = false;
+  /* Idempotent so the `finally` and the exit hook can both call it; whichever runs first wins. */
+  const cleanup = () => {
+    if (cleaned || !added || parsed.keep) return;
+    cleaned = true;
+    try { git(['worktree', 'remove', worktree, '--force']); } catch { rmSync(worktree, { recursive: true, force: true }); }
+  };
+  /* Fires on paths a `finally` cannot see: a `process.exit` someone adds later, and an uncaught
+     throw. Silent on purpose -- stdout writes from an exit hook are not reliably flushed when
+     stdout is a pipe, and a lost line is worse than no line. The readable reporting stays below. */
+  process.on('exit', cleanup);
   try {
     git(['worktree', 'add', '--detach', worktree, baseSha]);
     added = true;
@@ -124,7 +144,7 @@ function main() {
     if (built.status !== 0) {
       console.error('The base failed to build, so nothing can be proved against it.');
       console.error((built.stderr || built.stdout || '').split('\n').slice(-25).join('\n'));
-      process.exit(2);
+      return 2;
     }
 
     /*
@@ -169,14 +189,11 @@ function main() {
       console.log('written around the bug.');
       console.log('Add an assertion that fails on the base, or drop the file from the change.');
     }
-    process.exit(green.length === 0 ? 0 : 1);
+    return green.length === 0 ? 0 : 1;
   } finally {
-    if (added && !parsed.keep) {
-      try { git(['worktree', 'remove', worktree, '--force']); } catch { rmSync(worktree, { recursive: true, force: true }); }
-    } else if (added) {
-      console.log(`\nWorktree kept at ${worktree}`);
-    }
+    cleanup();
+    if (added && parsed.keep) console.log(`\nWorktree kept at ${worktree}`);
   }
 }
 
-main();
+process.exitCode = main();

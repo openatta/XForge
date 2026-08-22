@@ -25,6 +25,15 @@ import type { SelectedResources } from './resource-loader.js';
  * on a fact with no legitimate reading — not on a heuristic about whether prose "covers" a topic —
  * because a check that guesses produces the permanent unactionable warning this codebase refuses
  * to ship elsewhere, and a warning nobody can act on teaches people to ignore the ones they can.
+ *
+ * Reported by `doctor`, over the Flows a project actually uses, and not by `check`. That placement
+ * is part of the same principle. This compares a Flow against a Skill: both are project
+ * configuration, neither belongs to the Change being checked, and the fix for a shipped Skill is
+ * `xforge upgrade-scaffold` — nothing a Change author can do. Run from `check` over every Flow in
+ * the project, it put warnings no reader could act on into every command of every project that
+ * took a new CLI without upgrading its Scaffold, including warnings about Flows that project never
+ * runs. `doctor` is where a project asks about its own configuration, and `usedFlows` is the same
+ * scope its unused-Flow and approval-reachability findings already use.
  */
 
 /** Locale variants of one Skill, as `resource-loader` stores its directory. */
@@ -36,6 +45,18 @@ async function skillVariants(directory: string): Promise<Array<{ name: string; t
   }
   return variants;
 }
+
+/**
+ * Where the edit goes, said without claiming to know which kind of Skill this is.
+ *
+ * Every selected Skill lives under `xforge/scaffold/skills/<id>` whatever its origin, so nothing
+ * here can tell a shipped Skill from one the project wrote — and the two have different fixes. A
+ * shipped Skill is replaced wholesale by `upgrade-scaffold`, so editing it in place is undone by
+ * the next upgrade; a project's own Skill is the project's to edit. Saying only "name it in the
+ * Skill", which is what these messages used to say, is right for the second and quietly wrong for
+ * the first. Naming both routes costs a clause and guesses nothing.
+ */
+const SKILL_FIX_ROUTE = 'Edit it there if the Skill is this project\'s own; if it ships with XForge, take the upstream fix with `xforge upgrade-scaffold` rather than editing a file the next upgrade replaces.';
 
 /** The variants that do not mention `needle`, by filename, for a message that names them. */
 function silentIn(variants: Array<{ name: string; text: string }>, needle: string): string[] {
@@ -79,7 +100,7 @@ export async function flowSkillConformanceDiagnostics(
       if (silent.length === 0) continue;
       diagnostics.push(diagnostic(
         'XFORGE_FLOW_SKILL_ARTIFACT_UNNAMED',
-        `${where}, and the Stage produces Artifact ${artifactId} at ${output}, which ${silent.join(' and ')} never names. That path is under evidence/, which every Skill is told not to hand-write, so an Agent reading only the Skill has been told the opposite of what the Stage requires. Name the file in the Skill's Authority and say there, as xforge-check does for its own ledgers, that it is an Agent-authored Artifact rather than Gate Evidence.`,
+        `${where}, and the Stage produces Artifact ${artifactId} at ${output}, which ${silent.join(' and ')} never names. That path is under evidence/, which every Skill is told not to hand-write, so an Agent reading only the Skill has been told the opposite of what the Stage requires. Name the file in the Skill's Authority and say there, as xforge-check does for its own ledgers, that it is an Agent-authored Artifact rather than Gate Evidence. ${SKILL_FIX_ROUTE}`,
         flowPath,
         'warning',
       ));
@@ -96,7 +117,7 @@ export async function flowSkillConformanceDiagnostics(
       if (silent.length === 0) continue;
       diagnostics.push(diagnostic(
         'XFORGE_FLOW_SKILL_DECLARED_GATE_UNCOVERED',
-        `${where}, and the Stage declares Gate ${gateId}, whose builtin is "declared" — it refuses until this project records a command, and the only supported way to record one is \`xforge verification declare\`. ${silent.join(' and ')} never names that command, so an Agent blocked there has no route out of the Skill it is holding, and hand-editing xforge/manifest.yaml is both governed by protected-manifest and how a live run made the Manifest unreadable.`,
+        `${where}, and the Stage declares Gate ${gateId}, whose builtin is "declared" — it refuses until this project records a command, and the only supported way to record one is \`xforge verification declare\`. ${silent.join(' and ')} never names that command, so an Agent blocked there has no route out of the Skill it is holding, and hand-editing xforge/manifest.yaml is both governed by protected-manifest and how a live run made the Manifest unreadable. Name the command in the Skill. ${SKILL_FIX_ROUTE}`,
         flowPath,
         'warning',
       ));
@@ -112,7 +133,7 @@ export async function flowSkillConformanceDiagnostics(
       if (silent.length === 0) continue;
       diagnostics.push(diagnostic(
         'XFORGE_FLOW_SKILL_CONDITION_UNNAMED',
-        `${where}, and the Stage cannot be left until exit condition "${key}" is satisfied, which ${silent.join(' and ')} never mentions. The CLI reports this block verbatim as \`condition:${key}:<reason>\`, so the Skill has to name it for an Agent to connect the two.`,
+        `${where}, and the Stage cannot be left until exit condition "${key}" is satisfied, which ${silent.join(' and ')} never mentions. The CLI reports this block verbatim as \`condition:${key}:<reason>\`, so the Skill has to name it for an Agent to connect the two. Name the condition in the Skill. ${SKILL_FIX_ROUTE}`,
         flowPath,
         'warning',
       ));

@@ -106,7 +106,7 @@ resources:
     kind: skill
     license: project
     version: "1"
-  - digest: f70b9d2a1176ba9a78eec67f02a0420141d1eb8dbd8b6dc7040bd5d8680bddcb
+  - digest: 1728bf7c34214c7eb0f79fb740ca020c5f979fd02216354c1a0b31321687f68f
     id: xforge-design
     kind: skill
     license: project
@@ -160,7 +160,7 @@ targets:
   - opencode
   - github-copilot
 xforge:
-  integrity: sha256:49ce10548360a5d222b3305996c30a0c4a44015d62db009469fca1ef853e6240
+  integrity: sha256:5bfb6042e0a3aa8cc65ae739223a5abda31344f2bc42a02feac76a4b77b24ecc
   package: "@xforge/cli"
   protocol: "2"
   source: npm

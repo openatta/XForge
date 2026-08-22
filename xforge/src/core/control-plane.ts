@@ -3,6 +3,7 @@ import path from 'node:path';
 import type {
   ApprovalPolicy,
   ApprovalReceipt,
+  ChangeConfig,
   ChangeState,
   Diagnostic,
   GateEvidence,
@@ -23,6 +24,7 @@ import { approvalVerifiedInChain, readChangeAuditEvents, type ChangeAuditFacts }
 import { verifyApprovalReceipt } from './approval-receipt.js';
 import { knownIdentities, unknownIdentityReason, type KnownIdentities } from './ledger-identity.js';
 import { VERIFICATION_RECEIPT_CONDITION, evaluateVerificationReceipt } from './verification-receipt.js';
+import { resolveWorkPackages, type WorkPackageResolution } from './work-packages.js';
 import { parse as parseYaml } from 'yaml';
 
 async function exists(filePath: string): Promise<boolean> {
@@ -535,13 +537,18 @@ export const INDEPENDENT_REVIEW_CONDITION = 'independentReview';
 async function independentReviewCondition(
   project: ProjectContext,
   changeId: string,
-  state: ChangeState,
+  workPackages: WorkPackageResolution,
   expected: string,
   contentRevision: string,
   reviewDiagnostics: Diagnostic[],
 ): Promise<{ satisfied: boolean; reason: string }> {
   if (expected !== 'complete') return { satisfied: false, reason: `unsupported-expected-${expected}` };
-  const packages = state.workPackages?.packages ?? [];
+  /* A plan that is present but unreadable is not the plan-less shape, and answering as though it
+     were would send the Change to `xforge review acknowledge` — which refuses while a plan file
+     exists — instead of to the parse error. Neither branch below can decide anything until the
+     file is readable, so the condition says so in its own reason. */
+  if (workPackages.status === 'unusable') return { satisfied: false, reason: 'plan-unusable' };
+  const packages = workPackages.state?.packages ?? [];
   /*
    * A Change with no work packages used to satisfy this outright, on the reasoning that its
    * semantic review was the Check Stage's. That reasoning does not hold: Check runs *before*
@@ -594,6 +601,10 @@ async function evaluateStageCondition(
   expected: string,
   context: {
     state: ChangeState;
+    /* Passed as the resolution rather than read off `state.workPackages`, which cannot say whether
+       a null means "no plan" or "nobody loaded one". Judging the second as the first is what let
+       the archive path refuse every Change that had a plan. */
+    workPackages: WorkPackageResolution;
     contentRevision: string;
     gates: readonly GateEvidence[];
     identities: KnownIdentities;
@@ -607,7 +618,7 @@ async function evaluateStageCondition(
     return evaluateVerificationReceiptCondition(project, changeId, expected, context.contentRevision, context.gates);
   }
   if (key === INDEPENDENT_REVIEW_CONDITION) {
-    return independentReviewCondition(project, changeId, context.state, expected, context.contentRevision, context.diagnostics);
+    return independentReviewCondition(project, changeId, context.workPackages, expected, context.contentRevision, context.diagnostics);
   }
   return evaluateExitCondition(project, changeId, key, expected, context.identities, context.reworkCutoff);
 }
@@ -630,7 +641,10 @@ export interface ResolvedControlPlane {
   governance: GovernanceState;
   diagnostics: Diagnostic[];
   flow: StageFlow;
+  /** The Change state this resolve decided against, with its work-package plan filled in. */
   state: ChangeState;
+  /** The plan as resolved here, including why there is none. Every consumer reads this one. */
+  workPackages: WorkPackageResolution;
   transitionRequirements: Map<string, TransitionRequirement>;
   resources: SelectedResources;
   /** Audit facts for this Change as of this resolution, usable without the local `.audit` chain. */
@@ -645,15 +659,33 @@ export interface ResolvedControlPlane {
   transitionChainValid: boolean;
 }
 
+/**
+ * The whole control plane for one Change: what it may do next, and what stops it.
+ *
+ * The work-package plan is resolved *here* rather than assigned onto `state` by each caller, and
+ * that is a correctness property, not a tidiness one. Six call sites remembered to assign it and
+ * two did not — `archive` and the post-transition re-resolve — and because an unassigned plan is
+ * indistinguishable from an absent one, neither failed loudly: archive silently re-decided
+ * `independentReview` against an empty package list and refused every Major Change that used a
+ * plan, with a remedy (`xforge review acknowledge`) that refuses while a plan file exists. A caller
+ * that has already resolved passes its resolution in to avoid the second read; a caller that has
+ * not gets a correct one instead of an empty one.
+ */
 export async function resolveControlPlane(
   project: ProjectContext,
   changeId: string,
   flow: StageFlow,
-  state: ChangeState,
+  changeState: ChangeState,
   resources: SelectedResources,
-  config: { scope: { modules: string[]; paths: string[] }; classification: any; flow: string },
+  config: ChangeConfig,
+  options: { workPackages?: WorkPackageResolution } = {},
 ): Promise<ResolvedControlPlane> {
   const diagnostics: Diagnostic[] = [];
+  const workPackages = options.workPackages ?? await resolveWorkPackages(project, changeId, config, resources);
+  /* Not a mutation of the caller's object: `control.state` is what every consumer of this resolve
+     reads, including `terminalGovernanceBlocks`, and it must carry the plan whether or not the
+     caller had one to give. */
+  const state: ChangeState = { ...changeState, workPackages: workPackages.state };
   const transitions = await loadTransitionReceipts(project, changeId, flow);
   const approvals = await loadApprovalReceipts(project, changeId);
   /* Identities the repository actually records, so a ledger can cite a decision-maker but not
@@ -699,6 +731,10 @@ export async function resolveControlPlane(
       for (const artifactId of current.produces) {
         if (state.artifacts.find((artifact) => artifact.id === artifactId)?.status !== 'done') blockedBy.push(`artifact:${artifactId}`);
       }
+      /* `unusable` blocks rather than falls through to the plan-less path: a plan nobody can read
+         cannot show that its packages were delivered, and treating it as "no plan" would let the
+         implementing Stage close on a file that does not parse. */
+      if (current.id === 'apply' && target === 'verify' && workPackages.status === 'unusable') blockedBy.push('work-packages:unusable');
       if (current.id === 'apply' && target === 'verify' && state.workPackages) {
         for (const workPackage of state.workPackages.packages) if (!['succeeded', 'integrated', 'reviewed'].includes(workPackage.status)) blockedBy.push(`work-package:${workPackage.id}:${workPackage.status}`);
         /* Kept distinct from the package blocks above on purpose. `work-package:<id>:failed` says
@@ -719,7 +755,7 @@ export async function resolveControlPlane(
          decided against the Gate Evidence this Stage actually produced, so that set has to exist. */
       for (const [key, expected] of Object.entries(exit.conditions ?? {})) {
         const condition = await evaluateStageCondition(project, changeId, key, expected, {
-          state, contentRevision: revision.contentRevision, gates: gateEvidence, identities, diagnostics,
+          state, workPackages, contentRevision: revision.contentRevision, gates: gateEvidence, identities, diagnostics,
           reworkCutoff: conditionReworkCutoff(flow, transitions.receipts, current.id),
         });
         if (!condition.satisfied) blockedBy.push(`condition:${key}:${condition.reason}`);
@@ -804,7 +840,7 @@ export async function resolveControlPlane(
     audit: { chainValid: auditFacts.chain.valid, chainHead: auditFacts.chain.head, eventCount: auditFacts.eventCount, remotePending: auditFacts.delivery.pending, coverageGaps: auditFacts.coverageGaps },
     readyTransitions,
   };
-  return { governance, diagnostics, flow, state, transitionRequirements, resources, auditFacts, transitionChainValid: transitions.chainValid };
+  return { governance, diagnostics, flow, state, workPackages, transitionRequirements, resources, auditFacts, transitionChainValid: transitions.chainValid };
 }
 
 /**
@@ -842,7 +878,15 @@ export function blockRemedy(
   changeId: string,
   context: {
     readyReceipt?: { receiptId: string; from: string; contentRevision: string; policySnapshotDigest: string };
-    current?: { contentRevision: string; policySnapshotDigest: string };
+    /**
+     * Today's revision, plus whether the Change's own content moved as well as the policy snapshot.
+     *
+     * `artifactsMoved` is required rather than optional on purpose: the caller has to have asked
+     * (`contentRevisionUnderPolicy`), because the two causes are not exclusive and the message
+     * below asserts which one happened. An optional flag would reintroduce exactly the guess this
+     * field exists to remove.
+     */
+    current?: { contentRevision: string; policySnapshotDigest: string; artifactsMoved: boolean };
   } = {},
 ): { code: string; message: string } | null {
   /*
@@ -867,18 +911,35 @@ export function blockRemedy(
      * right, and putting them back does not put the policy snapshot back. The only route left in
      * the message would then be `repair`, which discards a receipt and voids an approval that is
      * still perfectly good for the content it was given for.
+     *
+     * They are not exclusive, and the first version of this branch wrote as if they were: it said
+     * flatly "not because this Change was edited" and promised that restoring the resource would
+     * close the Change on the approval it already had. An operator who had done both — edited an
+     * Artifact *and* completed an `upgrade-scaffold`, which this release forces on every project
+     * that takes the new Rule version — would follow that to the letter and watch the block
+     * survive, with nothing in the message to explain why. `artifactsMoved` is the answer to the
+     * question the message was assuming: it re-runs the content formula over today's bytes under
+     * the receipt's own policy digest, so each of the three cases gets the remedy that works.
      */
     const policyMoved = Boolean(context.current) && stale.policySnapshotDigest !== context.current!.policySnapshotDigest;
     const repair = `\`xforge transition repair --change ${changeId} --receipt ${stale.receiptId}\` discards that receipt and returns the Change to ${stale.from} for rework, which voids the archive approval — an approval is bound to what it was given for.`;
-    return policyMoved
-      ? {
+    const artifactRestore = `restore the Artifacts to the content the receipt was given for (revision ${stale.contentRevision} under policy snapshot ${stale.policySnapshotDigest})`;
+    if (policyMoved && !context.current!.artifactsMoved) {
+      return {
         code: 'XFORGE_READY_RECEIPT_STALE_REMEDY',
-        message: `The closing transition receipt is stale because the governing policy snapshot changed, not because this Change was edited: the receipt carries ${stale.policySnapshotDigest} and the project now resolves ${context.current!.policySnapshotDigest}. A Rule, Gate, PermissionPolicy, Hook, Flow or the Constitution changed under it — a completed \`upgrade-scaffold\` does this too. Restoring the Artifacts cannot clear it, because the policy snapshot is an input to the content revision. The cheap route is to put the governing resource back as it was and re-run \`xforge check --change ${changeId}\`; the Change then closes on the approval it already has. Otherwise, ${repair}`,
-      }
-      : {
-        code: 'XFORGE_READY_RECEIPT_STALE_REMEDY',
-        message: `The closing transition receipt is bound to content revision ${stale.contentRevision}, and this Change has been edited since. Two routes, and they differ in what they preserve: restore the Artifacts to ${stale.contentRevision} to keep the existing approval, or ${repair}`,
+        message: `The closing transition receipt is stale because the governing policy snapshot changed, not because this Change was edited — the Artifacts still digest to what the receipt was given for. The receipt carries ${stale.policySnapshotDigest} and the project now resolves ${context.current!.policySnapshotDigest}. A Rule, Gate, PermissionPolicy, Hook, Flow or the Constitution changed under it — a completed \`upgrade-scaffold\` does this too. Restoring the Artifacts cannot clear it, because the policy snapshot is an input to the content revision. The cheap route is to put the governing resource back as it was and re-run \`xforge check --change ${changeId}\`; the Change then closes on the approval it already has. Otherwise, ${repair}`,
       };
+    }
+    if (policyMoved) {
+      return {
+        code: 'XFORGE_READY_RECEIPT_STALE_REMEDY',
+        message: `The closing transition receipt is stale on both counts: the governing policy snapshot moved (the receipt carries ${stale.policySnapshotDigest}, the project now resolves ${context.current!.policySnapshotDigest} — a Rule, Gate, PermissionPolicy, Hook, Flow or the Constitution changed, and a completed \`upgrade-scaffold\` does this too) and this Change has been edited since. Undoing either one alone leaves the block in place. To keep the existing approval both have to go back: put the governing resource back as it was and ${artifactRestore}, then re-run \`xforge check --change ${changeId}\`. Otherwise, ${repair}`,
+      };
+    }
+    return {
+      code: 'XFORGE_READY_RECEIPT_STALE_REMEDY',
+      message: `The closing transition receipt is bound to content revision ${stale.contentRevision}, and this Change has been edited since. Two routes, and they differ in what they preserve: restore the Artifacts to ${stale.contentRevision} to keep the existing approval, or ${repair}`,
+    };
   }
 
   if (blocks.some((block) => /^gate:.+:stale$/.test(block))) {
@@ -1000,6 +1061,9 @@ export async function terminalGovernanceBlocks(
     for (const [key, expected] of Object.entries(sourceExit.conditions ?? {})) {
       const condition = await evaluateStageCondition(project, control.state.id, key, expected, {
         state: control.state,
+        /* The resolve's own plan. Reading it off `control.state` would work today only because the
+           resolve now fills that in; taking it from the resolution keeps the two from drifting. */
+        workPackages: control.workPackages,
         contentRevision: governance.revision.contentRevision,
         gates: sourceGates,
         identities,
