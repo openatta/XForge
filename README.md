@@ -1,56 +1,40 @@
-English | [简体中文](docs/README.md)
-
 # XForge
 
-XForge is a Git-native control plane for governed, AI-assisted software
-development. It turns specifications, workflow state, engineering rules,
-quality evidence, approvals, and audit history into versioned project facts,
-then projects the right Skills, agents, policies, and hooks into the AI coding
-tools a team already uses.
+**XForge 是一个 Git 原生的治理控制面，用于有治理的 AI 辅助软件开发。**
 
-XForge is not another Agent runtime. Models and coding tools still explore,
-design, and implement the change; XForge defines what is true, which transition
-is legal, and what evidence is required before the change can advance or close.
+它把规格、工作流状态、工程规则、质量证据、审批与审计历史，变成**版本化的项目事实**，
+再把相应的 Skills、Agent 定义、权限策略与 Hook **投影**到团队已经在用的 AI 编程工具里。
 
-> **Current release:** `@xforge/cli 0.7.17`, Protocol 2, Node.js 20 or newer.
-> Install the exact CLI version from npm. Source-based installation is not
-> supported. The implementation remains under active development.
+> **当前版本：** `@xforge/cli 0.7.17`、Protocol 2、Node.js 20 或更高。
+> 只支持从 npm 安装精确版本，不支持从源码安装。实现仍在活跃开发中。
 
-## Design goals
+---
 
-- **Keep project truth in Git.** The Constitution, Specs, Changes, Flows,
-  Rules, policies, and localized Agent assets live with the code and remain
-  readable without a service account or hosted control plane.
-- **Stay portable across Agent tools.** One canonical project model can be
-  projected to Codex, Claude Code, Cursor, OpenCode, and GitHub Copilot while
-  reporting capability gaps instead of pretending the platforms are equal.
-- **Separate guidance, permission, and proof.** A Rule can instruct an Agent, a
-  PermissionPolicy can guard an action, and a Gate can prove a result. XForge
-  never treats one of those as another.
-- **Make governance proportional to risk.** Small reversible work can take the
-  Quick path; routine product work uses Solid; high-risk or cross-system work
-  uses Major with stronger review, approval, and audit boundaries.
-- **Fail closed at managed boundaries.** Writes require an exact CLI/protocol
-  identity. Generated-file conflicts, stale receipts, failed Gates, incomplete
-  audit history, and unsafe paths stop the operation rather than being silently
-  ignored.
-- **Remain a control plane, not an execution monopoly.** XForge coordinates
-  state, evidence, and policy, but it does not host models, replace coding
-  tools, or grant production deployment authority.
+## 它不做什么
 
-## How it fits together
+- **不是 Agent 运行时**——不托管模型、不执行推理、不创建模型进程；
+- **不是编程工具的替代品**——探索、设计、写代码仍由 Codex / Claude Code / Cursor / OpenCode / Copilot 完成；
+- **不是发布系统**——`archive` 关闭的是一个 Change，不部署、不发版、不跑迁移、不授予生产权限。
 
-XForge is two things that meet in your repository: a **CLI** that decides what
-is true and legal, and a **Scaffold** that tells an Agent how to work. Knowing
-which is which explains almost every rule below.
+一句话概括分工：
+
+> **模型负责「怎么做」，XForge 负责「什么是真的、哪一步是合法的、推进前必须拿出什么证据」。**
+
+---
+
+## 概念
+
+### 两个物件，一个方向
+
+XForge 在你的仓库里其实只有两样东西。分清它们能解释掉后面大部分规则。
 
 ```text
-  @xforge/cli (npm, pinned exactly)
-  └── carries a verified Scaffold payload
+  @xforge/cli  (npm，精确版本固定)
+  └── 内含经过校验的 Scaffold 载荷
                     │
-                    │  xforge init          ── once per project
+                    │  xforge init          ── 每个项目一次
                     ▼
-  xforge/                                      ← canonical, project-owned, in Git
+  xforge/                                     ← 规范源，项目所有，进 Git
   ├── manifest.yaml · constitution.md · XFORGE.md
   ├── specs/ · changes/ · flows/
   └── scaffold/  skills · agents · rules · policies · hooks · gates
@@ -58,310 +42,215 @@ which is which explains almost every rule below.
                     │  xforge install / sync / update
                     ▼
   .claude/ · .agents/ · .codex/ · .cursor/ · .opencode/ · .github/
-                                               ← generated projections, not sources
+                                              ← 生成的投影，不是源
 
-  The Agent reads the projections.     The CLI reads xforge/ and answers with
-  It follows Skills.                   state, Gates, receipts, approvals, audit.
+  Agent 读的是投影。            CLI 读的是 xforge/，
+  它跟着 Skill 走。             并回答 state / Gate / receipt / approval / audit。
 ```
 
-**The Scaffold is what an Agent reads; the CLI is what tells the truth.** A
-Skill can instruct, a PermissionPolicy can guard, a Gate can prove — XForge
-never lets one stand in for another, and only the CLI's JSON output and Gate
-evidence count as facts.
+**Scaffold 是 Agent 读的东西；CLI 是说真话的东西。** 由此派生三条最常让新人意外的规则：
 
-Three consequences follow, and they explain most of what surprises newcomers:
+- **投影是单向、可重算的。** 改 `xforge/scaffold/**` 然后 `xforge sync`。
+  手改生成物会被**拒绝**而不是合并——因为下一次投影会静默覆盖它。
+- **npm 包是唯一受支持的输入。** Scaffold 随固定版本的 CLI 一起发布、按校验和清单验证，
+  所以一个项目永远能说清自己跑的是哪些字节。
+- **你的定制在升级中存活。** `xforge/scaffold/**` 初始化后归你所有；
+  CLI 做的是**调和**而不是替换，分不清哪个改动是谁的时候就拒绝。
 
-- **Projection is one-way and recomputable.** `xforge/scaffold/**` is the
-  source; the tool directories are output. Edit the source and run
-  `xforge sync`. Hand-editing generated output is refused rather than merged,
-  because the next projection would silently overwrite it.
-- **The npm package is the only supported input.** The Scaffold ships inside
-  the pinned CLI and is verified against a checksum manifest before it is
-  written. Source checkouts, local tarballs, and separate archives are not
-  installation inputs, so a project can always say exactly which bytes it runs.
-- **Your customizations survive upgrades.** `xforge/scaffold/**` is yours to
-  edit once initialized; the CLI reconciles rather than replaces, and refuses
-  when it cannot tell your change from its own.
+与你共有的文件（`AGENTS.md`、`CLAUDE.md`）通过标记块合并：
+`<!-- XFORGE:BEGIN -->` … `<!-- XFORGE:END -->` 之外的内容逐字节保留。
 
-Files XForge co-owns with you — `AGENTS.md`, `CLAUDE.md` — are merged through a
-marker block. Everything outside `<!-- XFORGE:BEGIN -->` … `<!-- XFORGE:END -->`
-is preserved byte for byte, and re-running installation replaces the block in
-place instead of appending a second one.
+### 三种东西不许互相冒充
 
-## Main features
+这是整套设计的核心公理：
 
-### Risk-scaled, spec-driven Flows
-
-| Flow | Intended use | Persisted lifecycle |
+| | 它能做的 | 它**不能**变成的 |
 | --- | --- | --- |
-| `quick` | Low-risk, bounded, reversible changes | Propose → Apply → Verify → Archive |
-| `solid` | Routine product and engineering changes | Propose → Design → Check → Apply → Verify → Archive |
-| `major` | High-risk, critical-impact, or cross-system changes | Propose → Clarify → Design → Check → Apply → Verify → Archive |
+| **Rule** | 指导模型 | 不能拦住任何东西，也不构成证据 |
+| **PermissionPolicy** | 实时守住一个动作（allow / ask / deny） | 不是质量证明 |
+| **Gate** | 跑确定性检查，产出与 revision 绑定的 Evidence | 不是授权 |
+| **Approval** | 记录人（或外部系统）的决定 | 不能由 Agent 自签 |
 
-Flow policy validates whether a Change classification is eligible. Stages are
-advanced by guarded CLI transitions, not by an Agent editing a status field or
-claiming that work is complete.
+> **一条 Rule 可以指导，一条 PermissionPolicy 可以守卫，一道 Gate 可以证明，
+> 一次 Approval 可以授权——XForge 从不让其中一个顶替另一个。**
 
-### A truthful governance model
+由此派生出你会反复遇到的一条规则：**只有 CLI 的 JSON 输出与 Gate Evidence 算事实。**
+Agent 的自然语言结论、聊天记忆、勾选框、自报退出码，一律不是事实。
 
-- **Constitution** holds long-lived, non-negotiable engineering principles.
-- **Rules** provide scoped model guidance and declare their Gate, policy, or
-  approval coverage.
-- **PermissionPolicies** express `allow`, `ask`, and `deny` decisions for files,
-  shell, network, MCP, sub-agents, and external writes.
-- **Hooks** bridge supported runtime events or add workflow automation without
-  masquerading as quality evidence.
-- **Gates** execute deterministic checks and write revision-bound Evidence.
-- **Approvals** record interactive human decisions or verify signed external
-  receipts; Agents cannot self-approve.
-- **Transitions and Archive** require current Artifacts, Evidence, approvals,
-  and audit completeness. Archive merges delta Specs and closes the Change
-  atomically.
+Rule 有一个特别之处：它声明自己**声称**由谁强制执行，每次算 `state` 时拿这个声称去核对，
+产出 `coverage`——`instructed` / `guarded` / `verified` / `approved` /
+`uncovered` / `unenforceable`。**它做的是把「写下来了」和「真的被强制执行」之间的落差
+暴露出来，而不是藏起来。**
 
-### Safe, reproducible Agent-tool projection
+### 治理强度与风险成比例
 
-The npm package contains the exact verified project Scaffold paired with the
-CLI. `init`, `install`, `sync`, `update`, and `uninstall` maintain per-target
-ownership and content digests. Dry runs show the complete plan. Unknown files,
-user edits, symlinks, path traversal, and ownership conflicts are rejected.
-XForge only removes files that it owns and whose digest still matches.
+| Flow | 适用 | stage graph | 人工审批 |
+| --- | --- | --- | --- |
+| `quick` | 低风险、单模块、可回滚 | propose → apply → verify | 归档 1 次 |
+| `solid` | 常规产品与工程变更（默认） | propose → design → check → apply → verify | check 出口 + 归档，各 1 人 |
+| `major` | 高风险 / 关键影响 / 跨系统 | propose → clarify → design → check → apply → verify | 同上，且审批人不能是实现者 |
 
-Supported projection targets are:
+**资格是结构性强制的，不靠 Agent 自觉：** `quick` 会**拒绝**跨模块或非低风险的工作；
+触及安全 / 隐私 / 公开 API / 数据迁移的高风险变更**必须**走 `major`。
 
-- Codex
-- Claude Code
-- Cursor
-- OpenCode
-- GitHub Copilot
+Stage 由**受保护的 CLI transition** 推进，不是靠 Agent 编辑一个状态字段、
+或者声称工作已完成。
 
-Guidance, permissions, runtime hooks, cloud coverage, and managed-policy
-support differ by target. See the [Adapter capability matrix](docs/adapter-matrix.md)
-for the implemented mappings and degradations.
+### 什么算「事实」
 
-### Machine-readable state and evidence
-
-The CLI emits one Protocol 2 JSON envelope by default, including diagnostics,
-planned file changes, and typed next actions. Add `--text` for a human-readable
-view without changing semantics or exit status.
-
-Change state is revision-aware. Gate Evidence, transition receipts, approval
-receipts, work-package dispatches, deliveries, and the append-only audit chain
-are checked against the current content, state, policy snapshot, and Git HEAD.
-
-### Governed parallel work
-
-Apply can describe dependency-aware work packages with non-overlapping write
-paths. XForge issues revision-bound dispatch receipts and validates delivery
-evidence, while the selected Agent runtime performs the actual delegation. If
-a platform lacks native sub-agent support, execution remains sequential and
-the degradation is reported.
-
-### Verification a project declares, in any language
-
-The shipped `unit-tests` and `security-scan` Gates once ran npm. On a project
-without a `package.json` they reported `passed` having asserted nothing, so a
-`must` Rule lost its only enforcement and an archive's mandatory Gate was empty.
-
-Gates now run the command the project declared under `manifest.verification`
-and **refuse** when nothing is declared. A refusal is an unanswered question,
-not a failing check. `xforge verification declare` writes the entry so no Agent
-has to hand-edit the Manifest, and toolchain detection across fifteen ecosystems
-proposes a command — a proposal being the start of a question to a person, never
-an answer.
-
-### One place to write the architecture down
-
-Requirements survive a Change because `syncSpecs` merges them back. Architecture
-had no such path, so each Change's decisions archived with it and the next one
-re-derived them from code. `xforge/architecture.md` is that durable record, and
-`xforge-architect` is its only writer — from existing code, by questioning, or
-from a description. It is capped at fifty lines and six decisions, because a
-decision earns its place by being one whose reversal would touch several
-modules. Nothing requires the file; `doctor` suggests it and never fails on it.
-
-### Read-only Skills outside the Change lifecycle
-
-Not every Skill touches Change/Flow/Gate state. `xforge-kanban` turns plain
-`git log` into a Markdown activity dashboard: per-contributor commits, lines,
-and active days, a weekday x hour heatmap, a feat/fix/other breakdown, and a
-per-module split for multi-module projects. `xforge-status` reports where a
-Change stands, `xforge-architect` writes the architecture file, and
-`xforge-upgrade-scaffold` merges a newer Scaffold. All are read-only with
-respect to Change state and safe to run at any time.
-
-Investigating code, Specs, and options before proposing needs no Skill of its
-own — reading and search are native to every coding tool XForge projects into.
-Narrowing an ambiguous idea into a proposal-ready scope is the first step of
-`xforge-propose`.
-
-### Portable and Managed operation
-
-- **Portable mode** keeps the repository understandable when the declared CLI
-  is unavailable; project files remain usable as guidance, but XForge does not
-  claim that deterministic enforcement ran.
-- **Managed mode** requires the declared CLI identity, Protocol, and Lockfile
-  integrity to match. Only this mode may install projections, run Gates, record
-  governed transitions, approve, dispatch work packages, perform managed audit
-  writes/delivery, or archive.
-
-## Getting started
-
-XForge commands are meant to be issued by an AI coding Agent, not typed ad hoc
-by a human. A human or CI installs the CLI once; every later operation —
-initialization, Flow execution, Transitions — is an Agent invoking
-`xforge ...` exactly as the installed `xforge-*` Skills document.
-
-**npm is only how the tool is distributed.** XForge is a command, not a
-dependency of your project: it never becomes part of your build, and installing
-it does not make a Python, Go, or Rust repository into a Node one. Install it
-globally and your project keeps no `package.json` and no `node_modules`.
-
-Three ways to install it, in the order most people should try them:
-
-| | When to use it | What it leaves in your project |
-| --- | --- | --- |
-| [Agent](#1-let-an-agent-do-it) | The normal path — you are already in a coding tool | `xforge/`, `AGENTS.md`, one tool directory |
-| [Manual](#2-manual) | You want to run the commands yourself | the same |
-| [Project-local](#3-project-local-when-one-global-version-is-not-enough) | Several projects pinned to different XForge versions, or an isolated CI runner | the same, plus `package.json` and `node_modules` |
-
-### 1. Let an Agent do it
-
-Open your project in an AI coding tool and paste this into the session. It
-installs the CLI, initializes the project, and projects the Scaffold — and it
-asks you the two questions no tool can answer for you before it writes
-anything.
+当前 Stage 不是从文件存在与否推断的，而是从一条经过校验的 **transition receipt 链**重建的。
+证据、审批、派工凭据全部绑定到内容 revision 上：
 
 ```text
-Set up XForge in this repository.
+policySnapshotDigest = hash(constitution + flow + rules + policies + hooks + gates)
+contentRevision      = hash(change 输入 + policySnapshotDigest)
+stateRevision        = hash(contentRevision + currentStage + transitionHead)
+governingRevision    = hash(截至当前 Stage 的产出 + policySnapshotDigest)   ← 审批专用
+```
 
-First ask me two questions and wait for my answers:
-  1. Scaffold language — `en` or `zh-CN`?
-  2. Which AI coding tool should XForge project into — codex, claude,
-     cursor, opencode, or github-copilot?
+**在受管边界上失败即关闭：** 生成物冲突、陈旧 receipt、失败的 Gate、不完整的审计历史、
+不安全路径——一律中止操作，而不是静默忽略。
 
-Then, using my answers as <LANG> and <TOOL>:
+### 两种运行模式
+
+| 模式 | 条件 | 能做什么 |
+| --- | --- | --- |
+| **Managed** | 声明的 CLI 身份、Protocol、Lock 完整性全部匹配 | 投影、跑 Gate、受治理的 transition、审批、派工、审计、归档 |
+| **Portable** | 不匹配 | 仓库仍可读、文件仍是有效指导，但**不声称**确定性强制执行发生过 |
+
+---
+
+## 安装
+
+**XForge 的命令是给 AI 编程 Agent 用的，不是给人临时敲的。**
+人或 CI 只做一次性安装；此后每一次操作——初始化、执行 Flow、Transition——
+都是 Agent 按已安装的 `xforge-*` Skills 所写去运行 `xforge ...`。
+
+> **npm 只是分发方式。** XForge 是一个命令，不是你项目的依赖：
+> 它不会成为你构建的一部分，安装它也不会把一个 Python / Go / Rust 仓库变成 Node 仓库。
+> 全局安装之后，你的项目里不会留下 `package.json` 和 `node_modules`。
+
+### 方式一：让 Agent 来做（推荐）
+
+在 AI 编程工具里打开项目，把下面这段粘进会话：
+
+```text
+在这个仓库里设置 XForge。
+
+先问我两个问题并等我回答：
+  1. Scaffold 语言 —— `en` 还是 `zh-CN`？
+  2. XForge 要投影到哪个 AI 编程工具 —— codex、claude、cursor、opencode
+     还是 github-copilot？
+
+然后用我的答案作为 <LANG> 和 <TOOL>：
   1. npm install -g @xforge/cli
-  2. xforge version            → report the version and executablePath to me
+  2. xforge version            → 把版本和 executablePath 报告给我
   3. xforge init --language <LANG> --target <TOOL> --dry-run
-  4. Show me that plan, then run the same command without --dry-run.
-  5. xforge state --text       → confirm it reports mode: managed
+  4. 把计划给我看，确认后再跑一次不带 --dry-run 的同一条命令。
+  5. xforge state --text       → 确认它报告 mode: managed
 
-Rules: run `xforge` directly. If the command is not found, stop and tell me —
-never fall back to `npx xforge`, which resolves to an unrelated package of the
-same name on npm. Do not create a package.json and do not run `npm install`
-without `-g`: this project is not a Node project and XForge is a tool, not a
-dependency. Never overwrite an existing file and never commit. If any step
-reports a conflict or a diagnostic, stop and show me the JSON instead of
-working around it.
+规则：直接运行 `xforge`。如果找不到这个命令，停下来告诉我——
+绝不要退回到 `npx xforge`，npm 上有一个同名的无关包。
+不要创建 package.json，不要运行不带 -g 的 npm install：
+这个项目不是 Node 项目，XForge 是工具不是依赖。
+绝不覆盖已有文件，绝不提交。
+任何一步报告冲突或诊断，停下来把 JSON 给我看，不要绕过去。
 ```
 
-**Why it asks first.** The language cannot be guessed in a non-interactive
-session: initialization fails closed with `XFORGE_LANGUAGE_REQUIRED` rather than
-picking one for you, because the Constitution and every Skill an Agent reads are
-written in the language you choose here. The target decides which tool directory
-receives the projection.
+**为什么要先问。** 语言在非交互会话里无法猜测：初始化会以
+`XFORGE_LANGUAGE_REQUIRED` 失败关闭，而不是替你选一个——因为 Constitution
+和 Agent 会读的每一个 Skill 都用你在这里选的语言书写。目标决定哪个工具目录接收投影。
 
-For a deeper, checklist-driven installation — adapting modules, targets and
-Gates to an existing repository — point the Agent at the root-level
-[Agent installation runbook](AGENT_INSTALL.md) instead:
+需要更深入的、清单驱动的安装（把模块、目标和 Gate 适配到一个已有仓库），
+把 Agent 指向根目录的 [`AGENT_INSTALL.md`](AGENT_INSTALL.md)。
 
-```text
-Install XForge into this repository by following AGENT_INSTALL.md exactly.
-Do not overwrite existing files or commit changes. Stop and report conflicts.
-```
-
-### 2. Manual
+### 方式二：手动
 
 ```bash
 npm install -g @xforge/cli@0.7.17
-xforge version                       # confirm the version and where it resolved
-xforge init --language en --dry-run
-xforge init --language en
+xforge version                       # 确认版本与解析位置
+xforge init --language zh-CN --dry-run
+xforge init --language zh-CN
 ```
 
-`--language en|zh-CN` overrides locale detection. Omit it only in an
-interactive terminal, which will ask; a non-interactive run fails with an
-actionable command rather than choosing for you. The Constitution, `XFORGE.md`,
-Skills and sub-Agent instructions are installed in that language — one file per
-document, under its canonical name — and every other Scaffold asset stays
-English.
+`--language en|zh-CN` 覆盖语言检测。只有在交互式终端里才能省略它（它会问你）；
+非交互运行会给出一条可操作的命令而失败，不会替你选。
 
-Then project the canonical Skills, agents, Rules, permission/MCP policies,
-Hooks, and other supported assets into one tool:
+然后把规范的 Skills、Agent、Rules、权限 / MCP 策略、Hook 投影到一个工具：
 
 ```bash
 xforge install --target codex --dry-run
 xforge install --target codex
 ```
 
-Use `init` for a project that has no `xforge/` yet, and `install` for one that
-already does — `install` on an uninitialized directory reports
-`XFORGE_PROJECT_NOT_FOUND`. Both take options only: the project root comes from
-`--root <path>`, never as a positional argument.
+- 没有 `xforge/` 的项目用 `init`，已经有的用 `install`
+  （在未初始化目录上 `install` 会报 `XFORGE_PROJECT_NOT_FOUND`）；
+- 两者都**只接受选项**：项目根目录来自 `--root <path>`，绝不是位置参数；
+- `init --target <tool>` 对默认 Scaffold 够用的新项目可以一步到位；
+- `install` 省略 `--target` 时会投影 Manifest 里启用的每一个目标。
 
-`init --target <tool>` does both steps at once for a new project whose default
-Scaffold needs no customization. Omitting `--target` from `install` projects
-every target enabled in the Manifest.
+### 方式三：项目本地安装
 
-### 3. Project-local, when one global version is not enough
-
-A global install puts one version on the machine. Each project pins its own in
-`xforge/manifest.yaml`, so two projects on different XForge versions cannot both
-be satisfied by it — the mismatched one drops to Portable mode and refuses to
-write, with `XFORGE_CLI_IDENTITY_MISMATCH`. Install per project when that
-happens, or when a CI runner builds several projects:
+全局安装在机器上只放一个版本。每个项目在 `xforge/manifest.yaml` 里固定自己的版本，
+所以两个跑不同 XForge 版本的项目无法同时被它满足——不匹配的那个会掉到 Portable 模式
+并拒绝写入（`XFORGE_CLI_IDENTITY_MISMATCH`）。出现这种情况，或者一个 CI runner
+要构建多个项目时，按项目安装：
 
 ```bash
 npm install --save-dev --save-exact @xforge/cli@0.7.17
 npx --no-install xforge version
 ```
 
-Only here is `npx --no-install` correct, and both halves matter: `npx` resolves
-the binary out of `node_modules/.bin`, which is not on your `PATH`, and
-`--no-install` stops npm from fetching the unrelated `xforge` package when the
-local one is missing. This is the one path that leaves `package.json` and
-`node_modules` in the project.
+**只有在这里 `npx --no-install` 才是对的，而且两半都重要：**
+`npx` 从不在 `PATH` 上的 `node_modules/.bin` 里解析可执行文件，
+`--no-install` 阻止 npm 在本地缺失时去拉那个无关的 `xforge` 包。
+这是唯一会在项目里留下 `package.json` 和 `node_modules` 的路径。
 
-### Verify, and diagnose a stale install
+### 验证与诊断陈旧安装
 
 ```bash
-xforge version --text                # which build is answering, and from where
-xforge state --text                  # mode: managed, declared vs actual
+xforge version --text                # 哪个 build 在应答，来自哪里
+xforge state --text                  # mode: managed，声明值 vs 实际值
 xforge check --text
 ```
 
-**If a project reports `XFORGE_CLI_IDENTITY_MISMATCH`, the CLI answering is not
-the version that project pinned.** `xforge version` reports both the version and
-`executablePath`, which is what distinguishes an old global install from a
-project-local one that is shadowing it. Resolve it by upgrading the project
-(`xforge update`), upgrading the global install
-(`npm install -g @xforge/cli@<version>`), or installing that project locally as
-above. A stale install is never silent: writes are refused until the identities
-agree.
+**报告 `XFORGE_CLI_IDENTITY_MISMATCH` 意味着应答的 CLI 不是该项目固定的版本。**
+`xforge version` 会同时给出版本和 `executablePath`——那是区分陈旧全局安装
+与遮蔽它的项目本地安装的关键。三条出路：升级项目（`xforge update`）、
+升级全局安装、或按上面的方式为该项目做本地安装。
+**陈旧安装绝不会是静默的**：身份一致之前写入一律被拒绝。
 
-Use the default JSON output instead of `--text` when another program or Agent
-needs to consume the result.
+需要程序或 Agent 消费结果时，用默认的 JSON 输出而不是 `--text`。
 
-## Using XForge for a change
+---
 
-The installed `xforge-*` Skills are the normal user interface. A typical first
-request is:
+## 使用
+
+### 通过 Skills
+
+已安装的 `xforge-*` Skills 就是日常界面。典型的第一个请求：
 
 ```text
-Use the xforge-propose Skill to create a Change for <goal>.
-Choose the weakest Flow that is safe and explain the classification.
+用 xforge-propose Skill 为 <目标> 创建一个 Change。
+选择安全前提下最弱的 Flow，并解释这个分类。
 ```
 
-From there, `xforge-status` reports the portfolio of in-flight Changes and the
-Stage each sits at, explains one Change in depth, and names the next legal
-action without taking it; the lifecycle Skills handle the active stage:
-`xforge-clarify`, `xforge-design`, `xforge-check`, `xforge-apply`, and
-`xforge-verify`. `xforge-revise` updates planning artifacts while preserving
-their consistency, and `xforge-scaffold` customizes the project-owned Agent
-assets. `xforge-kanban` sits outside this lifecycle entirely and reports
-Git-history activity on request, without reading or requiring any Change.
+之后：
 
-The underlying CLI loop is:
+| Skill | 做什么 |
+| --- | --- |
+| `xforge-status` | 报告在途 Change 的全景与各自所在 Stage，深入解释一个 Change，**并指出下一个合法动作但不替你做** |
+| `xforge-propose` / `clarify` / `design` / `check` / `apply` / `verify` | 处理当前活跃阶段 |
+| `xforge-revise` | 修改规划产物并保持它们相互一致 |
+| `xforge-scaffold` | 定制项目自有的 Agent 资产 |
+| `xforge-architect` | 写 `xforge/architecture.md`（跨 Change 的架构决策，上限 50 行 / 6 条） |
+| `xforge-kanban` | 把 `git log` 变成 Markdown 活动看板；**完全在 Change 生命周期之外，随时可跑** |
+| `xforge-upgrade-scaffold` | 合并更新的 Scaffold |
+
+> 调查代码、Specs 与选项**不需要专门的 Skill**——阅读与检索是每个被投影目标的原生能力。
+> 把一个模糊想法收敛成可提案的范围，是 `xforge-propose` 的第一步。
+
+### 底层的 CLI 循环
 
 ```bash
 xforge state --change <change-id>
@@ -369,13 +258,12 @@ xforge check --change <change-id>
 xforge transition --change <change-id> --to <next-stage> --dry-run
 xforge transition --change <change-id> --to <next-stage>
 
-# When state reports a ready work package:
+# 当 state 报告有就绪的工作包时：
 xforge work-package dispatch --change <change-id> --package <package-id>
 
-# When state reports a required approval. Copy the command from
-# state.nextActions[] rather than assembling one: --for takes the id of the
-# transition the approval unlocks, and approve refuses any other value
-# instead of writing a receipt nothing will count.
+# 当 state 报告需要审批时。从 state.nextActions[] 里把命令原样复制出来，
+# 不要自己拼：--for 填的是该审批所解锁的那次 transition，
+# approve 会拒绝任何其它值，而不是写一份没人会数的 receipt。
 xforge approve --change <change-id> --for <transition-id-or-archive> ...
 
 xforge audit verify --change <change-id>
@@ -383,135 +271,154 @@ xforge archive --change <change-id> --dry-run
 xforge archive --change <change-id>
 ```
 
-Do not copy this sequence blindly: `state.nextActions` is authoritative, and a
-Flow may require rework, extra Gates, external approval receipts, or remote
-audit delivery before the next transition.
+> **不要照抄这个序列。** `state.nextActions` 才是权威——一条 Flow 可能要求返工、
+> 额外的 Gate、外部审批 receipt 或远端审计投递，才允许下一次 transition。
 
-## Maintaining an installation
+### 几条日常要点
 
-After editing canonical resources under `xforge/scaffold/` or changing the
-selected resources in `xforge/manifest.yaml`, use:
+- **被 `blockedBy` 挡住时读它说的那一条**，而不是绕开。
+  **Gate refuse ≠ Gate fail**——refuse 是「你还没告诉我这个项目怎么验证自己」。
+- **Gate 必须在最后一次写入之后一次性跑完。** 先跑一个 Gate、再改文件、再跑下一个，
+  会让先跑的变陈旧——所有 Gate 都报 `passed`，Stage 却仍然出不去。
+- **项目自己声明怎么验证。** `unit-tests` 和 `security-scan` 跑
+  `manifest.verification` 下声明的命令（任意语言），没声明就**拒绝**。
+  用 `xforge verification declare` 写入，绝不手改 Manifest。
+- **改治理资产不属于一个进行中的 Change**——它会让所有活跃 Change 的 revision 漂移。
+
+---
+
+## 维护与升级
+
+### 日常同步
+
+编辑了 `xforge/scaffold/` 下的规范资源、或改了 `xforge/manifest.yaml` 里选中的资源之后：
 
 ```bash
 xforge sync --dry-run
 xforge sync --verify-digests
 ```
 
-Use `xforge update --dry-run` followed by `xforge update` when targets,
-Scaffold/CLI identity, or Adapter output changes. Use `xforge uninstall
---target <target> --dry-run` to preview safe removal of one target's managed
-files.
+目标、Scaffold / CLI 身份或 Adapter 输出发生变化时：
 
-## Moving a project onto a newer XForge
-
-`xforge/scaffold/**` is seeded once by `init` and never updated afterwards, so a
-project keeps the Skills, Rules and Gates it was created with until somebody
-moves it. `xforge update` does not do this: it reprojects the Scaffold you
-already have into `.claude/` and friends. `xforge upgrade-scaffold` is the one
-that changes which Scaffold that is.
-
-It never merges for you. It stages the incoming Scaffold beside your own,
-snapshots what you have, and classifies every file — because which files differ
-is arithmetic, while whether your wording in a Skill should give way to a newer
-default is a question about your project. Nothing under `xforge/scaffold/` is
-touched until you or an Agent decides.
-
-Archive or finish open Changes first. A Change's remaining Stages would
-otherwise run under Gates its Design never saw, and the command refuses rather
-than let that happen silently.
-
-### Hand this to your coding Agent
-
-```text
-Upgrade this project's XForge Scaffold to the version the installed CLI ships.
-
-1. Run `npm i -g @xforge/cli@latest`, then `xforge version` to confirm it.
-2. Run `xforge upgrade-scaffold --dry-run --text` and show me the plan. Stop if
-   it refuses: open Changes must be archived first, and that is my decision.
-3. Run `xforge upgrade-scaffold` to stage it. Nothing under `xforge/scaffold/`
-   changes at this step.
-4. Read `xforge/scaffold-<version>/MERGE.md`. It names every file that differs
-   and every file that is new. Do not survey the Scaffold yourself — the plan is
-   the statement of the job, and the identical files are already settled.
-5. Merge, following that file. Adopt what the new version rules; keep what this
-   project knows — a Gate carrying our real test command, wording we chose, a
-   threshold somebody tuned. Where both cannot hold, stop and ask me.
-6. Do NOT add anything to `xforge/manifest.yaml`. A file arriving with a release
-   is not a decision to run it. List what arrived unselected and let me choose.
-7. Never delete a file marked `project-only`, and never touch `xforge/changes/`,
-   `xforge/specs/`, the audit chain, approvals, `constitution.md`, or
-   `architecture.md`.
-8. Finish with `xforge upgrade-scaffold --complete`, then `xforge install`, then
-   `xforge doctor`.
-9. Report: which side you took per changed file and why, the adoption count from
-   step 8 quoted verbatim without grading it, and what awaits my decision.
+```bash
+xforge update --dry-run
+xforge update
 ```
 
-Projects that select `xforge-upgrade-scaffold` can have the Agent invoke that
-Skill instead; it carries the same rules with the authority boundaries attached.
+安全移除某一个目标的受管文件：
 
-### If it goes wrong
+```bash
+xforge uninstall --target <target> --dry-run
+```
 
-`xforge upgrade-scaffold --rollback` restores the Scaffold exactly as it stood
-before staging. Exactly one snapshot is kept — the last upgrade's — because
-arbitrary version travel would reintroduce the problem this replaces. It refuses
-when the Scaffold changed after the upgrade completed, since rolling back would
-discard that work; `--force` overrides. `xforge/upgrade-log.md` records every
-completed upgrade and survives both the staged directory and the rollback.
+### 迁移到更新的 Scaffold
 
-## Important boundaries
+> **`xforge update` 不做这件事。** 它把你**已有的** Scaffold 重新投影一遍。
+> 真正换掉 Scaffold 本身的是 `xforge upgrade-scaffold`。
 
-- Runtime Hook and permission coverage is platform-specific and may require an
-  explicit project trust step in the coding tool.
-- The `runtime-audit` Hook ships as an unselected example: no dispatcher executes
-  its `builtin: audit` action yet, so selecting it would have no effect.
-- Generated Hooks invoke `xforge` from the project root so they
-  resolve the exact local package without downloading a replacement.
-- Gate success proves the configured command ran for the recorded revision; it
-  does not prove every semantic requirement is correct.
-- Local approval attestation is repository-level evidence, not enterprise
-  identity. Higher-assurance flows should use signed external receipts.
-- `archive` closes an XForge Change. It does not deploy an application, publish
-  a release, run a migration, or grant access to production systems.
+`xforge/scaffold/**` 由 `init` 播种一次，此后不再自动更新——一个项目会一直保留
+它被创建时的那套 Skills、Rules 和 Gates，直到有人搬动它。
 
-## Repository layout
+**它从不替你合并。** 它把新来的 Scaffold 暂存在你自己的旁边、给你现有的做快照、
+并对每个文件分类——因为**哪些文件不同是算术，而你在某个 Skill 里的措辞是否该让位给
+一份更新的默认，是一个关于你项目的问题**。在你或 Agent 做出决定之前，
+`xforge/scaffold/` 下不会有任何东西被改动。
+
+**先归档或完成打开的 Change。** 否则一个 Change 剩下的 Stage 会在它的 Design
+从未见过的 Gate 下运行——命令会拒绝，而不是让这件事静默发生。
+
+把下面这段交给你的编程 Agent：
+
+```text
+把这个项目的 XForge Scaffold 升级到已安装 CLI 附带的版本。
+
+1. 运行 `npm i -g @xforge/cli@latest`，再用 `xforge version` 确认。
+2. 运行 `xforge upgrade-scaffold --dry-run --text` 并把计划给我看。
+   如果它拒绝，停下：打开的 Change 必须先归档，那是我的决定。
+3. 运行 `xforge upgrade-scaffold` 暂存。这一步 `xforge/scaffold/` 下不会有变化。
+4. 读 `xforge/scaffold-<version>/MERGE.md`。它列出每一个不同的文件和每一个新增文件。
+   不要自己去通读 Scaffold——那份计划就是任务的陈述，相同的文件已经有定论了。
+5. 按那份文件合并。采纳新版本更好的部分；保留这个项目知道的东西——
+   一个承载我们真实测试命令的 Gate、我们选定的措辞、某个人调过的阈值。
+   两者不能兼得时，停下来问我。
+6. 不要往 `xforge/manifest.yaml` 里加任何东西。一个随发布到达的文件不等于一个运行它的决定。
+   把到达但未被选中的列出来，让我选。
+7. 绝不删除任何标记为 `project-only` 的文件；绝不碰 `xforge/changes/`、
+   `xforge/specs/`、审计链、approvals、`constitution.md` 或 `architecture.md`。
+8. 以 `xforge upgrade-scaffold --complete` 收尾，然后 `xforge install`，然后 `xforge doctor`。
+9. 报告：每个变更文件你站了哪一边、为什么；第 8 步的采纳计数逐字引用、不加评价；
+   以及还有什么在等我决定。
+```
+
+选中了 `xforge-upgrade-scaffold` 的项目可以让 Agent 直接调用那个 Skill，
+它带着同样的规则，并附有权限边界。
+
+### 出问题时
+
+```bash
+xforge upgrade-scaffold --rollback
+```
+
+把 Scaffold 恢复到暂存之前的样子。**只保留一份快照**——上一次升级的——
+因为任意版本穿梭会重新引入这套机制所要替代的问题。
+升级完成之后 Scaffold 又发生变化时它会拒绝（回滚会丢弃那些工作），`--force` 可以覆盖。
+
+`xforge/upgrade-log.md` 记录每一次完成的升级，并且在暂存目录和回滚之后都存活。
+
+---
+
+## 重要边界
+
+- 运行时 Hook 与权限覆盖是平台相关的，可能需要在编程工具里显式信任该项目。
+- `runtime-audit` Hook 作为**未选中**的示例随包发布：目前没有 dispatcher 执行它的
+  `builtin: audit` 动作，选中它不会有任何效果。
+- 生成的 Hook 从项目根调用 `xforge`，以便解析到确切的本地包而不去下载替代品。
+- **Gate 成功证明的是配置好的命令针对被记录的 revision 跑过了**，
+  不证明每一条语义需求都正确。
+- 本地审批凭证是仓库级证据，不是企业身份。更高保证级别的流程应使用 MCP provider。
+- **`archive` 关闭的是一个 XForge Change。** 它不部署应用、不发布版本、
+  不运行迁移、不授予生产系统访问权限。
+
+---
+
+## 文档
+
+| 文档 | 内容 |
+| --- | --- |
+| [文档索引](docs/index.md) | 按「我要解决什么问题」组织 |
+| [概念与架构](docs/concepts-and-architecture.md) | XForge 按什么逻辑运转 |
+| [治理模型](docs/governance-model.md) | 七类治理资源各自能证明什么 |
+| [扩展指南](docs/extension-guide.md) | 新增 Skill / Flow / Gate / Rule / Policy / Hook / Approval / Agent / MCP |
+| [仓库与文件布局](docs/repository-layout.md) | 每个中间产物落在哪、归谁写、什么该进 Git |
+| [子 Agent 设计](docs/sub-agent-design.md) | 并行工作包与 Worker / Integrator / Reviewer |
+| [Agent 安装手册](AGENT_INSTALL.md) | 清单驱动的安装流程 |
+
+---
+
+## 仓库结构
 
 ```text
 XForge/
-├── scaffold/              # Versioned canonical Scaffold distribution
-├── xforge/                # @xforge/cli source, schemas, build, and tests
-├── docs/                  # Product, protocol, governance, and design docs
-├── tests/                 # Product/security and live-engine validation
-├── AGENT_INSTALL.md       # Agent-executable installation runbook
-└── README.md              # English overview
+├── scaffold/              # 版本化的规范 Scaffold 发行物
+├── xforge/                # @xforge/cli 源码、schemas、构建与测试
+├── docs/                  # 概念、治理、扩展与设计文档
+├── tests/                 # 产品 / 安全与实机引擎验证
+├── AGENT_INSTALL.md       # Agent 可执行的安装手册
+└── README.md              # 本文件
 ```
 
-## Documentation
-
-- [Agent installation runbook](AGENT_INSTALL.md)
-- [CLI usage](docs/cli-tool-usage.md)
-- [Flows and Skills](docs/flows-and-skills-design.md)
-- [Skills, Flows, Rules, Gates, Hooks, PermissionPolicies, and Approvals](docs/governance-concepts.md)
-- [Extending Skills and Flows](docs/extending-skills-and-flows.md)
-- [Extending Gates, Rules, PermissionPolicies, Hooks, and Approvals](docs/extending-gates-rules-policies-hooks-approvals.md)
-- [Extending Approvals with an MCP provider](docs/extending-approvals-with-mcp.md)
-- [Governance control plane](docs/governance-control-plane-design.md)
-- [File protocol](docs/file-protocol.md)
-- [Sub-agent design](docs/sub-agent-system-design.md)
-- [Product specification](docs/XFORGE_PRODUCT_SPEC.md)
-
-## Developing XForge
+## 开发 XForge
 
 ```bash
 npm ci --prefix xforge
 npm run verify
 ```
 
-Useful narrower checks are `npm run build`, `npm test`, `npm run
-check:scaffold`, and `npm run test:product`.
+更窄的检查：`npm run build`、`npm test`、`npm run check:scaffold`、`npm run test:product`。
+改动了 `scaffold/payload/**` 之后需要 `npm run relock` 重算校验和清单。
 
-Release maintainers should follow the privacy-safe [release runbook](RELEASING.md).
+发布维护者请遵循 [发布手册](RELEASING.md)。
 
-## License
+## 许可
 
-Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+Apache License 2.0。见 [LICENSE](LICENSE) 与 [NOTICE](NOTICE)。
