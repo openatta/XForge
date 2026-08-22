@@ -549,8 +549,8 @@ function producedArtifact(projectRoot, generates) {
  *  1. Every Stage up to and including Check produced the Artifacts its Flow declares. A chain that
  *     stopped because an Agent skipped its work is a failure, not a governance result.
  *  2. The Approval round-trip the Check Stage's exit requires actually happened, with as many
- *     distinct-role receipts as the policy demands. This is what proves the enterprise path ran
- *     rather than being quietly skipped.
+ *     receipts as `minApprovers` demands, each from a role and a provider the policy admits. This
+ *     is what proves the enterprise path ran rather than being quietly skipped.
  *  3. The blocker cites evidence that exists. A finding whose `refs` point at nothing is prose the
  *     model could have invented, and it is the whole difference between "the Gate found something"
  *     and "the Gate said something".
@@ -584,10 +584,33 @@ function assertStoppedAtCheck(projectRoot, flowDefinition, checkStage) {
     } catch { /* directory missing is reported by the emptiness check below */ }
     const policy = (flowDefinition.governance?.approvalPolicies ?? []).find((entry) => entry.id === policyId);
     const required = policy?.minApprovers ?? 1;
-    const roles = new Set(receipts.map((receipt) => receipt.approver?.role).filter(Boolean));
     if (receipts.length < required) problems.push(`${policyId} holds ${receipts.length} approval receipts, needs ${required}.`);
-    if (policy?.separationOfDuties && roles.size < required) {
-      problems.push(`${policyId} requires distinct roles but its receipts cover only ${[...roles].join(', ') || 'none'}.`);
+    /*
+     * `roles` is an eligibility filter, and that is the only thing it can be checked as here.
+     *
+     * This used to assert that `separationOfDuties` implies as many *distinct* roles as approvers,
+     * which is the exact rule the CLI removed: `separationOfDuties` has never compared roles, it
+     * requires that the approver is not an implementer of this Change (`core/revision.ts`'s
+     * `changeImplementers`, and the rationale on `flows/major.yaml`'s `approvalPolicies`). Counting
+     * distinct roles let a Change's own author approve it and rejected two different maintainers —
+     * the commonest real review shape. The assertion sat here inert only because the shipped Major
+     * policies ask for one approver, so `roles.size < 1` is never true; at `minApprovers: 2` this
+     * harness would have failed runs the product considers correct.
+     *
+     * Re-deriving the implementer set here would reimplement the rule the CLI already enforces when
+     * it accepts a receipt, and a harness that reimplements the thing under test cannot disagree
+     * with it usefully. What is worth checking is what the round-trip is supposed to have produced:
+     * enough approvals, each from an eligible role and a provider this policy allows.
+     */
+    for (const receipt of receipts) {
+      const role = receipt.approver?.role;
+      const provider = receipt.approver?.provider;
+      if (policy?.roles?.length && !policy.roles.includes(role)) {
+        problems.push(`${policyId} holds a receipt from role ${role ?? 'none'}, which its roles filter (${policy.roles.join(', ')}) does not admit.`);
+      }
+      if (policy?.providers?.length && provider && !policy.providers.includes(provider)) {
+        problems.push(`${policyId} holds a receipt from provider ${provider}, which it does not allow (${policy.providers.join(', ')}).`);
+      }
     }
   }
 

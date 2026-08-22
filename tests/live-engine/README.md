@@ -45,11 +45,16 @@ the sample project.
   imperative script.
 - **Coverage across all 10 `xforge-*` Skills**, not just the ones a single
   Change walkthrough happens to touch. See `coverage-matrix.yaml`.
-- **Enterprise-shaped multi-approver governance**, not one bare signature.
-  `approval-provider.mjs` reads the Flow's `governance.approvalPolicies`
-  (`minApprovers`, `roles`, `separationOfDuties`) and produces that many
-  distinct, role-diverse signed receipts — Major's `implementation-major`/
-  `closing-major` policies each require 2 approvers in different roles.
+- **Enterprise-shaped approval governance, driven by the Flow rather than by
+  this harness.** `approval-provider.mjs` reads the Flow's
+  `governance.approvalPolicies` (`minApprovers`, `roles`, `separationOfDuties`)
+  and signs exactly what the policy asks for, through the mcp provider Major's
+  `implementation-major`/`closing-major` require. Both currently ask for one
+  approver: `separationOfDuties` is what carries the weight there, and it does
+  not compare roles — it requires that the approver is not an implementer of the
+  Change. `roles` is an eligibility filter, not a diversity requirement. The
+  rationale is on `flows/major.yaml` itself; this file follows it rather than
+  restating a number that can move.
 - **Artifact quality, not just artifact existence.** `assert-artifact-outline.mjs`
   checks a produced `proposal.md`/`design.md`/`assurance.md`/`check-report.md`/
   `clarifications.md` against the exact `##` heading set the Flow's own
@@ -146,8 +151,8 @@ the question "did the pass-through governance chain work?" this way, not by
 
 1. propose → clarify → design → check all completed and produced their
    required Artifacts and evidence ledgers.
-2. `implementation-major`'s mcp approval round-trip succeeded with two
-   distinct-role receipts (`owner` + `maintainer`) — see
+2. `implementation-major`'s mcp approval round-trip succeeded, leaving as many
+   signed receipts as that policy's `minApprovers` asks for — see
    `xforge/changes/<id>/approvals/implementation-major/*.json` in the
    project root reported by `setup.mjs`.
 3. `check-findings` and `constitution-check` ran and either passed cleanly
@@ -159,8 +164,9 @@ live only in this section, so a correct Major run exited non-zero and read as a
 crash until someone came and applied them by hand. When Major exhausts its
 reworks at Check, `run-matrix.mjs` verifies each point against the project on
 disk — every Stage up to Check produced its declared Artifacts, the Approval
-policy holds as many distinct-role receipts as it demands, and every open
-blocker cites a path that exists — and reports `outcome: "stopped-at-check"`
+policy holds as many receipts as `minApprovers` demands and each comes from a
+role and a provider it admits, and every open blocker cites a path that exists —
+and reports `outcome: "stopped-at-check"`
 with exit code 0 when they hold. If any point fails, the run fails and says
 which. The acceptance suite is not run for this outcome: Apply never happened,
 so there is no implementation for it to judge.

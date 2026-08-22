@@ -6,7 +6,7 @@ import { runXforgeInteractive, runXforgeJson } from './xforge-cli.mjs';
  * XForge supports exactly two approval mechanisms — a local interactive terminal and an mcp
  * provider — and no signed-file-import path. This harness stands in for the human/external system
  * either would normally require, deterministically and without spending a model turn on it (see
- * ../../docs/internal, or `core/control-plane.ts`: "Agents cannot self-approve").
+ * ../../docs/governance-model.md §4, or `core/control-plane.ts`: "Agents cannot self-approve").
  *
  * A Change's own Flow decides which mechanism a given policy takes: Quick/Solid allow `local`,
  * Major's `implementation-major`/`closing-major` allow only `enterprise-approvals` (mcp) — by

@@ -7,7 +7,7 @@ import { COVERABLE_SCENARIO_IDS } from './scenario-catalogue.mjs';
 /**
  * Coverage is derived from the same data the runtime itself reads (manifest.yaml's
  * scaffold.skills, each flow yaml's stages[].skill) rather than a hand-maintained skill list,
- * so adding a Skill or Flow later (per docs/extending-skills-and-flows.md) makes this fail
+ * so adding a Skill or Flow later (per docs/extension-guide.md) makes this fail
  * loudly instead of silently shipping untested.
  */
 

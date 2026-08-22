@@ -5,7 +5,7 @@ import fastGlob from '../../xforge/node_modules/fast-glob/out/index.js';
 
 /**
  * A Flow's `artifacts[].outline` is already the data-driven source of truth for what an
- * artifact must (and must not) cover — see docs/extending-skills-and-flows.md. This checker
+ * artifact must (and must not) cover — see docs/extension-guide.md §2. This checker
  * enforces that data against what the Agent actually produced, instead of relying on prose
  * review, so a live-engine run can fail closed when a Skill pads an artifact with sections the
  * Flow never asked for, or silently drops one it did.
