@@ -118,17 +118,42 @@ describe('XForge product contract', () => {
     expect(installed.json.data.capabilities.claude.commands).toBe('native');
   });
 
-  it('ships mutually linked English and Chinese READMEs plus an Agent installation runbook', async () => {
-    const english = await readFile(path.join(repositoryRoot, 'README.md'), 'utf8');
-    const chinese = await readFile(path.join(repositoryRoot, 'docs', 'README.md'), 'utf8');
+  /*
+   * This used to assert a mutually linked pair of READMEs, English at the root and Chinese under
+   * `docs/`. The docs set is now Chinese-only and organised as five core documents behind
+   * `docs/index.md`, so the pair no longer exists and the language switcher at the top of the root
+   * README would point at a file that does not.
+   *
+   * What replaces it is a stronger property than the old headings check, not a weaker one. The pair
+   * test could only see that two files existed and each carried four headings; it could not see a
+   * document added or renamed without being indexed, which is the way a docs set actually rots.
+   * Reachability from both entry points, plus existence on disk, catches that.
+   */
+  it('ships one Chinese README linked to a complete Chinese docs set plus an Agent installation runbook', async () => {
+    const readme = await readFile(path.join(repositoryRoot, 'README.md'), 'utf8');
+    const index = await readFile(path.join(repositoryRoot, 'docs', 'index.md'), 'utf8');
     const runbook = await readFile(path.join(repositoryRoot, 'AGENT_INSTALL.md'), 'utf8');
-    expect(english.startsWith('English | [简体中文](docs/README.md)\n')).toBe(true);
-    expect(chinese.startsWith('[English](../README.md) | 简体中文\n')).toBe(true);
-    for (const heading of ['## Design goals', '## Main features', '## Getting started', '## Using XForge for a change']) {
-      expect(english).toContain(heading);
+    expect(readme.startsWith('# XForge\n')).toBe(true);
+    /* No English counterpart to switch to, and `docs/README.md` is archived under `docs/internal/`.
+       A leftover switcher is a link to a file that no longer exists, so it is a failure here. */
+    expect(readme).not.toMatch(/^English \| /);
+    expect(readme).not.toContain('docs/README.md');
+    for (const heading of ['## 概念', '## 安装', '## 使用', '## 维护与升级']) {
+      expect(readme).toContain(heading);
     }
-    for (const heading of ['## 设计目标', '## 主要特性', '## 开始使用', '## 用 XForge 开发一个 Change']) {
-      expect(chinese).toContain(heading);
+    const coreDocs = [
+      'concepts-and-architecture.md',
+      'governance-model.md',
+      'extension-guide.md',
+      'repository-layout.md',
+      'sub-agent-design.md',
+      'cli-tool-usage.md',
+    ];
+    expect(readme).toContain('docs/index.md');
+    for (const document of coreDocs) {
+      expect(await exists(path.join(repositoryRoot, 'docs', document))).toBe(true);
+      expect(readme).toContain(`docs/${document}`);
+      expect(index).toContain(`(${document})`);
     }
     expect(runbook).toContain('npm install --save-dev --save-exact @xforge/cli');
     expect(runbook).toContain('xforge init');

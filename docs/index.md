@@ -5,7 +5,7 @@
 
 ---
 
-## 五份核心文档
+## 六份核心文档
 
 | 文档 | 回答什么 | 什么时候读 |
 | --- | --- | --- |
@@ -14,6 +14,7 @@
 | [扩展指南](extension-guide.md) | 新增 Skill / Flow / Gate / Rule / Policy / Hook / Approval / Agent / MCP | 要定制时 |
 | [仓库与文件布局](repository-layout.md) | 每个中间产物落在哪、归谁写、被谁校验 | 排障或写台账时 |
 | [子 Agent 设计](sub-agent-design.md) | 并行工作包与 Worker / Integrator / Reviewer | 要并行交付时 |
+| [CLI 用法](cli-tool-usage.md) | 有哪些命令、接什么参数、返回什么、退出码与常见诊断码 | 查命令时 |
 
 ---
 
@@ -68,11 +69,13 @@
 
 ## 其它
 
-- **命令与参数**：`xforge help --text`，单条命令用 `xforge help <command> --text`。
-  CLI 自带的命令列表由实现生成，比任何一份手册都更接近真实行为。
+- **命令的最终依据**：`xforge help --text`，单条命令用 `xforge help <command> --text`。
+  CLI 自带的命令列表由实现生成，[CLI 用法](cli-tool-usage.md) 与它有出入时以它为准。
+  那份文档提供的是帮助文本给不了的东西——命令之间怎么配合、哪些参数有陷阱、
+  某个诊断码出现时该怎么处置。
 - **发布流程**：[RELEASING.md](../RELEASING.md)（仅英文）。
 
 产品规格、CLI 设计、测试设计、设计评审与审计报告属于内部材料，**不在本仓库发布**，
-本目录也不再保留它们的副本。这五份核心文档就是 XForge 公开文档的全部。
+本目录也不再保留它们的副本。这六份核心文档就是 XForge 公开文档的全部。
 
-> 五份核心文档以源码为准。发现文档与实现不一致时，以源码为准并提 issue。
+> 六份核心文档以源码为准。发现文档与实现不一致时，以源码为准并提 issue。

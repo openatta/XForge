@@ -391,6 +391,7 @@ xforge upgrade-scaffold --rollback
 | [扩展指南](docs/extension-guide.md) | 新增 Skill / Flow / Gate / Rule / Policy / Hook / Approval / Agent / MCP |
 | [仓库与文件布局](docs/repository-layout.md) | 每个中间产物落在哪、归谁写、什么该进 Git |
 | [子 Agent 设计](docs/sub-agent-design.md) | 并行工作包与 Worker / Integrator / Reviewer |
+| [CLI 用法](docs/cli-tool-usage.md) | 命令、参数、退出码与常见诊断码 |
 | [Agent 安装手册](AGENT_INSTALL.md) | 清单驱动的安装流程 |
 
 ---

@@ -1,0 +1,462 @@
+# XForge CLI 用法
+
+> 命令参考。**概念与机制**见 [概念与架构](concepts-and-architecture.md)，
+> 这份只讲「有哪些命令、接什么参数、返回什么」。
+>
+> 对应实现：`@xforge/cli 0.7.17`、Protocol 2。
+> 本文档以 `xforge/src/cli.ts` 的命令表为准；有出入时以 `xforge help --text` 为准。
+
+---
+
+## 1. 怎么调用
+
+**XForge 的命令是给 AI 编程 Agent 用的，不是给人临时敲的。**
+人或 CI 只做一次性安装；此后每一次操作都是 Agent 按已安装的 `xforge-*` Skills 运行 `xforge ...`。
+
+两种调用形式，**沿用你项目已经在用的那一种，不要来回改写**：
+
+```bash
+xforge <command> ...                 # 全局安装
+npx --no-install xforge <command>    # 项目本地安装（可执行文件在 node_modules/.bin，不在 PATH 上）
+```
+
+> ⚠️ **绝不要退回到 `npx xforge`。** npm 上有一个同名的无关包，npx 会把它拉下来运行。
+> 找不到 `xforge` 命令时**停下并报告**，不要为了绕过「命令不存在」而自行安装 CLI——
+> 本项目运行哪个版本，是记录在 `xforge/manifest.yaml` 里的决定，不是在 shell 里临时做的决定。
+
+---
+
+## 2. 通用约定
+
+### 2.1 只有选项，没有位置参数
+
+项目根目录来自 `--root <path>`，**绝不是位置参数**。唯一的位置参数是子命令
+（`audit status`、`transition repair`、`work-package dispatch` 这一类）和 `help <command>`。
+
+- 未知选项 → `XFORGE_OPTION_UNKNOWN`
+- 重复同一个选项 → `XFORGE_ARGUMENT_DUPLICATE`
+- 选项缺值 → `XFORGE_OPTION_VALUE_MISSING`
+
+`--help` 与 `--version` 是快捷方式，不能同时使用。
+**裸跑 `xforge`（不带任何参数）会直接打印帮助**——敲一个工具的名字就是在问它能做什么；
+但 `xforge --text` 或 `xforge --root x` 属于格式错误的调用，仍然会失败，
+这样脚本不会把它误认成一次成功运行。
+
+### 2.2 一个 JSON 信封
+
+所有普通命令返回**恰好一个** Protocol 2 信封：
+
+```json
+{
+  "protocolVersion": "2",
+  "ok": true,
+  "command": "state",
+  "root": "/project",
+  "data": {},
+  "diagnostics": [],
+  "changes": [],
+  "nextActions": []
+}
+```
+
+加 `--text` 得到人类可读视图，**不改变语义与退出状态**。
+需要程序或 Agent 消费结果时用默认的 JSON。
+
+两个命令有专门的文本渲染：`brief`（分层简报）与 `upgrade-scaffold`（合并计划）。
+唯一不返回信封的是 `hook dispatch`——它要往 stdout 写目标平台要求的 Hook 响应 JSON。
+
+### 2.3 退出码
+
+| 码 | 含义 |
+| --- | --- |
+| `0` | 成功 |
+| `1` | 失败（`ok: false`），或 `--field` 未命中 |
+| `2` | **仅 `hook dispatch`**：`before` / `permission` 类事件的 deny。`after` 类事件失败返回 `0`，以免破坏平台自己的记账 |
+
+---
+
+## 3. 命令一览
+
+| 命令 | 读 / 写 | 作用 |
+| --- | --- | --- |
+| `help` | 读 | 通用或单命令帮助 |
+| `version` | 读 | CLI / protocol / runtime / build 身份 |
+| `init` | 有条件写 | 校验内置 Scaffold，初始化项目，可选投影到一个目标 |
+| `state` | 读 | 解析后的项目与 Change 状态 + typed `nextActions` |
+| `install` | 写 | 首次或幂等的目标投影 |
+| `sync` | 写 | 增量同步本地化的 Scaffold 改动 |
+| `update` | 写 | 完整调和目标、身份与 Adapter 输出 |
+| `uninstall` | 写 | 摘要安全地移除受管文件 |
+| `check` | 有条件写 | 结构诊断 + 真实的 Gate Evidence |
+| `verification` | 写 | 声明本项目怎么跑 declared Gate；起草验证 receipt |
+| `brief` | 读 | 人类审批前的分层简报 |
+| `transition` | 写 | 受保护的 Stage 转换；`repair` 丢弃一张叶子回执 |
+| `approve` | 写 | 交互式本地审批或 mcp provider 审批 |
+| `review` | 写 | 无工作包计划时记录 Change 级复核 |
+| `work-package` | 写 | 派工 / 起草交付 / 确认集成或复核 |
+| `audit` | 读 / 有条件写 | 审计链的检视、校验、导出、重投递、修剪 |
+| `archive` | 写 | 校验、合并 Specs、原子归档 |
+| `upgrade-scaffold` | 写 | 暂存并分类新版 Scaffold 供人合并 |
+| `doctor` | 读 | 报告未被引用与悬空的扩展资源 |
+| `hook` | 内部 | 平台 Hook 分发器 |
+
+---
+
+## 4. 认识与诊断
+
+### `help` / `version`
+
+```bash
+xforge help [command] [--text]
+xforge version [--text]
+```
+
+`version` 同时给出版本和 **`executablePath`**——那是区分陈旧全局安装
+与遮蔽它的项目本地安装的关键。
+
+### `state`
+
+```bash
+xforge [--root <path>] state [--change <id>] [--kind <kind>] [--target <target>] [--text] [--field <path>]
+```
+
+读取解析后的项目与 Change 状态。**`state.nextActions` 是推进 Change 的权威**——
+不要背命令序列。
+
+#### `--field`：取单个值，不要 grep
+
+```bash
+xforge state --change <id> --field change.governance.revision.contentRevision
+xforge state --change <id> --field change.governance.readyTransitions.0.to
+```
+
+`--field` **只打印一个值、不打印别的**，所以 `$(xforge state --field ...)` 是安全的。
+
+> ⚠️ **不要用 grep 从 JSON 里挑值。** `contentRevision` 在 `xforge state` 里
+> 每一份历史回执下都出现一次，`grep -m1` 会把一个**已被取代的** revision 当成当前值报出来
+> ——一次实测就是这样对着旧值手写了一份 receipt。
+>
+> 未命中时 `--field` **大声失败**（`XFORGE_FIELD_NOT_FOUND`，退出码 1）而不是打印空行：
+> 一个看起来像值的空捕获，正是这个选项要消灭的失败模式。
+
+### `check`
+
+```bash
+xforge [--root <path>] check [--change <id>] [--gate <id>] [--stage <id> | --all-gates] [--force] [--text]
+```
+
+校验项目结构、work-package 交付，并运行**当前 Stage 要求的那一组 Gate**。
+
+> **必须在最后一次写入之后、一次性运行。** Gate Evidence 绑定运行当刻的 `contentRevision`：
+> 先跑一个 Gate、再改 Artifact、再跑下一个，会让先跑的变陈旧——
+> 结果是所有 Gate 都报 `passed`，Stage 却仍然出不去。
+
+`--all-gates` 会连 Change 尚未到达的 Stage 的 Gate 一起跑，**那些不可能通过**，中途一般不需要。
+
+### `doctor`
+
+```bash
+xforge [--root <path>] doctor [--kind <kind>] [--strict] [--text]
+```
+
+报告悬空引用与未被引用的扩展资源。**默认只警告，从不阻塞**；`--strict` 让它成为失败。
+
+`--kind` 取值（**单复数都接受**）：
+
+```text
+skills  agents  rules  policies  hooks  gates  scripts  flows  approvals  mcp-servers
+```
+
+---
+
+## 5. 安装与投影
+
+### `init`
+
+```bash
+xforge [--root <path>] init [--language <en|zh-CN>] [--target <target>] [--dry-run] [--text]
+```
+
+`--language` 覆盖语言检测。**只有在交互式终端里才能省略**（它会问你）；
+非交互运行以 `XFORGE_LANGUAGE_REQUIRED` 失败关闭，而不是替你选——
+因为 Constitution 和 Agent 会读的每一个 Skill 都用这里选的语言书写。
+
+`--target` 取值：`claude` · `codex` · `cursor` · `opencode` · `github-copilot`。
+
+- 没有 `xforge/` 的项目用 `init`；已经有的用 `install`
+  （在未初始化目录上 `install` 会报 `XFORGE_PROJECT_NOT_FOUND`）。
+
+### `install` / `sync` / `update` / `uninstall`
+
+```bash
+xforge [--root <path>] install   [--target <t>] [--adopt] [--dry-run] [--text]
+xforge [--root <path>] sync      [--target <t>] [--adopt] [--dry-run] [--verify-digests] [--text]
+xforge [--root <path>] update    [--target <t>] [--adopt] [--dry-run] [--text]
+xforge [--root <path>] uninstall [--target <t>] [--force]  [--dry-run] [--text]
+```
+
+| 命令 | 什么时候用 |
+| --- | --- |
+| `install` | 首次投影，或幂等地调和已选中的资产。省略 `--target` 时投影 Manifest 里启用的每一个目标 |
+| `sync` | 编辑了 `xforge/scaffold/` 或改了 manifest 的选中项之后 |
+| `update` | 目标、Scaffold / CLI 身份或 Adapter 输出发生变化时 |
+| `uninstall` | 移除某一个目标的受管文件；摘要不匹配时拒绝，除非 `--force` |
+
+**`--adopt` 的语义要说清楚：** 它把一个**被手工改过、但 XForge 已经拥有**的目标文件
+重新基线到生成内容上。它是刻意 opt-in 且刻意狭窄的——**只覆盖安装记录里已有的目标，
+绝不采纳一个不在记录里的文件**。它存在是因为：一个被手改过的受管文件会卡住其它所有文件的同步，
+而在此之前唯一的出路是手工把那个文件还原回去。
+
+`--verify-digests`（仅 `sync`）会核对已安装文件的摘要。
+
+> **`xforge update` 不升级 Scaffold**，它把你**已有的** Scaffold 重新投影一遍。
+> 换掉 Scaffold 本身的是 `upgrade-scaffold`。
+
+### `upgrade-scaffold`
+
+```bash
+xforge [--root <path>] upgrade-scaffold [--complete | --rollback] [--with-active-changes] [--force] [--dry-run] [--text]
+```
+
+把这个 CLI 附带的 Scaffold **暂存**在项目自己的旁边，并对每个文件分类，供人或 Agent 合并。
+**它从不替你合并。**
+
+| 选项 | 作用 |
+| --- | --- |
+| （无） | 暂存 + 快照 + 分类。`xforge/scaffold/` 下不会有任何改动 |
+| `--complete` | 合并完成后收尾，推进 Scaffold 版本锚点 |
+| `--rollback` | 恢复到暂存之前。**只保留一份快照**（上一次升级的） |
+| `--with-active-changes` | 接受「在有未归档 Change 的情况下升级」 |
+| `--force` | 升级完成后 Scaffold 又变过时，仍然回滚 |
+
+> **有未归档 Change 时它直接拒绝**（`XFORGE_UPGRADE_ACTIVE_CHANGES`）：
+> 那些 Change 剩下的 Stage 会在它们的 Design 从未见过的 Gate 下运行。
+> 这是一个关于工作的决定，所以它停下来点名。
+
+`xforge/upgrade-log.md` 记录每一次完成的升级，在暂存目录和回滚之后都存活。
+
+---
+
+## 6. Change 生命周期
+
+### `transition`
+
+```bash
+xforge [--root <path>] transition --change <id> --to <stage> [--dry-run] [--text]
+xforge [--root <path>] transition repair --change <id> --receipt <receiptId> [--dry-run] [--text]
+```
+
+评估并记录一次受保护的 Stage 转换。未满足的门会出现在
+`state.governance.readyTransitions[].blockedBy` 里。
+
+**`repair` 不是 `--force`：** 它丢弃一张已记录的转换回执，把 Change 退回该转换离开的 Stage，
+并把「丢弃了什么」记入审计链。**只有叶子回执可以丢**——被后续回执链接的回执是承重的，会被拒绝。
+归档审批会随之失效，因为审批绑定的是它被给予时的内容。
+
+这也是 `ready-to-archive` 卡住时的出路：那是一个**合成 Stage**，不在 `flow.stages` 里，
+所以没有任何合法的前进或返工目标。
+
+### `approve`
+
+```bash
+xforge [--root <path>] approve --change <id> --for <transition-id|archive> \
+       [--policy <id>] [--provider <mcp-provider-id>] [--dry-run] [--text]
+```
+
+**只有两种审批机制**：CLI 自己的交互式终端（`local`），或 manifest 里登记的 `mcp` provider。
+没有第三种。
+
+> ⚠️ **`--for` 填的是该审批所解锁的那次 transition 的 id**（Flow 里的目标 Stage id，
+> 或字面量 `archive`），**不是 `stage` 这类字面词**。
+> **一律从 `state.nextActions[].command` 里原样取**，不要照 usage 自己拼。
+>
+> `XFORGE_APPROVAL_TRANSITION_UNKNOWN` / `_UNAPPROVABLE` 表示参数错了**且什么都没写入**
+> ——改参数，不要重跑，更不要再请人签一次。
+
+`--actor` / `--role` / `--reason` / `--decision` / `--attestation human` **只是预填建议**，
+不是权威值：本地审批必须在**真实 TTY** 里由 CLI 自己的 `readline` 对话现场问出来。
+
+`--dry-run` **不需要终端、也不惊动审批人**，就能把参数先校验一遍。
+
+遇到 provider 配置类错误要**停止，不要对同一个 provider 反复重试**：
+
+```text
+XFORGE_APPROVAL_PROVIDER_FORBIDDEN     XFORGE_APPROVAL_MCP_SERVER_MISSING
+XFORGE_APPROVAL_MCP_TOKEN_MISSING      XFORGE_APPROVAL_MCP_CONNECTION_FAILED
+```
+
+**provider 未配置，不是决定仍在等待。**
+
+### `brief`
+
+```bash
+xforge [--root <path>] brief --change <id> [--attach-triage <path>] [--text]
+```
+
+报告「这个 Stage 的一次人类审批到底取决于什么」，把**算出来的事实**与**原文引用**分开呈现。
+
+三个 Skill（design / check / verify）在人类审批前都要求运行它，并把输出**逐字**交给用户。
+
+> **不得转述、重排或概括。** 简报分层呈现的目的就是让读者不必信任措辞——
+> 用自己的话复述会毁掉读者区分二者的唯一依据。
+
+### `verification`
+
+```bash
+# 声明本项目怎么跑一个 declared Gate
+xforge [--root <path>] verification declare --gate-name <gate> \
+       ( --command '["prog","arg"]' | --not-applicable <marker> --justification <text> ) \
+       --by <person> [--module <id>] [--covers '["marker"]'] \
+       [--working-directory <path>] [--timeout-seconds <n>] [--dry-run] [--text]
+
+# 起草当前 Stage 的验证 receipt
+xforge [--root <path>] verification draft-receipt --change <id> [--text]
+```
+
+**`--by` 是必填的**，因为「一条命令是否真的在验证什么」没有任何机械方式可以判定——
+这个字段记录的是**谁回答了这个问题**。
+
+> **绝不手工编辑 `xforge/manifest.yaml`。** 它受 `protected-manifest` 策略管辖，
+> 而一次实测里手写该块时缩进少了一级，此后治理 dispatcher 再也读不了 Manifest，
+> 于是拒绝了每一次工具调用——包括本可以修复它的那些。
+> 这条命令会写好该块、自动填 `declaredAt`，**宁可拒绝也不会产出一份加载不了的 Manifest**。
+
+`draft-receipt` **刻意不产出 `status`，也不写文件**——那个字段是本 Stage
+对「这项工作已被验证」的断言，由 CLI 填它，就等于让它替你决定这份 receipt 本身要记录的那件事。
+把结果里的 `receipt` 写进 `evidence/verification-receipt.yaml`，只补一行 `status: passed`。
+
+### `review`
+
+```bash
+xforge [--root <path>] review acknowledge --change <id> --evidence <path> [--dry-run] [--text]
+```
+
+记录「本 Change 交付的工作被复核过」，**用于没有工作包计划的 Change**。
+按包的形态是 `work-package acknowledge --as reviewer`；**存在工作包计划时这条命令会被拒绝**。
+
+> **没有 `--by`：actor 取自环境。** 一个邀请填写复核者姓名的字段，邀请的是一个编造的姓名。
+
+### `work-package`
+
+```bash
+xforge [--root <path>] work-package dispatch    --change <id> --package <id> [--dry-run] [--text]
+xforge [--root <path>] work-package draft       --change <id> --package <id> [--text]
+xforge [--root <path>] work-package acknowledge --change <id> --package <id> \
+                                    --as <integrator|reviewer> --evidence <path> [--dry-run] [--text]
+```
+
+| 子命令 | 作用 |
+| --- | --- |
+| `dispatch` | 只允许 Apply Stage 的 ready 节点，且**整份计划校验无 error** 后才原子写入派工 receipt |
+| `draft` | 回填机器已知的那一半：execution id、两个 commit、`changed_paths`、每条声明的 `verify` 命令与实际退出码。**这些不要手抄** |
+| `acknowledge` | 记录集成或复核证据；ack receipt 绑定 `deliveryDigest`，无法被重放到另一份 delivery 上 |
+
+### `archive`
+
+```bash
+xforge [--root <path>] archive --change <id> [--dry-run] [--text]
+```
+
+在 **plan 和 execution 两次**检查终态治理，重跑强制 Gate，合并 delta Specs，
+再执行原子事务。任何中间错误都保持 Change 未归档。
+
+**`archive` 关闭的是一个 XForge Change。** 它不部署应用、不发布版本、
+不运行迁移、不授予生产系统访问权限。
+
+---
+
+## 7. 审计
+
+```bash
+xforge [--root <path>] audit <status|verify|export|retry|prune> [--change <id>] [--output <path>] [--text]
+```
+
+| 子命令 | 作用 |
+| --- | --- |
+| `status` | 按 eventType 计数、覆盖缺口、待远端投递数量 |
+| `verify` | 哈希链完整性 + 该 Change 所属 Flow 要求的事件类型是否齐全 |
+| `export` | 完整的脱敏事件列表，供外部审阅（**`--output` 只对它有效**） |
+| `retry` | 重投递积压的事件 |
+| `prune` | 按保留策略修剪本地链 |
+
+`audit verify --change <id>` 是真正卡住 Archive 的那个命令，**也可直接作为 CI protected check**。
+欠账按 Change 计算，避免一个 Change 阻塞另一个。
+
+远端投递靠三个环境变量，这就是全部契约：
+
+```text
+XFORGE_AUDIT_ENDPOINT      投递地址（未设置 = 所有事件停在 deliveryState: 'pending'）
+XFORGE_AUDIT_TOKEN         Bearer
+XFORGE_AUDIT_HMAC_SECRET   HMAC
+```
+
+> 归档时出现 `audit:remote-pending` 要**停止**：远端投递被设为 required，
+> 而 endpoint 未设置或不可达，`audit retry` 没有可投递的去处。**绝不反复重试。**
+
+---
+
+## 8. 内部命令
+
+```bash
+xforge hook dispatch --target <target> --event <event>
+```
+
+平台 Hook 分发器，由生成的 Hook 配置调用，**不是给人敲的**。
+它往 stdout 写目标平台要求的 Hook 响应 JSON，而不是 XForge 信封——
+一个完整的 Envelope 出现在平台的输出通道上，会被读成一个「没有意见的决定对象」，
+也就是说一个配置错误的 hook 命令会**静默放行每一次工具调用**。
+
+失败时 `before` / `permission` 类事件退出 `2`（deny），`after` 类退出 `0`。
+
+---
+
+## 9. 典型序列
+
+```bash
+xforge state --change <change-id>
+xforge check --change <change-id>
+xforge transition --change <change-id> --to <next-stage> --dry-run
+xforge transition --change <change-id> --to <next-stage>
+
+# 当 state 报告有就绪的工作包时：
+xforge work-package dispatch --change <change-id> --package <package-id>
+
+# 当 state 报告需要审批时（命令从 nextActions 里原样复制）：
+xforge approve --change <change-id> --for <transition-id-or-archive> ...
+
+xforge audit verify --change <change-id>
+xforge archive --change <change-id> --dry-run
+xforge archive --change <change-id>
+```
+
+> **不要照抄这个序列。** `state.nextActions` 才是权威——一条 Flow 可能要求返工、
+> 额外的 Gate、外部审批 receipt 或远端审计投递，才允许下一次 transition。
+
+---
+
+## 10. 常见诊断码
+
+| 码 | 含义与处置 |
+| --- | --- |
+| `XFORGE_CLI_IDENTITY_MISMATCH` | 应答的 CLI 不是项目固定的版本。跑 `xforge version` 看 `executablePath`，然后升级项目 / 升级全局 / 本地安装。**如实报告，不要绕过** |
+| `XFORGE_PROJECT_NOT_FOUND` | 在未初始化的目录上跑了 `install`。用 `init` |
+| `XFORGE_LANGUAGE_REQUIRED` | 非交互式 `init` 没给 `--language`。给它，不要替用户选 |
+| `XFORGE_VERIFICATION_NOT_DECLARED` | Gate **拒绝**（不是失败）：项目没说自己怎么验证。**停下来问用户**，然后 `verification declare` |
+| `XFORGE_VERIFICATION_TOOLCHAIN_UNCOVERED` | 同上；有意不覆盖的工具链用 `--not-applicable` |
+| `XFORGE_UPGRADE_ACTIVE_CHANGES` | 有未归档 Change。先归档，这是人的决定 |
+| `XFORGE_FIELD_NOT_FOUND` | `--field` 路径不存在。去掉 `--field` 看 `data` 的形状 |
+| `XFORGE_APPROVAL_TRANSITION_UNKNOWN` / `_UNAPPROVABLE` | `--for` 填错了，**什么都没写入**。改参数，不要重跑 |
+| `XFORGE_APPROVAL_NOT_IN_AUDIT_CHAIN` | receipt 在审计链里找不到匹配事件，不进有效集合 |
+| `XFORGE_FLOW_EXIT_UNSTRUCTURED` | Flow 的 `exit` 用了裸映射旧形态。改成结构化四字段 |
+| `XFORGE_MANAGED_FILE_ADOPTED` | info：`--adopt` 把一个手改过的受管文件重新基线了 |
+
+---
+
+## 11. 三个「别这么用」
+
+1. **别用 `grep` 从 `xforge state` 的 JSON 里挑值。** 用 `--field`。
+   多个历史回执下重复出现的字段会让行匹配返回过时的那一个。
+2. **别照 usage 字符串拼审批命令。** 从 `state.nextActions[].command` 里原样取。
+3. **别把「拒绝」当成「失败」去绕过。** Gate refuse 是一个未被回答的问题，
+   `upgrade-scaffold` refuse 是一个属于人的决定，`ready-to-archive` 无可用 transition
+   是 Stage 层面已无可走——三者的正确反应都不是重试。
