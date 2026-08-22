@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { detectToolchains } from '../../src/core/toolchain.js';
 import { resolveVerificationPlan } from '../../src/core/verification.js';
 import { loadProject } from '../../src/core/project-loader.js';
-import { clearVerification, createCompleteSolidChange, fixture, runCli, updateYaml, write } from '../helpers.js';
+import { clearVerification, createCompleteSolidChange, fixture, runCli, scaffoldPayload, updateYaml, write } from '../helpers.js';
 
 const CHANGE = 'add-feature';
 
@@ -273,6 +273,17 @@ describe('declared verification', () => {
       const migrated = await readFile(path.join(root, 'xforge', 'scaffold', 'gates', 'unit-tests.yaml'), 'utf8');
       expect(migrated).toContain('builtin: declared');
       expect(migrated).not.toContain('passing WITHOUT');
+      /*
+       * Byte-identical to the Gate this release ships, not merely `builtin: declared`.
+       *
+       * The weaker pair above passed while the migration wrote a literal copied into `update.ts`
+       * that had fallen two versions behind the shipped file and carried none of its
+       * `maxOutputBytes` cap — so the one route by which a fix reaches an existing project
+       * delivered a different Gate from the one `init` seeds, and nothing said so. Comparing
+       * against the payload a human actually edits is what makes that drift visible.
+       */
+      const shipped = await readFile(path.join(scaffoldPayload, 'xforge', 'scaffold', 'gates', 'unit-tests.yaml'), 'utf8');
+      expect(migrated).toBe(shipped);
       /* The migration and the lock it invalidates are resolved by the same run. */
       expect(result.json.diagnostics.map((item: any) => item.code)).not.toContain('XFORGE_LOCK_RESOURCES_MISMATCH');
     });

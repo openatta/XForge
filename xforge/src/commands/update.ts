@@ -67,10 +67,19 @@ const PLACEHOLDER_SENTINELS = ['passing WITHOUT asserting anything', 'passing WI
  * A Gate that has been edited is never touched. The sentinel is what distinguishes "still the file
  * we shipped" from "the project's own", and rewriting somebody's real test command because a newer
  * default exists would be a far worse failure than the one being repaired.
+ *
+ * The replacement is read from the bundled Scaffold rather than written out here. It used to be a
+ * literal copied into this function, and a copy of a shipped file is a copy that drifts: the Gates
+ * reached `version: 4` with a `maxOutputBytes` cap while this literal still said `version: 3` and
+ * capped nothing, so the one route by which a fix reaches an existing project delivered a Gate two
+ * versions behind the one `init` seeds — and the migration test could not see it, because asserting
+ * `builtin: declared` is true of both. Taking the bundle's own bytes makes a migrated project
+ * byte-identical to a freshly initialized one and removes the second place a Gate is defined.
  */
 async function migratePlaceholderGates(project: ProjectContext, dryRun: boolean): Promise<{ changes: FileChange[]; diagnostics: Diagnostic[] }> {
   const changes: FileChange[] = [];
   const diagnostics: Diagnostic[] = [];
+  const bundle = await loadBundledScaffold();
   for (const name of ['unit-tests', 'security-scan']) {
     const relative = `xforge/scaffold/gates/${name}.yaml`;
     let current: string;
@@ -78,23 +87,11 @@ async function migratePlaceholderGates(project: ProjectContext, dryRun: boolean)
     catch { continue; }
     if (!PLACEHOLDER_SENTINELS.some((sentinel) => current.includes(sentinel))) continue;
 
-    const replacement = [
-      '# Runs what this project declared under `manifest.verification.' + name + '`, and refuses when',
-      '# it declared nothing. XForge knows no programming languages; this is where the project says',
-      '# how it verifies itself, in any language, and where an unanswered question stays visible',
-      '# instead of being reported as a pass.',
-      'apiVersion: xforge.dev/v1alpha1',
-      'kind: Gate',
-      'metadata:',
-      `  name: ${name}`,
-      '  version: 3',
-      'spec:',
-      '  required: true',
-      '  builtin: declared',
-      '  timeoutSeconds: 900',
-      `  evidence: ${name === 'unit-tests' ? 'tests' : 'security'}.json`,
-      '',
-    ].join('\n');
+    /* `loadBundledScaffold` has already refused a package whose payload is missing or fails its own
+       digest manifest, so an absent entry here is not a degraded install to work around — leaving
+       the placeholder in place is safer than inventing a replacement for it. */
+    const replacement = bundle.files.get(relative);
+    if (!replacement) continue;
     if (!dryRun) await atomicWrite(project.root, relative, replacement);
     changes.push({ action: 'modify', path: relative, digest: sha256(replacement), source: 'migrate:placeholder-gate' });
     diagnostics.push(diagnostic(
