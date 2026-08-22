@@ -12,13 +12,39 @@
 # XForge does not know how any given project verifies itself, and no list of languages inside the
 # CLI would change that — it would only move the edge. So the project says, in any language, and
 # an unanswered question stays visible instead of being reported as a pass.
+#
+# `maxOutputBytes` is set well below the 65_536 default because this is one of only two shipped
+# Gates that runs a project command, and therefore one of only two whose Evidence can approach the
+# cap. The three `structure` / `check-findings` / `constitution-check` Gates answer in-process and
+# never reach `runCommand`, so setting it on them would be inert.
+#
+# The number is a storage decision, and it is worth being explicit about what it does and does not
+# cost. Gate Evidence is committed — it has to be, or an archived Change carries no record of what
+# actually ran (see docs/repository-layout.md). Every re-run of `xforge check` overwrites the same
+# path in the working tree but leaves another blob in Git history, so a Change that is checked a
+# dozen times pays this cost a dozen times. At the default that is ~128 KiB per run per Gate
+# (stdout and stderr are bounded separately); at 8 KiB it is an order of magnitude less.
+#
+# What the reduction cannot cost is the audit answer. `builtin: declared` writes one summary line
+# per declared command — `<argv> -> exit <code> in <ms>ms (declared by <who>)` — *before* that
+# command's output, and each command's output is bounded separately, so every summary line survives
+# any cap. Together with `command`, `exitCode`, `contentRevision`, `runner.integrity` and `digest`,
+# that is the whole of what this Evidence proves.
+#
+# What it does cost is tail diagnostics. `appendBounded` keeps the head of a stream and drops the
+# rest, and a test runner usually prints its failures last — so on a chatty runner a small cap keeps
+# the setup noise and loses the failure. That is an acceptable trade only because a failing Gate
+# blocks the transition and is re-run locally anyway; the Evidence that gets archived is the passing
+# one. A project whose runner is quiet on success and whose failures matter more than storage should
+# raise this, and one that only ever reads the exit code can lower it to the 1024 minimum.
 apiVersion: xforge.dev/v1alpha1
 kind: Gate
 metadata:
   name: unit-tests
-  version: 3
+  version: 4
 spec:
   required: true
   builtin: declared
   timeoutSeconds: 900
+  maxOutputBytes: 8192
   evidence: tests.json

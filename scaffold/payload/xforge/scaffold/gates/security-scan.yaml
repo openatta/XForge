@@ -12,13 +12,25 @@
 # XForge does not know how any given project verifies itself, and no list of languages inside the
 # CLI would change that — it would only move the edge. So the project says, in any language, and
 # an unanswered question stays visible instead of being reported as a pass.
+#
+# `maxOutputBytes` is set to the same 8 KiB as `unit-tests`, and for the same reason: these are the
+# two shipped Gates that run a project command, so they are the two whose committed Evidence can
+# approach the 65_536 default. The full reasoning — what a smaller cap preserves, what it costs, and
+# why the audit answer is unaffected — is written once, on `unit-tests.yaml`.
+#
+# The two are kept identical deliberately. A scanner is exactly the kind of tool whose useful output
+# is a findings list rather than a tail, so the head-truncation argument is if anything weaker here
+# than it is for a test runner, and there is no reason to make an operator remember two numbers.
+# Lower it to the 1024 minimum only if this project's scanner is one whose exit code is the entire
+# verdict and whose report is written somewhere else.
 apiVersion: xforge.dev/v1alpha1
 kind: Gate
 metadata:
   name: security-scan
-  version: 3
+  version: 4
 spec:
   required: true
   builtin: declared
   timeoutSeconds: 900
+  maxOutputBytes: 8192
   evidence: security.json

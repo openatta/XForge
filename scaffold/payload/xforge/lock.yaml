@@ -31,21 +31,21 @@ resources:
     kind: gate
     license: project
     version: 1
-  - digest: 973d9644bda7c8ac94641c2eaff2ac01cf0718bd978fdf0709214185828f0426
+  - digest: 1e7340bc15888196970cf228b3be82d4f0cfab954f1153c34900f3794092ed3d
     id: security-scan
     kind: gate
     license: project
-    version: 3
+    version: 4
   - digest: 39a4adc3ccd641cbd900d17d3a4abaac397f30730de1d58bee86f0bf2d66e853
     id: structure
     kind: gate
     license: project
     version: 1
-  - digest: 6360fb042019aaad2e8f0b14106297d10004a9a19e14350e464a18c464b522f6
+  - digest: ccce16517f55eda4117c70a79c947eab92453db4de216a1c4440e0e4f631bb2f
     id: unit-tests
     kind: gate
     license: project
-    version: 3
+    version: 4
   - digest: 990f970191c3e163e4b76e4cb89aaad7e26853bb735eb3d4b64d24dee0c89dcf
     id: protected-files
     kind: permission-policy
