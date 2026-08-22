@@ -118,12 +118,14 @@ describe('Protocol 2 control plane', () => {
 
     expect((await runCli(root, ['check', '--change', 'add-feature', '--gate', 'structure'])).code).toBe(0);
     expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'design'])).code).toBe(0);
-    const approvalBlocked = await runCli(root, ['transition', '--change', 'add-feature', '--to', 'check', '--dry-run']);
+    expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'check'])).code).toBe(0);
+    expect((await runCli(root, ['check', '--change', 'add-feature'])).code).toBe(0);
+    const approvalBlocked = await runCli(root, ['transition', '--change', 'add-feature', '--to', 'apply', '--dry-run']);
     expect(approvalBlocked.json.diagnostics.some((item: any) => item.message.includes('approval:planning-solid'))).toBe(true);
 
-    await approveCurrentRevision(root, 'add-feature', 'check', 'planning-solid');
+    await approveCurrentRevision(root, 'add-feature', 'apply', 'planning-solid');
     await write(root, 'xforge/changes/add-feature/design.md', '## Decisions\nChanged after approval.\n');
-    const stale = await runCli(root, ['transition', '--change', 'add-feature', '--to', 'check'], approvalTestEnv);
+    const stale = await runCli(root, ['transition', '--change', 'add-feature', '--to', 'apply'], approvalTestEnv);
     expect(stale.code).toBe(1);
     expect(stale.json.diagnostics.some((item: any) => item.message.includes('approval:planning-solid'))).toBe(true);
   });
@@ -143,10 +145,12 @@ describe('Protocol 2 control plane', () => {
     expect(afterGateCommit.json.data.change.governance.readyTransitions.find((item: any) => item.to === 'design').blockedBy).toEqual([]);
 
     expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'design'])).code).toBe(0);
-    await approveCurrentRevision(root, 'add-feature', 'check', 'planning-solid');
+    expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'check'])).code).toBe(0);
+    expect((await runCli(root, ['check', '--change', 'add-feature'])).code).toBe(0);
+    await approveCurrentRevision(root, 'add-feature', 'apply', 'planning-solid');
 
     const before = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
-    expect(before.json.data.change.governance.readyTransitions.find((item: any) => item.to === 'check').ready).toBe(true);
+    expect(before.json.data.change.governance.readyTransitions.find((item: any) => item.to === 'apply').ready).toBe(true);
 
     /* Commit everything produced so far, exactly as `commitGeneratedFiles: true` would. */
     await git(root, ['add', '-A']);
@@ -158,9 +162,9 @@ describe('Protocol 2 control plane', () => {
     const after = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
     expect(after.json.data.change.governance.revision.gitHead).not.toBe(before.json.data.change.governance.revision.gitHead);
     expect(after.json.data.change.governance.revision.governingRevision).toBe(before.json.data.change.governance.revision.governingRevision);
-    const ready = after.json.data.change.governance.readyTransitions.find((item: any) => item.to === 'check');
+    const ready = after.json.data.change.governance.readyTransitions.find((item: any) => item.to === 'apply');
     expect(ready.blockedBy).toEqual([]);
-    expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'check'], approvalTestEnv)).code).toBe(0);
+    expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'apply'], approvalTestEnv)).code).toBe(0);
   });
 
   /* P1-8 end to end: the Git author of the Change cannot approve it under a separated policy. */
@@ -176,16 +180,18 @@ describe('Protocol 2 control plane', () => {
     await initRepository(root, 'implementer@example.test', 'Implementer');
     expect((await runCli(root, ['check', '--change', 'add-feature', '--gate', 'structure'])).code).toBe(0);
     expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'design'])).code).toBe(0);
+    expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'check'])).code).toBe(0);
+    expect((await runCli(root, ['check', '--change', 'add-feature'])).code).toBe(0);
 
-    await approveCurrentRevision(root, 'add-feature', 'check', 'planning-solid', 'implementer@example.test', 'maintainer');
-    await approveCurrentRevision(root, 'add-feature', 'check', 'planning-solid', 'reviewer@example.test', 'maintainer');
+    await approveCurrentRevision(root, 'add-feature', 'apply', 'planning-solid', 'implementer@example.test', 'maintainer');
+    await approveCurrentRevision(root, 'add-feature', 'apply', 'planning-solid', 'reviewer@example.test', 'maintainer');
     const separated = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
-    const blocked = separated.json.data.change.governance.readyTransitions.find((item: any) => item.to === 'check');
+    const blocked = separated.json.data.change.governance.readyTransitions.find((item: any) => item.to === 'apply');
     expect(blocked.blockedBy).toEqual(expect.arrayContaining(['approval:planning-solid:separation-of-duties', 'approval:planning-solid:missing-1']));
 
-    await approveCurrentRevision(root, 'add-feature', 'check', 'planning-solid', 'second-reviewer@example.test', 'maintainer');
+    await approveCurrentRevision(root, 'add-feature', 'apply', 'planning-solid', 'second-reviewer@example.test', 'maintainer');
     const allowed = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
-    expect(allowed.json.data.change.governance.readyTransitions.find((item: any) => item.to === 'check').blockedBy).toEqual([]);
+    expect(allowed.json.data.change.governance.readyTransitions.find((item: any) => item.to === 'apply').blockedBy).toEqual([]);
   });
 
   /* P1-13: a Stage exit condition is decided from a structured ledger, not from Worker prose. */
@@ -282,6 +288,64 @@ describe('Protocol 2 control plane', () => {
     expect(await blockedFor()).toContain('condition:materialQuestions:status-open-expected-resolved');
   });
 
+  /*
+   * The ledger was the one exit-decision input bound to nothing.
+   *
+   * Gate Evidence and Approval receipts carry a revision, `verificationReceipt` refuses on
+   * `content-revision-stale` and `independentReview` on `review-stale` — but a conditions ledger was
+   * accepted on its own word forever. A live Major run decided "invalidate immediately, no grace
+   * period", reworked to Propose, rewrote the Proposal to promise a 30-day grace period, returned to
+   * Clarify, and the condition was still satisfied with the overruled decision sitting in the file.
+   * Clarify declares no Gates and no Approvals, so that condition is its only blocker: vacuously
+   * satisfied, the entire Stage was a no-op on every rework path.
+   */
+  it('refuses a decision made before the rework that rewrote what it was decided against', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await updateYaml(root, 'xforge/flows/solid.yaml', (flow) => {
+      flow.stages.find((stage: any) => stage.id === 'propose').exit = { conditions: { materialQuestions: 'resolved' } };
+    });
+    expect((await runCli(root, ['install'])).code).toBe(0);
+    const ledger = 'xforge/changes/add-feature/evidence/conditions/materialQuestions.yaml';
+    const decidedLedger = (decidedAt: string, decision: string): string => [
+      'condition: materialQuestions',
+      'entries:',
+      '  - id: q1',
+      '    question: Does the old credential stop working at once?',
+      '    impact: acceptance',
+      `    decision: ${JSON.stringify(decision)}`,
+      '    decidedBy: owner@example.test',
+      `    decidedAt: ${decidedAt}`,
+      '',
+    ].join('\n');
+    /* Only the condition family. A rework also stales the structure Gate, and re-running it between
+       steps would test `check` rather than the ledger. */
+    const conditionBlocks = async (): Promise<string[]> => {
+      const state = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
+      return state.json.data.change.governance.readyTransitions
+        .find((item: any) => item.to === 'design').blockedBy
+        .filter((block: string) => block.startsWith('condition:'));
+    };
+
+    await write(root, ledger, decidedLedger('2026-08-11T10:00:00Z', 'Yes, immediately, with no grace period.'));
+    expect((await runCli(root, ['check', '--change', 'add-feature', '--gate', 'structure'])).code).toBe(0);
+    /* A Change that has never gone backwards is untouched by any of this. */
+    expect(await conditionBlocks()).toEqual([]);
+    expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'design'])).code).toBe(0);
+
+    /* Back to Propose, and the Proposal now promises the opposite of what q1 decided. */
+    expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'propose'])).code).toBe(0);
+    await write(root, 'xforge/changes/add-feature/proposal.md', '## Why\nRewritten after rework.\n\n## Scope\nThe old credential keeps working for 30 days.\n');
+    expect((await runCli(root, ['check', '--change', 'add-feature', '--gate', 'structure'])).code).toBe(0);
+    /* Named per entry: the answer is per entry, and "the ledger is stale" would say which. */
+    expect(await conditionBlocks()).toEqual(['condition:materialQuestions:stale-q1']);
+
+    /* Re-affirming means asking again and recording the answer, which moves `decidedAt`. */
+    await write(root, ledger, decidedLedger(new Date().toISOString(), 'Re-confirmed: a 30-day grace period is accepted.'));
+    expect((await runCli(root, ['check', '--change', 'add-feature', '--gate', 'structure'])).code).toBe(0);
+    expect(await conditionBlocks()).toEqual([]);
+  });
+
   it('reports mandatory guidance without machine coverage as uncovered', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
@@ -303,7 +367,9 @@ describe('Protocol 2 control plane', () => {
     expect((await runCli(root, ['install'])).code).toBe(0);
     expect((await runCli(root, ['check', '--change', 'add-feature', '--gate', 'structure'])).code).toBe(0);
     expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'design'])).code).toBe(0);
-    const approved = await approveCurrentRevision(root, 'add-feature', 'check', 'planning-solid');
+    expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'check'])).code).toBe(0);
+    expect((await runCli(root, ['check', '--change', 'add-feature'])).code).toBe(0);
+    const approved = await approveCurrentRevision(root, 'add-feature', 'apply', 'planning-solid');
     const receiptFile = approved.data.receipt;
     receiptFile.reason = 'tampered after import';
     await write(root, `xforge/changes/add-feature/approvals/planning-solid/${receiptFile.receiptId}.json`, `${JSON.stringify(receiptFile, null, 2)}\n`);
@@ -353,9 +419,9 @@ describe('Approval verifiability vs validity', () => {
     expect((await runCli(root, ['install'])).code).toBe(0);
     await successfulCli(root, ['check', '--change', 'add-feature', '--gate', 'structure']);
     await successfulCli(root, ['transition', '--change', 'add-feature', '--to', 'design']);
-    await approveCurrentRevision(root, 'add-feature', 'check', 'planning-solid');
     await successfulCli(root, ['transition', '--change', 'add-feature', '--to', 'check']);
     await successfulCli(root, ['check', '--change', 'add-feature']);
+    await approveCurrentRevision(root, 'add-feature', 'apply', 'planning-solid');
 
     /* Simulate a fresh clone / CI runner: xforge/.audit is gitignored, so it never travels. */
     await rm(path.join(root, 'xforge', '.audit'), { recursive: true, force: true });
@@ -375,13 +441,15 @@ describe('Approval verifiability vs validity', () => {
     expect((await runCli(root, ['install'])).code).toBe(0);
     await successfulCli(root, ['check', '--change', 'add-feature', '--gate', 'structure']);
     await successfulCli(root, ['transition', '--change', 'add-feature', '--to', 'design']);
+    await successfulCli(root, ['transition', '--change', 'add-feature', '--to', 'check']);
+    await successfulCli(root, ['check', '--change', 'add-feature']);
     const state = await runCli(root, ['state', '--change', 'add-feature']);
     const governance = state.json.data.change.governance;
     const { sha256, stableStringify } = await import('../../src/core/hash.js');
     const { randomUUID } = await import('node:crypto');
     const payload = {
       apiVersion: 'xforge.dev/v1alpha2', kind: 'ApprovalReceipt', receiptId: randomUUID(), change: 'add-feature',
-      flow: 'solid', stage: 'design', transition: 'check', policyId: 'planning-solid',
+      flow: 'solid', stage: 'check', transition: 'apply', policyId: 'planning-solid',
       stateRevision: governance.revision.stateRevision, contentRevision: governance.revision.contentRevision,
       policySnapshotDigest: governance.revision.policySnapshotDigest, gitBase: governance.revision.gitBase, gitHead: governance.revision.gitHead,
       governingRevision: governance.revision.governingRevision,
@@ -394,7 +462,7 @@ describe('Approval verifiability vs validity', () => {
 
     /* A well-formed receipt that never went through `xforge approve` has no audit chain event: the
        approval this transition needs is still missing. */
-    const blocked = await runCli(root, ['transition', '--change', 'add-feature', '--to', 'check']);
+    const blocked = await runCli(root, ['transition', '--change', 'add-feature', '--to', 'apply']);
     expect(blocked.code).toBe(1);
     expect(blocked.json.diagnostics.some((item: any) => item.message.includes('approval:planning-solid'))).toBe(true);
   });

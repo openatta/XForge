@@ -93,11 +93,21 @@ Flow 是纯数据：`xforge/flows/*.yaml`，加载方式是读取该目录下的
    在 Skill 的散文里。Skill 只需要说"严格按当前 Action 的 instruction 和
    outline 执行"。
 3. **由引擎代码消费的结构化 stage 字段（最后手段，仅用于代码必须据此行动的行
-   为）。** `stages[].execution.workPackages`（`internal | adaptive | required`）
-   是唯一一个 Flow 间差异属于真正*运行时行为*（`xforge-apply` 里串行还是并行派发
-   work package），而不只是写作内容的例子——所以它是一个 resolver 会读取的类型化
-   schema 字段，Skill 只按"根据 Action 的 execution policy"这种通用方式引用它，
-   不按 Flow 名字判断。
+   为）。** 属于这一类的字段是 `stages[].exit.conditions`、`exit.gates`、
+   `exit.approvals` 与 `exit.auditEvents`：控制平面逐个读取它们，在
+   `state.governance.readyTransitions[].blockedBy` 里报告，未满足就拒绝该次
+   transition。只有当 Flow 间的差异是代码必须据此行动的东西时才动用它们；动用之
+   后要确认你声明的那道门**真的出现在 `blockedBy` 里**——一道从不出现在那里的门，
+   与不存在没有区别。
+
+   **`stages[].execution` 不属于这一类，尽管 schema 里有它。**
+   `flow.schema.json` 定义了它（一旦出现，`planning` 与 `workPackages` 必填），
+   而 CLI 中没有任何一处读取它——`grep -rn "\.execution" xforge/src` 找不到
+   resolver、runner 或命令。声明它能通过校验，也什么都不改变。它同样不是决定串行
+   还是并行派发的东西：`xforge-apply` 第 2 步写得很明白——"**Flow 不决定这件事**，
+   要按这份工作真实的依赖图来判断"，那才是实际行为。本页此前把 `execution` 当作
+   这一类的范例，两个方向都错了：既把作者引向一个死字段，又误述了本该消费它的那
+   个 Skill。
 
 ### Artifact `markers`：告诉工具某个小节是"干什么用的"
 
@@ -195,7 +205,11 @@ draft-receipt` 会生成其中全部机器已知的部分，因此没有任何�
 - [ ] `policy.assuranceLevel` 设置为正确的等级
 - [ ] Flow 特有的内容深度差异通过 `artifacts[].instruction`/`outline` 表达，而
       不是新增 Skill 散文
-- [ ] 真正的运行时行为差异通过类型化的 `execution` 类字段表达，而不是按 Flow
-      名字做字符串判断
+- [ ] 真正的运行时行为差异通过控制平面会读取的类型化 `exit` 字段表达，而不是
+      按 Flow 名字做字符串判断；新声明要确认确实出现在 `blockedBy` 里
+- [ ] 每个 `exit` 都写成结构化形态（`conditions` / `gates` / `approvals` /
+      `auditEvents`）。裸的 `<key>: <expected>` 映射属于结构化之前的旧形态：所有
+      读取方都会忽略它，现在 `XFORGE_FLOW_EXIT_UNSTRUCTURED` 会直接拒绝，而不再
+      让它作为一道无人查看的门通过校验
 - [ ] 可以通过 `manifest.yaml` 的 `flow:` 或某个 Change 的 `change.yaml` 的
       `flow:` 选用

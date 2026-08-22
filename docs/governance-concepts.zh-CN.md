@@ -164,9 +164,13 @@ required` 的 Flow（默认是 Major），如果必需事件还没投递到配�
 receipt 都不带签名；`xforge approve` 会在同一次运行里写 receipt，并往项目
 的防篡改 audit chain 里追加一条对应事件，只有能在 chain 里找到匹配事件的
 receipt 才算有效。默认自带的每个 Flow 归档前都至少要求一次 Approval，连
-Quick 也不例外——严格程度随 Flow 变化（Quick：一个本地确认人；Major：两个
-不同角色的 `mcp` 批准人，`separationOfDuties` 靠数不同角色而不是数不同
-receipt 来强制）。在这七个里，
+Quick 也不例外——严格程度随 Flow 变化（Quick：归档处一个确认人；Solid：实现前
+一个、归档处一个；Major：同样两个点，但每个都开着 `separationOfDuties: true`）。
+两种 provider 在任何级别都被接受，Major 也不例外：随包的 `enterprise-approvals`
+是一个会明确报错而不是假装可用的占位，在被指向真实系统之前，每个决定实际上都
+走 `local`。`separationOfDuties` 要求的是**批准人不是本 Change 的 implementer**
+——implementer 取自 Change 目录以及每个 work-package delivery 区间的 Git author。
+它从来不比较角色：`roles` 只是"谁有资格批准"的过滤器。在这七个里，
 Approval 是"要不要"在默认配置下基本不算可选项的那一个——只有力度是可以调的。
 
 ## 接下来去哪看

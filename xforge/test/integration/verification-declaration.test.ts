@@ -57,6 +57,38 @@ describe('declared verification', () => {
     expect(action.reason).toContain('manifest.yaml');
   });
 
+  /*
+   * The refusal has to point at the command, because it is the only in-band instruction an Agent
+   * gets at the moment a declared Gate refuses — and it used to open with a YAML fragment for
+   * `xforge/manifest.yaml` without naming `xforge verification declare` at all. That instructed a
+   * hand edit of a file the shipped `protected-manifest` PermissionPolicy guards with `ask`, while
+   * asking the editor to invent a `declaredAt`. A live run followed it, indented the block one
+   * level short, and left the governance dispatcher unable to read the Manifest — after which every
+   * tool call was denied, including the ones that would have repaired it.
+   */
+  it('answers with the command rather than a hand edit of the Manifest', async () => {
+    const root = await fixture();
+    await clearVerification(root);
+    await createCompleteSolidChange(root);
+    await write(root, 'Cargo.toml', '[package]\nname = "demo"\n');
+
+    const result = await runCli(root, ['check', '--change', CHANGE, '--gate', 'unit-tests']);
+    const [action] = result.json.nextActions;
+
+    /* Runnable and gate-specific, not a shape to transcribe. */
+    expect(action.reason).toContain('xforge verification declare --gate-name unit-tests');
+    expect(action.reason).toContain('--by');
+    /* Both answers stay available: a command, or a justified dismissal. */
+    expect(action.reason).toContain('--not-applicable');
+    /* And it says not to do the thing that broke a live run. */
+    expect(action.reason).toContain('Do not hand-edit xforge/manifest.yaml');
+    expect(action.reason).toContain('protected-manifest');
+
+    /* The YAML survives as reference for whoever reads the resulting diff — below the command,
+       never as the instruction. Asserting the order is what stops a future edit from inverting it. */
+    expect(action.reason.indexOf('xforge verification declare')).toBeLessThan(action.reason.indexOf('  verification:'));
+  });
+
   it('asks without a suggestion when it recognises nothing, rather than passing', async () => {
     const root = await fixture();
       await clearVerification(root);

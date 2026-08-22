@@ -181,9 +181,16 @@ against an external `McpServer`. Neither path signs the receipt; instead,
 project's tamper-evident audit chain in the same run, and a receipt is only
 trusted if that chain event exists. Every shipped Flow requires at least one
 Approval before Archive, even Quick — the rigor scales with the Flow
-(Quick: one local attester; Major: two distinct-role `mcp` approvers,
-`separationOfDuties` enforced by counting distinct roles, not distinct
-receipts). Approval is the one
+(Quick: one attester at Archive; Solid: one before implementation and one at
+Archive; Major: the same two points, each with `separationOfDuties: true`).
+Both provider kinds are accepted at every level, including Major: the shipped
+`enterprise-approvals` provider is a placeholder that fails loudly rather than
+pretending to work, so until it is pointed at a real system every decision is
+in practice captured through `local`. What `separationOfDuties` requires is
+that the approver is **not an implementer of this Change** — implementers being
+the Git authors of the Change directory and of every work-package delivery
+range. It has never compared roles: `roles` is an eligibility filter for who
+may approve at all. Approval is the one
 concept among the seven where "do I need this" isn't really optional in the
 defaults — only the weight is adjustable.
 

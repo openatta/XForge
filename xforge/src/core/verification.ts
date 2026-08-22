@@ -107,22 +107,42 @@ function suggestionLines(gate: string, detected: DetectedToolchain[]): string {
   return `Detected build-system markers:\n${lines.join('\n')}\nEvery suggestion above is a starting point for a question, never an answer. Do not guess.`;
 }
 
-const SHAPE = [
-  'Record the answer in xforge/manifest.yaml, for example:',
-  '',
-  '  verification:',
-  '    <gate-name>:',
-  '      - command: [<program>, <arg>, ...]',
-  '        declaredBy: <the person who answered>',
-  '        declaredAt: <ISO 8601>',
-  '',
-  'A toolchain this Gate deliberately does not cover is recorded instead of left unanswered:',
-  '',
-  '      - notApplicable: <marker path>',
-  '        justification: <why this Gate does not cover it>',
-  '        declaredBy: <the person who answered>',
-  '        declaredAt: <ISO 8601>',
-].join('\n');
+/**
+ * How to record the answer — the command first, because the file is governed.
+ *
+ * This block used to open with a YAML fragment for `xforge/manifest.yaml` and never mention
+ * `xforge verification declare` at all. That made it the only in-band instruction an Agent receives
+ * at the one moment a declared Gate refuses, and what it instructed was a hand edit of a file the
+ * shipped `protected-manifest` PermissionPolicy guards with `ask` — while asking the editor to
+ * invent a `declaredAt` timestamp. A live run followed it and indented the block one level short,
+ * after which the governance dispatcher could no longer read the Manifest and denied every
+ * subsequent tool call, including the ones that would have repaired it.
+ *
+ * The command writes the same block, fills `declaredAt` itself, and refuses rather than emitting a
+ * Manifest that will not load. The YAML stays below as the shape the command produces, so a reader
+ * of the resulting diff still knows what to expect — it is no longer the instruction.
+ */
+function shapeFor(gate: string): string {
+  return [
+    'Record the answer with the CLI. It writes the Manifest block, fills declaredAt, and refuses rather than producing a Manifest that would not load:',
+    '',
+    `  xforge verification declare --gate-name ${gate} --command '["<program>","<arg>"]' --by "<the person who answered>"`,
+    '',
+    'A toolchain this Gate deliberately does not cover is recorded instead of left unanswered:',
+    '',
+    `  xforge verification declare --gate-name ${gate} --not-applicable <marker path> --justification "<why this Gate does not cover it>" --by "<the person who answered>"`,
+    '',
+    "Add --covers '[\"<marker path>\"]' when more than one marker was found and this command answers only some of them, and --module <id> or --working-directory <path> when it runs somewhere other than the project root. --dry-run shows the block without writing it.",
+    '',
+    'Do not hand-edit xforge/manifest.yaml to do this. It is a governed file, the shipped protected-manifest PermissionPolicy prompts on every write to it, and a malformed one stops the governance dispatcher from reading it at all -- which denies the very tool calls needed to repair it. For reference, the block the command writes is:',
+    '',
+    '  verification:',
+    `    ${gate}:`,
+    '      - command: [<program>, <arg>, ...]',
+    '        declaredBy: <the person who answered>',
+    '        declaredAt: <ISO 8601>',
+  ].join('\n');
+}
 
 export function notDeclaredNextAction(gate: string, detected: DetectedToolchain[]): NextAction {
   return {
@@ -130,7 +150,7 @@ export function notDeclaredNextAction(gate: string, detected: DetectedToolchain[
     type: 'maintenance',
     actor: 'human',
     status: 'blocked',
-    reason: `Gate ${gate} has no command declared under manifest.verification.${gate}, so there is nothing for it to run and it refuses rather than passing. ${suggestionLines(gate, detected)}\n\n${SHAPE}`,
+    reason: `Gate ${gate} has no command declared under manifest.verification.${gate}, so there is nothing for it to run and it refuses rather than passing. ${suggestionLines(gate, detected)}\n\n${shapeFor(gate)}`,
   };
 }
 
@@ -140,7 +160,7 @@ export function uncoveredNextAction(gate: string, uncovered: DetectedToolchain[]
     type: 'maintenance',
     actor: 'human',
     status: 'blocked',
-    reason: `Gate ${gate} declares commands, but ${uncovered.length === 1 ? 'a build-system marker was found that none of them accounts for' : 'build-system markers were found that none of them accounts for'}. ${suggestionLines(gate, uncovered)}\n\nEither declare a command for it, or record it as not applicable with a justification — both answers are accepted, and once recorded the question is not asked again.\n\n${SHAPE}`,
+    reason: `Gate ${gate} declares commands, but ${uncovered.length === 1 ? 'a build-system marker was found that none of them accounts for' : 'build-system markers were found that none of them accounts for'}. ${suggestionLines(gate, uncovered)}\n\nEither declare a command for it, or record it as not applicable with a justification — both answers are accepted, and once recorded the question is not asked again.\n\n${shapeFor(gate)}`,
   };
 }
 

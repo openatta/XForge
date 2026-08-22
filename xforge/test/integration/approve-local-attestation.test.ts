@@ -5,16 +5,23 @@ import { createCompleteSolidChange, fixture, runCli, runCliWithStdin, updateYaml
 import { executeApprove, type ApprovalTerminal } from '../../src/commands/approve.js';
 import { loadProject } from '../../src/core/project-loader.js';
 
-async function toDesign(root: string): Promise<void> {
+/**
+ * Drives the Change to the Stage whose exit `planning-solid` gates, which is Check: Solid collects
+ * the planning approval on the way into Apply, after Check's Gates have run and its two ledgers
+ * exist, rather than on the way into Check.
+ */
+async function toCheck(root: string): Promise<void> {
   await createCompleteSolidChange(root);
   expect((await runCli(root, ['install'])).code).toBe(0);
   expect((await runCli(root, ['check', '--change', 'add-feature', '--gate', 'structure'])).code).toBe(0);
   expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'design'])).code).toBe(0);
+  expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'check'])).code).toBe(0);
+  expect((await runCli(root, ['check', '--change', 'add-feature'])).code).toBe(0);
 }
 
 /** Every field an Agent could possibly pass on the command line. */
 const localApproveArgs = [
-  'approve', '--change', 'add-feature', '--for', 'check', '--policy', 'planning-solid',
+  'approve', '--change', 'add-feature', '--for', 'apply', '--policy', 'planning-solid',
   '--actor', 'owner@example.test', '--role', 'owner', '--reason', 'Looks good.', '--decision', 'approve', '--attestation', 'human',
 ];
 
@@ -45,7 +52,7 @@ function scriptedTerminal(answers: Record<string, string>): ApprovalTerminal & {
 describe('local approval human attestation', () => {
   it('refuses an Agent-style invocation that supplies every flag, including --attestation human', async () => {
     const root = await fixture();
-    await toDesign(root);
+    await toCheck(root);
     const result = await runCli(root, localApproveArgs);
     expect(result.code).toBe(1);
     expect(result.json.diagnostics.some((item: any) => item.code === 'XFORGE_APPROVAL_INTERACTIVE_REQUIRED')).toBe(true);
@@ -67,7 +74,7 @@ describe('local approval human attestation', () => {
    */
   it('refuses a decision piped into a non-terminal stdin', async () => {
     const root = await fixture();
-    await toDesign(root);
+    await toCheck(root);
     const result = await runCliWithStdin(root, localApproveArgs, 'alice\nowner\napprove\nLGTM\n');
     expect(result.code).toBe(1);
     expect(result.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_APPROVAL_INTERACTIVE_REQUIRED');
@@ -77,7 +84,7 @@ describe('local approval human attestation', () => {
   /* And the manifest can no longer even express the request: `approvals.local` is not a key. */
   it('rejects a manifest that still tries to configure the local approval path', async () => {
     const root = await fixture();
-    await toDesign(root);
+    await toCheck(root);
     await updateYaml(root, 'xforge/manifest.yaml', (manifest) => {
       manifest.approvals.local = { requireTty: false };
     });
@@ -97,14 +104,14 @@ describe('local approval human attestation', () => {
    */
   it('never counts a hand-placed receipt with no matching audit chain event as a valid approval', async () => {
     const root = await fixture();
-    await toDesign(root);
+    await toCheck(root);
     const state = await runCli(root, ['state', '--change', 'add-feature']);
     const governance = state.json.data.change.governance;
     const { sha256, stableStringify } = await import('../../src/core/hash.js');
     const { randomUUID } = await import('node:crypto');
     const payload = {
       apiVersion: 'xforge.dev/v1alpha2', kind: 'ApprovalReceipt', receiptId: randomUUID(), change: 'add-feature',
-      flow: 'solid', stage: 'design', transition: 'check', policyId: 'planning-solid',
+      flow: 'solid', stage: 'check', transition: 'apply', policyId: 'planning-solid',
       stateRevision: governance.revision.stateRevision, contentRevision: governance.revision.contentRevision,
       policySnapshotDigest: governance.revision.policySnapshotDigest, gitBase: governance.revision.gitBase, gitHead: governance.revision.gitHead,
       governingRevision: governance.revision.governingRevision,
@@ -116,22 +123,22 @@ describe('local approval human attestation', () => {
     await write(root, 'xforge/changes/add-feature/approvals/planning-solid/forged.json', `${JSON.stringify(receipt, null, 2)}\n`);
     const after = await runCli(root, ['state', '--change', 'add-feature']);
     expect(after.json.diagnostics.some((item: any) => item.code === 'XFORGE_APPROVAL_NOT_IN_AUDIT_CHAIN')).toBe(true);
-    expect(after.json.data.change.governance.readyTransitions.find((item: any) => item.to === 'check').ready).toBe(false);
-    expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'check'])).code).toBe(1);
+    expect(after.json.data.change.governance.readyTransitions.find((item: any) => item.to === 'apply').ready).toBe(false);
+    expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'apply'])).code).toBe(1);
   });
 
   it('records an approval when the human types the decision at the terminal', async () => {
     const root = await fixture();
-    await toDesign(root);
+    await toCheck(root);
     const project = await loadProject(root, { exactRoot: true });
     const terminal = scriptedTerminal({
       'Approver identity': 'owner@example.test',
       'Approver role': 'owner',
       'Decision': 'approve',
-      'Reason': 'Reviewed the design at the terminal.',
+      'Reason': 'Reviewed the check report at the terminal.',
     });
     const result = await executeApprove(project, {
-      change: 'add-feature', transition: 'check', policy: 'planning-solid', interactive: true, dryRun: false, terminal,
+      change: 'add-feature', transition: 'apply', policy: 'planning-solid', interactive: true, dryRun: false, terminal,
     });
     expect(result.data.receipt).not.toBeNull();
     expect(result.data.receipt!.approver).toEqual({ id: 'owner@example.test', provider: 'local', role: 'owner', type: 'human' });
@@ -144,16 +151,16 @@ describe('local approval human attestation', () => {
        event to the audit chain — not because of anything typed back. */
     const state = await runCli(root, ['state', '--change', 'add-feature']);
     expect(state.json.diagnostics.some((item: any) => item.code === 'XFORGE_APPROVAL_NOT_IN_AUDIT_CHAIN')).toBe(false);
-    expect(state.json.data.change.governance.readyTransitions.find((item: any) => item.to === 'check').ready).toBe(true);
+    expect(state.json.data.change.governance.readyTransitions.find((item: any) => item.to === 'apply').ready).toBe(true);
   });
 
   it('refuses when the decision is not typed at the terminal, even if flags suggest one', async () => {
     const root = await fixture();
-    await toDesign(root);
+    await toCheck(root);
     const project = await loadProject(root, { exactRoot: true });
     /* Flags may suggest identity and reason, but never the decision itself. */
     await expect(executeApprove(project, {
-      change: 'add-feature', transition: 'check', policy: 'planning-solid', interactive: true, dryRun: false,
+      change: 'add-feature', transition: 'apply', policy: 'planning-solid', interactive: true, dryRun: false,
       actor: 'owner@example.test', role: 'owner', reason: 'Looks good.', decision: 'approve', attestation: 'human',
       terminal: scriptedTerminal({ 'Approver identity': 'owner@example.test', 'Approver role': 'owner', 'Reason': 'Looks good.' }),
     })).rejects.toMatchObject({ diagnostics: [expect.objectContaining({ code: 'XFORGE_APPROVAL_DECISION_REQUIRED' })] });

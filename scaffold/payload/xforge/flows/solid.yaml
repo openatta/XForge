@@ -2,7 +2,7 @@ apiVersion: xforge.dev/v1alpha2
 kind: Flow
 metadata:
   name: solid
-  version: 4
+  version: 5
   description: Stable and maintainable delivery for ordinary product and engineering changes
 policy:
   assuranceLevel: solid
@@ -99,6 +99,18 @@ artifacts:
         section: Completeness
         role: requirement-coverage
 governance:
+  # `planning-solid` keeps its name although it is no longer collected at the design exit. The name
+  # is a reference, not a description: `design-decisions-need-a-human` lists it under `approvalRefs`,
+  # and a ref naming no policy in the running Flow is ignored rather than reported — so renaming it
+  # would leave that Rule silently `coverage: unenforceable` in every project that has already
+  # adopted it, with nothing to point at the cause.
+  #
+  # It now gates the check exit instead, which is the last moment before implementation begins and
+  # the same moment Major collects `implementation-major`. Collecting it one Stage earlier meant the
+  # approver signed before the two ledgers that decide whether the planning holds — `check-findings`
+  # and `constitution-check` — had been written at all, so `xforge brief`'s reconciliation section
+  # had nothing to compare and rendered "(no differences found)", which reads exactly like a clean
+  # review. Both Flows now take that decision where the evidence for it exists.
   approvalPolicies:
     - id: planning-solid
       minApprovers: 1
@@ -128,8 +140,6 @@ stages:
     requires: [propose]
     produces: [design]
     reworkTo: [propose]
-    exit:
-      approvals: [planning-solid]
   - id: check
     skill: xforge-check
     authority: assurance-write
@@ -137,6 +147,8 @@ stages:
     produces: [check-report, check-findings, constitution-check]
     gates: [structure, check-findings, constitution-check]
     reworkTo: [propose, design]
+    exit:
+      approvals: [planning-solid]
   - id: apply
     skill: xforge-apply
     authority: implementation-write

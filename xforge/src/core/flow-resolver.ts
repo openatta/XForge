@@ -87,6 +87,9 @@ export function flowArchiveOperation(flow: Flow): {
   };
 }
 
+/** The keys that make a stage `exit` legible to the control plane. Mirrors `structuredExit`. */
+const STRUCTURED_EXIT_KEYS = ['conditions', 'gates', 'approvals', 'auditEvents'] as const;
+
 function stageGraphDiagnostics(flow: StageFlow, filePath: string): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
   const artifactIds = flow.artifacts.map((item) => item.id);
@@ -116,6 +119,30 @@ function stageGraphDiagnostics(flow: StageFlow, filePath: string): Diagnostic[] 
       if (!artifactSet.has(artifact)) {
         diagnostics.push(diagnostic('XFORGE_FLOW_ARTIFACT_REFERENCE_UNKNOWN', `Stage ${stage.id} references unknown Artifact ${artifact}.`, filePath));
       }
+    }
+    /*
+     * A stage `exit` in the pre-structured shape validates and then governs nothing.
+     *
+     * `flow.schema.json` still accepts a bare map of `<key>: <expected>` — the form `exit` had
+     * before `conditions`/`gates`/`approvals`/`auditEvents` were introduced — and every reader
+     * since expects the structured one. `structuredExit` (core/control-plane.ts) returns `{}` for
+     * anything without one of those four keys, `commands/check.ts` and `commands/doctor.ts` read
+     * `exit.gates` and `exit.approvals` and find nothing, and `commands/approve.ts` finds no policy
+     * to bind a receipt to. So a project that writes `exit: {materialQuestions: resolved}` in its
+     * own Flow gets a clean validation, no doctor finding, and a door the control plane never
+     * looks at — the same shape as a condition that never appears in `blockedBy`, which is
+     * indistinguishable from one that does not exist.
+     *
+     * The schema is deliberately left permissive so the file still loads and this can say which
+     * Stage and what to write instead; an `anyOf` rejection here would print that it matched no
+     * branch and stop.
+     */
+    if (stage.exit && !STRUCTURED_EXIT_KEYS.some((key) => key in (stage.exit as Record<string, unknown>))) {
+      diagnostics.push(diagnostic(
+        'XFORGE_FLOW_EXIT_UNSTRUCTURED',
+        `Stage ${stage.id} declares an exit with none of ${STRUCTURED_EXIT_KEYS.join(', ')}, which no part of the control plane reads — the Stage would exit as though it declared nothing. Wrap the entries under the key that says what they are, for example \`exit: { conditions: { ${Object.keys(stage.exit as Record<string, unknown>)[0] ?? '<key>'}: <expected> } }\`.`,
+        filePath,
+      ));
     }
     for (const dependency of [...stage.requires, ...(stage.reworkTo ?? [])]) {
       if (!stageSet.has(dependency)) {

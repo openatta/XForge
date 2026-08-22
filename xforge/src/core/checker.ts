@@ -12,6 +12,7 @@ import { normalizeRule } from './governance.js';
 import { loadTransitionReceipts } from './control-plane.js';
 import { validateChangeSpecDeltas } from './spec-delta.js';
 import { validateArtifactMarkers } from './artifact-markers.js';
+import { flowSkillConformanceDiagnostics } from './flow-skill-conformance.js';
 
 export interface StructureResult {
   diagnostics: Diagnostic[];
@@ -150,6 +151,7 @@ export async function checkStructure(project: ProjectContext, changeId?: string)
           diagnostics.push(diagnostic('XFORGE_FLOW_SKILL_MISSING', `Flow ${flow.metadata.name} Stage ${stage.id} references missing Skill ${stage.skill}.`, `xforge/flows/${flow.metadata.name}.yaml`));
         }
       }
+      diagnostics.push(...await flowSkillConformanceDiagnostics(flow, resources));
       if (!project.manifest.scaffold.skills.includes(flow.terminal.archive.handler)) {
         diagnostics.push(diagnostic('XFORGE_FLOW_SKILL_DISABLED', `Flow ${flow.metadata.name} archive handler is not enabled: ${flow.terminal.archive.handler}.`, `xforge/flows/${flow.metadata.name}.yaml`));
       } else if (!resources.skills.has(flow.terminal.archive.handler)) {

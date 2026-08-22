@@ -11,10 +11,16 @@ async function brief(root: string, triage?: unknown): Promise<Awaited<ReturnType
 }
 
 /** Puts a Solid Change at the design Stage, whose exit is the `planning-solid` approval. */
-async function atDesignApproval(root: string): Promise<void> {
+/**
+ * Parks the Change at the Stage exit a human must approve, which under Solid is Check: the planning
+ * approval is collected on the way into Apply, after the Check ledgers this brief reconciles against
+ * have been written. At the design exit there is nothing to reconcile and no approval to brief.
+ */
+async function atCheckApproval(root: string): Promise<void> {
   await createCompleteSolidChange(root);
   await runCli(root, ['check', '--change', CHANGE, '--gate', 'structure']);
   await runCli(root, ['transition', '--change', CHANGE, '--to', 'design']);
+  await runCli(root, ['transition', '--change', CHANGE, '--to', 'check']);
 }
 
 /** Declares a Requirement-coverage marker on the Solid Flow's design Artifact. */
@@ -59,11 +65,11 @@ describe('xforge brief', () => {
 
   it('produces a brief at a Stage exit that a human must approve', async () => {
     const root = await fixture();
-    await atDesignApproval(root);
+    await atCheckApproval(root);
 
     const result = await brief(root);
     expect(result.data.decision.applicable).toBe(true);
-    expect(result.data.stage).toBe('design');
+    expect(result.data.stage).toBe('check');
     expect(result.data.decision.approvals.map((entry) => entry.policyId)).toEqual(['planning-solid']);
     expect(result.data.decision.approvals[0]!.minApprovers).toBeGreaterThan(0);
   });
@@ -166,7 +172,7 @@ describe('xforge brief', () => {
 
   it('labels every entry with where it came from, and quotes rather than restates', async () => {
     const root = await fixture();
-    await atDesignApproval(root);
+    await atCheckApproval(root);
 
     const result = await brief(root);
     expect(result.data.computed.every((entry) => entry.provenance === 'computed')).toBe(true);
@@ -188,6 +194,7 @@ describe('xforge brief', () => {
     await write(root, `xforge/changes/${CHANGE}/specs/widget/spec.md`, REQUIREMENT_SPEC);
     await runCli(root, ['check', '--change', CHANGE, '--gate', 'structure']);
     await runCli(root, ['transition', '--change', CHANGE, '--to', 'design']);
+    await runCli(root, ['transition', '--change', CHANGE, '--to', 'check']);
 
     const result = await brief(root);
     const requirements = result.data.computed.find((entry) => entry.id === 'computed.scale.requirements');
@@ -198,7 +205,7 @@ describe('xforge brief', () => {
 
   it('is byte-identical across runs on one content revision', async () => {
     const root = await fixture();
-    await atDesignApproval(root);
+    await atCheckApproval(root);
 
     const first = await brief(root);
     const second = await brief(root);
@@ -213,6 +220,7 @@ describe('xforge brief', () => {
       await write(root, `xforge/changes/${CHANGE}/design.md`, '## Decisions\nREQ-001 is served by a lookup table.\n');
       await runCli(root, ['check', '--change', CHANGE, '--gate', 'structure']);
       await runCli(root, ['transition', '--change', CHANGE, '--to', 'design']);
+      await runCli(root, ['transition', '--change', CHANGE, '--to', 'check']);
 
       const result = await brief(root);
       const unanchored = result.data.reconciliation.filter((entry) => entry.rule === 'RC-2');
@@ -235,6 +243,7 @@ describe('xforge brief', () => {
       await markCoverageSection(root, 'Verification notes');
       await runCli(root, ['check', '--change', CHANGE, '--gate', 'structure']);
       await runCli(root, ['transition', '--change', CHANGE, '--to', 'design']);
+      await runCli(root, ['transition', '--change', CHANGE, '--to', 'check']);
 
       const result = await brief(root);
       const uncovered = result.data.reconciliation.filter((entry) => entry.rule === 'RC-3');
@@ -249,6 +258,7 @@ describe('xforge brief', () => {
       await write(root, `xforge/changes/${CHANGE}/specs/widget/spec.md`, REQUIREMENT_SPEC);
       await runCli(root, ['check', '--change', CHANGE, '--gate', 'structure']);
       await runCli(root, ['transition', '--change', CHANGE, '--to', 'design']);
+      await runCli(root, ['transition', '--change', CHANGE, '--to', 'check']);
 
       /* A rule that depends on a marker reports nothing when the marker is absent. It never
          guesses which section was meant. */
@@ -280,6 +290,7 @@ describe('xforge brief', () => {
       ].join('\n'));
       await runCli(root, ['check', '--change', CHANGE, '--gate', 'structure']);
       await runCli(root, ['transition', '--change', CHANGE, '--to', 'design']);
+      await runCli(root, ['transition', '--change', CHANGE, '--to', 'check']);
 
       const result = await brief(root);
       const unverified = result.data.reconciliation.filter((entry) => entry.rule === 'RC-1');
@@ -313,6 +324,7 @@ describe('xforge brief', () => {
       ].join('\n'));
       await runCli(root, ['check', '--change', CHANGE, '--gate', 'structure']);
       await runCli(root, ['transition', '--change', CHANGE, '--to', 'design']);
+      await runCli(root, ['transition', '--change', CHANGE, '--to', 'check']);
 
       const result = await brief(root);
       expect(result.data.reconciliation.filter((entry) => entry.rule === 'RC-1')).toEqual([]);
@@ -336,6 +348,7 @@ describe('xforge brief', () => {
       });
       await runCli(root, ['check', '--change', CHANGE, '--gate', 'structure']);
       await runCli(root, ['transition', '--change', CHANGE, '--to', 'design']);
+      await runCli(root, ['transition', '--change', CHANGE, '--to', 'check']);
 
       const result = await brief(root);
       const gaps = result.data.reconciliation.filter((entry) => entry.rule === 'RC-4');
@@ -346,7 +359,7 @@ describe('xforge brief', () => {
 
     it('RC-5 reports a Constitution citation that resolves to nothing', async () => {
       const root = await fixture();
-      await atDesignApproval(root);
+      await atCheckApproval(root);
       const { CONSTITUTION_CHECK_PATH, constitutionPrinciples } = await import('../../src/core/constitution-check.js');
       const { readFile } = await import('node:fs/promises');
       const path = await import('node:path');
@@ -379,7 +392,7 @@ describe('xforge brief', () => {
      */
     it('RC-5 accepts a citation of a real repository path outside the Change directory', async () => {
       const root = await fixture();
-      await atDesignApproval(root);
+      await atCheckApproval(root);
       const { CONSTITUTION_CHECK_PATH, constitutionPrinciples } = await import('../../src/core/constitution-check.js');
       const { readFile } = await import('node:fs/promises');
       const path = await import('node:path');
@@ -417,7 +430,7 @@ describe('xforge brief', () => {
 
     it('accepts a triage entry anchored to entries the brief actually produced', async () => {
       const root = await fixture();
-      await atDesignApproval(root);
+      await atCheckApproval(root);
 
       const result = await brief(root, [{ label: 'Read the scale first.', basis: ['computed.scale.requirements'], note: 'Two Requirements is small.' }]);
       expect(result.diagnostics.filter((entry) => entry.code === 'XFORGE_BRIEF_UNANCHORED_CLAIM')).toEqual([]);
@@ -428,7 +441,7 @@ describe('xforge brief', () => {
 
     it('carries no authored entries unless triage was supplied', async () => {
       const root = await fixture();
-      await atDesignApproval(root);
+      await atCheckApproval(root);
       expect((await brief(root)).data.authored).toEqual([]);
     });
   });
@@ -455,7 +468,7 @@ describe('xforge brief', () => {
 
     it('renders --text as a brief rather than a JSON dump', async () => {
       const root = await fixture();
-      await atDesignApproval(root);
+      await atCheckApproval(root);
 
       const result = await runCli(root, ['brief', '--change', CHANGE, '--text']);
       expect(result.code).toBe(0);
@@ -469,7 +482,7 @@ describe('xforge brief', () => {
 
     it('emits one JSON document with the layers separated', async () => {
       const root = await fixture();
-      await atDesignApproval(root);
+      await atCheckApproval(root);
 
       const result = await runCli(root, ['brief', '--change', CHANGE]);
       expect(result.code).toBe(0);

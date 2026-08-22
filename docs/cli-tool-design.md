@@ -75,7 +75,7 @@ Local 模式要求真实 TTY；CLI 自己的 `readline` 对话现场询问 actor
 
 `mcp` 模式要求 Manifest 里登记的 `type: mcp` provider、一个已注册的 `McpServer` 资源、允许的 role，以及绑定当前 revision 的 receipt。两种模式产出的 receipt 都不带签名——真正的信任边界是项目自己的防篡改 audit hash chain：`xforge approve` 写 receipt 的同一次运行里会追加一条匹配的 `approval.decided` 事件，导入时和每次 state/control-plane load 时都会核对 receipt 与 chain 里的事件是否对应，无匹配事件的 receipt 不进入有效 approvals 集合。
 
-Major 只接受 `mcp` provider，默认两个不同 actor 且角色分离。Agent/Reviewer 不能通过生成 JSON 获得有效批准权——一份从未经过 `xforge approve` 的手工 receipt 文件在 chain 里没有对应事件，会被拒绝。
+Major 与其它 Flow 一样两种 provider 都接受（`providers: [local, enterprise-approvals]`）；随包的 `enterprise-approvals` 是一个会明确报错而不是假装可用的占位，在被替换成真实审批系统之前，Major 的决定实际上都走 `local`。默认每个审批点一个批准人，并开启 `separationOfDuties`——它要求的是批准人不是本 Change 的 implementer（取自 Change 目录与各 delivery 的 Git author），而不是「角色不同」。Agent/Reviewer 不能通过生成 JSON 获得有效批准权——一份从未经过 `xforge approve` 的手工 receipt 文件在 chain 里没有对应事件，会被拒绝。
 
 ## 5. Gate 与 Archive G4
 

@@ -2,7 +2,7 @@ apiVersion: xforge.dev/v1alpha2
 kind: Flow
 metadata:
   name: major
-  version: 4
+  version: 5
   description: High-assurance governance for high-risk, cross-system, or critical-impact changes
 policy:
   assuranceLevel: major
@@ -131,19 +131,35 @@ artifacts:
         section: Completeness
         role: requirement-coverage
 governance:
-  # `local` sits alongside `enterprise-approvals` (unlike a hypothetical enterprise-only
-  # policy) so a fresh project isn't locked out of Major entirely until an external
-  # approval system is registered: `minApprovers: 2` + `separationOfDuties: true` still
-  # require two distinct, role-diverse human decisions either way — local approval does
-  # not relax that bar, it only changes where the decision is captured.
+  # `local` sits alongside `enterprise-approvals` (unlike a hypothetical enterprise-only policy) so
+  # a fresh project isn't locked out of Major entirely until an external approval system is
+  # registered. `enterprise-approvals` ships as a placeholder that fails loudly rather than
+  # pretending to work, so until somebody points it at a real system every Major decision is in
+  # practice captured through `local` — and refusing that would mean refusing Major.
+  #
+  # `minApprovers: 1` is deliberate, and it is not a relaxation. `separationOfDuties: true` is what
+  # carries the weight here: it requires that the one approver is *not* an implementer of this
+  # Change, where implementers are the Git authors of the Change directory and of every work-package
+  # delivery range (`core/revision.ts`'s `changeImplementers`). A second signature adds a second
+  # person; it does not add a second kind of scrutiny, and asking for two on every Major bought
+  # queueing rather than review. Note what `separationOfDuties` is not: it has never compared roles.
+  # `roles` is an eligibility filter — who may approve at all — and counting distinct roles was the
+  # bug this rule replaced, because it let a Change's own author approve it while rejecting the
+  # commonest real review shape, two different maintainers.
+  #
+  # Nor does this leave the review itself to one signature. Major separately declares the
+  # `independentReview` exit condition on Verify, which requires an attributed review of the
+  # delivered work before the Stage can be left. That condition covers "was this reviewed, and by
+  # whom"; these policies cover "who authorised it to proceed". Raising `minApprovers` back to 2
+  # would duplicate the first question, not strengthen the second.
   approvalPolicies:
     - id: implementation-major
-      minApprovers: 2
+      minApprovers: 1
       roles: [owner, maintainer, security]
       separationOfDuties: true
       providers: [local, enterprise-approvals]
     - id: closing-major
-      minApprovers: 2
+      minApprovers: 1
       roles: [owner, maintainer, security]
       separationOfDuties: true
       providers: [local, enterprise-approvals]
@@ -192,12 +208,20 @@ stages:
     reworkTo: [propose, clarify, design]
     exit:
       approvals: [implementation-major]
+  # `check` belongs in `reworkTo` for the same reason Solid has it there. Without it, Check is the
+  # one Stage a Major Change can never return to: `legalTransitionTargets` offers the next Stage
+  # plus `reworkTo` and nothing else, so neither Apply nor Verify (whose only rework target is
+  # Apply) could reach it, and a Constitution violation found during implementation had to be
+  # answered by editing the Design — the one Artifact that did not need to change — to walk forward
+  # through Check again. Allowing it gives up nothing: `implementation-major` is bound to the Check
+  # exit, so returning there invalidates it and the approval must be given again, which is the same
+  # bargain every other rework target already makes.
   - id: apply
     skill: xforge-apply
     authority: implementation-write
     requires: [check]
     produces: []
-    reworkTo: [propose, clarify, design]
+    reworkTo: [propose, clarify, design, check]
   - id: verify
     skill: xforge-verify
     authority: assurance-write

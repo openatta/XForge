@@ -5,7 +5,7 @@ import path from 'node:path';
 import { parse, stringify } from 'yaml';
 import { describe, expect, it } from 'vitest';
 import { sha256, stableStringify } from '../../src/core/hash.js';
-import { advanceSolidToApply, approvalTestEnv, createCompleteSolidChange, fixture, runCli, updateYaml, write } from '../helpers.js';
+import { advanceSolidToApply, approvalTestEnv, approveCurrentRevision, createCompleteSolidChange, fixture, runCli, updateYaml, write, writeVerificationReceipt } from '../helpers.js';
 
 async function command(root: string, args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
@@ -1261,6 +1261,73 @@ describe('independentReview without a work-package plan', () => {
        edited is a review of a different Change. */
     await write(root, 'xforge/changes/add-feature/assurance.md', '# Assurance\n\nEdited after the review.\n');
     expect(await blockedLeavingVerify(root)).toContain('condition:independentReview:review-stale');
+  });
+
+  /*
+   * Archive re-decides this condition rather than trusting the closing transition's word for it.
+   *
+   * It did not, and the gap was reachable: `terminalGovernanceBlocks` read one condition key by
+   * name (`verificationReceipt`) and ignored the rest, while `contentRevision` digests change.yaml,
+   * the Flow file and the Artifacts — not `evidence/review/`. So removing the transcript after the
+   * closing transition moved no revision, staled no receipt, and archived a Change whose review
+   * evidence no longer existed. Nothing about that was specific to `independentReview`: any
+   * condition a project declares in its own Flow had the same hole.
+   */
+  it('refuses to archive when the review evidence disappeared after the closing transition', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await declareReview(root);
+    await advanceSolidToApply(root, 'add-feature');
+    expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'verify'], approvalTestEnv)).code).toBe(0);
+    expect((await runCli(root, ['check', '--change', 'add-feature'], approvalTestEnv)).code).toBe(0);
+
+    const transcript = 'xforge/changes/add-feature/evidence/review/notes.md';
+    await write(root, transcript, '# Review\n\nRead the delivered work against the Spec.\n');
+    expect((await runCli(root, ['review', 'acknowledge', '--change', 'add-feature', '--evidence', transcript], approvalTestEnv)).code).toBe(0);
+
+    await writeVerificationReceipt(root, 'add-feature');
+    expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'ready-to-archive'], approvalTestEnv)).code).toBe(0);
+    await approveCurrentRevision(root, 'add-feature', 'archive', 'closing-solid');
+
+    /* The control: everything the Flow asks for is present, so archive is clear. */
+    const clear = await runCli(root, ['archive', '--change', 'add-feature', '--dry-run'], approvalTestEnv);
+    expect(clear.code, JSON.stringify(clear.json?.diagnostics)).toBe(0);
+
+    /* Deleting the transcript moves no governed content: the ready receipt stays fresh and every
+       Gate stays bound. Only re-deciding the condition can catch it. */
+    await rm(path.join(root, transcript));
+    const after = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
+    expect(after.json.data.change.governance.currentStage).toBe('ready-to-archive');
+
+    const blocked = await runCli(root, ['archive', '--change', 'add-feature', '--dry-run'], approvalTestEnv);
+    expect(blocked.code).toBe(1);
+    const text = JSON.stringify(blocked.json.diagnostics);
+    expect(text).toContain('condition:independentReview');
+    expect(text).not.toContain('transition:ready-receipt-stale');
+  });
+
+  /*
+   * A block with no route out is the shape both live reports complained about. `blockRemedy`
+   * answered three block families and returned null for every `condition:*`, which left Verify
+   * naming a problem it could not name the fix for — worst in the plan-less shape, where
+   * `xforge-verify` describes reviewing work packages and there are none.
+   */
+  it('names the command that clears the block, per delivery shape', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await declareReview(root);
+    await advanceSolidToApply(root, 'add-feature');
+    expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'verify'], approvalTestEnv)).code).toBe(0);
+    await writeVerificationReceipt(root, 'add-feature');
+
+    const blocked = await runCli(root, ['transition', '--change', 'add-feature', '--to', 'ready-to-archive'], approvalTestEnv);
+    expect(blocked.code).toBe(1);
+    const remedy = blocked.json.diagnostics.find((item: any) => item.code === 'XFORGE_INDEPENDENT_REVIEW_REMEDY');
+    expect(remedy, JSON.stringify(blocked.json.diagnostics)).toBeTruthy();
+    expect(remedy.message).toContain('xforge review acknowledge --change add-feature');
+    /* The directory is part of the instruction: evidence stored elsewhere is refused outright, and
+       a remedy that omitted it would send the reader into a second refusal. */
+    expect(remedy.message).toContain('evidence/review/');
   });
 
   /* Two ways to satisfy one condition would let a Change with unreviewed packages buy its way past

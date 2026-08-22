@@ -427,10 +427,18 @@ approvals:
       roles: [owner, maintainer, security]
 ```
 
-`minApprovers`/`roles`/`separationOfDuties` 是靠数当前 revision 下有效
-`approve` receipt 里**不同的 approver id**、**不同的角色**来强制的——一个人
-签两次批准不了需要 2 个批准人的要求，开了 `separationOfDuties: true` 之后，
-两个角色相同的批准人也满足不了要求。
+`minApprovers` 数的是当前 revision 下有效 `approve` receipt 里**不同的
+approver id**——一个人签两次批准不了需要 2 个批准人的要求，无论他把身份写成
+什么拼法、走哪个 provider。`roles` 是资格过滤器：角色不在列表里的 receipt
+根本不计入。
+
+`separationOfDuties: true` 是另一个维度，它**不比较角色**。它要求批准人不是
+本 Change 的 **implementer**——implementer 取自 Change 目录以及每个
+work-package delivery 区间的 Git author（见 `core/revision.ts` 的
+`changeImplementers`）。两个没写过这些代码的 maintainer 满足它；写了代码的
+那个人不满足，无论他挂什么角色。"数不同角色"是更早的规则，两种情况都判错了
+——它允许 Change 的作者自己批准，却拒绝两个不同 maintainer 这种最常见的
+真实复核形态。
 
 注意上面的 `enterprise-approvals` 只是一个名字/形状示例——背后并没有一个
 能直接用的默认 `McpServer` 资源。不先按
@@ -498,7 +506,9 @@ Change 自带的 `evidence/audit/index.json`。
 
 新增 Approval policy：
 - [ ] `minApprovers`/`roles`/`separationOfDuties` 匹配真实的授权要求——记住
-      满足 `minApprovers` 靠的是不同的 approver **id**，不是 receipt 数量
+      满足 `minApprovers` 靠的是不同的 approver **id**，不是 receipt 数量；
+      `roles` 只决定谁有资格；`separationOfDuties` 排除的是本 Change 的
+      implementer，不是"角色相同"的人
 - [ ] `providers` 和 `manifest.yaml` 的 `approvals.providers` 里真实登记的
       条目对得上——如果是 `mcp` provider，它的 `mcpServer` 要指向一个真正
       登记过的 `McpServer` 资源，而不只是一个理想中的 id

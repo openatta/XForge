@@ -12,14 +12,15 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # Authority
 
-- Write only the clarifications path and existing Proposal/delta Spec paths explicitly listed by the Action's `revises` field.
-- Do not write Design, Check reports, code, canonical Specs, Evidence, tasks, or Archive, and do not make material decisions for the user.
+- Write exactly the two Artifacts the Clarify Stage `produces` — `clarifications.md` and `evidence/conditions/materialQuestions.yaml` — plus the existing Proposal/delta Spec paths the Action's `revises` field explicitly lists.
+- The material-questions ledger is Agent-authored: no CLI command writes it, and the Stage cannot exit without it. It sits under `evidence/` and is still not Gate Evidence — "Gate Evidence" means the `evidence/*.json` files that only `xforge check` writes, which are never hand-written or edited. The ledger is an Artifact the control plane reads, on the same footing as the two ledgers `xforge-check` authors.
+- Do not write Design, Check reports, code, canonical Specs, Gate Evidence, tasks, or Archive, and do not make material decisions for the user.
 
 # Execution
 
 1. Reread all Action inputs and list unknowns that affect scope, compatibility, risk, implementation boundaries, or acceptance.
 2. Investigate project-answerable questions; ask the minimum decision set for the rest.
-3. Record each question, impact, decision, source, and status; synchronize confirmed decisions into Proposal and delta Specs while keeping Requirements and Scenarios testable.
+3. Write `clarifications.md` with each question, impact, decision, source, and status, and record the same set as machine-decidable entries in `evidence/conditions/materialQuestions.yaml`: `condition: materialQuestions`, then one `entries` item per question carrying `question`, `impact`, `decision`, `decidedBy` and `decidedAt` (ISO 8601). **The Stage exits on that ledger, never on the prose.** An entry missing any of those fields leaves `materialQuestions` unresolved however complete `clarifications.md` reads, and `decidedBy` must name someone the repository has actually seen — an approver on one of this Change's receipts, or one of its Git authors — because a free-text name let a live run clear this condition with `decidedBy: XForge Live E2E`. A Change that genuinely raised nothing records an explicit `entries: []`, which is an assertion and is accepted; omitting the file is not the same thing and blocks. Then synchronize confirmed decisions into Proposal and delta Specs while keeping Requirements and Scenarios testable.
 4. Refresh State, confirm `materialQuestions: resolved`, run `xforge check --change <id>` to check structure and policy, then request only the `xforge transition --change <id> --to <stage>` the typed nextAction names.
 
 # Evidence
@@ -30,6 +31,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 # Stop and rework
 
 - Stop with `request-decision` when the user has not decided, inputs conflict, scope expands, revision changes, or more authority is required.
+- On `condition:materialQuestions:stale-<ids>`, this Change went back past Clarify and has returned, so the named entries were decided against a Proposal or delta Specs that were rewritten afterwards. **Put each named question to whoever decides it again, against the current Artifacts**, then record the answer and a new `decidedAt`. A decision that still holds is confirmed, not assumed — and moving the timestamp without asking records an answer nobody gave, which is exactly what `decidedBy` and that field exist to prevent. Entries the rework did not reach keep their original `decidedAt`; only the ones the CLI names are stale.
 - If later work reveals a new material ambiguity, invalidate downstream work and return through `xforge-revise` to Clarify.
 
 # Judgment calls

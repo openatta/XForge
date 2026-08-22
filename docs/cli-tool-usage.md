@@ -218,8 +218,10 @@ xforge approve \
 `local`/`mcp` 两种 receipt 都不带签名——是否有效靠的是项目自己的防篡改
 audit hash chain 里有没有一条匹配的 `approval.decided` 事件，每次加载都会
 复验。轮询结果是 `pending` 时返回成功 envelope，`nextActions` 里给出稍后
-重跑的命令，不是错误。Major 默认要求两个不同 actor、不同角色的批准；Agent
-不能自行产生有效 Approval。
+重跑的命令，不是错误。Major 默认每个审批点要求一个批准人，并开启
+`separationOfDuties`——它要求批准人不是本 Change 的 implementer（取自 Change
+目录与各 delivery 的 Git author），而不是「角色不同」；Agent 不能自行产生有效
+Approval。
 
 ## 7. Work-package dispatch
 

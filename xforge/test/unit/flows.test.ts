@@ -5,6 +5,7 @@ import { CHECK_FINDINGS_PATH } from '../../src/core/check-findings.js';
 import { CONSTITUTION_CHECK_PATH } from '../../src/core/constitution-check.js';
 import { checkStructure } from '../../src/core/checker.js';
 import { flowArchiveOperation, isStageFlow, loadFlows, resolveChangeState } from '../../src/core/flow-resolver.js';
+import { legalTransitionTargets } from '../../src/core/control-plane.js';
 import { loadProject } from '../../src/core/project-loader.js';
 import { changeYaml, checkFindings, constitutionLedger, fixture, runCli, updateYaml, write, xforgeRoot } from '../helpers.js';
 
@@ -38,6 +39,61 @@ describe('Flow artifact graph', () => {
     }));
     const golden = JSON.parse(await readFile(path.join(xforgeRoot, 'test', 'fixtures', 'golden', 'flows.json'), 'utf8'));
     expect(actual).toEqual(golden);
+  });
+
+  /*
+   * The pre-structured `exit` shape validated and then governed nothing.
+   *
+   * `flow.schema.json` still accepts a bare `<key>: <expected>` map — what `exit` was before
+   * `conditions`/`gates`/`approvals`/`auditEvents` — and every reader since expects the structured
+   * one: `structuredExit` returns `{}` for it, `check`/`doctor` read `exit.gates` and
+   * `exit.approvals` and find nothing, `approve` finds no policy to bind to. A project writing it
+   * in its own Flow got a clean load, no doctor finding, and a door the control plane never opened.
+   */
+  it('refuses a stage exit written in the pre-structured shape', async () => {
+    const root = await fixture();
+    await updateYaml(root, 'xforge/flows/solid.yaml', (flow: any) => {
+      flow.stages.find((stage: any) => stage.id === 'verify').exit = { materialQuestions: 'resolved' };
+    });
+    const project = await loadProject(root);
+    const { diagnostics } = await loadFlows(project);
+    const finding = diagnostics.find((item) => item.code === 'XFORGE_FLOW_EXIT_UNSTRUCTURED');
+    expect(finding, JSON.stringify(diagnostics)).toBeTruthy();
+    expect(finding!.severity).toBe('error');
+    /* Names the Stage and the shape to write instead, so the reader is not left to infer either. */
+    expect(finding!.message).toContain('verify');
+    expect(finding!.message).toContain('conditions');
+  });
+
+  /*
+   * Check is the Stage that holds `check-findings` and `constitution-check`, so a violation found
+   * during implementation has to be answerable there. `legalTransitionTargets` offers the next Stage
+   * plus `reworkTo` and nothing else, and Major listed `[propose, clarify, design]` — so Apply could
+   * not reach Check, and neither could Verify, whose only rework target is Apply. Check was the one
+   * Stage a Major Change could never return to, and the workaround was to edit the Design, the one
+   * Artifact that did not need to change, in order to walk forward through Check again.
+   */
+  it('lets every Flow with a Check Stage rework into it from Apply', async () => {
+    const root = await fixture();
+    const project = await loadProject(root);
+    const { flows } = await loadFlows(project);
+    const reachable = [...flows]
+      .filter(([, flow]) => isStageFlow(flow) && flow.stages.some((stage) => stage.id === 'check'))
+      .map(([id, flow]) => {
+        if (!isStageFlow(flow)) throw new Error('unreachable');
+        const apply = flow.stages.find((stage) => stage.id === 'apply')!;
+        return [id, legalTransitionTargets(flow, apply.id).includes('check')];
+      });
+    /* Both, and the assertion names them so a Flow losing its Check Stage cannot pass by vanishing. */
+    expect(reachable.sort()).toEqual([['major', true], ['solid', true]]);
+  });
+
+  /* The shipped Flows are the control: all three use the structured shape and must stay silent. */
+  it('accepts the structured exit shape the shipped Flows use', async () => {
+    const root = await fixture();
+    const project = await loadProject(root);
+    const { diagnostics } = await loadFlows(project);
+    expect(diagnostics.filter((item) => item.code === 'XFORGE_FLOW_EXIT_UNSTRUCTURED')).toEqual([]);
   });
 
   it('calculates the next artifact from files rather than hard-coded phases', async () => {

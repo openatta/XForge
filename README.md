@@ -95,7 +95,7 @@ place instead of appending a second one.
 | Flow | Intended use | Persisted lifecycle |
 | --- | --- | --- |
 | `quick` | Low-risk, bounded, reversible changes | Propose → Apply → Verify → Archive |
-| `solid` | Routine product and engineering changes | Propose → Design → Apply → Verify → Archive |
+| `solid` | Routine product and engineering changes | Propose → Design → Check → Apply → Verify → Archive |
 | `major` | High-risk, critical-impact, or cross-system changes | Propose → Clarify → Design → Check → Apply → Verify → Archive |
 
 Flow policy validates whether a Change classification is eligible. Stages are

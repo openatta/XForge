@@ -60,6 +60,11 @@ const DANGLING_CODE_SCOPE: Record<string, DoctorScope> = {
   XFORGE_APPROVAL_MCP_SERVER_UNKNOWN: 'mcp-servers',
   XFORGE_FLOW_GOVERNANCE_MISSING: 'flows',
   XFORGE_HOOK_EVENT_UNSUPPORTED: 'hooks',
+  /* A Stage whose Skill is not told about the Stage's own gates. The reference resolves — which is
+     why every other check here passes it — but what it resolves to does not cover the job. */
+  XFORGE_FLOW_SKILL_ARTIFACT_UNNAMED: 'skills',
+  XFORGE_FLOW_SKILL_DECLARED_GATE_UNCOVERED: 'skills',
+  XFORGE_FLOW_SKILL_CONDITION_UNNAMED: 'skills',
 };
 
 async function exists(filePath: string): Promise<boolean> {

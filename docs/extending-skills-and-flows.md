@@ -107,12 +107,26 @@ put that difference, in preference order:
    `design` artifact, not in the Skill's prose. The Skill just has to say
    "follow the current Action's instruction and outline exactly."
 3. **Structured stage fields consumed by engine code (last resort, only for
-   behavior code must act on).** `stages[].execution.workPackages`
-   (`internal | adaptive | required`) is the one case where a Flow-to-Flow
-   difference is genuine *runtime* behavior (serial vs. parallel work-package
-   dispatch in `xforge-apply`), not just written content — so it is a typed
-   schema field the resolver reads, and the Skill references it generically
-   ("per Action execution policy") rather than by Flow name.
+   behavior code must act on).** `stages[].exit.conditions`, `exit.gates`,
+   `exit.approvals` and `exit.auditEvents` are the fields of this kind that
+   exist: the control plane reads each one, reports it in
+   `state.governance.readyTransitions[].blockedBy`, and refuses the transition
+   while it is unsatisfied. Reach for one only when a Flow-to-Flow difference is
+   something code must act on, and check that what you declare actually appears
+   in `blockedBy` — a door that never shows up there is indistinguishable from
+   one that does not exist.
+
+   **`stages[].execution` is not such a field, despite being in the schema.**
+   `flow.schema.json` defines it (with `planning` and `workPackages` required
+   once present) and nothing in the CLI reads it — `grep -rn "\.execution"
+   xforge/src` returns no resolver, no runner, no command. Declaring it
+   validates cleanly and changes nothing. It is also not what decides serial
+   vs. parallel dispatch: `xforge-apply` step 2 says plainly that "the Flow
+   does not decide this — judge it from the dependency graph the work actually
+   has," and that is the behavior. This page previously cited `execution` as
+   the worked example of the category, which was wrong in both directions —
+   it pointed authors at a dead field and misdescribed the Skill that was
+   supposed to consume it.
 
 ### Artifact `markers`: telling the tooling what a section is *for*
 
@@ -228,7 +242,13 @@ New or modified Flow:
 - [ ] `policy.assuranceLevel` set to the correct tier
 - [ ] Flow-specific content depth expressed via `artifacts[].instruction`/
       `outline`, not via new Skill prose
-- [ ] Genuine runtime-behavior differences expressed via a typed
-      `execution`-style field, not a Flow-name string check
+- [ ] Genuine runtime-behavior differences expressed via a typed `exit`
+      field the control plane reads, not a Flow-name string check — and the
+      new declaration verified to appear in `blockedBy`
+- [ ] Every `exit` written in the structured shape (`conditions` / `gates` /
+      `approvals` / `auditEvents`). A bare map of `<key>: <expected>` is the
+      pre-structured form: it is ignored by every reader, and
+      `XFORGE_FLOW_EXIT_UNSTRUCTURED` now refuses it rather than letting it
+      load as a door nothing looks at
 - [ ] Selectable via `manifest.yaml` `flow:` or a Change's `change.yaml`
       `flow:`

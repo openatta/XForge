@@ -464,11 +464,20 @@ approvals:
       roles: [owner, maintainer, security]
 ```
 
-`minApprovers`/`roles`/`separationOfDuties` are enforced by counting
-**distinct approver ids** with **distinct roles** among valid `approve`
-receipts for the current revision — one person cannot satisfy a 2-approver
-requirement by approving twice, and with `separationOfDuties: true`, two
-approvers sharing one role don't satisfy it either.
+`minApprovers` counts **distinct approver ids** among valid `approve` receipts
+for the current revision — one person cannot satisfy a 2-approver requirement
+by approving twice, however they spell their identity or whichever provider
+they route through. `roles` is an eligibility filter: a receipt whose role is
+not listed is not counted at all.
+
+`separationOfDuties: true` is a different axis, and it does **not** compare
+roles. It requires that an approver is not an **implementer of this Change**,
+where implementers are the Git authors of the Change directory and of every
+work-package delivery range (`core/revision.ts`, `changeImplementers`). Two
+maintainers who wrote none of the code satisfy it; the person who wrote the
+code does not, whatever role they hold. Counting distinct roles was the earlier
+rule and it got both cases wrong — it let a Change's own author approve it
+while rejecting two different maintainers, the commonest real review shape.
 
 Note that the `enterprise-approvals` example above is a name/shape only —
 there's no working default `McpServer` resource behind it. Using it without
@@ -545,7 +554,9 @@ New Hook:
 New Approval policy:
 - [ ] `minApprovers`/`roles`/`separationOfDuties` match the actual
       authorization requirement — distinct approver *ids*, not receipt
-      count, satisfy `minApprovers`
+      count, satisfy `minApprovers`; `roles` only filters who is eligible;
+      and `separationOfDuties` excludes this Change's implementers, never a
+      shared role
 - [ ] `providers` matches an entry actually declared in `manifest.yaml`'s
       `approvals.providers` — for an `mcp` provider, its `mcpServer` names a
       registered `McpServer` resource, not just an aspirational id

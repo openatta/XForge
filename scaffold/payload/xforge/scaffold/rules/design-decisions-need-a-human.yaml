@@ -2,17 +2,21 @@ apiVersion: xforge.dev/v1alpha2
 kind: Rule
 metadata:
   name: design-decisions-need-a-human
-  version: 2
+  version: 3
 spec:
   severity: must
   # "Before implementation begins" rather than "before the Check Stage is entered".
   #
-  # The old wording named a moment only the solid Flow has. solid collects `planning-solid` at the
-  # design exit, so there the Check Stage really is the boundary. major's first human approval is
-  # `implementation-major` at the check exit — later in the Stage list, and stricter, but it made the
-  # Rule's own sentence false under the Flow most likely to need it. quick has no pre-implementation
-  # approval at all, and under quick this Rule is instruction only; `xforge state` now says so
-  # (coverage: unenforceable) instead of reporting enforcement that cannot fire.
+  # Both Flows that have a pre-implementation approval now collect it at the *check* exit: solid's
+  # `planning-solid` and major's `implementation-major` are taken at the same point in their
+  # respective Stage lists, unlocking the same transition into Apply. So "before implementation
+  # begins" names one moment under both, and the wording no longer has to paper over an asymmetry.
+  # It is still the accurate phrasing rather than "before the Check Stage is entered", because Check
+  # is now entered without any human decision — the decision is what lets the Change leave it.
+  #
+  # quick has no pre-implementation approval at all, and under quick this Rule is instruction only;
+  # `xforge state` says so (coverage: unenforceable) instead of reporting enforcement that cannot
+  # fire.
   instruction: >-
     A Change may not enter implementation on an Agent's own reading of the Design. A human records
     the planning decision before implementation begins.

@@ -184,7 +184,7 @@
     "approvals": [
       [
         "implementation-major",
-        2,
+        1,
         true,
         [
           "local",
@@ -193,7 +193,7 @@
       ],
       [
         "closing-major",
-        2,
+        1,
         true,
         [
           "local",

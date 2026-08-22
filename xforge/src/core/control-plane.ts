@@ -375,6 +375,53 @@ function entryDecided(entry: ConditionLedgerEntry, known?: KnownIdentities): boo
 }
 
 /**
+ * When this Stage's inputs were last re-opened, or null if they never were.
+ *
+ * Every other exit-decision input is bound to the content it speaks for: Gate Evidence and Approval
+ * receipts carry a revision, `verificationReceipt` refuses on `content-revision-stale`, and
+ * `independentReview` on `review-stale`. The conditions ledger was the one that carried nothing, so
+ * a decision survived the content it was made against. A live Major run proved it: decide a material
+ * question ("invalidate immediately, no grace period"), rework to Propose, rewrite the Proposal to
+ * say the opposite, return to Clarify — and `condition:materialQuestions` was still satisfied, with
+ * the overruled decision sitting untouched in the ledger. Clarify declares no Gates and no
+ * Approvals, so that condition is its only blocker; vacuously satisfied, the whole Stage was a no-op
+ * on every rework path.
+ *
+ * The ledger cannot name the revision it was decided against. Its own bytes are an Artifact output,
+ * so they feed `contentRevision` (`core/revision.ts`) — a field stating that digest would change it
+ * by being written, the fixed point `core/verification-receipt.ts` documents and sidesteps by not
+ * being a content-governing Artifact. What is available instead is the transition chain, which is
+ * digest-linked and cannot be rewritten: it records exactly when the Change went back past this
+ * Stage. Entries decided before that moment were decided against inputs that have since re-opened.
+ *
+ * Two indices decide whether a receipt counts. It has to move *backwards* (`to` before `from`), and
+ * it has to land at or before the Stage that owns the condition — a rework the owning Stage's inputs
+ * cannot see is not staleness. For Major's Clarify (index 1) that admits `clarify -> propose`,
+ * `design -> clarify` and `apply -> clarify`, and excludes `check -> design` and `apply -> design`,
+ * neither of which touches the Proposal or the delta Specs its questions were decided against.
+ *
+ * The limit worth stating: this reaches entries, not an `entries: []` assertion. An empty list
+ * asserts "nothing here was material" and carries no timestamp to compare, so a rework leaves it
+ * standing. That is weaker than the entry case and deliberately not patched with a synthesized one.
+ */
+function conditionReworkCutoff(flow: StageFlow, receipts: readonly TransitionReceipt[], stageId: string): number | null {
+  const owning = flow.stages.findIndex((stage) => stage.id === stageId);
+  if (owning < 0) return null;
+  let cutoff: number | null = null;
+  for (const receipt of receipts) {
+    const from = flow.stages.findIndex((stage) => stage.id === receipt.from);
+    const to = flow.stages.findIndex((stage) => stage.id === receipt.to);
+    /* `to >= from` drops forward moves and self-transitions; `to > owning` drops a rework that lands
+       after this Stage, whose inputs it therefore cannot have changed. */
+    if (from < 0 || to < 0 || to >= from || to > owning) continue;
+    const at = Date.parse(receipt.transitionedAt);
+    if (Number.isNaN(at)) continue;
+    if (cutoff === null || at > cutoff) cutoff = at;
+  }
+  return cutoff;
+}
+
+/**
  * Stage exit conditions are decided from a structured ledger, never from Artifact prose.
  *
  * The previous implementation regex-searched the Worker's own markdown for `<key>: <expected>`, so
@@ -389,6 +436,7 @@ async function evaluateExitCondition(
   key: string,
   expected: string,
   known?: KnownIdentities,
+  reworkCutoff?: number | null,
 ): Promise<{ satisfied: boolean; reason: string }> {
   if (!CONDITION_KEY_PATTERN.test(key)) return { satisfied: false, reason: 'invalid-key' };
   let document: unknown = null;
@@ -424,6 +472,19 @@ async function evaluateExitCondition(
    */
   const undecided = entries.filter((entry) => !entry || typeof entry !== 'object' || !entryDecided(entry, known));
   if (undecided.length > 0) return { satisfied: false, reason: `undecided-${undecided.length}` };
+  /*
+   * Reached only by entries `entryDecided` already accepted, so `decidedAt` is present and parses.
+   * An entry decided before the Change last went back past this Stage was decided against inputs
+   * that have since been rewritten; re-affirming it means asking again and recording the new
+   * `decidedAt`, which is the same act the field records in the first place.
+   */
+  if (typeof reworkCutoff === 'number') {
+    const stale = entries.filter((entry) => Date.parse(entry.decidedAt as string) < reworkCutoff);
+    if (stale.length > 0) {
+      const named = stale.map((entry) => nonEmptyString(entry.id) ? entry.id.trim() : `#${entries.indexOf(entry) + 1}`);
+      return { satisfied: false, reason: `stale-${named.join('+')}` };
+    }
+  }
   const declared = nonEmptyString(ledger.status) ? ledger.status.trim() : 'resolved';
   if (declared !== expected) return { satisfied: false, reason: `status-${declared}-expected-${expected}` };
   return { satisfied: true, reason: 'satisfied' };
@@ -508,6 +569,47 @@ async function independentReviewCondition(
     .map((item) => item.id);
   if (unreviewed.length > 0) return { satisfied: false, reason: `unreviewed-${unreviewed.join('+')}` };
   return { satisfied: true, reason: 'satisfied' };
+}
+
+/**
+ * One exit condition, routed to whatever decides it.
+ *
+ * Shared by `resolveControlPlane`'s per-transition loop and by `terminalGovernanceBlocks`, and that
+ * sharing is the point. Archive used to re-decide exactly one condition by name —
+ * `verificationReceipt` — with a comment explaining why a receipt is Evidence that must be
+ * re-decided rather than trusted. Every word of that reasoning applies to `independentReview`,
+ * which is also Evidence, is also bound to the content it covers, and was not re-decided at all.
+ * Nor would any condition a project adds in its own Flow have been: the archive path named one key
+ * and ignored the rest, so an extension declared a door archive never looked at.
+ *
+ * The gap was reachable rather than theoretical. `contentRevision` digests `change.yaml`, the Flow
+ * file and the Artifacts (`core/revision.ts`), and `evidence/review/` is none of those — so
+ * removing a review transcript after the closing transition moved nothing, left the ready receipt
+ * fresh, and archived a Change whose `independentReview` evidence no longer existed.
+ */
+async function evaluateStageCondition(
+  project: ProjectContext,
+  changeId: string,
+  key: string,
+  expected: string,
+  context: {
+    state: ChangeState;
+    contentRevision: string;
+    gates: readonly GateEvidence[];
+    identities: KnownIdentities;
+    diagnostics: Diagnostic[];
+    /* Null when this Stage's inputs have never been re-opened; only the ledger reader consults it,
+       because the other two evaluators carry a revision binding of their own. */
+    reworkCutoff: number | null;
+  },
+): Promise<{ satisfied: boolean; reason: string }> {
+  if (key === VERIFICATION_RECEIPT_CONDITION) {
+    return evaluateVerificationReceiptCondition(project, changeId, expected, context.contentRevision, context.gates);
+  }
+  if (key === INDEPENDENT_REVIEW_CONDITION) {
+    return independentReviewCondition(project, changeId, context.state, expected, context.contentRevision, context.diagnostics);
+  }
+  return evaluateExitCondition(project, changeId, key, expected, context.identities, context.reworkCutoff);
 }
 
 export interface TransitionRequirement {
@@ -616,11 +718,10 @@ export async function resolveControlPlane(
       /* Conditions are evaluated after the Gates, not before: the verification-receipt ledger is
          decided against the Gate Evidence this Stage actually produced, so that set has to exist. */
       for (const [key, expected] of Object.entries(exit.conditions ?? {})) {
-        const condition = key === VERIFICATION_RECEIPT_CONDITION
-          ? await evaluateVerificationReceiptCondition(project, changeId, expected, revision.contentRevision, gateEvidence)
-          : key === INDEPENDENT_REVIEW_CONDITION
-            ? await independentReviewCondition(project, changeId, state, expected, revision.contentRevision, diagnostics)
-            : await evaluateExitCondition(project, changeId, key, expected, identities);
+        const condition = await evaluateStageCondition(project, changeId, key, expected, {
+          state, contentRevision: revision.contentRevision, gates: gateEvidence, identities, diagnostics,
+          reworkCutoff: conditionReworkCutoff(flow, transitions.receipts, current.id),
+        });
         if (!condition.satisfied) blockedBy.push(`condition:${key}:${condition.reason}`);
       }
       for (const policyId of exit.approvals ?? []) {
@@ -789,6 +890,49 @@ export function blockRemedy(
     };
   }
 
+  /* A ledger whose decisions predate the rework that reopened their inputs. Named per entry, because
+     the answer is per entry: some will survive being asked again and some will not, and a message
+     saying "the ledger is stale" would not tell anyone which. */
+  const staleLedger = blocks.map((block) => /^condition:([A-Za-z0-9][A-Za-z0-9._-]*):stale-(.+)$/.exec(block)).find((match) => match !== null);
+  if (staleLedger) {
+    const [, key, list] = staleLedger;
+    const named = list!.split('+');
+    const subject = named.length === 1 ? `entry ${named[0]} was` : `entries ${named.join(', ')} were`;
+    return {
+      code: 'XFORGE_CONDITION_LEDGER_STALE_REMEDY',
+      message: `This Change went back past the Stage that decided "${key}" and has returned, so ${subject} decided against inputs that were rewritten afterwards. Put each one to whoever decides it again, against the current Artifacts, and record the answer in \`evidence/conditions/${key}.yaml\` with a new \`decidedAt\` — a decision that still holds is confirmed, not assumed. Moving the timestamp without asking records an answer nobody gave, which is the thing \`decidedBy\` and this field exist to prevent.`,
+    };
+  }
+
+  /*
+   * The condition family had no remedy at all, and two of its blocks have an exact command.
+   *
+   * `blockRemedy` answered three block shapes and returned null for every `condition:*`, which put
+   * the one Stage that can be blocked by `independentReview` — Verify — in the position of naming a
+   * problem without naming the route out. That matters most in the plan-less delivery shape, which
+   * `xforge-apply` expressly permits: `xforge-verify` describes reviewing work packages, and in that
+   * shape there are none, so the Skill in hand describes a procedure for objects that do not exist.
+   * `xforge check` says this at Apply (`XFORGE_WORK_PACKAGE_PLAN_ABSENT`), which can be many turns
+   * earlier; this says it where the block actually appears.
+   */
+  const unreviewedPackages = blocks.flatMap((block) => /^condition:independentReview:unreviewed-(.+)$/.exec(block)?.[1]?.split('+') ?? []);
+  if (unreviewedPackages.length > 0) {
+    const commands = unreviewedPackages.map((id) => `\`xforge work-package acknowledge --change ${changeId} --package ${id} --as reviewer --evidence <path>\``).join(', ');
+    return {
+      code: 'XFORGE_INDEPENDENT_REVIEW_REMEDY',
+      message: `This Flow requires every delivered work package to carry a Reviewer acknowledgement before Verify closes. The Reviewer is read-only and cannot write its own evidence: transcribe its returned result verbatim to \`<change>/evidence/agents/<package>/review-<execution>.yaml\`, then record it — ${commands}.`,
+    };
+  }
+  if (blocks.includes('condition:independentReview:review-missing') || blocks.includes('condition:independentReview:review-stale')) {
+    const stale = blocks.includes('condition:independentReview:review-stale');
+    return {
+      code: 'XFORGE_INDEPENDENT_REVIEW_REMEDY',
+      message: stale
+        ? `A Change-level review is recorded, but it covers an earlier content revision than this Change now has — the work moved after it was reviewed. Review the current content, write the result to \`<change>/evidence/review/<name>.md\`, and record it with \`xforge review acknowledge --change ${changeId} --evidence <that path>\`.`
+        : `This Flow requires an independent review of the delivered work, and this Change has no work-package plan for the per-package form to attach to — so it needs one Change-level review. Have a reviewer read the delivered diff, write the result to \`<change>/evidence/review/<name>.md\` (it must live under that directory so it archives with the Change), and record it with \`xforge review acknowledge --change ${changeId} --evidence <that path>\`. There is no --by: the actor comes from the environment.`,
+    };
+  }
+
   const undispatched = blocks.flatMap((block) => /^work-package:(.+):ready$/.exec(block)?.[1] ?? []);
   if (undispatched.length > 0) {
     const packages = undispatched.map((id) => `\`xforge work-package dispatch --change ${changeId} --package ${id}\``).join(', ');
@@ -839,15 +983,34 @@ export async function terminalGovernanceBlocks(
         blocks.push(`gate:${gateId}:stale`);
       } else sourceGates.push(evidence);
     }
-    /* Archive re-decides the closing Stage's Gates rather than trusting the receipt's word for them;
-       the verification receipt is Evidence of the same kind and is re-decided here for the same
-       reason. Only the Flow that declares the condition pays for it. */
-    const expectedReceipt = sourceExit.conditions?.[VERIFICATION_RECEIPT_CONDITION];
-    if (expectedReceipt !== undefined) {
-      const verification = await evaluateVerificationReceiptCondition(
-        project, control.state.id, expectedReceipt, governance.revision.contentRevision, sourceGates,
-      );
-      if (!verification.satisfied) blocks.push(`condition:${VERIFICATION_RECEIPT_CONDITION}:${verification.reason}`);
+    /*
+     * Archive re-decides the closing Stage's Gates rather than trusting the receipt's word for them,
+     * and its exit conditions are Evidence of the same kind, so they are re-decided here too — all
+     * of them, by iteration rather than by name.
+     *
+     * Naming one was the bug. This read `sourceExit.conditions[verificationReceipt]` and nothing
+     * else, so `independentReview` — the condition Major declares specifically to stop a Change
+     * being implemented and signed off by a single executor — was decided once, at the closing
+     * transition, and never looked at again. `contentRevision` does not digest `evidence/review/`,
+     * so deleting a review transcript afterwards moved no revision, staled no receipt, and archived
+     * a Change whose review evidence was gone. Any condition a project declares in its own Flow had
+     * the same hole for the same reason. Only the Flow that declares a condition pays for it.
+     */
+    const identities = await knownIdentities(project, control.state.id, governance.approvals);
+    for (const [key, expected] of Object.entries(sourceExit.conditions ?? {})) {
+      const condition = await evaluateStageCondition(project, control.state.id, key, expected, {
+        state: control.state,
+        contentRevision: governance.revision.contentRevision,
+        gates: sourceGates,
+        identities,
+        /* Receipt-validation diagnostics are already reported by the resolve this was handed; a
+           second copy from the archive path would double every one of them in the envelope. */
+        diagnostics: [],
+        /* Measured against the Stage the closing receipt left, which is the Stage whose exit
+           declared the condition — the same subject `sourceExit` is read from. */
+        reworkCutoff: sourceStage ? conditionReworkCutoff(flow, governance.transitions, sourceStage.id) : null,
+      });
+      if (!condition.satisfied) blocks.push(`condition:${key}:${condition.reason}`);
     }
   }
   let implementers: ReadonlySet<string> | null = null;

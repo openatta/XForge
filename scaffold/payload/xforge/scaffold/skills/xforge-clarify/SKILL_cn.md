@@ -12,14 +12,15 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # 权限
 
-- 只可写 Action 返回的 clarifications 路径和 `revises` 中明确列出的 Proposal/delta Spec 现有路径。
-- 不得写 Design、Check report、代码、主 Specs、Evidence、任务或 Archive，不得替用户作材料性决定。
+- 只可写 Clarify Stage `produces` 的两份 Artifact——`clarifications.md` 与 `evidence/conditions/materialQuestions.yaml`——以及 `revises` 中明确列出的 Proposal/delta Spec 现有路径。
+- material-questions 台账由 Agent 撰写：没有任何 CLI 命令写它，而本 Stage 没有它就无法退出。它位于 `evidence/` 之下，但**不是** Gate Evidence——"Gate Evidence"专指只能由 `xforge check` 生成的 `evidence/*.json`，那些永远不得手写或编辑。该台账是控制平面读取的 Artifact，与 `xforge-check` 撰写的两份台账同性质。
+- 不得写 Design、Check report、代码、主 Specs、Gate Evidence、任务或 Archive，不得替用户作材料性决定。
 
 # 执行
 
 1. 重读 Action inputs，列出会影响范围、兼容性、风险、实现边界或验收的未知项及其影响。
 2. 调查能由项目事实回答的问题；对剩余问题一次提出最小、可决策的问题集。
-3. 记录问题、影响、决定、来源和状态；将已确认结果同步回 Proposal 与 delta Specs，保持 Requirement/Scenario 可测试。
+3. 在 `clarifications.md` 中记录每个问题、影响、决定、来源与状态，并把同一组内容写成机器可判的条目放入 `evidence/conditions/materialQuestions.yaml`：先写 `condition: materialQuestions`，再为每个问题写一条 `entries`，携带 `question`、`impact`、`decision`、`decidedBy` 与 `decidedAt`（ISO 8601）。**本 Stage 的退出由该台账决定，绝不由正文决定。** 缺任一字段的条目都会让 `materialQuestions` 保持未解决，无论 `clarifications.md` 写得多完整；`decidedBy` 必须是仓库真实见过的人——本 Change 某份回执上的审批人，或它的某位 Git author——因为自由文本曾让一次实测用 `decidedBy: XForge Live E2E` 蒙混过关。确实没有任何问题的 Change 写显式的 `entries: []`，这是一条断言、会被接受；不写这个文件不等于它，会阻塞。随后将已确认结果同步回 Proposal 与 delta Specs，保持 Requirement/Scenario 可测试。
 4. 刷新 State，确认 `materialQuestions: resolved`；运行 `xforge check --change <id>` 检查结构和 policy，再请求 typed nextAction 给出的 `xforge transition --change <id> --to <stage>`。
 
 # 证据
@@ -30,6 +31,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 # 停止与返工
 
 - 用户未决定、输入冲突、范围扩大、revision 变化或需要额外权限时停止并返回 `request-decision`。
+- 遇到 `condition:materialQuestions:stale-<ids>`：本 Change 曾退回到 Clarify 之前又走了回来，被点名的条目当初所依据的 Proposal 或 delta Specs 在那之后被改写过。**把每一条被点名的问题，对照当前的 Artifact，重新交给拍板的人回答**，再记录答案与新的 `decidedAt`。仍然成立的决定是被重新确认的，不是被默认的——只把时间戳往后调而不去问，等于记录了一个没人给过的答案，这正是 `decidedBy` 与该字段存在的目的。返工没有触及的条目保留原有 `decidedAt`；只有 CLI 点名的那些才算失效。
 - 后续发现新的材料性歧义时使下游失效，并通过 `xforge-revise` 返回 Clarify。
 
 # 判断要点

@@ -15,6 +15,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 # 权限
 
 - 可写 Verify Stage `produces` 的 Artifact——assurance——以及 `evidence/verification-receipt.yaml`，后者是本 Stage 的 exit condition 而不是 Artifact。Gate Evidence（`evidence/*.json`）只能由 `xforge check` 生成；receipt 只引用这些 digest，不得把它们改写成自己的结论。
+- 本 Stage 运行的 `builtin: declared` Gate 若尚无声明，用 `xforge verification declare` 记录本项目的答案——绝不自己编辑 `xforge/manifest.yaml`。本 Stage 就声明了这类 Gate（`unit-tests`，Major 下还有 `security-scan`），而只有一份声明能让它们通过，所以记录声明的权限属于这里。它仍然是用户的答案，不是你的：见「停止与返工」。
 - 只有 `verify-and-archive` 或 `archive-current` 的明确用户授权允许调用 `xforge archive`；先 dry-run，再执行原子同步与移动。
 - 失败时只报告并返回 Apply rework；除非用户另行明确授权，不修改实现。
 
@@ -50,6 +51,9 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 # 停止与返工
 
 - 在不完整实现、失败 Gate、无效 delivery、stale receipt、Spec 冲突、路径安全问题、目标碰撞或未授权归档时停止。
+- 遇到 `XFORGE_VERIFICATION_NOT_DECLARED` 或 `XFORGE_VERIFICATION_TOOLCHAIN_UNCOVERED` 时，**停下来询问用户本项目如何运行该项检查**，再用 `xforge verification declare --gate-name <gate> --command '["<program>","<arg>"]' --by <回答问题的人>` 记录答案。该 Gate 有意不覆盖的工具链改为记录 `--not-applicable <marker> --justification <理由> --by <人>`。这里有两件事不可让步。**不得猜测，也不得因为 CLI 给了建议就采用它**——它读的是构建系统标记，判断不了一条命令是否真的在验证什么；在一个没有任何测试的仓库上，一条测试命令照样能让这个 Gate 变绿而什么都没断言。**不得手工编辑 `xforge/manifest.yaml`**：该文件受 `protected-manifest` PermissionPolicy 管辖，而一次实测手写该块时缩进少了一级，此后治理 dispatcher 再也读不了 Manifest，于是拒绝了每一次工具调用——包括本可以修复它的那些。命令会写好该块、自动填 `declaredAt`，并且宁可拒绝也不会产出一份加载不了的 Manifest。Major 下要**一次把两个** declared Gate 都声明：只声明 `unit-tests` 会让 `security-scan` 在若干回合之后、在已经收过审批的归档路径上才失败。
+- 遇到 `condition:independentReview:review-missing`：本 Change 欠一次独立复核，且没有 work-package plan 可供按包形态挂靠。让复核者读交付的 diff，把它返回的结果**逐字**转录到 `<change>/evidence/review/<name>.md`——必须放在该目录下，才能随 Change 一起归档——然后运行 `xforge review acknowledge --change <id> --evidence <该路径>`。没有 `--by`：actor 取自环境。`review-stale` 表示已有复核记录但其后工作又变动了，需针对当前内容重新复核并再次确认。`unreviewed-<package>` 属于按包形态，见 `xforge-apply` 第 8 步。
+- 处于 `ready-to-archive` 时没有任何前进或 rework Transition：它是合成 Stage，不在 `flow.stages` 里，因此 `xforge state` 报不出合法目标。这不是卡死，而是 Stage 层面已无可走。若此时仍需修改 Artifact，`xforge archive --dry-run` 会指出出路：`xforge transition repair --change <id> --receipt <receiptId>` 丢弃收尾那一张回执，把 Change 退回该转换离开的 Stage。它**不是 `--force`**：只允许丢弃叶子回执，丢弃了什么会记入审计链，并且归档审批会随之失效——审批绑定的是它被给予时的内容。在把 Change 报告为受阻之前，先读 CLI 给出的这条补救。
 - 在 approval provider 配置失败（`XFORGE_APPROVAL_PROVIDER_FORBIDDEN`、`XFORGE_APPROVAL_MCP_SERVER_MISSING`、`XFORGE_APPROVAL_MCP_TOKEN_MISSING`、`XFORGE_APPROVAL_MCP_CONNECTION_FAILED`）时停止：provider 未配置，不是决定仍在等待。告知用户配置其 McpServer 与 token（见 `scaffold/mcp-servers/`），或改在终端本地审批；绝不对同一个 provider 反复重试。
 - 审批命令一律从 `state.nextActions[].command` 里取，不要照 usage 字符串自己拼。`--for` 填的是该审批所解锁的那次 transition——Flow 里的 Stage id，绝不是 `stage` 这类字面词；填错过去会把真实的人类签字消耗在一份不会被计数的 receipt 上。`XFORGE_APPROVAL_TRANSITION_UNKNOWN` 与 `XFORGE_APPROVAL_TRANSITION_UNAPPROVABLE` 表示参数错了、且什么都没写入：改参数，不要重跑，更不要再请人签一次。`xforge approve ... --dry-run` 不需要终端、也不惊动审批人，就能把这些先校验一遍。
 - 归档时出现 `audit:remote-pending` 要停止：远端 audit 投递被设为 required，而 `XFORGE_AUDIT_ENDPOINT` 未设置或不可达，`audit retry` 没有可投递的去处。应告知用户配置该 endpoint（以及 token/HMAC 环境变量），或不再对该 assurance level 要求远端投递；绝不反复重试。

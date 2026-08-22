@@ -82,7 +82,7 @@ PermissionPolicy 能拦截、Gate 能证明——XForge 从不让其中一个冒
 | Flow | 适用场景 | 持久化生命周期 |
 | --- | --- | --- |
 | `quick` | 低风险、范围明确、容易回滚的变更 | Propose → Apply → Verify → Archive |
-| `solid` | 常规产品功能和工程变更 | Propose → Design → Apply → Verify → Archive |
+| `solid` | 常规产品功能和工程变更 | Propose → Design → Check → Apply → Verify → Archive |
 | `major` | 高风险、关键影响或跨系统变更 | Propose → Clarify → Design → Check → Apply → Verify → Archive |
 
 Flow Policy 会验证 Change classification 是否适用。阶段只能通过 CLI 的受保护

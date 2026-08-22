@@ -232,11 +232,16 @@ export async function approveCurrentRevision(
 export async function advanceSolidToApply(root: string, id = 'add-feature'): Promise<void> {
   await successful(root, ['check', '--change', id, '--gate', 'structure']);
   await successful(root, ['transition', '--change', id, '--to', 'design']);
-  /* Solid now reviews before it implements: design -> check -> apply, with the planning approval
-     guarding entry to Check rather than straight to Apply. */
-  await approveCurrentRevision(root, id, 'check', 'planning-solid');
+  /*
+   * Solid reviews before it implements, and the planning approval is collected on the way *out* of
+   * Check rather than into it: `planning-solid` gates `check -> apply`, so it is requested with
+   * `--for apply` after Check's Gates have run. Approving at the design exit put the signature
+   * before `check-findings` and `constitution-check` existed, which left `xforge brief` with
+   * nothing to reconcile against.
+   */
   await successful(root, ['transition', '--change', id, '--to', 'check']);
   await successful(root, ['check', '--change', id]);
+  await approveCurrentRevision(root, id, 'apply', 'planning-solid');
   await successful(root, ['transition', '--change', id, '--to', 'apply']);
 }
 

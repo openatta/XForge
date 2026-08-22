@@ -45,6 +45,34 @@
 | L4 | 隔离项目场景 | 在完整 Scaffold 项目中验证主流程与失败注入 | 是 | envelope + receipts + acceptance tests |
 | L5 | 真实引擎 E2E | 验证 Skills 能驱动模型正确完成规划、实现和验证 | 否，定时/手工 | L4 oracle + 引擎元数据 |
 
+三条横切检查不属于任何一层，因为它们断言的不是某一层的行为，而是**资产之间的关系**：
+
+| 检查 | 断言什么 | 入口 | 成本 |
+|---|---|---|---|
+| Flow↔Skill 门禁一致性 | Stage 声明的门禁，该级 `stage.skill` 有没有被告知 | `xforge doctor --strict`（也随 `xforge check` 出 warning） | <1 秒 |
+| 工具链矩阵 | 17 个构建标记 × 探测/拒绝/退出码/覆盖仲裁 | `xforge/test/integration/toolchain-matrix.test.ts` | ~50 秒 |
+| 红先证明 | 随修复新增的测试，在父提交上必须失败 | `npm run test:red-first` | ~2 分钟 |
+
+**Flow↔Skill 门禁一致性**只有三条规则，都刻意做成"事实比对"而非"覆盖度启发"：Stage 产出的
+`evidence/**` Artifact 必须被该 Skill 按路径点名（该目录是每个 Skill 都被告知不得手写的，所以
+例外必须显式说出来）；Stage 声明的 `builtin: declared` Gate，该 Skill 必须提到
+`xforge verification declare`；Stage 的每个 `exit.conditions` key，该 Skill 必须出现该字面量。
+中英两个 SKILL 变体分别判定并在消息里点名。历史上两处真实缺陷（clarify 的 materialQuestions
+台账、verify 的两个 declared Gate）都属于"引用能解析、但被解析到的东西盖不住这件事"，
+其余全部检查都只问前半句，所以都放过了。
+
+**工具链矩阵**不安装也不调用任何真实工具链：用一个"按参数返回指定退出码"的桩可执行文件，
+断言的是 XForge 的分类而不是 cargo/go/mvn 的行为。重点在退出码语义——`builtin: declared`
+这套设计的起因就是 `npm test --if-present` 无测试时退出 254 而不是 127，被当成"工具缺失"
+就会静默变绿；各语言的失败码互不相同（cargo 101、ctest 8、go/mvn 1），**只有 127 与
+spawn 失败可以读作"工具不存在"**。
+
+**红先证明**面向"Agent 自动提 issue → Agent 修复"这一闭环：能同时改实现和改测试的执行者，
+永远能让套件变绿，因此任何它也能编辑的覆盖率指标都是循环论证。该脚本把父提交物化成一个
+一次性 `git worktree`，只把候选测试文件拷进去，构建后**逐文件**运行，要求每一个都失败。
+逐文件是关键——按套件判定的话，一个真测试就能替同批次里被放松的那个作证。工作树全程不被
+触碰。退出码：0 全部证明、1 有文件在父提交上是绿的、2 无法判定（没有候选测试或父提交构建失败）。
+
 L5 失败需要区分 `product_failure`、`model_behavior_failure`、`provider_failure` 和 `environment_blocked`，不得笼统记为产品失败。
 
 ## 4. 环境矩阵
@@ -99,7 +127,7 @@ L5 失败需要区分 `product_failure`、`model_behavior_failure`、`provider_f
 ### 6.3 Major
 
 - 必须经过 Clarify、Design、Check；material questions 未解决时阻塞；
-- implementation/closing 均要求两个 actor、不同角色和外部签名；
+- implementation/closing 各要求一个批准人，并开启 `separationOfDuties`——即批准人不是本 Change 的 implementer（取自 Change 目录与各 delivery 的 Git author），与角色无关；两种 provider 都接受，receipt 均不带签名，有效性靠 audit chain 里的 `approval.decided` 事件；
 - LLM Check 写 `PASS` 但 Gate 或 Approval 缺失时仍阻塞；
 - remote Audit 欠账存在时不得归档；
 - Reviewer/Worker 日志不冒充长期企业审计。
@@ -128,10 +156,10 @@ L5 失败需要区分 `product_failure`、`model_behavior_failure`、`provider_f
   Flow 自己的 `xforge/flows/<name>.yaml`（stage 顺序、每个 stage 的 Skill、`exit.approvals`、
   `execution.workPackages`），按图依次调用 `run-engine.mjs` 触发真实模型；是否需要外部
   Approval、是否需要 work-package dispatch 全部从这份 yaml 读出，不是每个 Flow 各写一份脚本。
-- **企业级多签 Approval mock**（`approval-provider.mjs`）：从 Flow 的
-  `governance.approvalPolicies` 读出 `minApprovers`/`roles`/`separationOfDuties`，按角色生成
-  对应数量、角色互不相同的独立签名 receipt（Major 的 `implementation-major`/`closing-major`
-  各需要 2 个不同角色），而不是固定签一次。
+- **多方 Approval mock**（`approval-provider.mjs`）：从 Flow 的
+  `governance.approvalPolicies` 读出 `minApprovers`/`roles`/`separationOfDuties`，生成对应数量的
+  独立 receipt，approver id 互不相同且不属于本 Change 的 implementer 集合（这才是
+  `separationOfDuties` 判的东西；`roles` 只作资格过滤），而不是固定签一次。
 - **产物质量检查**（`assert-artifact-outline.mjs`）：直接用 Flow yaml 里
   `artifacts[].outline` 这份既有数据，断言模型产出的 `proposal.md`/`design.md`/
   `assurance.md`/`check-report.md`/`clarifications.md` 二级标题集合与 outline 完全一致（多
@@ -163,6 +191,14 @@ Solid 场景（`task-ledger`）沿用早期已跑通的 Task Ledger CLI 需求�
 
 ```bash
 npm run verify
+```
+
+横切检查（都不需要网络或模型访问）：
+
+```bash
+xforge doctor --strict            # Flow↔Skill 门禁一致性（对任何项目，含自定义 Flow）
+npm run test:red-first            # 随修复新增的测试必须在父提交上失败
+npm run test:red-first -- --base <ref>   # 针对某个基线；--keep 保留 worktree 供排查
 ```
 
 当前沙箱若禁止监听回环端口，分开执行：

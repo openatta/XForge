@@ -12,7 +12,7 @@ const rawFixtureServer = fileURLToPath(new URL('../fixtures/mcp-approval-raw-ser
 /** What the fixture servers need to read their scripted decision out of the environment. */
 const FIXTURE_ENV_ALLOW = ['XFORGE_TEST_MCP_EXPECTED_VALUE', 'XFORGE_TEST_MCP_DECISION', 'XFORGE_TEST_MCP_APPROVER_ID', 'XFORGE_TEST_MCP_APPROVER_ROLE', 'XFORGE_TEST_MCP_POLL_BODY', 'XFORGE_TEST_MCP_POLL_PAD'];
 
-async function toDesignWithMcpProvider(
+async function toCheckWithMcpProvider(
   root: string,
   env: { allow?: string[]; allowPrefixes?: string[] } = { allow: FIXTURE_ENV_ALLOW },
   server = fixtureServer,
@@ -48,28 +48,44 @@ async function toDesignWithMcpProvider(
   ].join('\n'));
 
   await updateYaml(root, 'xforge/manifest.yaml', (manifest) => {
-    manifest.scaffold.mcpServers = ['review-bot'];
+    /* Appended, not assigned. Replacing the list deselected the shipped `enterprise-approvals`
+       McpServer while `approvals.providers` still named it, which `check` reports as a dangling
+       reference — invisible while this fixture never ran a full `check`, and an error the moment
+       it did. */
+    manifest.scaffold.mcpServers.push('review-bot');
     manifest.approvals.providers.push({ id: 'review-bot', type: 'mcp', mcpServer: 'review-bot', roles: ['owner', 'maintainer'] });
   });
   await updateYaml(root, 'xforge/flows/solid.yaml', (flow) => {
     const policy = flow.governance.approvalPolicies.find((item: any) => item.id === 'planning-solid');
     policy.providers.push('review-bot');
   });
+
+  /*
+   * Check's own Gates run after the Flow edit above, never before it. Registering the provider
+   * rewrites `xforge/flows/solid.yaml`, which moves `policySnapshotDigest` and with it
+   * `contentRevision`, so Evidence produced first would reach the exit already stale. The design
+   * Stage declares no Gates, so crossing into Check needs nothing that edit could invalidate.
+   */
+  expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'check'])).code).toBe(0);
+  expect((await runCli(root, ['check', '--change', 'add-feature'])).code).toBe(0);
 }
 
 /*
- * `--for check`, not `--for apply`. `planning-solid` gates the *design* Stage's exit, and the design
- * exit transitions to `check`; a receipt filed against `apply` is bound to a transition this Change
- * cannot take from here, so `approvalsForPolicy` would never count it. This fixture said `apply` for
- * fifteen tests and they all passed, because each asserted only that a receipt was written — which
- * is exactly the hole `assertApprovableTransition` now closes, found in our own suite by closing it.
+ * `--for` names the transition the approval unlocks, never the Stage it is collected at.
+ * `planning-solid` gates the *check* Stage's exit, and that exit transitions to `apply`; a receipt
+ * filed against any other transition is bound to a move this Change cannot make from here, so
+ * `approvalsForPolicy` would never count it. This fixture once said `apply` while the policy sat at
+ * the design exit and fifteen tests still passed, because each asserted only that a receipt was
+ * written — the hole `assertApprovableTransition` closes, found in our own suite by closing it. The
+ * value is right again now for the opposite reason, so keep taking it from `nextActions[].command`
+ * rather than from the Stage name.
  */
-const mcpApproveArgs = ['approve', '--change', 'add-feature', '--for', 'check', '--policy', 'planning-solid', '--provider', 'review-bot'];
+const mcpApproveArgs = ['approve', '--change', 'add-feature', '--for', 'apply', '--policy', 'planning-solid', '--provider', 'review-bot'];
 
 describe('mcp approval provider', () => {
   it('submits and polls to a decided approval, writing an unsigned receipt', async () => {
     const root = await fixture();
-    await toDesignWithMcpProvider(root);
+    await toCheckWithMcpProvider(root);
     const result = await runCli(root, mcpApproveArgs, {
       XFORGE_TEST_MCP_TOKEN: 'shared-secret', XFORGE_TEST_MCP_EXPECTED_VALUE: 'shared-secret',
       XFORGE_TEST_MCP_DECISION: 'approve', XFORGE_TEST_MCP_APPROVER_ID: 'alice@example.test', XFORGE_TEST_MCP_APPROVER_ROLE: 'owner',
@@ -90,7 +106,7 @@ describe('mcp approval provider', () => {
 
   it('keeps a provider-supplied expiry instead of overriding it with the default', async () => {
     const root = await fixture();
-    await toDesignWithMcpProvider(root, { allow: FIXTURE_ENV_ALLOW }, rawFixtureServer);
+    await toCheckWithMcpProvider(root, { allow: FIXTURE_ENV_ALLOW }, rawFixtureServer);
     const providerExpiry = new Date(Date.now() + 3_600_000).toISOString();
     const result = await runCli(root, mcpApproveArgs, {
       XFORGE_TEST_MCP_TOKEN: 'shared-secret',
@@ -110,7 +126,7 @@ describe('mcp approval provider', () => {
    */
   it('returns a pending next action without writing anything when the decision is not in yet', async () => {
     const root = await fixture();
-    await toDesignWithMcpProvider(root);
+    await toCheckWithMcpProvider(root);
     const result = await runCli(root, mcpApproveArgs, {
       XFORGE_TEST_MCP_TOKEN: 'shared-secret', XFORGE_TEST_MCP_EXPECTED_VALUE: 'shared-secret', XFORGE_TEST_MCP_DECISION: 'pending',
     });
@@ -134,7 +150,7 @@ describe('mcp approval provider', () => {
    */
   it('does not pass an undeclared ambient variable through to the provider subprocess', async () => {
     const root = await fixture();
-    await toDesignWithMcpProvider(root);
+    await toCheckWithMcpProvider(root);
     const result = await runCli(root, mcpApproveArgs, {
       XFORGE_TEST_MCP_TOKEN: 'shared-secret', XFORGE_TEST_MCP_EXPECTED_VALUE: 'shared-secret',
       XFORGE_TEST_MCP_DECISION: 'approve', XFORGE_TEST_MCP_APPROVER_ID: 'alice@example.test', XFORGE_TEST_MCP_APPROVER_ROLE: 'owner',
@@ -153,7 +169,7 @@ describe('mcp approval provider', () => {
    */
   it('drops a credential-shaped variable even when the McpServer explicitly allows it', async () => {
     const root = await fixture();
-    await toDesignWithMcpProvider(root, { allow: [...FIXTURE_ENV_ALLOW, 'XFORGE_TEST_MCP_AUTH_BACKDOOR'] });
+    await toCheckWithMcpProvider(root, { allow: [...FIXTURE_ENV_ALLOW, 'XFORGE_TEST_MCP_AUTH_BACKDOOR'] });
     const result = await runCli(root, mcpApproveArgs, {
       XFORGE_TEST_MCP_TOKEN: 'shared-secret', XFORGE_TEST_MCP_EXPECTED_VALUE: 'shared-secret',
       XFORGE_TEST_MCP_DECISION: 'approve', XFORGE_TEST_MCP_APPROVER_ID: 'alice@example.test', XFORGE_TEST_MCP_APPROVER_ROLE: 'owner',
@@ -175,7 +191,7 @@ describe('mcp approval provider', () => {
    */
   it('passes variables declared via allowPrefixes through, while the deny filter still wins', async () => {
     const root = await fixture();
-    await toDesignWithMcpProvider(root, { allowPrefixes: ['XFORGE_TEST_MCP_'] });
+    await toCheckWithMcpProvider(root, { allowPrefixes: ['XFORGE_TEST_MCP_'] });
     const result = await runCli(root, mcpApproveArgs, {
       XFORGE_TEST_MCP_TOKEN: 'shared-secret', XFORGE_TEST_MCP_EXPECTED_VALUE: 'shared-secret',
       XFORGE_TEST_MCP_DECISION: 'approve', XFORGE_TEST_MCP_APPROVER_ID: 'prefixed@example.test', XFORGE_TEST_MCP_APPROVER_ROLE: 'owner',
@@ -195,7 +211,7 @@ describe('mcp approval provider', () => {
   describe('malformed poll_approval responses', () => {
     async function pollWith(body: string, environment: NodeJS.ProcessEnv = {}): Promise<any> {
       const root = await fixture();
-      await toDesignWithMcpProvider(root, { allow: FIXTURE_ENV_ALLOW }, rawFixtureServer);
+      await toCheckWithMcpProvider(root, { allow: FIXTURE_ENV_ALLOW }, rawFixtureServer);
       const result = await runCli(root, mcpApproveArgs, {
         XFORGE_TEST_MCP_TOKEN: 'shared-secret', XFORGE_TEST_MCP_POLL_BODY: body, ...environment,
       });
@@ -277,7 +293,7 @@ describe('mcp approval provider', () => {
      */
     it('never turns a response past the size cap into an approval', async () => {
       const root = await fixture();
-      await toDesignWithMcpProvider(root, { allow: FIXTURE_ENV_ALLOW }, rawFixtureServer);
+      await toCheckWithMcpProvider(root, { allow: FIXTURE_ENV_ALLOW }, rawFixtureServer);
       const result = await runCli(root, mcpApproveArgs, {
         XFORGE_TEST_MCP_TOKEN: 'shared-secret', XFORGE_TEST_MCP_POLL_PAD: String(512 * 1024),
       });
@@ -291,7 +307,7 @@ describe('mcp approval provider', () => {
 
   it('fails after retrying a few times when the server cannot be reached', async () => {
     const root = await fixture();
-    await toDesignWithMcpProvider(root);
+    await toCheckWithMcpProvider(root);
     await updateYaml(root, 'xforge/scaffold/mcp-servers/review-bot.yaml', (server) => {
       server.spec.command = ['/nonexistent/xforge-test-binary'];
     });
