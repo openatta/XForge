@@ -28,16 +28,24 @@ lock.version = nextVersion;
 if (lock.packages?.['']) lock.packages[''].version = nextVersion;
 writeJson('xforge/package-lock.json', lock);
 
+/*
+ * Every tracked file that states the CLI version in prose or fixture data.
+ *
+ * An allowlist rather than a scan, because rewriting a version string is not something to do to a
+ * file nobody nominated — but an allowlist alone rots, and did: the docs restructure removed six of
+ * the entries here and added five documents that state the version, so the next release would have
+ * thrown ENOENT partway through the rewrite and, had it survived that, shipped five documents still
+ * naming the previous version. `assertNoStaleVersion` below is what stops the list going quietly
+ * out of date again.
+ */
 const versionedTextFiles = [
   'AGENT_INSTALL.md',
   'README.md',
-  'docs/README.md',
-  'docs/TEST_DESIGN.md',
-  'docs/XFORGE_PRODUCT_SPEC.md',
-  'docs/cli-tool-design.md',
   'docs/cli-tool-usage.md',
-  'docs/file-protocol.md',
-  'docs/sub-agent-system-design.md',
+  'docs/concepts-and-architecture.md',
+  'docs/index.md',
+  'docs/repository-layout.md',
+  'docs/sub-agent-design.md',
   'scaffold/payload/xforge/lock.yaml',
   'scaffold/payload/xforge/manifest.yaml',
   'scaffold/scaffold.yaml',
@@ -49,6 +57,7 @@ const versionedTextFiles = [
   'xforge/test/integration/projection-lifecycle.test.ts',
 ];
 for (const file of versionedTextFiles) replaceVersion(file, currentVersion, nextVersion);
+assertNoStaleVersion(currentVersion);
 
 run(process.execPath, ['xforge/scripts/scaffold-integrity.mjs', 'scaffold', '--write']);
 run('npm', ['--prefix', 'xforge', 'run', 'build']);
@@ -66,6 +75,29 @@ run(process.execPath, ['xforge/scripts/scaffold-integrity.mjs', 'scaffold', '--w
 run(process.execPath, ['scripts/privacy-check.mjs']);
 
 process.stdout.write(`Prepared XForge ${nextVersion}. Review the diff, run npm run release:check, then commit and tag v${nextVersion}.\n`);
+
+/**
+ * Refuses a prepared release that still names the previous version anywhere in the tracked tree.
+ *
+ * The allowlist above is the whole of what gets rewritten, so a file that states the version and is
+ * not on it goes stale silently — which is worse than the ENOENT a removed entry throws, because
+ * nothing reports it and the wrong number ships. Asking Git what is left is cheap and needs no
+ * second list to maintain: add the file to `versionedTextFiles`, or, if it names an older version
+ * on purpose (a migration note, a historical example), say so here.
+ */
+function assertNoStaleVersion(previousVersion) {
+  /* `git grep` exits 1 when it matches nothing, and `git()` throws on a non-zero exit — so the
+     clean case is an exception here, not a result. Spawned directly to read the status instead. */
+  const search = spawnSync('git', ['grep', '--name-only', '--fixed-strings', previousVersion], { encoding: 'utf8' });
+  if (search.status !== 0 && search.status !== 1) fail(`Unable to search the tree for ${previousVersion}: ${search.stderr || search.error?.message}`);
+  const remaining = (search.stdout ?? '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (remaining.length > 0) {
+    fail(`These tracked files still name ${previousVersion} after the rewrite: ${remaining.join(', ')}. Add each to versionedTextFiles, or record here why it keeps the old version.`);
+  }
+}
 
 function replaceVersion(file, from, to) {
   const content = readFileSync(file, 'utf8');

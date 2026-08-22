@@ -32,7 +32,7 @@ import { VERIFICATION_RECEIPT_CONDITION, VERIFICATION_RECEIPT_PATH } from '../co
  *
  * `XFORGE_SCHEMA_INVALID`, then nothing worked, including the repair.
  *
- * XForge does not implement CRUD for every resource (`docs/XFORGE_PRODUCT_SPEC.md` §5.9), and this
+ * XForge does not implement CRUD for every resource (`docs/internal/XFORGE_PRODUCT_SPEC.md` §5.9, unpublished), and this
  * is not a general exception to that. It is the same reasoning that already makes `approve`,
  * `transition` and `work-package` commands rather than files an Agent writes: correctness that
  * cannot be left to hand-editing, in a place where being wrong is expensive to undo. Everything a

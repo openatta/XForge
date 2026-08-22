@@ -398,7 +398,7 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
       scope: 'approvals',
       code: 'XFORGE_DOCTOR_APPROVALS_INTERACTIVE_ONLY',
       id: 'local',
-      message: `${interactiveOnly.length} approval polic${interactiveOnly.length === 1 ? 'y' : 'ies'} in the Flows this project uses can be satisfied only at an interactive terminal, because no mcp provider is both declared and configured for ${interactiveOnly.length === 1 ? 'it' : 'them'}: ${interactiveOnly.join(', ')}. Those approvals cannot be collected from inside an Agent session — the approver has to open a real terminal each time. That is a working constraint, not a misconfiguration; the alternative is to configure an mcp approval provider. See docs/extending-approvals-with-mcp.md.`,
+      message: `${interactiveOnly.length} approval polic${interactiveOnly.length === 1 ? 'y' : 'ies'} in the Flows this project uses can be satisfied only at an interactive terminal, because no mcp provider is both declared and configured for ${interactiveOnly.length === 1 ? 'it' : 'them'}: ${interactiveOnly.join(', ')}. Those approvals cannot be collected from inside an Agent session — the approver has to open a real terminal each time. That is a working constraint, not a misconfiguration; the alternative is to configure an mcp approval provider. See docs/extension-guide.md.`,
       path: 'xforge/manifest.yaml',
       severity: 'info',
     });
