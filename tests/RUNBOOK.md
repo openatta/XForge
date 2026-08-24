@@ -60,6 +60,14 @@ npm run build                →  再构建一次；上一步改了 lock，而�
 
 漏掉最后一次 build，之后每个 `xforge init` 都会立刻 `XFORGE_LOCK_CLI_MISMATCH`。
 
+**这个陷阱现在会被当场拦住。** `npm test` / `test:coverage` / `test:product` / `verify` 在 build 之后、
+跑测试之前都会执行 `check:lock`：比对 `dist` 的实际 integrity 与 `scaffold/payload/xforge/lock.yaml`
+里钉住的那个，不一致就**一条明确报错**，而不是让三百多个测试各自报 `XFORGE_LOCK_CLI_MISMATCH`
+——那种失败没有一条是关于你正在改的东西。
+
+它**不在 `build` 里**：`relock` 会 build → 重钉 lock → 再 build，第一次 build 时 lock 本来就是旧的，
+在那里检查等于拒绝掉修复它的那条命令。
+
 ---
 
 ## 3. 增删 Skill 的检查清单
