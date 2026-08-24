@@ -14,6 +14,7 @@
 | `tests/**`（非 live-engine） | `npm run test:product` | 根级黑盒套件 |
 | `xforge/test/**` | `npm test` | 实现套件 |
 | **Skill / Flow / Gate / Rule / Policy** | 上述之外，**挑受影响的场景做一次 live-engine 实跑**（§4） | 见 §3 |
+| `tests/live-engine/**`（场景、prompt、matrix） | `npm run test:product` | 两道 harness 闸门在里面跑，见下 |
 | 发版前 | `npm run verify` | build + scaffold 校验 + 全部套件 + 覆盖率阈值 |
 
 **为什么改 Skill 要实跑**：静态测试能证明 CLI、Gate、控制面按约定工作，
@@ -23,6 +24,19 @@
 **不必全跑。** 改一个 standalone Skill 就跑它自己的场景（几分钟），改 Flow Stage 用的
 Skill 就跑一个走该 Flow 的场景，改 Flow/Gate/控制面才需要多个。对照表见
 `tests/live-engine/README.md`。
+
+**两道 harness 闸门现在由套件执行，不再靠记性**（`tests/harness-gates.test.ts`）：
+
+- `check-coverage.mjs` —— 每个 Skill 都必须被一个**真的跑得起来**的场景覆盖
+- `check-vocabulary.mjs` —— 双向词汇闸门：
+  - shipped payload 里不得出现 harness 词汇（`TEST_REQUEST`、`live-engine`…）
+  - **`*-cold` 场景**的任何 `.md` 里不得出现产品词汇（Flow 名、Skill 名、`write_paths`、
+    `xforge <子命令>`…）
+
+第二条是补出来的。过去每次实跑失败都是**往 prompt 里加一句**修好的，于是 17 份 prompt
+攒成了产品毛边的说明书：Artifact 写在哪、outline 是契约、要声明哪些 Gate、哪个文件不能手改。
+harness 从此测不到那一类失败——它把自己路上的坑填平了——而真实用户手里没有这份 prompt。
+**guided 场景不受这条约束**：它们是回归层，本来就允许含答案。cold 层才受约束。
 
 ---
 
@@ -117,12 +131,24 @@ node tests/live-engine/run-matrix.mjs --scenario quick --cli-source local
 **十个场景**，分两类：
 
 - **Flow 场景**（走完整 Stage 图）：`quick` · `quick-python` · `quick-undeclared` ·
-  `solid` · `solid-rework` · `major`
+  `solid` · `solid-rework` · `major` · **`major-cold`**
 - **standalone 场景**（准备一个项目 + 一次模型调用 + 一条断言，没有 Change）：
   `standalone-scaffold` · `standalone-architect` · `standalone-kanban` ·
   `standalone-upgrade-scaffold`
 
 注意 `solid-rework` 与 `solid` 共用一个 Flow，所以**必须用 `--scenario` 而不是 `--flow`**。
+`major-cold` 同理：它与 `major` 共用 Flow **和** project-seed（免得验收套件在两边漂移），
+只把 `TEST_REQUEST.md` 换成需求方口吻的版本。
+
+> **两个层，两种读法。** guided 场景（含 `major`）是**回归层**，必须绿；prompt 里写满
+> 产品知识是它的设计，不是缺陷。`major-cold` 是**发现层**：模型只拿到功能需求和环境约束，
+> 其余一律要它自己从产品里问出来。**它的 outcome 不做约束，允许红**——红的那些就是
+> 真实用户会撞到的东西。看到它红，**不要往 prompt 里加句子**（词汇闸门也会拦住你），
+> 去修产品或修 Skill。
+
+**摩擦指标**：每个 Flow 场景的 timeline 与最终 envelope 现在都带 `friction`
+（`totalTurns`、`totalPermissionDenials`、逐阶段明细）。**「归档了」和「打了四十个回合
+才归档」不是同一个结果**，而把答案抄进 prompt 只会改善前者。
 
 另有三个**注入式** standalone（`standalone-status`、`standalone-status-blocked`、
 `standalone-revise`）——它们跑在别的场景中间，不能用 `--scenario` 单独选。

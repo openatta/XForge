@@ -150,6 +150,36 @@ const SCENARIOS = {
   },
 
   /*
+   * The same Flow and the same acceptance suite as `major`, given only what a real user would give.
+   *
+   * `major`'s own TEST_REQUEST.md names the Flow, the Change id, the material question Clarify is
+   * supposed to discover, the sections Design must cover, and the whole work-package plan down to
+   * `write_paths`. Its Stage prompts carry more of the same. Every one of those was added to repair
+   * a live-run failure, and each repaired it by telling the model the answer -- so the harness
+   * stopped being able to find that class of failure while real users, holding no such prompt, kept
+   * walking into it. A `major` run costs seventeen dollars and proves that a guided model can be
+   * guided.
+   *
+   * This scenario is the control. `intent.md` states functional requirements and the risk, nothing
+   * else; the Stage prompts carry environment constraints and "read AGENTS.md" and nothing else.
+   * `check-vocabulary.mjs` fails the build if either ever acquires product vocabulary again.
+   *
+   * It seeds from `major` so the immutable acceptance suite cannot drift between the two, then
+   * replaces the request. Its outcome is deliberately unconstrained: this tier exists to find out
+   * what a real user hits, and a tier that must pass is a tier somebody will make pass.
+   */
+  'major-cold': {
+    flow: 'major',
+    seed: 'major',
+    prompts: 'major-cold',
+    changeId: 'credential-store',
+    intent: 'cold',
+    maxReworks: 2,
+    expect: { outcome: ['archived', 'stopped-at-check', 'stopped-awaiting-declaration'] },
+    prepare: replaceRequestWithColdIntent,
+  },
+
+  /*
    * Standalone Skills: one prepared project, one model call, one assertion.
    *
    * These four had prompts, coverage-matrix entries, and no runner row, so `check-coverage.mjs`
@@ -507,6 +537,18 @@ function assertArtifactOutline({ projectRoot, flowName, artifactId, file, mode }
   return json;
 }
 
+/**
+ * Swaps the guided request for the cold one, after seeding from `major`.
+ *
+ * Seeding rather than copying keeps `test/**` -- the immutable acceptance suite both scenarios are
+ * measured by -- in exactly one place. Only the request differs, which is the whole variable under
+ * test.
+ */
+async function replaceRequestWithColdIntent(projectRoot) {
+  const intentPath = path.join(scenariosRoot, 'major-cold', 'intent.md');
+  await writeFile(path.join(projectRoot, 'TEST_REQUEST.md'), await readFile(intentPath, 'utf8'));
+}
+
 async function appendRequirementToTaskLedgerRequest(projectRoot) {
   const requestPath = path.join(projectRoot, 'TEST_REQUEST.md');
   const current = await readFile(requestPath, 'utf8');
@@ -785,20 +827,78 @@ if (!limits.atDefaults) {
   })}\n`);
 }
 
-const timeline = { scenario: scenarioName, flow: flowName, changeId: null, cli: null, limits, outcome: null, reworks: 0, stages: [] };
+const timeline = { scenario: scenarioName, flow: flowName, changeId: null, cli: null, limits, outcome: null, reworks: 0, friction: null, stages: [] };
+
+/**
+ * What this Stage cost the model to get through, as distinct from whether it got through.
+ *
+ * A scenario is scored pass/fail on its outcome, and that is the whole of what anyone looks at --
+ * which quietly rewards the cheapest way to turn a red run green, namely adding a sentence to the
+ * prompt. Seventeen prompts accumulated exactly that way. These numbers are the counterweight: a
+ * run that archives after fighting the tool for forty turns is not the same result as one that
+ * archives in twelve, and pasting the answer into the prompt improves the outcome while leaving
+ * this untouched -- or making it worse, since a longer prompt is more to read.
+ *
+ * Every field is already produced by the engine and was simply thrown away. `turns` is the model's
+ * own round-trip count; `permissionDenials` is the sandbox refusing a tool call, which usually
+ * means the Agent reached for something the project never told it about.
+ */
+function stageFriction(stageId) {
+  try {
+    const result = JSON.parse(readFileSync(path.join(resultsRoot, `${scenarioName}-${stageId}.json`), 'utf8'));
+    return {
+      turns: result.num_turns ?? null,
+      permissionDenials: Array.isArray(result.permission_denials) ? result.permission_denials.length : null,
+      costUsd: result.total_cost_usd ?? null,
+      isError: result.is_error ?? null,
+    };
+  } catch {
+    /* A Stage whose result is unreadable reports nothing rather than a zero that reads as "easy". */
+    return { turns: null, permissionDenials: null, costUsd: null, isError: null };
+  }
+}
+
 function timelineStep(projectRoot, stageId) {
   const change = changeState(projectRoot);
   timeline.stages.push({
     stage: stageId,
     contentRevision: change.governance?.revision?.contentRevision ?? null,
     currentStage: change.governance?.currentStage ?? null,
+    friction: stageFriction(stageId),
   });
+}
+
+/** The run's friction in one place, so a trend across runs is a lookup rather than an aggregation. */
+function summariseFriction() {
+  const measured = timeline.stages.map((entry) => entry.friction).filter(Boolean);
+  const total = (key) => measured.reduce((sum, entry) => sum + (entry[key] ?? 0), 0);
+  return {
+    stagesMeasured: measured.length,
+    totalTurns: total('turns'),
+    totalPermissionDenials: total('permissionDenials'),
+    /* Reworks are friction the governance chain caused on purpose, kept beside the rest so the two
+       are never confused: one is the product working, the other is the product being hard to use. */
+    reworks: timeline.reworks,
+  };
 }
 
 const setup = JSON.parse(run('node', [
   path.join(scriptsRoot, 'setup.mjs'), '--scenario', scenarioName, '--seed', scenarioConfig.seed ?? flowName, '--cli-source', selected['cli-source'],
 ], repositoryRoot));
 const projectRoot = setup.project;
+
+/*
+ * Whatever this scenario needs to be true before anything runs -- an aged Scaffold, a staged
+ * upgrade, a Gate somebody adapted, a different request than the seed shipped. Kept beside the
+ * scenario rather than in `setup.mjs`, because it is a statement about this scenario and not about
+ * how projects are built.
+ *
+ * Runs for every scenario, not only the standalone ones. It used to sit inside the standalone
+ * branch, so a Flow scenario declaring it got a key the runner silently ignored -- and a cold
+ * scenario whose whole point is that its request differs would have run the seed's request instead,
+ * proving the opposite of what it was built to test.
+ */
+if (scenarioConfig.prepare) await scenarioConfig.prepare(projectRoot, { cliEnv: setup.cliBin });
 
 /*
  * Standalone Skills leave here and never touch the Stage loop below.
@@ -816,11 +916,6 @@ if (scenarioConfig.standalone) {
     timeoutSeconds: Number(selected['timeout-seconds']),
     stages: [scenarioName],
   }), null, 2)}\n`);
-
-  /* Whatever the Skill needs to be true before it runs — an aged Scaffold, a staged upgrade, a
-     Gate somebody adapted. Kept beside the scenario rather than in `setup.mjs`, because it is a
-     statement about this scenario, not about how projects are built. */
-  if (scenarioConfig.prepare) await scenarioConfig.prepare(projectRoot, { cliEnv: setup.cliBin });
 
   await runEngine({
     projectRoot, scenario: scenarioName, stageId: scenarioName,
@@ -1251,6 +1346,7 @@ timeline.changeId = scenarioConfig.changeId;
 timeline.outcome = outcome;
 timeline.reworks = reworks;
 timeline.cli = setup.cli ?? null;
+timeline.friction = summariseFriction();
 await writeFile(path.join(resultsRoot, `${scenarioName}-timeline.json`), `${JSON.stringify(timeline, null, 2)}\n`);
 
 /*
@@ -1282,6 +1378,10 @@ process.stdout.write(`${JSON.stringify({
   limits,
   outcome,
   reworks,
+  /* Beside the outcome for the same reason `limits` is: "archived" and "archived after fighting the
+     tool for forty turns" are different results, and only one of them is improved by explaining the
+     tool in the prompt. */
+  friction: timeline.friction,
   stoppedAtCheck,
   stoppedAwaitingDeclaration,
   project: projectRoot,

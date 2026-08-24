@@ -22,6 +22,7 @@ export const FLOW_SCENARIO_IDS = [
   'solid',
   'solid-rework',
   'major',
+  'major-cold',
 ];
 
 /**

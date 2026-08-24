@@ -64,8 +64,9 @@
   stop signals、owner 和并行边界；
 - Check 阶段必须对 Proposal/Specs/Clarifications/Design 做语义审查，发现的问题
   必须记录为 blocker/warning/suggestion 并指出 rework 的 Stage；
-- Apply 前需要 `implementation-major` 双签审批（2 名不同角色审批人，遵守
-  separation of duties）；Archive 前需要 `closing-major` 双签审批。
+- Apply 前需要 `implementation-major` 审批，Archive 前需要 `closing-major` 审批；
+  两者都要求审批人**不是本 Change 的实施者**（`separationOfDuties`），而不是
+  凑够两个签名——按角色计数正是这条规则替换掉的那个缺陷。
 
 ## 工程约束
 
@@ -79,5 +80,5 @@
 ## 验收标准
 
 `npm test` 全部通过；完整 Major Change 经当前 revision 的 Clarify、Design、
-Check、双签 Approval、Gate、Transition、work-package dispatch/delivery、Audit
+Check、Approval、Gate、Transition、work-package dispatch/delivery、Audit
 和 Archive 后，delta Spec 合并到主 Specs，原 Change 被原子移动到 archive。
