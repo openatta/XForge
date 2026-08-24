@@ -172,7 +172,9 @@ const SCENARIOS = {
     flow: 'major',
     seed: 'major',
     prompts: 'major-cold',
-    changeId: 'credential-store',
+    /* Deliberately unset: naming the Change is one of the decisions this tier exists to watch the
+       model make, so the runner discovers it instead. */
+    changeId: null,
     intent: 'cold',
     maxReworks: 2,
     expect: { outcome: ['archived', 'stopped-at-check', 'stopped-awaiting-declaration'] },
@@ -435,7 +437,7 @@ function changePath(changeId, generates) {
  */
 function declaredReworkTarget(projectRoot, envelope, stage) {
   if (!(envelope.diagnostics ?? []).some((item) => item.code === 'XFORGE_TRANSITION_BLOCKED')) return null;
-  const ledger = path.join(projectRoot, changePath(scenarioConfig.changeId, 'evidence/check-findings.yaml'));
+  const ledger = path.join(projectRoot, changePath(changeId, 'evidence/check-findings.yaml'));
   let findings;
   try { findings = parse(readFileSync(ledger, 'utf8'))?.findings ?? []; } catch { return null; }
   const permitted = stage.reworkTo ?? [];
@@ -454,8 +456,41 @@ function declaredReworkTarget(projectRoot, envelope, stage) {
  * the diagnostics are the answer. Reading it through the throwing helper turned a finding the Flow
  * was about to act on into a stack trace one call earlier, and lost the diagnostics with it.
  */
+/**
+ * The Change this run is about, which is not always something the scenario gets to decide.
+ *
+ * A guided scenario pins it, because its request names it ("Change ID 固定为 credential-store").
+ * A cold scenario cannot: naming the id is one of the answers it exists to make the model find, so
+ * `intent.md` says nothing about it and the model picks its own. The first cold run picked
+ * `credential-store-cli` and every path built from the pinned id pointed at a directory that did
+ * not exist -- the outline check read the absent file and failed the run one Stage in, reporting an
+ * empty string because there was nothing there to report on.
+ *
+ * So the id is discovered rather than declared, from the same portfolio view a person would read.
+ */
+let changeId = null;
+
+function resolveChangeId(projectRoot) {
+  if (changeId) return changeId;
+  const portfolio = tryXforgeJson(projectRoot, ['state']);
+  const active = portfolio?.data?.activeChanges ?? [];
+  if (active.length === 1) {
+    changeId = active[0].id;
+    process.stdout.write(`${JSON.stringify({ resolvedChangeId: changeId })}\n`);
+    return changeId;
+  }
+  /* Zero is "the Stage produced no Change", many is "this harness cannot tell which is yours".
+     Both are real failures, and both used to surface as a path that happened not to exist. */
+  throw new Error(active.length === 0
+    ? 'No un-archived Change exists after the Stage that should have created one.'
+    : `This run owns no single Change: ${active.map((entry) => entry.id).join(', ')}.`);
+}
+
 function changeState(projectRoot) {
-  return tryXforgeJson(projectRoot, ['state', '--change', scenarioConfig.changeId]).data.change;
+  /* Reaching here without an id means a caller ran before `resolveChangeId`. Say that, rather than
+     passing `null` to the CLI and reporting whatever it makes of it. */
+  if (!changeId) throw new Error('changeState was called before the run resolved which Change it owns.');
+  return tryXforgeJson(projectRoot, ['state', '--change', changeId]).data.change;
 }
 
 /**
@@ -567,9 +602,9 @@ async function appendRequirementToTaskLedgerRequest(projectRoot) {
  * Stage left something behind, not what it happened to call it.
  */
 function producedArtifact(projectRoot, generates) {
-  const target = path.join(projectRoot, changePath(scenarioConfig.changeId, generates));
+  const target = path.join(projectRoot, changePath(changeId, generates));
   if (!generates.includes('*')) return existsSync(target);
-  const root = path.join(projectRoot, changePath(scenarioConfig.changeId, generates.split('*')[0]));
+  const root = path.join(projectRoot, changePath(changeId, generates.split('*')[0]));
   const extension = path.extname(generates) || '';
   const walk = (directory) => {
     let entries = [];
@@ -616,7 +651,7 @@ function assertStoppedAtCheck(projectRoot, flowDefinition, checkStage) {
   }
 
   for (const policyId of checkStage.exit?.approvals ?? []) {
-    const directory = path.join(projectRoot, changePath(scenarioConfig.changeId, path.posix.join('approvals', policyId)));
+    const directory = path.join(projectRoot, changePath(changeId, path.posix.join('approvals', policyId)));
     let receipts = [];
     try {
       receipts = readdirSync(directory)
@@ -656,7 +691,7 @@ function assertStoppedAtCheck(projectRoot, flowDefinition, checkStage) {
     }
   }
 
-  const ledgerPath = path.join(projectRoot, changePath(scenarioConfig.changeId, 'evidence/check-findings.yaml'));
+  const ledgerPath = path.join(projectRoot, changePath(changeId, 'evidence/check-findings.yaml'));
   let blockers = [];
   try {
     blockers = (parse(readFileSync(ledgerPath, 'utf8'))?.findings ?? [])
@@ -670,7 +705,7 @@ function assertStoppedAtCheck(projectRoot, flowDefinition, checkStage) {
        either is citing something real, which is all this point is asking. */
     for (const ref of refs) {
       const asProject = path.join(projectRoot, ref);
-      const asChange = path.join(projectRoot, changePath(scenarioConfig.changeId, ref));
+      const asChange = path.join(projectRoot, changePath(changeId, ref));
       if (!existsSync(asProject) && !existsSync(asChange)) {
         problems.push(`Blocker ${blocker.id} cites ${ref}, which does not exist.`);
       }
@@ -707,7 +742,7 @@ function assertStoppedAwaitingDeclaration(projectRoot, stage, moved) {
   }
 
   /* And the Gate must be refusing for the declared reason, not merely failing for another. */
-  const gatePath = path.join(projectRoot, changePath(scenarioConfig.changeId, 'evidence/tests.json'));
+  const gatePath = path.join(projectRoot, changePath(changeId, 'evidence/tests.json'));
   try {
     const evidence = JSON.parse(readFileSync(gatePath, 'utf8'));
     if (evidence.status !== 'failed') problems.push(`unit-tests Evidence records status "${evidence.status}"; the Gate should be refusing.`);
@@ -764,6 +799,9 @@ async function runApprovals({ projectRoot, policyIds, transition, changeId, simu
 assertCatalogueMatchesTable();
 const selected = options(process.argv.slice(2));
 const scenarioConfig = SCENARIOS[selected.scenario];
+/* Seeded here rather than at the declaration above, which is hoisted far above this line: a
+   pinned scenario knows its Change from the start, a cold one discovers it after its first Stage. */
+changeId = scenarioConfig.changeId ?? null;
 const scenarioName = selected.scenario;
 const flowName = scenarioConfig.flow;
 /* Scopes the per-scenario temp roots in setup.mjs / run-engine.mjs so flows can run in parallel. */
@@ -1011,6 +1049,11 @@ for (let index = 0; index < stages.length; ) {
     promptRelative: path.posix.join(scenarioConfig.prompts ?? flowName, `${stage.id}.md`), policyPath, options: selected,
   });
 
+  /* Before anything builds a path from it. A cold scenario has no id until its first Stage has
+     created the Change, and everything below -- artifact paths, `--change`, the outline check --
+     is keyed on it. */
+  resolveChangeId(projectRoot);
+
   /*
    * A Stage that stopped for a reason the scenario expects did not fail to produce its Artifact —
    * it correctly declined to. `quick-undeclared`'s Verify Agent refused to write `assurance.md`
@@ -1027,11 +1070,11 @@ for (let index = 0; index < stages.length; ) {
     const mode = outlineCheckable[artifactId];
     const artifact = flow.artifacts.find((entry) => entry.id === artifactId);
     if (!artifact || !mode) continue;
-    const file = changePath(scenarioConfig.changeId, artifact.generates);
+    const file = changePath(changeId, artifact.generates);
     const artifactExists = existsSync(path.join(projectRoot, file));
     /* Only ask the CLI when the Artifact is absent: `check` is cheap but not free, and on the happy
        path there is nothing to ask about. */
-    const stalled = artifactExists ? null : tryXforgeJson(projectRoot, ['check', '--change', scenarioConfig.changeId]);
+    const stalled = artifactExists ? null : tryXforgeJson(projectRoot, ['check', '--change', changeId]);
     if (stoppedAwaitingDeclarationHere({ artifactExists, allowedOutcomes, diagnostics: stalled?.diagnostics })) {
       outcome = 'stopped-awaiting-declaration';
       stoppedAwaitingDeclaration = assertStoppedAwaitingDeclaration(projectRoot, stage, stalled);
@@ -1079,7 +1122,7 @@ for (let index = 0; index < stages.length; ) {
     for (const owedPackage of owed) {
       const recorded = spawnSync(process.execPath, [
         path.join(scriptsRoot, 'record-delivery.mjs'), '--root', projectRoot,
-        '--change', scenarioConfig.changeId, '--package', owedPackage.id,
+        '--change', changeId, '--package', owedPackage.id,
       ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
       if (recorded.status !== 0) throw new Error(`Recording work-package delivery failed for ${owedPackage.id}: ${recorded.stderr || recorded.stdout}`);
     }
@@ -1116,9 +1159,9 @@ for (let index = 0; index < stages.length; ) {
 
   if (stage.exit?.approvals?.length) {
     await runApprovals({
-      projectRoot, policyIds: stage.exit.approvals, transition: nextStage?.id ?? 'verify', changeId: scenarioConfig.changeId,
+      projectRoot, policyIds: stage.exit.approvals, transition: nextStage?.id ?? 'verify', changeId: changeId,
     });
-    const moved = tryXforgeJson(projectRoot, ['transition', '--change', scenarioConfig.changeId, '--to', nextStage.id]);
+    const moved = tryXforgeJson(projectRoot, ['transition', '--change', changeId, '--to', nextStage.id]);
     if (moved.ok) {
       commit(projectRoot, `Approved and transitioned into ${nextStage.id}`);
     } else {
@@ -1149,7 +1192,7 @@ for (let index = 0; index < stages.length; ) {
         }
         throw new Error(`${scenarioName} reworked ${reworks} times (limit ${maxReworks}); last was ${stage.id} -> ${target} on a blocking finding.`);
       }
-      runXforgeJson(projectRoot, ['transition', '--change', scenarioConfig.changeId, '--to', target]);
+      runXforgeJson(projectRoot, ['transition', '--change', changeId, '--to', target]);
       process.stdout.write(`${JSON.stringify({ rework: reworks, from: stage.id, to: target, cause: 'blocking-finding' })}\n`);
       commit(projectRoot, `Reworked ${stage.id} -> ${target} on a blocking finding`);
       countedReceipt = (changeState(projectRoot).governance.transitions ?? []).at(-1)?.digest ?? countedReceipt;
@@ -1205,13 +1248,13 @@ for (let index = 0; index < stages.length; ) {
       let reworkFrom = backward?.from;
       let reworkTo = current;
       if (!isDeclaredRework) {
-        const probe = tryXforgeJson(projectRoot, ['transition', '--change', scenarioConfig.changeId, '--to', nextStage.id, '--dry-run']);
+        const probe = tryXforgeJson(projectRoot, ['transition', '--change', changeId, '--to', nextStage.id, '--dry-run']);
         const held = current === stage.id ? declaredReworkTarget(projectRoot, probe, stage) : null;
         if (!held) {
           const blocks = probe.diagnostics?.filter((item) => item.severity === 'error').map((item) => item.message).join(' ');
           throw new Error(`Agent did not self-transition ${stage.id} -> ${nextStage.id} as instructed (currentStage=${current}, lastReceipt=${backward ? `${backward.from}->${backward.to}` : 'none'})${blocks ? `; the Stage is blocked by: ${blocks}` : ' and nothing blocks it'}.`);
         }
-        runXforgeJson(projectRoot, ['transition', '--change', scenarioConfig.changeId, '--to', held]);
+        runXforgeJson(projectRoot, ['transition', '--change', changeId, '--to', held]);
         reworkFrom = stage.id;
         reworkTo = held;
       }
@@ -1254,7 +1297,7 @@ for (let index = 0; index < stages.length; ) {
        rule read back rather than a second copy of it kept in step by hand. */
     const ready = entered.governance.currentStage === 'apply' ? entered.workPackages?.ready ?? [] : [];
     for (const packageId of ready) {
-      const dispatched = runXforgeJson(projectRoot, ['work-package', 'dispatch', '--change', scenarioConfig.changeId, '--package', packageId]);
+      const dispatched = runXforgeJson(projectRoot, ['work-package', 'dispatch', '--change', changeId, '--package', packageId]);
       if (!dispatched.ok) throw new Error(`Work-package dispatch failed for ${packageId} after entering ${nextStage?.id ?? 'the next Stage'}.`);
     }
     if (ready.length > 0) commit(projectRoot, `Dispatched work packages ${ready.join(', ')}`);
@@ -1274,7 +1317,7 @@ for (let index = 0; index < stages.length; ) {
  * which is the first thing to run the Gate that has nothing declared.
  */
 if (outcome === 'archived' && allowedOutcomes.includes('stopped-awaiting-declaration')) {
-  const finalCheck = tryXforgeJson(projectRoot, ['check', '--change', scenarioConfig.changeId]);
+  const finalCheck = tryXforgeJson(projectRoot, ['check', '--change', changeId]);
   const refused = (finalCheck?.diagnostics ?? []).some((item) => item.code === 'XFORGE_VERIFICATION_NOT_DECLARED');
   if (refused) {
     outcome = 'stopped-awaiting-declaration';
@@ -1283,18 +1326,18 @@ if (outcome === 'archived' && allowedOutcomes.includes('stopped-awaiting-declara
 }
 
 if (outcome === 'archived') {
-runXforgeJson(projectRoot, ['check', '--change', scenarioConfig.changeId]);
-const readyState = runXforgeJson(projectRoot, ['state', '--change', scenarioConfig.changeId]);
+runXforgeJson(projectRoot, ['check', '--change', changeId]);
+const readyState = runXforgeJson(projectRoot, ['state', '--change', changeId]);
 if (readyState.data.change.governance.currentStage !== 'ready-to-archive') {
-  runXforgeJson(projectRoot, ['transition', '--change', scenarioConfig.changeId, '--to', 'ready-to-archive']);
+  runXforgeJson(projectRoot, ['transition', '--change', changeId, '--to', 'ready-to-archive']);
   commit(projectRoot, 'Transitioned into ready-to-archive');
 }
 
 await runApprovals({
-  projectRoot, policyIds: flow.terminal.archive.approvals ?? [], transition: 'archive', changeId: scenarioConfig.changeId,
+  projectRoot, policyIds: flow.terminal.archive.approvals ?? [], transition: 'archive', changeId: changeId,
 });
-runXforgeJson(projectRoot, ['audit', 'verify', '--change', scenarioConfig.changeId]);
-runXforgeJson(projectRoot, ['archive', '--change', scenarioConfig.changeId, '--dry-run']);
+runXforgeJson(projectRoot, ['audit', 'verify', '--change', changeId]);
+runXforgeJson(projectRoot, ['archive', '--change', changeId, '--dry-run']);
 
 /*
  * Archive is the Flow's terminal operation, and it was the one step nothing asserted: `passed`
@@ -1309,16 +1352,16 @@ runXforgeJson(projectRoot, ['archive', '--change', scenarioConfig.changeId, '--d
  * shim goes with it: nothing about the archive transaction itself needed a model in the loop.
  */
 const activeAfterAgent = runXforgeJson(projectRoot, ['state']).data.changes ?? [];
-if (activeAfterAgent.includes(scenarioConfig.changeId)) {
-  runXforgeJson(projectRoot, ['archive', '--change', scenarioConfig.changeId]);
+if (activeAfterAgent.includes(changeId)) {
+  runXforgeJson(projectRoot, ['archive', '--change', changeId]);
 }
 commit(projectRoot, 'Archived Change');
 
 const archivedState = runXforgeJson(projectRoot, ['state']);
-const stillActive = (archivedState.data.changes ?? []).includes(scenarioConfig.changeId);
+const stillActive = (archivedState.data.changes ?? []).includes(changeId);
 const canonicalSpecs = (archivedState.data.specs ?? []).length;
 if (stillActive || canonicalSpecs === 0) {
-  throw new Error(`Archive did not complete for ${scenarioName}:${scenarioConfig.changeId} (stillActive=${stillActive}, canonicalSpecs=${canonicalSpecs}).`);
+  throw new Error(`Archive did not complete for ${scenarioName}:${changeId} (stillActive=${stillActive}, canonicalSpecs=${canonicalSpecs}).`);
 }
 }
 
@@ -1342,7 +1385,7 @@ if (!allowedOutcomes.includes(outcome)) {
  * would say nothing about the run -- the governance criterion `assertStoppedAtCheck` already applied
  * is what that outcome is judged on.
  */
-timeline.changeId = scenarioConfig.changeId;
+timeline.changeId = changeId;
 timeline.outcome = outcome;
 timeline.reworks = reworks;
 timeline.cli = setup.cli ?? null;
