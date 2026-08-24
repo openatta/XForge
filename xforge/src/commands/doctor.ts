@@ -1,4 +1,4 @@
-import { access, readdir } from 'node:fs/promises';
+import { access, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import type { Diagnostic, FileChange, ProjectContext, StageFlow } from '../types.js';
 import { checkStructure } from '../core/checker.js';
@@ -9,6 +9,7 @@ import { loadBundledScaffold } from '../core/bundled-scaffold.js';
 import { CLI_NAME, CLI_VERSION } from '../constants.js';
 import { flowSkillConformanceDiagnostics } from '../core/flow-skill-conformance.js';
 import { normalizeRule } from '../core/governance.js';
+import { sha256 } from '../core/hash.js';
 import { safeResolve } from '../core/path-safety.js';
 import { parse as parseYaml } from 'yaml';
 import { loadYaml } from '../core/yaml.js';
@@ -426,7 +427,7 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
    * command a person runs when the installation is already suspect -- it has to survive that and
    * report everything else.
    */
-  let bundledFlows: Map<string, string> | null = null;
+  let bundledFlows: Map<string, { version: string; digest: string }> | null = null;
   try {
     const bundled = await loadBundledScaffold();
     bundledFlows = new Map();
@@ -436,7 +437,9 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
       try {
         const parsed = parseYaml(content.toString('utf8'), { strict: true, uniqueKeys: true }) as { metadata?: { version?: unknown } };
         const version = parsed?.metadata?.version;
-        if (version !== undefined && version !== null) bundledFlows.set(match[1]!, String(version));
+        if (version !== undefined && version !== null) {
+          bundledFlows.set(match[1]!, { version: String(version), digest: sha256(content) });
+        }
       } catch { /* An unparseable payload Flow is the package's problem, not this project's. */ }
     }
   } catch { bundledFlows = null; }
@@ -444,13 +447,40 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
     for (const [name, flow] of flowResult.flows) {
       const shipped = bundledFlows.get(name);
       const local = String(flow.metadata.version ?? '');
-      if (!shipped || !local || shipped === local) continue;
-      suggestions.push({
+      if (!shipped || !local) continue;
+      const relative = `xforge/flows/${name}.yaml`;
+      let localDigest: string | null = null;
+      try { localDigest = sha256(await readFile(await safeResolve(project.root, relative))); } catch { localDigest = null; }
+      const sameVersion = shipped.version === local;
+      const sameBytes = localDigest !== null && localDigest === shipped.digest;
+      if (sameVersion && (sameBytes || localDigest === null)) continue;
+
+      /*
+       * Two different findings, because they have different repairs.
+       *
+       * A version behind is the ordinary case: the project was initialised before a Flow moved, and
+       * `upgrade-scaffold` cannot carry it because Flows live outside `xforge/scaffold/`.
+       *
+       * A version that matches while the bytes do not is the one a version comparison alone would
+       * miss, and it is the more interesting of the two -- either the Flow was edited in place
+       * without moving its version, or it was adopted from a build that shipped different content
+       * under the same number. The RUNBOOK records the same trap for the globally installed CLI
+       * ("only comparing version numbers misses the commonest kind of staleness"); this is that
+       * lesson applied to the one governed asset no upgrade path touches.
+       */
+      suggestions.push(sameVersion ? {
+        scope: 'flows',
+        code: 'XFORGE_DOCTOR_FLOW_CONTENT_DRIFT',
+        id: name,
+        message: `Flow ${name} says version ${local}, the same version ${CLI_NAME}@${CLI_VERSION} ships, but its content differs. Either it was edited without moving its version, or it came from a build that shipped different bytes under that number — and because the two agree on the number, nothing else will ever report it. Move the version if the edit was deliberate, so the difference has a name.`,
+        path: relative,
+        severity: 'info',
+      } : {
         scope: 'flows',
         code: 'XFORGE_DOCTOR_FLOW_VERSION_DRIFT',
         id: name,
-        message: `Flow ${name} is at version ${local}; ${CLI_NAME}@${CLI_VERSION} ships version ${shipped}. Flows live outside xforge/scaffold/, so upgrade-scaffold never proposes changes to them and this difference will persist through every upgrade. Compare the two and either adopt the shipped Flow or record at the top of xforge/flows/${name}.yaml that the difference is deliberate, so the next reader does not take it for a missed upgrade.`,
-        path: `xforge/flows/${name}.yaml`,
+        message: `Flow ${name} is at version ${local}; ${CLI_NAME}@${CLI_VERSION} ships version ${shipped.version}. Flows live outside xforge/scaffold/, so upgrade-scaffold never proposes changes to them and this difference will persist through every upgrade. Compare the two and either adopt the shipped Flow or record at the top of ${relative} that the difference is deliberate, so the next reader does not take it for a missed upgrade.`,
+        path: relative,
         severity: 'info',
       });
     }

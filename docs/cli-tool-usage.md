@@ -168,6 +168,14 @@ xforge [--root <path>] doctor [--kind <kind>] [--strict] [--text]
 
 报告悬空引用与未被引用的扩展资源。**默认只警告，从不阻塞**；`--strict` 让它成为失败。
 
+Flow 漂移会报成两条不同的 `info`，因为修法不同：
+
+- `XFORGE_DOCTOR_FLOW_VERSION_DRIFT` —— 本地版本落后出厂版本。常见情形，
+  `upgrade-scaffold` 够不着 flows，所以这个差异会一直存在，直到有人决定采纳或声明保留。
+- `XFORGE_DOCTOR_FLOW_CONTENT_DRIFT` —— **版本号相同但内容不同**。要么是有人就地改了 Flow
+  却没动版本号，要么它来自一个用同一编号发出不同内容的构建。**只比版本号看不见这一种**，
+  而两边号一致，所以其它任何检查也不会提它。
+
 `--kind` 取值（**单复数都接受**）：
 
 ```text

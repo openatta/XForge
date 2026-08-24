@@ -71,6 +71,30 @@ describe('doctor and Flow version drift', () => {
     expect(drift[0].message).toContain('deliberate');
   });
 
+  /*
+   * The kind of staleness a version comparison cannot see.
+   *
+   * The RUNBOOK records the same trap for the globally installed CLI: during development the work
+   * tree and the global install carry the same version number while their contents differ, so
+   * comparing numbers reports agreement that is not there. A Flow is the one governed asset no
+   * upgrade path touches, which makes it the easiest place for the same thing to happen quietly.
+   */
+  it('reports a Flow whose version matches the shipped one but whose content does not', async () => {
+    const root = await fixture();
+    await updateYaml(root, 'xforge/flows/solid.yaml', (flow) => {
+      /* Version untouched on purpose; only the content moves. */
+      flow.artifacts.find((artifact: any) => artifact.id === 'proposal').description = 'Edited in place';
+    });
+
+    const result = await runCli(root, ['doctor']);
+    expect(result.code).toBe(0);
+    const findings = (result.json.data.suggestions as any[]).filter((item) => item.code === 'XFORGE_DOCTOR_FLOW_CONTENT_DRIFT');
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({ scope: 'flows', id: 'solid', severity: 'info', path: 'xforge/flows/solid.yaml' });
+    /* And it must not also be reported as a version drift, which would be two findings for one fact. */
+    expect((result.json.data.suggestions as any[]).filter((item) => item.code === 'XFORGE_DOCTOR_FLOW_VERSION_DRIFT')).toEqual([]);
+  });
+
   it('says nothing when the project Flow matches the shipped one', async () => {
     const root = await fixture();
     const result = await runCli(root, ['doctor']);
