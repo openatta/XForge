@@ -40,6 +40,13 @@ export interface CheckData {
   /** The Stage whose Gates were selected, or null when selection did not come from a Stage. */
   stage: string | null;
   gateSelection: GateSelection;
+  /**
+   * Whether this run executed the work packages' `verify` commands, which is the half of `check`
+   * that costs real time -- one plan can declare dozens of external commands. Reported rather than
+   * left to be inferred from an empty `workPackages` list, which cannot tell "the selection
+   * excluded them" apart from "the Change declares no plan".
+   */
+  workPackagesSelected: boolean;
   workPackages: Array<{ packageId: string; command: string; status: 'passed' | 'failed'; evidence: GateEvidence; cached: boolean }>;
   /**
    * `evidencePath` is carried because a Gate's Evidence file is not named after the Gate —
@@ -278,6 +285,22 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
   const sentinel = options.gate && !gateOption ? options.gate : undefined;
   const wantsAllGates = options.allGates === true || sentinel === ALL_GATES;
   const wantsStage = options.stage ?? (sentinel?.startsWith(STAGE_PREFIX) ? sentinel.slice(STAGE_PREFIX.length) : undefined);
+  /*
+   * Whether the caller narrowed the run to a chosen set of Gates, by any spelling.
+   *
+   * This has to be one flag rather than a test of `options.gate`, because every override has two
+   * spellings and the two disagreed. `--gate stage:verify` and `--stage verify` select exactly the
+   * same Gates -- the test that pins them says "Both must agree with the sentinel form exactly" --
+   * yet only the first suppressed the work-package verify commands, because the suppression asked
+   * whether `options.gate` held a string rather than whether a selection had been made. `--gate all`
+   * and `--all-gates` diverged the same way. A live Major run hit the slow half of that pair: a
+   * Stage-scoped check it expected to re-run three Gates instead executed every package's verify,
+   * thirty-odd external commands, and was killed on a timeout partway through.
+   *
+   * The rule the two spellings now share, stated once: no selection flag means a full check of the
+   * current Stage, and any selection flag means only the Gates it selects.
+   */
+  const narrowed = Boolean(options.gate) || wantsAllGates || wantsStage !== undefined;
 
   if (gateOption) {
     gateIds = [gateOption];
@@ -330,7 +353,8 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
      until implementation starts. Running them from an earlier Stage's check would fail a Change for
      work it has not been asked to do yet. `null` covers legacy Flows and whole-Flow overrides. */
   const workPackagesInScope = selectedStage === null || !PRE_APPLY_STAGES.has(selectedStage);
-  if (!hasStructureErrors && !options.gate && options.change && workPackagesInScope && structure.change?.workPackages) {
+  const workPackagesSelected = !narrowed && workPackagesInScope;
+  if (!hasStructureErrors && workPackagesSelected && options.change && structure.change?.workPackages) {
     const verifications = workPackageVerificationGates(structure.change.workPackages);
     /* One working-tree read for the whole run: the verify commands dominate `check`, and a verify
        that mutates the tree only costs itself the next run's reuse, which is the safe direction. */
@@ -493,7 +517,7 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
     data: {
       structure: { passed: !hasStructureErrors }, change: options.change ?? null,
       stage: gateSelection === 'stage' ? selectedStage : null, gateSelection,
-      workPackages: workPackageResults, gates: gateResults,
+      workPackagesSelected, workPackages: workPackageResults, gates: gateResults,
     },
     diagnostics,
     changes,

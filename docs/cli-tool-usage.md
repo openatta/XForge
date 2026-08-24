@@ -153,6 +153,13 @@ xforge [--root <path>] check [--change <id>] [--gate <id>] [--stage <id> | --all
 
 `--all-gates` 会连 Change 尚未到达的 Stage 的 Gate 一起跑，**那些不可能通过**，中途一般不需要。
 
+**开销**：不带任何 Gate 选择时，`check` 还会执行**每个工作包声明的全部 `verify` 命令**——
+一个十包的计划就是几十条外部命令、数分钟墙钟时间，从命令名完全看不出来。
+用 `--gate <id>`、`--gate stage:<id>`、`--stage <id>` 或 `--all-gates` 中任意一种收窄，
+都只跑选中的 Gate 并跳过工作包 verify；Verify 阶段只想重跑三个 mandatory Gate 时，
+`--stage verify` 就是那条路。四种写法在这一点上行为一致，
+输出里的 `workPackagesSelected` 明说这一趟跑没跑工作包。
+
 ### `doctor`
 
 ```bash

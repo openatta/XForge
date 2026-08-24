@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import type { ChangeState, GovernanceRevision, ProjectContext, StageFlow } from '../types.js';
 import type { SelectedResources } from './resource-loader.js';
@@ -16,11 +16,89 @@ async function git(root: string, args: string[]): Promise<string> {
   });
 }
 
+/**
+ * `git`, but with the exit code kept.
+ *
+ * The wrapper above folds "ran fine and printed nothing" into `unknown`, which is right for the
+ * revision lookups it serves and wrong for anything asking a yes/no question: `merge-base
+ * --is-ancestor` answers entirely in its exit status and prints nothing either way, and an empty
+ * `diff --name-only` is the meaningful answer "nothing changed".
+ */
+async function gitResult(root: string, args: string[]): Promise<{ ok: boolean; stdout: string }> {
+  return new Promise((resolve) => {
+    const child = spawn('git', ['-C', root, ...args], { shell: false, stdio: ['ignore', 'pipe', 'ignore'] });
+    const chunks: Buffer[] = [];
+    child.stdout.on('data', (chunk: Buffer) => chunks.push(chunk));
+    child.on('error', () => resolve({ ok: false, stdout: '' }));
+    child.on('close', (code) => resolve({ ok: code === 0, stdout: Buffer.concat(chunks).toString('utf8') }));
+  });
+}
+
 export async function gitRevisions(root: string): Promise<{ base: string; head: string }> {
   const head = await git(root, ['rev-parse', 'HEAD']);
   if (head === 'unknown') return { base: 'unknown', head };
   const base = await git(root, ['rev-parse', 'HEAD^']);
   return { base: base === 'unknown' ? head : base, head };
+}
+
+/**
+ * Paths XForge writes on its own behalf, which must not count as the code having moved.
+ *
+ * The same two prefixes `check`'s working-tree digest excludes, for the same reason: a Gate run is
+ * followed by committing the Evidence it produced and the audit index it appended to, and treating
+ * that commit as a change to the tree under test would mark every Gate stale the instant it passed.
+ */
+const selfWrittenPrefixes = (changesPath: string, changeId: string): string[] => [
+  `${changesPath}/${changeId}/`,
+  'xforge/.audit/',
+];
+
+/**
+ * How many source files moved between the commit a Gate ran at and the commit the tree is on now.
+ *
+ * Gate Evidence binds to the *content* revision -- Artifacts, Flow, policy snapshot -- and that is
+ * deliberate and stays that way (see the note below on why `gitHead` is not an equivalence input).
+ * But it means Evidence can be perfectly current by that measure while the code it exercised is
+ * several merges behind: a Change that returns to apply, merges more work packages, and comes back
+ * to verify touches no governed Artifact, so nothing moves and three Gates keep reporting as bound
+ * to the current revision. A live Major reached archive readiness in exactly that state, and it was
+ * caught by a person diffing the Evidence's own `gitHead` field by hand.
+ *
+ * Returns `null` for "cannot be established" -- no Git, no usable head, an Evidence head that is not
+ * an ancestor of the current one (a rebase, a shallow clone), or a project root that is not the
+ * worktree root. That last one is the same guard `check`'s working-tree digest carries, for the same
+ * reason: `git diff --name-only` prints paths relative to the *repository* root, so under a project
+ * nested in a larger repository the exclusion prefixes below would silently match nothing and the
+ * count would sweep in every file of every sibling project. A rebase must not read as a hundred
+ * changed files, and neither must a monorepo; unknown is reported as unknown.
+ */
+export async function codeMovedSince(
+  project: ProjectContext,
+  changeId: string,
+  evidenceGitHead: string | null | undefined,
+  currentGitHead?: string,
+): Promise<number | null> {
+  if (!evidenceGitHead || !/^[0-9a-f]{40}$/i.test(evidenceGitHead)) return null;
+  const head = currentGitHead ?? await git(project.root, ['rev-parse', 'HEAD']);
+  if (!head || head === 'unknown') return null;
+  if (head === evidenceGitHead) return 0;
+  const toplevel = await gitResult(project.root, ['rev-parse', '--show-toplevel']);
+  if (!toplevel.ok) return null;
+  const [resolvedToplevel, resolvedRoot] = await Promise.all([
+    realpath(toplevel.stdout.trim()).catch(() => ''),
+    realpath(project.root).catch(() => path.resolve(project.root)),
+  ]);
+  if (!resolvedToplevel || resolvedToplevel !== resolvedRoot) return null;
+  const ancestor = await gitResult(project.root, ['merge-base', '--is-ancestor', evidenceGitHead, head]);
+  if (!ancestor.ok) return null;
+  const diff = await gitResult(project.root, ['diff', '--name-only', '--no-renames', `${evidenceGitHead}..${head}`, '--']);
+  if (!diff.ok) return null;
+  const excluded = selfWrittenPrefixes(project.changesPath, changeId);
+  return diff.stdout.split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((relative) => !excluded.some((prefix) => relative.startsWith(prefix)))
+    .length;
 }
 
 async function digestFile(project: ProjectContext, relative: string): Promise<{ path: string; digest: string }> {

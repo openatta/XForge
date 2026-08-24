@@ -150,6 +150,38 @@ const SCENARIOS = {
   },
 
   /*
+   * The same Flow and the same acceptance suite as `major`, given only what a real user would give.
+   *
+   * `major`'s own TEST_REQUEST.md names the Flow, the Change id, the material question Clarify is
+   * supposed to discover, the sections Design must cover, and the whole work-package plan down to
+   * `write_paths`. Its Stage prompts carry more of the same. Every one of those was added to repair
+   * a live-run failure, and each repaired it by telling the model the answer -- so the harness
+   * stopped being able to find that class of failure while real users, holding no such prompt, kept
+   * walking into it. A `major` run costs seventeen dollars and proves that a guided model can be
+   * guided.
+   *
+   * This scenario is the control. `intent.md` states functional requirements and the risk, nothing
+   * else; the Stage prompts carry environment constraints and "read AGENTS.md" and nothing else.
+   * `check-vocabulary.mjs` fails the build if either ever acquires product vocabulary again.
+   *
+   * It seeds from `major` so the immutable acceptance suite cannot drift between the two, then
+   * replaces the request. Its outcome is deliberately unconstrained: this tier exists to find out
+   * what a real user hits, and a tier that must pass is a tier somebody will make pass.
+   */
+  'major-cold': {
+    flow: 'major',
+    seed: 'major',
+    prompts: 'major-cold',
+    /* Deliberately unset: naming the Change is one of the decisions this tier exists to watch the
+       model make, so the runner discovers it instead. */
+    changeId: null,
+    intent: 'cold',
+    maxReworks: 2,
+    expect: { outcome: ['archived', 'stopped-at-check', 'stopped-awaiting-declaration'] },
+    prepare: replaceRequestWithColdIntent,
+  },
+
+  /*
    * Standalone Skills: one prepared project, one model call, one assertion.
    *
    * These four had prompts, coverage-matrix entries, and no runner row, so `check-coverage.mjs`
@@ -405,7 +437,7 @@ function changePath(changeId, generates) {
  */
 function declaredReworkTarget(projectRoot, envelope, stage) {
   if (!(envelope.diagnostics ?? []).some((item) => item.code === 'XFORGE_TRANSITION_BLOCKED')) return null;
-  const ledger = path.join(projectRoot, changePath(scenarioConfig.changeId, 'evidence/check-findings.yaml'));
+  const ledger = path.join(projectRoot, changePath(changeId, 'evidence/check-findings.yaml'));
   let findings;
   try { findings = parse(readFileSync(ledger, 'utf8'))?.findings ?? []; } catch { return null; }
   const permitted = stage.reworkTo ?? [];
@@ -424,8 +456,41 @@ function declaredReworkTarget(projectRoot, envelope, stage) {
  * the diagnostics are the answer. Reading it through the throwing helper turned a finding the Flow
  * was about to act on into a stack trace one call earlier, and lost the diagnostics with it.
  */
+/**
+ * The Change this run is about, which is not always something the scenario gets to decide.
+ *
+ * A guided scenario pins it, because its request names it ("Change ID 固定为 credential-store").
+ * A cold scenario cannot: naming the id is one of the answers it exists to make the model find, so
+ * `intent.md` says nothing about it and the model picks its own. The first cold run picked
+ * `credential-store-cli` and every path built from the pinned id pointed at a directory that did
+ * not exist -- the outline check read the absent file and failed the run one Stage in, reporting an
+ * empty string because there was nothing there to report on.
+ *
+ * So the id is discovered rather than declared, from the same portfolio view a person would read.
+ */
+let changeId = null;
+
+function resolveChangeId(projectRoot) {
+  if (changeId) return changeId;
+  const portfolio = tryXforgeJson(projectRoot, ['state']);
+  const active = portfolio?.data?.activeChanges ?? [];
+  if (active.length === 1) {
+    changeId = active[0].id;
+    process.stdout.write(`${JSON.stringify({ resolvedChangeId: changeId })}\n`);
+    return changeId;
+  }
+  /* Zero is "the Stage produced no Change", many is "this harness cannot tell which is yours".
+     Both are real failures, and both used to surface as a path that happened not to exist. */
+  throw new Error(active.length === 0
+    ? 'No un-archived Change exists after the Stage that should have created one.'
+    : `This run owns no single Change: ${active.map((entry) => entry.id).join(', ')}.`);
+}
+
 function changeState(projectRoot) {
-  return tryXforgeJson(projectRoot, ['state', '--change', scenarioConfig.changeId]).data.change;
+  /* Reaching here without an id means a caller ran before `resolveChangeId`. Say that, rather than
+     passing `null` to the CLI and reporting whatever it makes of it. */
+  if (!changeId) throw new Error('changeState was called before the run resolved which Change it owns.');
+  return tryXforgeJson(projectRoot, ['state', '--change', changeId]).data.change;
 }
 
 /**
@@ -493,7 +558,34 @@ async function runEngine({ projectRoot, scenario, stageId, promptRelative, polic
   }
 }
 
-function assertArtifactOutline({ projectRoot, flowName, artifactId, file, mode }) {
+/**
+ * Outline deviations a cold run produced, recorded rather than thrown.
+ *
+ * A cold run has no verdict to protect -- its outcome is unconstrained on purpose -- so an
+ * assertion that aborts it destroys the observation it exists to collect.
+ */
+const outlineObservations = [];
+
+/**
+ * Compares a produced Artifact against its Flow's outline, and decides what a deviation means here.
+ *
+ * A guided run is told the outline is exact ("no extra section, none omitted"), so any deviation is
+ * that run failing to follow its instructions, and it fails.
+ *
+ * A cold run is told nothing, and the first one measured what that produces: every declared section
+ * present in both Artifacts it wrote -- 6 of 6 in the proposal, 8 of 8 in the design -- plus one
+ * heading the outline does not list, `## Coverage and next action`. `missing` was empty both times.
+ * Killing a six-dollar run over an extra heading that carries real content is the harness enforcing
+ * something the product deliberately does not: `validator: outline` reports omission only, on the
+ * reasoning that an extra section is usually more information and that demanding exact equality
+ * pushes an author to bury content under a heading that does not fit it. That reasoning was an
+ * argument when it was written; this is the measurement.
+ *
+ * So `extra` is an observation in a cold run and `missing` remains a failure in any run -- a
+ * declared section that is absent breaks whatever is keyed to it, which is the case for enforcing
+ * anything here at all.
+ */
+function assertArtifactOutline({ projectRoot, flowName, artifactId, file, mode, strict = true }) {
   const args = ['--root', projectRoot, '--flow', flowName, '--artifact', artifactId, '--file', file];
   if (mode) args.push('--mode', mode);
   const result = spawnSync(process.execPath, [path.join(scriptsRoot, 'assert-artifact-outline.mjs'), ...args], {
@@ -501,10 +593,28 @@ function assertArtifactOutline({ projectRoot, flowName, artifactId, file, mode }
   });
   let json = null;
   try { json = JSON.parse(result.stdout); } catch {}
-  if (result.status !== 0 || !json?.ok) {
+  const unreadable = result.status !== 0 && !json;
+  if (!unreadable && !json?.ok && !strict && (json.missing ?? []).length === 0) {
+    outlineObservations.push({ artifact: artifactId, file, extra: json.extra ?? [] });
+    process.stdout.write(`${JSON.stringify({ outlineObservation: artifactId, extra: json.extra ?? [] })}\n`);
+    return json;
+  }
+  if (unreadable || !json?.ok) {
     throw new Error(`Outline check failed for ${flowName}:${artifactId} (${file}): ${JSON.stringify(json ?? result.stdout)}`);
   }
   return json;
+}
+
+/**
+ * Swaps the guided request for the cold one, after seeding from `major`.
+ *
+ * Seeding rather than copying keeps `test/**` -- the immutable acceptance suite both scenarios are
+ * measured by -- in exactly one place. Only the request differs, which is the whole variable under
+ * test.
+ */
+async function replaceRequestWithColdIntent(projectRoot) {
+  const intentPath = path.join(scenariosRoot, 'major-cold', 'intent.md');
+  await writeFile(path.join(projectRoot, 'TEST_REQUEST.md'), await readFile(intentPath, 'utf8'));
 }
 
 async function appendRequirementToTaskLedgerRequest(projectRoot) {
@@ -525,9 +635,9 @@ async function appendRequirementToTaskLedgerRequest(projectRoot) {
  * Stage left something behind, not what it happened to call it.
  */
 function producedArtifact(projectRoot, generates) {
-  const target = path.join(projectRoot, changePath(scenarioConfig.changeId, generates));
+  const target = path.join(projectRoot, changePath(changeId, generates));
   if (!generates.includes('*')) return existsSync(target);
-  const root = path.join(projectRoot, changePath(scenarioConfig.changeId, generates.split('*')[0]));
+  const root = path.join(projectRoot, changePath(changeId, generates.split('*')[0]));
   const extension = path.extname(generates) || '';
   const walk = (directory) => {
     let entries = [];
@@ -574,7 +684,7 @@ function assertStoppedAtCheck(projectRoot, flowDefinition, checkStage) {
   }
 
   for (const policyId of checkStage.exit?.approvals ?? []) {
-    const directory = path.join(projectRoot, changePath(scenarioConfig.changeId, path.posix.join('approvals', policyId)));
+    const directory = path.join(projectRoot, changePath(changeId, path.posix.join('approvals', policyId)));
     let receipts = [];
     try {
       receipts = readdirSync(directory)
@@ -614,7 +724,7 @@ function assertStoppedAtCheck(projectRoot, flowDefinition, checkStage) {
     }
   }
 
-  const ledgerPath = path.join(projectRoot, changePath(scenarioConfig.changeId, 'evidence/check-findings.yaml'));
+  const ledgerPath = path.join(projectRoot, changePath(changeId, 'evidence/check-findings.yaml'));
   let blockers = [];
   try {
     blockers = (parse(readFileSync(ledgerPath, 'utf8'))?.findings ?? [])
@@ -628,7 +738,7 @@ function assertStoppedAtCheck(projectRoot, flowDefinition, checkStage) {
        either is citing something real, which is all this point is asking. */
     for (const ref of refs) {
       const asProject = path.join(projectRoot, ref);
-      const asChange = path.join(projectRoot, changePath(scenarioConfig.changeId, ref));
+      const asChange = path.join(projectRoot, changePath(changeId, ref));
       if (!existsSync(asProject) && !existsSync(asChange)) {
         problems.push(`Blocker ${blocker.id} cites ${ref}, which does not exist.`);
       }
@@ -665,7 +775,7 @@ function assertStoppedAwaitingDeclaration(projectRoot, stage, moved) {
   }
 
   /* And the Gate must be refusing for the declared reason, not merely failing for another. */
-  const gatePath = path.join(projectRoot, changePath(scenarioConfig.changeId, 'evidence/tests.json'));
+  const gatePath = path.join(projectRoot, changePath(changeId, 'evidence/tests.json'));
   try {
     const evidence = JSON.parse(readFileSync(gatePath, 'utf8'));
     if (evidence.status !== 'failed') problems.push(`unit-tests Evidence records status "${evidence.status}"; the Gate should be refusing.`);
@@ -722,6 +832,9 @@ async function runApprovals({ projectRoot, policyIds, transition, changeId, simu
 assertCatalogueMatchesTable();
 const selected = options(process.argv.slice(2));
 const scenarioConfig = SCENARIOS[selected.scenario];
+/* Seeded here rather than at the declaration above, which is hoisted far above this line: a
+   pinned scenario knows its Change from the start, a cold one discovers it after its first Stage. */
+changeId = scenarioConfig.changeId ?? null;
 const scenarioName = selected.scenario;
 const flowName = scenarioConfig.flow;
 /* Scopes the per-scenario temp roots in setup.mjs / run-engine.mjs so flows can run in parallel. */
@@ -785,20 +898,78 @@ if (!limits.atDefaults) {
   })}\n`);
 }
 
-const timeline = { scenario: scenarioName, flow: flowName, changeId: null, cli: null, limits, outcome: null, reworks: 0, stages: [] };
+const timeline = { scenario: scenarioName, flow: flowName, changeId: null, cli: null, limits, outcome: null, reworks: 0, friction: null, stages: [] };
+
+/**
+ * What this Stage cost the model to get through, as distinct from whether it got through.
+ *
+ * A scenario is scored pass/fail on its outcome, and that is the whole of what anyone looks at --
+ * which quietly rewards the cheapest way to turn a red run green, namely adding a sentence to the
+ * prompt. Seventeen prompts accumulated exactly that way. These numbers are the counterweight: a
+ * run that archives after fighting the tool for forty turns is not the same result as one that
+ * archives in twelve, and pasting the answer into the prompt improves the outcome while leaving
+ * this untouched -- or making it worse, since a longer prompt is more to read.
+ *
+ * Every field is already produced by the engine and was simply thrown away. `turns` is the model's
+ * own round-trip count; `permissionDenials` is the sandbox refusing a tool call, which usually
+ * means the Agent reached for something the project never told it about.
+ */
+function stageFriction(stageId) {
+  try {
+    const result = JSON.parse(readFileSync(path.join(resultsRoot, `${scenarioName}-${stageId}.json`), 'utf8'));
+    return {
+      turns: result.num_turns ?? null,
+      permissionDenials: Array.isArray(result.permission_denials) ? result.permission_denials.length : null,
+      costUsd: result.total_cost_usd ?? null,
+      isError: result.is_error ?? null,
+    };
+  } catch {
+    /* A Stage whose result is unreadable reports nothing rather than a zero that reads as "easy". */
+    return { turns: null, permissionDenials: null, costUsd: null, isError: null };
+  }
+}
+
 function timelineStep(projectRoot, stageId) {
   const change = changeState(projectRoot);
   timeline.stages.push({
     stage: stageId,
     contentRevision: change.governance?.revision?.contentRevision ?? null,
     currentStage: change.governance?.currentStage ?? null,
+    friction: stageFriction(stageId),
   });
+}
+
+/** The run's friction in one place, so a trend across runs is a lookup rather than an aggregation. */
+function summariseFriction() {
+  const measured = timeline.stages.map((entry) => entry.friction).filter(Boolean);
+  const total = (key) => measured.reduce((sum, entry) => sum + (entry[key] ?? 0), 0);
+  return {
+    stagesMeasured: measured.length,
+    totalTurns: total('turns'),
+    totalPermissionDenials: total('permissionDenials'),
+    /* Reworks are friction the governance chain caused on purpose, kept beside the rest so the two
+       are never confused: one is the product working, the other is the product being hard to use. */
+    reworks: timeline.reworks,
+  };
 }
 
 const setup = JSON.parse(run('node', [
   path.join(scriptsRoot, 'setup.mjs'), '--scenario', scenarioName, '--seed', scenarioConfig.seed ?? flowName, '--cli-source', selected['cli-source'],
 ], repositoryRoot));
 const projectRoot = setup.project;
+
+/*
+ * Whatever this scenario needs to be true before anything runs -- an aged Scaffold, a staged
+ * upgrade, a Gate somebody adapted, a different request than the seed shipped. Kept beside the
+ * scenario rather than in `setup.mjs`, because it is a statement about this scenario and not about
+ * how projects are built.
+ *
+ * Runs for every scenario, not only the standalone ones. It used to sit inside the standalone
+ * branch, so a Flow scenario declaring it got a key the runner silently ignored -- and a cold
+ * scenario whose whole point is that its request differs would have run the seed's request instead,
+ * proving the opposite of what it was built to test.
+ */
+if (scenarioConfig.prepare) await scenarioConfig.prepare(projectRoot, { cliEnv: setup.cliBin });
 
 /*
  * Standalone Skills leave here and never touch the Stage loop below.
@@ -816,11 +987,6 @@ if (scenarioConfig.standalone) {
     timeoutSeconds: Number(selected['timeout-seconds']),
     stages: [scenarioName],
   }), null, 2)}\n`);
-
-  /* Whatever the Skill needs to be true before it runs — an aged Scaffold, a staged upgrade, a
-     Gate somebody adapted. Kept beside the scenario rather than in `setup.mjs`, because it is a
-     statement about this scenario, not about how projects are built. */
-  if (scenarioConfig.prepare) await scenarioConfig.prepare(projectRoot, { cliEnv: setup.cliBin });
 
   await runEngine({
     projectRoot, scenario: scenarioName, stageId: scenarioName,
@@ -916,6 +1082,11 @@ for (let index = 0; index < stages.length; ) {
     promptRelative: path.posix.join(scenarioConfig.prompts ?? flowName, `${stage.id}.md`), policyPath, options: selected,
   });
 
+  /* Before anything builds a path from it. A cold scenario has no id until its first Stage has
+     created the Change, and everything below -- artifact paths, `--change`, the outline check --
+     is keyed on it. */
+  resolveChangeId(projectRoot);
+
   /*
    * A Stage that stopped for a reason the scenario expects did not fail to produce its Artifact —
    * it correctly declined to. `quick-undeclared`'s Verify Agent refused to write `assurance.md`
@@ -932,18 +1103,18 @@ for (let index = 0; index < stages.length; ) {
     const mode = outlineCheckable[artifactId];
     const artifact = flow.artifacts.find((entry) => entry.id === artifactId);
     if (!artifact || !mode) continue;
-    const file = changePath(scenarioConfig.changeId, artifact.generates);
+    const file = changePath(changeId, artifact.generates);
     const artifactExists = existsSync(path.join(projectRoot, file));
     /* Only ask the CLI when the Artifact is absent: `check` is cheap but not free, and on the happy
        path there is nothing to ask about. */
-    const stalled = artifactExists ? null : tryXforgeJson(projectRoot, ['check', '--change', scenarioConfig.changeId]);
+    const stalled = artifactExists ? null : tryXforgeJson(projectRoot, ['check', '--change', changeId]);
     if (stoppedAwaitingDeclarationHere({ artifactExists, allowedOutcomes, diagnostics: stalled?.diagnostics })) {
       outcome = 'stopped-awaiting-declaration';
       stoppedAwaitingDeclaration = assertStoppedAwaitingDeclaration(projectRoot, stage, stalled);
       stoppedInStage = true;
       break;
     }
-    assertArtifactOutline({ projectRoot, flowName, artifactId, file, mode });
+    assertArtifactOutline({ projectRoot, flowName, artifactId, file, mode, strict: scenarioConfig.intent !== 'cold' });
   }
   if (stoppedInStage) {
     commit(projectRoot, `Live engine stage stopped awaiting declaration: ${scenarioName}:${stage.id}`);
@@ -984,7 +1155,7 @@ for (let index = 0; index < stages.length; ) {
     for (const owedPackage of owed) {
       const recorded = spawnSync(process.execPath, [
         path.join(scriptsRoot, 'record-delivery.mjs'), '--root', projectRoot,
-        '--change', scenarioConfig.changeId, '--package', owedPackage.id,
+        '--change', changeId, '--package', owedPackage.id,
       ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
       if (recorded.status !== 0) throw new Error(`Recording work-package delivery failed for ${owedPackage.id}: ${recorded.stderr || recorded.stdout}`);
     }
@@ -1021,9 +1192,9 @@ for (let index = 0; index < stages.length; ) {
 
   if (stage.exit?.approvals?.length) {
     await runApprovals({
-      projectRoot, policyIds: stage.exit.approvals, transition: nextStage?.id ?? 'verify', changeId: scenarioConfig.changeId,
+      projectRoot, policyIds: stage.exit.approvals, transition: nextStage?.id ?? 'verify', changeId: changeId,
     });
-    const moved = tryXforgeJson(projectRoot, ['transition', '--change', scenarioConfig.changeId, '--to', nextStage.id]);
+    const moved = tryXforgeJson(projectRoot, ['transition', '--change', changeId, '--to', nextStage.id]);
     if (moved.ok) {
       commit(projectRoot, `Approved and transitioned into ${nextStage.id}`);
     } else {
@@ -1054,7 +1225,7 @@ for (let index = 0; index < stages.length; ) {
         }
         throw new Error(`${scenarioName} reworked ${reworks} times (limit ${maxReworks}); last was ${stage.id} -> ${target} on a blocking finding.`);
       }
-      runXforgeJson(projectRoot, ['transition', '--change', scenarioConfig.changeId, '--to', target]);
+      runXforgeJson(projectRoot, ['transition', '--change', changeId, '--to', target]);
       process.stdout.write(`${JSON.stringify({ rework: reworks, from: stage.id, to: target, cause: 'blocking-finding' })}\n`);
       commit(projectRoot, `Reworked ${stage.id} -> ${target} on a blocking finding`);
       countedReceipt = (changeState(projectRoot).governance.transitions ?? []).at(-1)?.digest ?? countedReceipt;
@@ -1110,13 +1281,13 @@ for (let index = 0; index < stages.length; ) {
       let reworkFrom = backward?.from;
       let reworkTo = current;
       if (!isDeclaredRework) {
-        const probe = tryXforgeJson(projectRoot, ['transition', '--change', scenarioConfig.changeId, '--to', nextStage.id, '--dry-run']);
+        const probe = tryXforgeJson(projectRoot, ['transition', '--change', changeId, '--to', nextStage.id, '--dry-run']);
         const held = current === stage.id ? declaredReworkTarget(projectRoot, probe, stage) : null;
         if (!held) {
           const blocks = probe.diagnostics?.filter((item) => item.severity === 'error').map((item) => item.message).join(' ');
           throw new Error(`Agent did not self-transition ${stage.id} -> ${nextStage.id} as instructed (currentStage=${current}, lastReceipt=${backward ? `${backward.from}->${backward.to}` : 'none'})${blocks ? `; the Stage is blocked by: ${blocks}` : ' and nothing blocks it'}.`);
         }
-        runXforgeJson(projectRoot, ['transition', '--change', scenarioConfig.changeId, '--to', held]);
+        runXforgeJson(projectRoot, ['transition', '--change', changeId, '--to', held]);
         reworkFrom = stage.id;
         reworkTo = held;
       }
@@ -1159,7 +1330,7 @@ for (let index = 0; index < stages.length; ) {
        rule read back rather than a second copy of it kept in step by hand. */
     const ready = entered.governance.currentStage === 'apply' ? entered.workPackages?.ready ?? [] : [];
     for (const packageId of ready) {
-      const dispatched = runXforgeJson(projectRoot, ['work-package', 'dispatch', '--change', scenarioConfig.changeId, '--package', packageId]);
+      const dispatched = runXforgeJson(projectRoot, ['work-package', 'dispatch', '--change', changeId, '--package', packageId]);
       if (!dispatched.ok) throw new Error(`Work-package dispatch failed for ${packageId} after entering ${nextStage?.id ?? 'the next Stage'}.`);
     }
     if (ready.length > 0) commit(projectRoot, `Dispatched work packages ${ready.join(', ')}`);
@@ -1179,7 +1350,7 @@ for (let index = 0; index < stages.length; ) {
  * which is the first thing to run the Gate that has nothing declared.
  */
 if (outcome === 'archived' && allowedOutcomes.includes('stopped-awaiting-declaration')) {
-  const finalCheck = tryXforgeJson(projectRoot, ['check', '--change', scenarioConfig.changeId]);
+  const finalCheck = tryXforgeJson(projectRoot, ['check', '--change', changeId]);
   const refused = (finalCheck?.diagnostics ?? []).some((item) => item.code === 'XFORGE_VERIFICATION_NOT_DECLARED');
   if (refused) {
     outcome = 'stopped-awaiting-declaration';
@@ -1188,18 +1359,18 @@ if (outcome === 'archived' && allowedOutcomes.includes('stopped-awaiting-declara
 }
 
 if (outcome === 'archived') {
-runXforgeJson(projectRoot, ['check', '--change', scenarioConfig.changeId]);
-const readyState = runXforgeJson(projectRoot, ['state', '--change', scenarioConfig.changeId]);
+runXforgeJson(projectRoot, ['check', '--change', changeId]);
+const readyState = runXforgeJson(projectRoot, ['state', '--change', changeId]);
 if (readyState.data.change.governance.currentStage !== 'ready-to-archive') {
-  runXforgeJson(projectRoot, ['transition', '--change', scenarioConfig.changeId, '--to', 'ready-to-archive']);
+  runXforgeJson(projectRoot, ['transition', '--change', changeId, '--to', 'ready-to-archive']);
   commit(projectRoot, 'Transitioned into ready-to-archive');
 }
 
 await runApprovals({
-  projectRoot, policyIds: flow.terminal.archive.approvals ?? [], transition: 'archive', changeId: scenarioConfig.changeId,
+  projectRoot, policyIds: flow.terminal.archive.approvals ?? [], transition: 'archive', changeId: changeId,
 });
-runXforgeJson(projectRoot, ['audit', 'verify', '--change', scenarioConfig.changeId]);
-runXforgeJson(projectRoot, ['archive', '--change', scenarioConfig.changeId, '--dry-run']);
+runXforgeJson(projectRoot, ['audit', 'verify', '--change', changeId]);
+runXforgeJson(projectRoot, ['archive', '--change', changeId, '--dry-run']);
 
 /*
  * Archive is the Flow's terminal operation, and it was the one step nothing asserted: `passed`
@@ -1214,16 +1385,16 @@ runXforgeJson(projectRoot, ['archive', '--change', scenarioConfig.changeId, '--d
  * shim goes with it: nothing about the archive transaction itself needed a model in the loop.
  */
 const activeAfterAgent = runXforgeJson(projectRoot, ['state']).data.changes ?? [];
-if (activeAfterAgent.includes(scenarioConfig.changeId)) {
-  runXforgeJson(projectRoot, ['archive', '--change', scenarioConfig.changeId]);
+if (activeAfterAgent.includes(changeId)) {
+  runXforgeJson(projectRoot, ['archive', '--change', changeId]);
 }
 commit(projectRoot, 'Archived Change');
 
 const archivedState = runXforgeJson(projectRoot, ['state']);
-const stillActive = (archivedState.data.changes ?? []).includes(scenarioConfig.changeId);
+const stillActive = (archivedState.data.changes ?? []).includes(changeId);
 const canonicalSpecs = (archivedState.data.specs ?? []).length;
 if (stillActive || canonicalSpecs === 0) {
-  throw new Error(`Archive did not complete for ${scenarioName}:${scenarioConfig.changeId} (stillActive=${stillActive}, canonicalSpecs=${canonicalSpecs}).`);
+  throw new Error(`Archive did not complete for ${scenarioName}:${changeId} (stillActive=${stillActive}, canonicalSpecs=${canonicalSpecs}).`);
 }
 }
 
@@ -1247,10 +1418,12 @@ if (!allowedOutcomes.includes(outcome)) {
  * would say nothing about the run -- the governance criterion `assertStoppedAtCheck` already applied
  * is what that outcome is judged on.
  */
-timeline.changeId = scenarioConfig.changeId;
+timeline.changeId = changeId;
 timeline.outcome = outcome;
 timeline.reworks = reworks;
 timeline.cli = setup.cli ?? null;
+timeline.friction = summariseFriction();
+timeline.outlineObservations = outlineObservations;
 await writeFile(path.join(resultsRoot, `${scenarioName}-timeline.json`), `${JSON.stringify(timeline, null, 2)}\n`);
 
 /*
@@ -1282,6 +1455,13 @@ process.stdout.write(`${JSON.stringify({
   limits,
   outcome,
   reworks,
+  /* Beside the outcome for the same reason `limits` is: "archived" and "archived after fighting the
+     tool for forty turns" are different results, and only one of them is improved by explaining the
+     tool in the prompt. */
+  friction: timeline.friction,
+  /* What a cold run did differently, kept as a result rather than a crash. Empty for guided runs,
+     which fail on the same deviation instead of recording it. */
+  outlineObservations,
   stoppedAtCheck,
   stoppedAwaitingDeclaration,
   project: projectRoot,

@@ -5,9 +5,12 @@ import { checkStructure } from '../core/checker.js';
 import { diagnostic } from '../core/errors.js';
 import { assertManaged } from '../core/project-loader.js';
 import { flowArchiveOperation, isStageFlow, loadFlows } from '../core/flow-resolver.js';
+import { loadBundledScaffold } from '../core/bundled-scaffold.js';
+import { CLI_NAME, CLI_VERSION } from '../constants.js';
 import { flowSkillConformanceDiagnostics } from '../core/flow-skill-conformance.js';
 import { normalizeRule } from '../core/governance.js';
 import { safeResolve } from '../core/path-safety.js';
+import { parse as parseYaml } from 'yaml';
 import { loadYaml } from '../core/yaml.js';
 import { capabilityGapDiagnostics } from '../install/planner.js';
 import { verificationEntriesFor } from '../core/verification.js';
@@ -402,6 +405,55 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
       path: 'xforge/manifest.yaml',
       severity: 'info',
     });
+  }
+
+  /*
+   * Flow versions the project runs, against the versions this CLI ships.
+   *
+   * `xforge/flows/` is outside `xforge/scaffold/`, which is the only tree `upgrade-scaffold` walks,
+   * so a Flow never moves when a project upgrades and nothing has ever said so. A project ran an
+   * entire Major three CLI releases behind its own toolchain -- two approvers where the shipped
+   * Flow asks for one non-implementer, and a Check Stage missing from `verify.reworkTo` -- and
+   * found out by reading the payload by hand. `install` does not look, and the upgrade log's "every
+   * file the plan named now matches" is true of a plan that never named these files.
+   *
+   * Reported as `info`, and worded as a comparison rather than a defect, because customising a Flow
+   * is a supported thing to do: a project that deliberately requires two approvers is not
+   * misconfigured, and a warning it can never clear would teach it to skim past the whole report.
+   *
+   * A failure to read the bundled payload is not a finding at all. `loadBundledScaffold` throws on
+   * a missing payload, a digest mismatch, a symlink, or a protocol mismatch, and doctor is the
+   * command a person runs when the installation is already suspect -- it has to survive that and
+   * report everything else.
+   */
+  let bundledFlows: Map<string, string> | null = null;
+  try {
+    const bundled = await loadBundledScaffold();
+    bundledFlows = new Map();
+    for (const [relative, content] of bundled.files) {
+      const match = /^xforge\/flows\/([^/]+)\.yaml$/.exec(relative);
+      if (!match) continue;
+      try {
+        const parsed = parseYaml(content.toString('utf8'), { strict: true, uniqueKeys: true }) as { metadata?: { version?: unknown } };
+        const version = parsed?.metadata?.version;
+        if (version !== undefined && version !== null) bundledFlows.set(match[1]!, String(version));
+      } catch { /* An unparseable payload Flow is the package's problem, not this project's. */ }
+    }
+  } catch { bundledFlows = null; }
+  if (bundledFlows) {
+    for (const [name, flow] of flowResult.flows) {
+      const shipped = bundledFlows.get(name);
+      const local = String(flow.metadata.version ?? '');
+      if (!shipped || !local || shipped === local) continue;
+      suggestions.push({
+        scope: 'flows',
+        code: 'XFORGE_DOCTOR_FLOW_VERSION_DRIFT',
+        id: name,
+        message: `Flow ${name} is at version ${local}; ${CLI_NAME}@${CLI_VERSION} ships version ${shipped}. Flows live outside xforge/scaffold/, so upgrade-scaffold never proposes changes to them and this difference will persist through every upgrade. Compare the two and either adopt the shipped Flow or record at the top of xforge/flows/${name}.yaml that the difference is deliberate, so the next reader does not take it for a missed upgrade.`,
+        path: `xforge/flows/${name}.yaml`,
+        severity: 'info',
+      });
+    }
   }
 
   const matchesKind = (finding: DoctorFinding): boolean => !options.kind || finding.scope === options.kind;

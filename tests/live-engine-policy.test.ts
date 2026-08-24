@@ -10,13 +10,13 @@ import {
 
 describe('live-engine suite policy', () => {
   it('caps a provider call to the remaining suite budget', () => {
-    const policy = createLiveEnginePolicy({ suiteBudgetUsd: 5, maxAttemptsPerStage: 2, timeoutSeconds: 60 });
+    const policy = createLiveEnginePolicy({ stages: ['design', 'apply'], suiteBudgetUsd: 5, maxAttemptsPerStage: 2, timeoutSeconds: 60 });
     const first = reserveLiveEngineAttempt(policy, {
-      stage: 'plan', requestedBudgetUsd: 3, isolation: 'external-launcher', startedAt: '2026-08-09T00:00:00.000Z',
+      stage: 'design', requestedBudgetUsd: 3, isolation: 'external-launcher', startedAt: '2026-08-09T00:00:00.000Z',
     });
     completeLiveEngineAttempt(policy, {
-      stage: 'plan', attempt: first.attempt, costUsd: 2.75, exitCode: 0, timedOut: false,
-      classification: 'success', output: '01-plan.json', finishedAt: '2026-08-09T00:01:00.000Z',
+      stage: 'design', attempt: first.attempt, costUsd: 2.75, exitCode: 0, timedOut: false,
+      classification: 'success', output: 'design.json', finishedAt: '2026-08-09T00:01:00.000Z',
     });
     const second = reserveLiveEngineAttempt(policy, {
       stage: 'apply', requestedBudgetUsd: 3, isolation: 'external-launcher', startedAt: '2026-08-09T00:02:00.000Z',
@@ -25,13 +25,13 @@ describe('live-engine suite policy', () => {
   });
 
   it('enforces the per-stage retry limit', () => {
-    const policy = createLiveEnginePolicy({ suiteBudgetUsd: 9, maxAttemptsPerStage: 1, timeoutSeconds: 60 });
+    const policy = createLiveEnginePolicy({ stages: ['verify'], suiteBudgetUsd: 9, maxAttemptsPerStage: 1, timeoutSeconds: 60 });
     const reserved = reserveLiveEngineAttempt(policy, {
       stage: 'verify', requestedBudgetUsd: 3, isolation: 'behavioral', startedAt: '2026-08-09T00:00:00.000Z',
     });
     completeLiveEngineAttempt(policy, {
       stage: 'verify', attempt: reserved.attempt, costUsd: 1, exitCode: 1, timedOut: false,
-      classification: 'model_behavior_failure', output: '03-verify.json', finishedAt: '2026-08-09T00:01:00.000Z',
+      classification: 'model_behavior_failure', output: 'verify.json', finishedAt: '2026-08-09T00:01:00.000Z',
     });
     expect(() => reserveLiveEngineAttempt(policy, {
       stage: 'verify', requestedBudgetUsd: 3, isolation: 'behavioral', startedAt: '2026-08-09T00:02:00.000Z',
@@ -39,13 +39,13 @@ describe('live-engine suite policy', () => {
   });
 
   it('fails closed when a provider result has no cost accounting', () => {
-    const policy = createLiveEnginePolicy();
+    const policy = createLiveEnginePolicy({ stages: ['apply', 'verify'] });
     const reserved = reserveLiveEngineAttempt(policy, {
       stage: 'apply', requestedBudgetUsd: 3, isolation: 'behavioral', startedAt: '2026-08-09T00:00:00.000Z',
     });
     completeLiveEngineAttempt(policy, {
       stage: 'apply', attempt: reserved.attempt, costUsd: null, exitCode: 1, timedOut: true,
-      classification: 'environment_blocked', output: '02-apply.json', finishedAt: '2026-08-09T00:01:00.000Z',
+      classification: 'environment_blocked', output: 'apply.json', finishedAt: '2026-08-09T00:01:00.000Z',
     });
     expect(policy.budgetAccountingComplete).toBe(false);
     expect(() => reserveLiveEngineAttempt(policy, {
@@ -53,7 +53,7 @@ describe('live-engine suite policy', () => {
     })).toThrow(expect.objectContaining({ code: 'LIVE_BUDGET_UNKNOWN' }));
   });
 
-  it('supports a custom stage list for Flow graphs that differ from the default plan/apply/verify set', () => {
+  it('takes whatever stage list the Flow graph actually has', () => {
     const majorStages = ['propose', 'clarify', 'design', 'check', 'apply', 'verify'];
     const policy = createLiveEnginePolicy({ suiteBudgetUsd: 20, maxAttemptsPerStage: 2, timeoutSeconds: 900, stages: majorStages });
     expect(policy.stageIds).toEqual(majorStages);
@@ -72,6 +72,8 @@ describe('live-engine suite policy', () => {
 
   it('rejects an empty stage list', () => {
     expect(() => createLiveEnginePolicy({ stages: [] })).toThrow(expect.objectContaining({ code: 'LIVE_POLICY_INVALID' }));
+    /* And omitting it entirely, which used to hand back a Stage list no current Flow has. */
+    expect(() => createLiveEnginePolicy()).toThrow(expect.objectContaining({ code: 'LIVE_POLICY_INVALID' }));
   });
 
   /*

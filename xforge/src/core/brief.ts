@@ -13,7 +13,8 @@ import { diagnostic } from './errors.js';
 import { documentSections, markerOccurrences } from './artifact-markers.js';
 import { flowArtifacts, isStageFlow, resolveChangeState } from './flow-resolver.js';
 import { loadSelectedResources } from './resource-loader.js';
-import { resolveControlPlane } from './control-plane.js';
+import { gateBlockReason, readGateEvidence, resolveControlPlane } from './control-plane.js';
+import { codeMovedSince } from './revision.js';
 import { CHECK_FINDINGS_PATH } from './check-findings.js';
 import { CONSTITUTION_CHECK_PATH } from './constitution-check.js';
 import { parseSpecDelta } from './spec-delta.js';
@@ -925,6 +926,39 @@ export async function readBrief(project: ProjectContext, options: BriefOptions):
    */
   computed.push(item('computed.timeline.gitHeads', 'computed', 'timeline', 'Distinct Git heads across transitions', heads));
 
+  /*
+   * What each Gate's Evidence was produced against, next to where the tree stands now.
+   *
+   * An approver reads this brief to decide whether the verification means anything, and the fact
+   * that decides it was not on the page: Gate Evidence binds to the content revision, so it reports
+   * as current while the code it exercised sits several merges behind. `sourceFilesChanged` counts
+   * only files XForge did not write itself, so committing a Gate's own Evidence reads as zero and a
+   * merged work package does not. `null` means it could not be established -- a rebase, a shallow
+   * clone, no Git -- and is deliberately not shown as zero.
+   *
+   * Reported, not blocked on. Archive accepts Evidence bound to the current content revision and
+   * that rule is unchanged here; this puts the difference in front of the person signing rather
+   * than deciding for them.
+   */
+  const gateProvenance = await Promise.all([...control.resources.gates.keys()].map(async (gateId) => {
+    const evidence = await readGateEvidence(project, options.change, gateId, control.resources);
+    if (!evidence) return null;
+    return {
+      gate: gateId,
+      status: evidence.status,
+      ranAt: evidence.gitHead,
+      sourceFilesChanged: await codeMovedSince(project, options.change, evidence.gitHead, governance.revision.gitHead),
+    };
+  }));
+  const provenance = gateProvenance.filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+  if (provenance.length > 0) {
+    computed.push(item('computed.gates.provenance', 'computed', 'governance', 'Gate Evidence provenance', {
+      currentGitHead: governance.revision.gitHead,
+      gates: provenance,
+      staleAgainstCode: provenance.filter((entry) => (entry.sourceFilesChanged ?? 0) > 0).map((entry) => entry.gate),
+    }));
+  }
+
   computed.push(item('computed.governance.approvals', 'computed', 'governance', 'Approvals required here', approvals));
   computed.push(item('computed.governance.auditChain', 'computed', 'governance', 'Audit chain', {
     valid: governance.audit.chainValid,
@@ -974,11 +1008,32 @@ export async function readBrief(project: ProjectContext, options: BriefOptions):
 
   /* ---------------------------------------------------------------- reconciliation */
 
+  /*
+   * Which Gates this Change has passed at the revision it stands at now, read from the Evidence on
+   * disk rather than from `transitionRequirements`.
+   *
+   * `transitionRequirements` is keyed by the transitions legally available *from the current Stage*,
+   * and `ready-to-archive` is not a Stage the Flow declares: `resolveControlPlane` finds no index
+   * for it, enumerates no candidates, and returns an empty map. Every `gate:<name>` citation in the
+   * Constitution ledger therefore resolved to nothing at exactly the moment a Change is archived,
+   * and RC-5 reported a reconciliation no edit could clear -- `constitution-check` had already
+   * accepted the same citation from the same Evidence, and re-running the Gate was impossible
+   * because the synthetic Stage has none. A live Major closed carrying that observation.
+   *
+   * The revision comparison stays. Reading the Evidence the way `constitution-check` does, on status
+   * alone, would have fixed the archive case by dropping the staleness check that makes RC-5's own
+   * sentence true: "no Gate Evidence *for this revision*". `gateBlockReason` is the predicate the
+   * control plane blocks on, and it is the one used here, so brief and the transition agree about
+   * what "passed" means everywhere except the Stage that has no transitions left.
+   *
+   * The Gate itself is deliberately left revision-agnostic. `evidence/constitution-check.yaml` is a
+   * declared Artifact output and so feeds the content revision; a Gate that demanded current-revision
+   * Evidence for the Gates it cites would invalidate them by the act of writing its own ledger.
+   */
   const gatePassed = new Set<string>();
-  for (const transition of control.transitionRequirements.values()) {
-    for (const gate of transition.gates) {
-      if (gate.status === 'passed') gatePassed.add(gate.gate);
-    }
+  for (const gateId of control.resources.gates.keys()) {
+    const evidence = await readGateEvidence(project, options.change, gateId, control.resources);
+    if (!gateBlockReason(evidence, control.governance.revision.contentRevision)) gatePassed.add(gateId);
   }
 
   const existingPaths = new Set<string>();

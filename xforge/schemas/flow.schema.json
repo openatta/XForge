@@ -48,7 +48,7 @@
         "markers": { "$ref": "#/$defs/artifactMarkers" }
       }
     },
-    "artifactValidator": { "enum": ["spec-delta"] },
+    "artifactValidator": { "enum": ["spec-delta", "outline"] },
     "artifactMarkers": {
       "type": "array",
       "items": { "$ref": "#/$defs/artifactMarker" }

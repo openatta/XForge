@@ -279,3 +279,68 @@ describe('documented --field paths resolve', () => {
     expect(broken, `these documented --field paths do not resolve:\n${broken.join('\n')}`).toEqual([]);
   });
 });
+
+/*
+ * Where an Artifact belongs is the CLI's answer to give, not the Agent's to infer.
+ *
+ * `generates` alone is relative to the Change directory and nothing said so, so an Agent running
+ * from the project root wrote `assurance.md` there. `writePath` and the `writes` it feeds were
+ * added for exactly that, and seventeen live-engine prompts went on repeating the rule in prose
+ * afterwards. The prose is gone; this is what makes its removal safe, and what will fail if the
+ * destination ever stops being stated.
+ */
+describe('a next action states where it writes', () => {
+  it('never leaves writes empty for an Artifact the Change has still to produce', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await rm(path.join(root, 'xforge', 'changes', 'add-feature', 'design.md'));
+
+    const state = await runCli(root, ['state', '--change', 'add-feature']);
+    expect(state.code).toBe(0);
+    const artifactActions = (state.json.nextActions as any[]).filter((item) => item.type === 'artifact');
+    expect(artifactActions.length).toBeGreaterThan(0);
+    for (const action of artifactActions) {
+      expect(action.writes, `next action ${action.id} states no destination`).toBeTruthy();
+      expect(action.writes.length).toBeGreaterThan(0);
+      for (const destination of action.writes) {
+        /* Project-relative, so it resolves from wherever the Agent runs the CLI. */
+        expect(destination).toContain('xforge/changes/add-feature/');
+      }
+    }
+  });
+
+  /*
+   * And which headings it must carry, verbatim.
+   *
+   * `outline` is a Markdown fragment in the Flow and reads as a suggested shape. A cold live run --
+   * one given only a feature request, with nothing said about outlines -- wrote every required
+   * section of its proposal and design, then on its check-report decorated two headings it wanted
+   * to qualify: `## Completeness` became `## Completeness (at the current revision)`. The content
+   * was right and the heading no longer resolved, which is what markers and brief's EXTRACTED
+   * passages are keyed to.
+   */
+  it('states the headings the next Artifact must carry, verbatim', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await rm(path.join(root, 'xforge', 'changes', 'add-feature', 'design.md'));
+
+    const state = await runCli(root, ['state', '--change', 'add-feature']);
+    const design = (state.json.nextActions as any[]).find((item) => item.id === 'design');
+    expect(design).toBeDefined();
+    expect(design.requiredSections).toEqual([
+      'Context', 'Goals and non-goals', 'Decisions and alternatives',
+      'Failure modes and compatibility', 'Migration and rollback', 'Verification notes',
+    ]);
+  });
+
+  /* A delta Spec's outline is a repeating template, so it has no literal section set to state. */
+  it('states no headings for an Artifact whose outline is a repeating template', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await rm(path.join(root, 'xforge', 'changes', 'add-feature', 'specs', 'widget', 'spec.md'));
+
+    const state = await runCli(root, ['state', '--change', 'add-feature']);
+    const specs = (state.json.nextActions as any[]).find((item) => item.id === 'delta-specs');
+    if (specs) expect(specs.requiredSections).toBeUndefined();
+  });
+});

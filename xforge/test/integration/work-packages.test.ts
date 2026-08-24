@@ -299,6 +299,24 @@ describe('work-package protocol', () => {
 
     const succeeded = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
     expect(succeeded.json.data.change.workPackages.packages[0].status).toBe('succeeded');
+    /*
+     * The rung below has to be named, not merely implied. Refusing a reviewer acknowledgement with
+     * "requires an integrated delivery; current status is succeeded" states the refusal and never
+     * the ladder, and a live Major read it as "review is recorded against the integrator package",
+     * carried that into a report to its user, and was corrected only later by an unrelated block.
+     */
+    const early = await runCli(root, ['work-package', 'acknowledge', '--change', 'add-feature', '--package', 'T001', '--as', 'reviewer', '--evidence', 'xforge/changes/add-feature/evidence/agents/T001/verify-1.json'], approvalTestEnv);
+    expect(early.code).toBe(1);
+    const refusal = (early.json.diagnostics as any[]).find((item) => item.code === 'XFORGE_WORK_PACKAGE_ACK_NOT_READY');
+    expect(refusal).toBeDefined();
+    expect(refusal.message).toContain('succeeded');
+    expect(refusal.message).toContain('integrated');
+    expect(refusal.message).toContain('reviewed');
+    expect(early.json.nextActions).toEqual([expect.objectContaining({
+      action: 'acknowledge-work-package',
+      command: expect.arrayContaining(['--as', 'integrator']),
+    })]);
+
     const integrationEvidence = 'xforge/changes/add-feature/evidence/agents/T001/integration.md';
     await write(root, integrationEvidence, 'Integrated T001 and reran contract verification.\n');
     const integrated = await runCli(root, ['work-package', 'acknowledge', '--change', 'add-feature', '--package', 'T001', '--as', 'integrator', '--evidence', integrationEvidence], approvalTestEnv);

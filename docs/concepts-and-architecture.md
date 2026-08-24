@@ -353,8 +353,8 @@ Gate 重跑后**重新 plan**，再执行原子事务。任何中间错误都保
                         ▼
         ┌──────────────────────────────────────────┐
         │  Action 自带 instruction / outline /      │
-        │  inputs / writes / doneWhen /             │
-        │  requiredEvidence / command(argv)         │
+        │  inputs / writes / requiredSections /     │
+        │  doneWhen / requiredEvidence / command    │
         │  → Skill 严格照它执行                      │
         └───────────────┬──────────────────────────┘
                         │  产出 artifacts
@@ -546,16 +546,47 @@ Adapter 报告 `guidance`、`permissionPolicy`、`runtimeHook.*`、`auditDeliver
   archive: { ready, requires, mandatoryGates, syncSpecs },
   workPackages: WorkPackagePlanState | null,
   governance: GovernanceState,
-  mandatoryGateEvidence: [{ gate, status, command, evidencePath, currentRevision }],
+  mandatoryGateEvidence: [{
+    gate, status, command, evidencePath,
+    currentContentRevision,       // 证据是否绑定当前**内容**修订
+    gitHead, sourceFilesChangedSince,  // 证据跑在哪个 commit，之后又动了几个源文件
+  }],
 }
 ```
 
 `mandatoryGateEvidence` 的存在理由是让「Gate 通过了」和「Gate 什么都没断言」
 在不打开 Evidence JSON 的情况下可区分——**只记事实，不下判断**。
 
+后三个字段回答的是两个**互相独立**的陈旧性问题，必须分开读：
+
+- `currentContentRevision` 比对的是**内容修订**（Artifact、Flow、policy 快照）。
+  它此前叫 `currentRevision`，那个名字被读成「对当前状态有效」，而它从来只
+  管内容这一半：一个 Change 退回 apply、合并两个工作包、再回到 verify，全程
+  没碰任何受治理 Artifact，于是三个 Gate 一路报 `true`，而它们跑过的代码已经
+  落后两次合并。
+- `sourceFilesChangedSince` 比对的是**代码树**：从 `gitHead` 到当前 HEAD 之间，
+  有多少个 XForge 自己没写过的文件变了。排除自身写入的路径，是为了让「提交
+  Gate 刚产出的 Evidence」这个动作读作 0——把 commit 折进内容修订的做法正是
+  因此被放弃的，它会让每个 Gate 在自己的输出被提交的瞬间失效。
+  `null` 表示无法判定（rebase、shallow clone、无 Git），**不是** 0。
+
+两者都只报告，不拦截：archive 依旧只以内容修订为准，这里做的是把差异摆到
+签字的人面前。
+
 `ArtifactState` 里有个容易踩的区别：`generates` 相对 **Change 目录**，
 `writePath` 才是**从项目根算起**的路径；`nextAction.writes` 由后者构建，
 所以目的地是**被陈述的**，不是被推断的。
+
+`requiredSections` 是 Artifact Action 里那份**逐字**的 `## ` 标题清单。
+`outline` 在 Flow 里是一段 Markdown 片段，读起来像"建议的形状"而不是字面契约——
+一次冷启动实跑（只给功能需求、完全不提 outline）把 proposal 和 design 的每一节都写全了，
+到 check-report 却把两个想加限定语的标题改了写法：`## Completeness` 写成了
+`## Completeness (at the current revision)`。内容是对的，标题解析不到了，
+而 marker 与 brief 的 EXTRACTED 段正是挂在标题上的。
+
+**理由和 `writes` 一样**：CLI 在作者动笔的那一刻就知道答案，
+产品能自己说出来的事实，就不必让任何 Skill 去背。
+写 glob 的 Artifact（delta Spec）不带这个字段——它的 outline 是可重复的模板，没有固定节集。
 
 `blockedBy` 的完整词汇表见 [治理模型 §6](governance-model.md#6-排障blockedby-词汇表)。
 

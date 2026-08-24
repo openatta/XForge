@@ -2,6 +2,8 @@
 import path from 'node:path';
 import process from 'node:process';
 import { access } from 'node:fs/promises';
+import { realpathSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline/promises';
 import { CLI_NAME, CLI_VERSION, PROTOCOL_VERSION, TARGETS, type TargetId } from './constants.js';
 import { executeArchive } from './commands/archive.js';
@@ -25,6 +27,7 @@ import { executeUpgrade, renderUpgradeText } from './commands/upgrade.js';
 import { XForgeError, diagnostic } from './core/errors.js';
 import { actualGitIdentity, runtimeCliIntegrity } from './core/identity.js';
 import { loadProject } from './core/project-loader.js';
+import { outlineSections } from './core/artifact-markers.js';
 import { detectScaffoldLanguage, parseScaffoldLanguage } from './core/language.js';
 import { envelope, present } from './protocol/envelope.js';
 import type { Diagnostic, Envelope, FlowAuthority, NextAction, ScaffoldLanguage } from './types.js';
@@ -169,7 +172,7 @@ const HELP: Record<CommandName, { usage: string; description: string; options: s
   sync: { usage: 'xforge [--root <path>] sync [--target <target>] [--adopt] [--dry-run] [--verify-digests] [--text]', description: 'Incrementally sync localized Scaffold changes to installed targets.', options: ['--root', '--target', '--adopt', '--dry-run', '--verify-digests', '--text'] },
   update: { usage: 'xforge [--root <path>] update [--target <target>] [--adopt] [--dry-run] [--text]', description: 'Fully reconcile installed targets, identities, and Adapter output.', options: ['--root', '--target', '--adopt', '--dry-run', '--text'] },
   uninstall: { usage: 'xforge [--root <path>] uninstall [--target <target>] [--force] [--dry-run] [--text]', description: 'Remove managed target files, refusing on a digest mismatch unless --force.', options: ['--root', '--target', '--force', '--dry-run', '--text'] },
-  check: { usage: 'xforge [--root <path>] check [--change <id>] [--gate <id>] [--stage <id> | --all-gates] [--force] [--text]', description: 'Validate project structure, deliveries, and the Gates the current Stage requires.', options: ['--root', '--change', '--gate', '--stage', '--all-gates', '--force', '--text'] },
+  check: { usage: 'xforge [--root <path>] check [--change <id>] [--gate <id>] [--stage <id> | --all-gates] [--force] [--text]', description: 'Validate project structure, deliveries, and the Gates the current Stage requires. With no Gate selection this also executes the verify commands declared by every work package, which for a large plan is dozens of external commands and minutes of wall time; narrowing with --gate, --stage or --all-gates runs only the selected Gates and skips them.', options: ['--root', '--change', '--gate', '--stage', '--all-gates', '--force', '--text'] },
   verification: {
     usage: 'xforge [--root <path>] verification declare --gate-name <gate> (--command \'["prog","arg"]\' | --not-applicable <marker> --justification <text>) --by <person> [--module <id>] [--covers \'["marker"]\'] [--working-directory <path>] [--timeout-seconds <n>] [--dry-run] [--text]\n       xforge [--root <path>] verification draft-receipt --change <id> [--text]',
     description: 'Declare how this project runs a declared-verification Gate, without hand-editing the Manifest; or draft the current Stage\'s verification receipt from what XForge already knows. The draft omits `status` and writes nothing: that field is the Stage\'s assertion that the work was verified, and a CLI filling it in would be deciding the thing the receipt exists to record.',
@@ -544,7 +547,7 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
     if (project.compatibility.mode === 'portable') nextActions.push({ action: 'resolve-declared-xforge', reason: 'Managed operations require the exact declared CLI identity.' });
     const stateChange = (result.data.change ?? null) as {
       flow?: string;
-      nextArtifact?: { id?: string; outputPaths?: string[]; writePath?: string; missingDependencies?: string[] } | null;
+      nextArtifact?: { id?: string; outputPaths?: string[]; writePath?: string; missingDependencies?: string[]; outline?: string; generates?: string } | null;
       workPackages?: { packages?: Array<{ id: string; inputs: string[]; write_paths: string[]; done_when: string[] }> } | null;
     } | null;
     const stages = flowStages(result.data, stateChange?.flow);
@@ -554,6 +557,12 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
          check-stage Artifact under assurance-write. A Flow that declares no producing Stage for it
          leaves the field off rather than inventing a level. */
       const authority = stages.find((stage) => (stage.produces ?? []).includes(artifactId))?.authority;
+      /* A glob Artifact's outline is a repeating template, not a section set, so it has no literal
+         headings to state. `outlineSections` returns none for one either way; the check keeps the
+         intent visible. */
+      const sections = stateChange.nextArtifact.generates?.includes('*')
+        ? []
+        : outlineSections(stateChange.nextArtifact.outline ?? '');
       nextActions.push({
         action: 'create-artifact',
         type: 'artifact',
@@ -567,6 +576,10 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
         writes: stateChange.nextArtifact.outputPaths?.length
           ? stateChange.nextArtifact.outputPaths
           : [stateChange.nextArtifact.writePath].filter((item): item is string => Boolean(item)),
+        /* The headings verbatim, so the author is not left inferring them from a Markdown fragment.
+           Omitted for a glob Artifact, whose outline is a repeating template rather than a section
+           set, and when the Flow declares none. */
+        ...(sections.length > 0 ? { requiredSections: sections } : {}),
         doneWhen: [`Artifact ${artifactId} exists and satisfies the active Flow instructions.`],
         requiredEvidence: ['xforge state reports the artifact as done for the current Change revision.'],
         reason: `Next Flow Artifact is ${artifactId}.`,
@@ -837,4 +850,25 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
   return result.ok ? 0 : 1;
 }
 
-process.exitCode = await runCli();
+/*
+ * Run only when this file is what node was asked to execute.
+ *
+ * `runCli` has always been exported, but importing the module ran the whole CLI as a side effect,
+ * so the only way to exercise it was to spawn a process. The test suite does that 592 times, at
+ * roughly 0.3s of interpreter start-up each -- about half the suite's total runtime spent starting
+ * node rather than testing anything.
+ *
+ * Both sides are realpath'd because an npm bin symlink puts the link path in `argv[1]` and the real
+ * path in `import.meta.url`, which compare unequal while naming the same file.
+ */
+const invokedDirectly = (): boolean => {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return realpathSync(entry) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+};
+
+if (invokedDirectly()) process.exitCode = await runCli();

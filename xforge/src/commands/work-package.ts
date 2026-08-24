@@ -281,10 +281,33 @@ export async function executeWorkPackageAcknowledge(project: ProjectContext, opt
     ? ['succeeded', 'integrated', 'reviewed']
     : ['integrated', 'reviewed'];
   if (!acceptable.includes(selected.status)) {
+    /*
+     * Naming the rung below is the whole fix here. A package climbs `succeeded -> integrated ->
+     * reviewed`, and each acknowledgement is refused until the one beneath it exists. Saying only
+     * "requires an integrated delivery; current status is succeeded" states the refusal without
+     * ever stating the ladder, and a live Major run read it as "review is recorded against the
+     * integrator package", carried that conclusion into a report to its user, and was corrected
+     * only later by an unrelated block. The sibling refusal above already supplies the command
+     * that unblocks it; this one now does too.
+     */
+    const blockedOnIntegrator = options.role === 'reviewer' && selected.status === 'succeeded';
     throw new XForgeError(diagnostic(
       'XFORGE_WORK_PACKAGE_ACK_NOT_READY',
-      `${options.role} acknowledgement requires ${options.role === 'integrator' ? 'a succeeded delivery' : 'an integrated delivery'}; current status is ${selected.status}.`,
-    ));
+      `${options.role} acknowledgement requires ${options.role === 'integrator' ? 'a succeeded delivery' : 'an integrated delivery'}; current status is ${selected.status}.`
+        + ` A work package is acknowledged in order: the delivery reaches succeeded, an integrator acknowledges it as integrated, and only then may a reviewer acknowledge it as reviewed.`
+        + (blockedOnIntegrator
+          ? ` Run xforge work-package acknowledge --change ${options.change} --package ${options.packageId} --as integrator --evidence <path> first.`
+          : ''),
+    ), blockedOnIntegrator
+      ? {
+        nextActions: [{
+          action: 'acknowledge-work-package',
+          actor: 'main',
+          reason: 'A reviewer acknowledgement requires an integrated delivery to review.',
+          command: ['xforge', 'work-package', 'acknowledge', '--change', options.change, '--package', options.packageId, '--as', 'integrator'],
+        }],
+      }
+      : undefined);
   }
   const status: 'integrated' | 'reviewed' = options.role === 'integrator' ? 'integrated' : 'reviewed';
   /*

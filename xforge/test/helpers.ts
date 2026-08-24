@@ -1,7 +1,7 @@
 import { cp, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn } from 'node:child_process';
 import { parse, stringify } from 'yaml';
 import { afterAll } from 'vitest';
@@ -130,8 +130,66 @@ async function runCliCore(root: string, args: string[], env: NodeJS.ProcessEnv, 
   return { ...result, json };
 }
 
+/**
+ * The same CLI, called as a function instead of a process.
+ *
+ * Half this suite's runtime was node start-up: 592 call sites at roughly 0.3s of interpreter boot
+ * each, none of which tests anything. `cli.ts` has always exported `runCli(argv)`; what stopped it
+ * being callable was that importing the module ran the CLI as a side effect, which is now guarded.
+ *
+ * Safe to patch process state here because Vitest's default pool gives each test *file* its own
+ * process and runs the tests inside it in sequence, so nothing else is looking at `cwd`, `env` or
+ * `stdout` while one call holds them. Everything is restored in a `finally`, including variables
+ * the CLI itself added.
+ *
+ * Not used for anything that needs a real process boundary -- stdin, a TTY, or a genuinely separate
+ * `process.exitCode`. `runCliWithStdin` always spawns.
+ */
+let cliModule: { runCli: (argv: string[]) => Promise<number> } | null = null;
+
+async function runCliInProcess(root: string, args: string[], env: NodeJS.ProcessEnv): Promise<CliResult> {
+  cliModule ??= await import(pathToFileURL(cliPath).href) as { runCli: (argv: string[]) => Promise<number> };
+  const out: string[] = [];
+  const err: string[] = [];
+  const stdoutWrite = process.stdout.write.bind(process.stdout);
+  const stderrWrite = process.stderr.write.bind(process.stderr);
+  const previousCwd = process.cwd();
+  const previousEnv = { ...process.env };
+  process.stdout.write = ((chunk: unknown) => { out.push(String(chunk)); return true; }) as typeof process.stdout.write;
+  process.stderr.write = ((chunk: unknown) => { err.push(String(chunk)); return true; }) as typeof process.stderr.write;
+  process.chdir(root);
+  Object.assign(process.env, env);
+  let code: number;
+  try {
+    code = await cliModule.runCli(args);
+  } catch (error) {
+    /* A spawned CLI turns an unexpected throw into a non-zero exit; in-process it would become a
+       test-level rejection with different diagnostics. Keep the two shapes identical. */
+    err.push(String((error as Error)?.stack ?? error));
+    code = 1;
+  } finally {
+    process.stdout.write = stdoutWrite;
+    process.stderr.write = stderrWrite;
+    process.chdir(previousCwd);
+    for (const key of Object.keys(process.env)) if (!(key in previousEnv)) delete process.env[key];
+    Object.assign(process.env, previousEnv);
+  }
+  const stdout = out.join('');
+  let json: any = null;
+  try { json = JSON.parse(stdout); } catch {}
+  return { code, stdout, stderr: err.join(''), json };
+}
+
+/**
+ * `XFORGE_TEST_SPAWN_CLI=1` forces the process-per-call path.
+ *
+ * Kept as a switch rather than deleted: the in-process path is the same code reached a different
+ * way, and the only proof that it is equivalent is running the suite both ways and comparing. It is
+ * also the escape hatch if a module-level cache ever makes one call visible to the next.
+ */
 export async function runCli(root: string, args: string[], env: NodeJS.ProcessEnv = {}): Promise<CliResult> {
-  return runCliCore(root, args, env);
+  if (process.env.XFORGE_TEST_SPAWN_CLI === '1') return runCliCore(root, args, env);
+  return runCliInProcess(root, args, env);
 }
 
 /**
