@@ -259,7 +259,15 @@ export interface ArtifactDefinition {
   instruction: string;
   outline: string;
   requires: string[];
-  validator?: 'spec-delta';
+  /**
+   * How this Artifact is validated, when convention is not enough.
+   *
+   * `spec-delta` marks a delta Spec that does not live under `specs/`. `outline` opts the Artifact
+   * into having its declared `outline` sections enforced rather than merely suggested -- see
+   * `core/artifact-markers.ts`. The two are disjoint in practice: `outline` checks a single
+   * free-form document, and every delta Spec writes a glob, which outline validation skips.
+   */
+  validator?: 'spec-delta' | 'outline';
   markers?: ArtifactMarker[];
 }
 
@@ -494,7 +502,35 @@ export interface ChangeState {
    * What each mandatory Gate's Evidence records as having run, so "it passed" and "it ran nothing"
    * are distinguishable without opening the Evidence JSON. Facts only; no verdict.
    */
-  mandatoryGateEvidence?: Array<{ gate: string; status: string | null; command: string[] | null; evidencePath: string | null; currentRevision: boolean | null }>;
+  mandatoryGateEvidence?: Array<{
+    gate: string;
+    status: string | null;
+    command: string[] | null;
+    evidencePath: string | null;
+    /**
+     * Whether the Evidence is bound to the Change's current *content* revision -- its Artifacts,
+     * its Flow, the policy snapshot. Named for what it compares. The old name, `currentRevision`,
+     * read as "valid for the current state of things" and was taken that way: a Change re-entered
+     * apply, merged two more work packages, returned to verify, and read three Gates as current
+     * when the code they had exercised was two merges behind. Content and code move independently
+     * and this field only ever spoke for one of them.
+     */
+    currentContentRevision: boolean | null;
+    /**
+     * The commit the Gate actually ran at, and how many source files have changed since.
+     *
+     * `null` when it cannot be established -- no Git, no recorded head, or a head that is not an
+     * ancestor of the current one (a rebase, a shallow clone). Unknown is reported as unknown:
+     * a count invented here would be read as a fact about the tree.
+     *
+     * Paths XForge writes itself are excluded, so committing the Evidence a Gate has just produced
+     * does not read as the code having moved. That exclusion is why folding the commit into the
+     * content revision was abandoned: it made every Gate stale the moment its own output was
+     * committed. This measures the tree instead, and leaves the content revision alone.
+     */
+    gitHead: string | null;
+    sourceFilesChangedSince: number | null;
+  }>;
 }
 
 export interface AgentResource {

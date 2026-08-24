@@ -411,6 +411,66 @@ describe('xforge brief', () => {
       const result = await brief(root);
       expect(result.data.reconciliation.filter((entry) => entry.rule === 'RC-5')).toEqual([]);
     });
+
+    /*
+     * The `gate:` branch of the same requirement, and the Stage where it broke.
+     *
+     * `gatePassed` used to be built from `transitionRequirements`, which is keyed by the transitions
+     * legally available from the current Stage. `ready-to-archive` is synthetic and declares none,
+     * so the map is empty there and every `gate:` citation resolved to nothing at exactly the moment
+     * a Change is archived. `constitution-check` had already accepted the same citation from the
+     * same Evidence, and the reconciliation could not be cleared by any edit: re-running the Gate is
+     * impossible from a Stage that has none, and editing the ledger to drop the citation moves the
+     * content revision and makes every Gate stale. A live Major archived carrying it.
+     */
+    it('RC-5 resolves a gate: citation at ready-to-archive, where the Stage declares no Gates', async () => {
+      const root = await fixture();
+      const { advanceSolidToReadyToArchive } = await import('../helpers.js');
+      const { CONSTITUTION_CHECK_PATH, constitutionPrinciples } = await import('../../src/core/constitution-check.js');
+      const { readFile } = await import('node:fs/promises');
+      const path = await import('node:path');
+      await createCompleteSolidChange(root);
+      const source = await readFile(path.join(root, 'xforge', 'constitution.md'), 'utf8');
+      const principles = constitutionPrinciples(source);
+      await write(root, `xforge/changes/${CHANGE}/${CONSTITUTION_CHECK_PATH}`,
+        `principles:\n${principles.map((name) => `  - principle: ${JSON.stringify(name)}\n    status: compliant\n    references: [proposal.md, "gate:structure"]\n`).join('')}`);
+      await advanceSolidToReadyToArchive(root);
+
+      const state = await runCli(root, ['state', '--change', CHANGE]);
+      expect(state.json.data.change.governance.currentStage).toBe('ready-to-archive');
+
+      const result = await brief(root);
+      const unresolvable = result.data.reconciliation.filter((entry) => entry.rule === 'RC-5');
+      expect(unresolvable.map((entry) => entry.refs[0])).toEqual([]);
+    });
+
+    /*
+     * Reading the Evidence on status alone -- the way the Gate does -- would have fixed the case
+     * above by deleting the check that makes RC-5's own sentence true: "no Gate Evidence *for this
+     * revision*". The revision comparison is the point of the observation, so it stays.
+     */
+    it('RC-5 still reports a gate: citation whose Evidence is bound to an older revision', async () => {
+      const root = await fixture();
+      const { CONSTITUTION_CHECK_PATH, constitutionPrinciples } = await import('../../src/core/constitution-check.js');
+      const { readFile } = await import('node:fs/promises');
+      const path = await import('node:path');
+      await atCheckApproval(root);
+      const source = await readFile(path.join(root, 'xforge', 'constitution.md'), 'utf8');
+      const [first] = constitutionPrinciples(source);
+      await write(root, `xforge/changes/${CHANGE}/${CONSTITUTION_CHECK_PATH}`, [
+        'principles:',
+        `  - principle: ${JSON.stringify(first)}`,
+        '    status: compliant',
+        '    references: [proposal.md, "gate:structure"]',
+        '',
+      ].join('\n'));
+      /* Editing an Artifact after the Gate ran is what moves the content revision. */
+      await write(root, `xforge/changes/${CHANGE}/proposal.md`, '## Why\nEdited after the Gate ran\n\n## Flow choice\nsolid\n');
+
+      const result = await brief(root);
+      const unresolvable = result.data.reconciliation.filter((entry) => entry.rule === 'RC-5');
+      expect(unresolvable.map((entry) => entry.refs[0])).toEqual(['gate:structure']);
+    });
   });
 
   describe('the authored layer', () => {

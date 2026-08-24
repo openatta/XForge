@@ -45,6 +45,40 @@ async function addMcpServer(root: string, id: string): Promise<void> {
   });
 }
 
+/*
+ * Flows are the one governed asset `upgrade-scaffold` structurally cannot reach: they live in
+ * `xforge/flows/`, and the upgrade walks only `xforge/scaffold/`. A project therefore keeps whatever
+ * Flow it was initialised with, for as long as it exists, and until now nothing said so. One ran an
+ * entire Major three releases behind its own CLI -- two approvers where the shipped Flow asks for
+ * one non-implementer, and a Check Stage missing from `verify.reworkTo` -- and found out by reading
+ * the npm payload by hand.
+ *
+ * Reported as `info`, not a warning: customising a Flow is supported, and a finding a project can
+ * never clear is how a report gets skimmed.
+ */
+describe('doctor and Flow version drift', () => {
+  it('reports a Flow whose version differs from the one this CLI ships', async () => {
+    const root = await fixture();
+    await updateYaml(root, 'xforge/flows/solid.yaml', (flow) => { flow.metadata.version = 1; });
+
+    const result = await runCli(root, ['doctor']);
+    expect(result.code).toBe(0);
+    const drift = (result.json.data.suggestions as any[]).filter((item) => item.code === 'XFORGE_DOCTOR_FLOW_VERSION_DRIFT');
+    expect(drift).toHaveLength(1);
+    expect(drift[0]).toMatchObject({ scope: 'flows', id: 'solid', severity: 'info', path: 'xforge/flows/solid.yaml' });
+    expect(drift[0].message).toContain('version 1');
+    /* The remedy has to name both options, because adopting is not always the right one. */
+    expect(drift[0].message).toContain('deliberate');
+  });
+
+  it('says nothing when the project Flow matches the shipped one', async () => {
+    const root = await fixture();
+    const result = await runCli(root, ['doctor']);
+    expect(result.code).toBe(0);
+    expect((result.json.data.suggestions as any[]).filter((item) => item.code === 'XFORGE_DOCTOR_FLOW_VERSION_DRIFT')).toEqual([]);
+  });
+});
+
 describe('doctor', () => {
   it('reports only unused Flows on an unmodified fixture, because every shipped asset is now cited', async () => {
     const root = await fixture();

@@ -24,6 +24,23 @@ export interface DocumentSection {
   body: string;
 }
 
+/**
+ * The `## ` headings an `outline` declares, in the order it declares them.
+ *
+ * The outline is a Markdown fragment, so its own headings are read with the same rule the produced
+ * document is read with. Anything deeper (`### `, `#### `) is a template for repeating structure
+ * rather than a section, and is not a heading this compares.
+ */
+export function outlineSections(outline: string): string[] {
+  const found: string[] = [];
+  for (const line of outline.split(/\r?\n/)) {
+    /* `###` cannot match: the pattern requires whitespace directly after the two hashes. */
+    const match = /^##\s+(.*\S)\s*$/.exec(line);
+    if (match) found.push(match[1]!);
+  }
+  return [...new Set(found)];
+}
+
 /** Splits a Markdown document into its `## ` sections, keyed by heading text. */
 export function documentSections(content: string): Map<string, DocumentSection> {
   const found = new Map<string, DocumentSection>();
@@ -103,7 +120,8 @@ export async function validateArtifactMarkers(
 
   for (const artifact of flowArtifacts(resolved.flow) as StageFlowArtifact[]) {
     const markers = artifact.markers ?? [];
-    if (markers.length === 0 || artifact.generates.includes('*')) continue;
+    const enforcesOutline = artifact.validator === 'outline';
+    if ((markers.length === 0 && !enforcesOutline) || artifact.generates.includes('*')) continue;
     const relative = `${project.changesPath}/${changeId}/${artifact.generates}`;
     let content: string;
     try {
@@ -112,6 +130,50 @@ export async function validateArtifactMarkers(
       continue;
     }
     const parsed = documentSections(content);
+
+    /*
+     * `validator: outline` promotes the outline from instruction to requirement, for this Artifact
+     * only and only where a Flow says so.
+     *
+     * A warning, matching the marker-section rule directly above it, and no shipped Flow declares
+     * it. Both of those were decided by measurement rather than argument.
+     *
+     * Declared an error -- on the reasoning that an opt-in cannot fail anything written under the
+     * previous reading -- it failed 176 of 574 tests the moment the shipped Flows adopted it. That
+     * was not fixture debt: the fixtures write focused Artifacts carrying the sections that matter,
+     * which is what a real minimal Change looks like, and Quick would have needed eleven headings
+     * across two Artifacts to stay Quick.
+     *
+     * Demoted to a warning but still shipped on by default, it then fired on every clean run and
+     * left `XFORGE_CHECK_PASSED_WITH_WARNINGS` permanently lit -- the failure the notice's own test
+     * is named for ("stays quiet on a clean run, so the notice keeps meaning something"). A warning
+     * every project always has is one every project learns to skip, which costs more than the rule
+     * gains.
+     *
+     * So the capability ships and the decision to use it does not: a Flow that wants its outline
+     * enforced says `validator: outline` on the Artifact where it matters, next to the outline it
+     * enforces. A Flow that wants a section not merely present but populated already has a sharper
+     * tool in a marker with `minOccurrences`.
+     *
+     * Only omission is checked. A section the outline does not list is left alone: an extra `##
+     * Risks` in a design is usually more information rather than a defect, and requiring exact
+     * equality pushes an author to bury content under a heading that does not fit it. What breaks
+     * when a declared section goes missing is concrete -- markers keyed to it resolve to nothing,
+     * `core/brief.ts` quotes an empty EXTRACTED section, and a reader who was promised it finds
+     * nothing there.
+     */
+    if (enforcesOutline) {
+      const missing = outlineSections(artifact.outline ?? '').filter((heading) => !parsed.has(heading));
+      if (missing.length > 0) {
+        diagnostics.push(diagnostic(
+          'XFORGE_ARTIFACT_OUTLINE_SECTION_MISSING',
+          `Artifact ${artifact.id} is missing ${missing.length} section(s) its Flow outline declares: ${missing.map((heading) => `"${heading}"`).join(', ')}. Anything keyed to those sections -- a marker, a brief quotation -- will find nothing there. Sections the outline does not list are not reported.`,
+          relative,
+          'warning',
+        ));
+      }
+    }
+    if (markers.length === 0) continue;
     for (const marker of markers) {
       const section = parsed.get(marker.section);
       if (!section) {

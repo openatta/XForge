@@ -83,6 +83,76 @@ describe('Artifact markers', () => {
     });
   });
 
+  /*
+   * `validator: outline` is the opt-in that turns a Flow's `outline` from instruction into a
+   * reported requirement, for the one Artifact that declares it.
+   *
+   * No shipped Flow declares it, and that is the point rather than an omission -- see the reasoning
+   * in `core/artifact-markers.ts`. These tests therefore declare it the way a project would.
+   */
+  describe('outline validation', () => {
+    /* Marker diagnostics are a different rule with its own tests above, and the shipped Solid Flow
+       already declares two markers whose sections this fixture's design.md does not carry. */
+    async function outlineDiagnostics(root: string): Promise<Awaited<ReturnType<typeof validateArtifactMarkers>>> {
+      return (await markerDiagnostics(root)).filter((item) => item.code === 'XFORGE_ARTIFACT_OUTLINE_SECTION_MISSING');
+    }
+
+    async function enforceOutlineOn(root: string, artifactId: string): Promise<void> {
+      await updateYaml(root, 'xforge/flows/solid.yaml', (flow) => {
+        flow.artifacts.find((artifact: any) => artifact.id === artifactId).validator = 'outline';
+      });
+    }
+
+    it('says nothing at all until a Flow opts in', async () => {
+      const root = await fixture();
+      await createCompleteSolidChange(root);
+      /* The fixture's design.md carries `## Decisions` alone, against a six-section outline. */
+      expect(await outlineDiagnostics(root)).toEqual([]);
+    });
+
+    it('reports each declared section the Artifact does not contain', async () => {
+      const root = await fixture();
+      await createCompleteSolidChange(root);
+      await enforceOutlineOn(root, 'design');
+
+      const diagnostics = await outlineDiagnostics(root);
+      expect(diagnostics).toHaveLength(1);
+      expect(diagnostics[0]!.code).toBe('XFORGE_ARTIFACT_OUTLINE_SECTION_MISSING');
+      expect(diagnostics[0]!.severity).toBe('warning');
+      expect(diagnostics[0]!.path).toBe(`xforge/changes/${CHANGE}/design.md`);
+      /* Names every missing section, because fixing them one run at a time is the cost this saves. */
+      for (const section of ['Context', 'Goals and non-goals', 'Failure modes and compatibility']) {
+        expect(diagnostics[0]!.message).toContain(section);
+      }
+      /* And never blocks: a warning is what keeps this usable on Artifacts written before it. */
+      const result = await runCli(root, ['check', '--change', CHANGE, '--gate', 'structure']);
+      expect(result.code).toBe(0);
+    });
+
+    it('ignores sections the outline does not declare', async () => {
+      const root = await fixture();
+      await createCompleteSolidChange(root);
+      await enforceOutlineOn(root, 'design');
+      const outline = ['## Context', '## Goals and non-goals', '## Decisions and alternatives',
+        '## Failure modes and compatibility', '## Migration and rollback', '## Verification notes'];
+      /* Every declared section, plus one the Flow never asked for. An extra section is usually more
+         information rather than a defect, and only omission is reported. */
+      await write(root, `xforge/changes/${CHANGE}/design.md`,
+        `${outline.map((heading) => `${heading}\nText.\n`).join('\n')}\n## Risks\nAn extra section.\n`);
+
+      expect(await outlineDiagnostics(root)).toEqual([]);
+    });
+
+    it('says nothing about an Artifact the Change has not written yet', async () => {
+      const root = await fixture();
+      await createCompleteSolidChange(root);
+      await enforceOutlineOn(root, 'assurance');
+      await (await import('node:fs/promises')).rm(`${root}/xforge/changes/${CHANGE}/assurance.md`);
+
+      expect(await outlineDiagnostics(root)).toEqual([]);
+    });
+  });
+
   describe('structure validation', () => {
     it('warns rather than fails when a declared section is absent', async () => {
       const root = await fixture();

@@ -546,12 +546,32 @@ Adapter 报告 `guidance`、`permissionPolicy`、`runtimeHook.*`、`auditDeliver
   archive: { ready, requires, mandatoryGates, syncSpecs },
   workPackages: WorkPackagePlanState | null,
   governance: GovernanceState,
-  mandatoryGateEvidence: [{ gate, status, command, evidencePath, currentRevision }],
+  mandatoryGateEvidence: [{
+    gate, status, command, evidencePath,
+    currentContentRevision,       // 证据是否绑定当前**内容**修订
+    gitHead, sourceFilesChangedSince,  // 证据跑在哪个 commit，之后又动了几个源文件
+  }],
 }
 ```
 
 `mandatoryGateEvidence` 的存在理由是让「Gate 通过了」和「Gate 什么都没断言」
 在不打开 Evidence JSON 的情况下可区分——**只记事实，不下判断**。
+
+后三个字段回答的是两个**互相独立**的陈旧性问题，必须分开读：
+
+- `currentContentRevision` 比对的是**内容修订**（Artifact、Flow、policy 快照）。
+  它此前叫 `currentRevision`，那个名字被读成「对当前状态有效」，而它从来只
+  管内容这一半：一个 Change 退回 apply、合并两个工作包、再回到 verify，全程
+  没碰任何受治理 Artifact，于是三个 Gate 一路报 `true`，而它们跑过的代码已经
+  落后两次合并。
+- `sourceFilesChangedSince` 比对的是**代码树**：从 `gitHead` 到当前 HEAD 之间，
+  有多少个 XForge 自己没写过的文件变了。排除自身写入的路径，是为了让「提交
+  Gate 刚产出的 Evidence」这个动作读作 0——把 commit 折进内容修订的做法正是
+  因此被放弃的，它会让每个 Gate 在自己的输出被提交的瞬间失效。
+  `null` 表示无法判定（rebase、shallow clone、无 Git），**不是** 0。
+
+两者都只报告，不拦截：archive 依旧只以内容修订为准，这里做的是把差异摆到
+签字的人面前。
 
 `ArtifactState` 里有个容易踩的区别：`generates` 相对 **Change 目录**，
 `writePath` 才是**从项目根算起**的路径；`nextAction.writes` 由后者构建，

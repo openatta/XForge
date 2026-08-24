@@ -265,6 +265,52 @@ describe('check and Gate evidence', () => {
   });
 
   /*
+   * Every Gate override has two spellings, and they disagreed about the expensive half of `check`.
+   *
+   * The test above already pins that `--stage <id>` and `--gate stage:<id>` select the same Gates --
+   * "Both must agree with the sentinel form exactly" -- but it compares only the Gate list, and the
+   * work-package verify commands were suppressed by asking whether `options.gate` held a string
+   * rather than whether a selection had been made. So the sentinel spellings skipped them and the
+   * flag spellings ran every one. A live Major reached for the Stage-scoped form expecting to
+   * re-run three Gates, executed thirty-odd external commands from a ten-package plan instead, and
+   * was killed on a timeout partway through.
+   *
+   * The rule, stated once: no selection flag means a full check of the current Stage; any selection
+   * flag means only the Gates it selects.
+   */
+  it('agrees across all four Gate-selection spellings about whether work-package verifies run', async () => {
+    const root = await fixture();
+    const verify = [process.execPath, '-e', "require('node:fs').appendFileSync('verify-runs', 'x')"];
+    await applyStageWithVerify(root, verify);
+    const runs = async (): Promise<number> => {
+      try { return (await readFile(path.join(root, 'verify-runs'), 'utf8')).length; } catch { return 0; }
+    };
+
+    /* No selection: the full check of the current Stage, work-package verifies included. */
+    const full = await runCli(root, ['check', '--change', 'add-feature']);
+    expect(full.code, JSON.stringify(full.json?.diagnostics, null, 2)).toBe(0);
+    expect(full.json.data.workPackagesSelected).toBe(true);
+    expect(full.json.data.workPackages).toHaveLength(1);
+    const afterFull = await runs();
+    expect(afterFull).toBeGreaterThan(0);
+
+    /* Each narrowing spelling, from the same Stage, must run the selected Gates and nothing else.
+       `--force` is deliberately not passed: reuse must not be what makes the count hold still. */
+    for (const args of [
+      ['--gate', 'stage:apply'],
+      ['--stage', 'apply'],
+      ['--gate', 'all'],
+      ['--all-gates'],
+    ]) {
+      const narrowed = await runCli(root, ['check', '--change', 'add-feature', ...args]);
+      expect(narrowed.code, `${args.join(' ')}: ${JSON.stringify(narrowed.json?.diagnostics, null, 2)}`).toBe(0);
+      expect(narrowed.json.data.workPackagesSelected, args.join(' ')).toBe(false);
+      expect(narrowed.json.data.workPackages, args.join(' ')).toEqual([]);
+      expect(await runs(), `${args.join(' ')} executed a work-package verify`).toBe(afterFull);
+    }
+  });
+
+  /*
    * The loop XForge exists to govern: an Agent runs `check`, edits source, and runs `check` again
    * without committing. `inputDigest` is derived from the Gate, the governance revision, and the
    * structural pre-check — none of which an uncommitted edit moves — so reuse keyed on it alone

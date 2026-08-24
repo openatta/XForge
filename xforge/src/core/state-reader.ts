@@ -12,6 +12,7 @@ import { safeResolve } from './path-safety.js';
 import { loadSelectedResources, type SelectedResources } from './resource-loader.js';
 import { resolvedResourceEntries } from './lockfile.js';
 import { stableStringify } from './hash.js';
+import { codeMovedSince, gitRevisions } from './revision.js';
 import { resolveWorkPackages } from './work-packages.js';
 import { installationSummary, readOwnership } from '../install/ownership.js';
 import { loadTransitionReceipts, resolveControlPlane } from './control-plane.js';
@@ -52,32 +53,50 @@ async function mandatoryGateEvidence(
   gates: readonly string[],
   resources: SelectedResources,
   contentRevision: string | null,
-): Promise<Array<{ gate: string; status: string | null; command: string[] | null; evidencePath: string | null; currentRevision: boolean | null }>> {
-  const summaries: Array<{ gate: string; status: string | null; command: string[] | null; evidencePath: string | null; currentRevision: boolean | null }> = [];
+): Promise<NonNullable<ChangeState['mandatoryGateEvidence']>> {
+  const summaries: NonNullable<ChangeState['mandatoryGateEvidence']> = [];
+  /*
+   * `state` is what every Skill polls, so the drift lookup is memoised per commit rather than run
+   * once per Gate. In practice all three mandatory Gates carry the same `gitHead` -- they are run
+   * back to back by one `check` -- so this is one `git diff` per State read, not three.
+   */
+  const driftByHead = new Map<string, number | null>();
+  const { head: currentGitHead } = await gitRevisions(project.root);
+  const driftFor = async (gitHead: string | null): Promise<number | null> => {
+    if (!gitHead) return null;
+    if (!driftByHead.has(gitHead)) {
+      driftByHead.set(gitHead, await codeMovedSince(project, changeId, gitHead, currentGitHead === 'unknown' ? undefined : currentGitHead));
+    }
+    return driftByHead.get(gitHead) ?? null;
+  };
   for (const gate of gates) {
     const resource = resources.gates.get(gate);
     if (!resource) {
-      summaries.push({ gate, status: null, command: null, evidencePath: null, currentRevision: null });
+      summaries.push({ gate, status: null, command: null, evidencePath: null, currentContentRevision: null, gitHead: null, sourceFilesChangedSince: null });
       continue;
     }
     const relative = `${project.changesPath}/${changeId}/evidence/${resource.value.spec.evidence}`;
     try {
       const evidence = JSON.parse(await readFile(await safeResolve(project.root, relative), 'utf8')) as {
-        status?: string; command?: string[]; contentRevision?: string;
+        status?: string; command?: string[]; contentRevision?: string; gitHead?: string;
       };
+      const gitHead = evidence.gitHead ?? null;
       summaries.push({
         gate,
         status: evidence.status ?? null,
         command: evidence.command ?? null,
         evidencePath: relative,
-        /* Stale Evidence describes a tree that no longer exists; `gateBlockReason` already refuses
-           to advance on it, and this makes the same fact visible before somebody plans around it. */
-        currentRevision: contentRevision === null ? null : evidence.contentRevision === contentRevision,
+        /* Content-bound staleness: `gateBlockReason` already refuses to advance on it, and this
+           makes the same fact visible before somebody plans around it. */
+        currentContentRevision: contentRevision === null ? null : evidence.contentRevision === contentRevision,
+        gitHead,
+        /* Code-bound staleness, which the line above structurally cannot see. */
+        sourceFilesChangedSince: await driftFor(gitHead),
       });
     } catch {
       /* Not yet run, or unreadable. Both are "no Evidence", which the Gate machinery reports far
          more precisely than this summary could. */
-      summaries.push({ gate, status: null, command: null, evidencePath: relative, currentRevision: null });
+      summaries.push({ gate, status: null, command: null, evidencePath: relative, currentContentRevision: null, gitHead: null, sourceFilesChangedSince: null });
     }
   }
   return summaries;
