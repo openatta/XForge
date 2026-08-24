@@ -2,6 +2,8 @@
 import path from 'node:path';
 import process from 'node:process';
 import { access } from 'node:fs/promises';
+import { realpathSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline/promises';
 import { CLI_NAME, CLI_VERSION, PROTOCOL_VERSION, TARGETS, type TargetId } from './constants.js';
 import { executeArchive } from './commands/archive.js';
@@ -848,4 +850,25 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
   return result.ok ? 0 : 1;
 }
 
-process.exitCode = await runCli();
+/*
+ * Run only when this file is what node was asked to execute.
+ *
+ * `runCli` has always been exported, but importing the module ran the whole CLI as a side effect,
+ * so the only way to exercise it was to spawn a process. The test suite does that 592 times, at
+ * roughly 0.3s of interpreter start-up each -- about half the suite's total runtime spent starting
+ * node rather than testing anything.
+ *
+ * Both sides are realpath'd because an npm bin symlink puts the link path in `argv[1]` and the real
+ * path in `import.meta.url`, which compare unequal while naming the same file.
+ */
+const invokedDirectly = (): boolean => {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return realpathSync(entry) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+};
+
+if (invokedDirectly()) process.exitCode = await runCli();
