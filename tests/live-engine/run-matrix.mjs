@@ -558,7 +558,34 @@ async function runEngine({ projectRoot, scenario, stageId, promptRelative, polic
   }
 }
 
-function assertArtifactOutline({ projectRoot, flowName, artifactId, file, mode }) {
+/**
+ * Outline deviations a cold run produced, recorded rather than thrown.
+ *
+ * A cold run has no verdict to protect -- its outcome is unconstrained on purpose -- so an
+ * assertion that aborts it destroys the observation it exists to collect.
+ */
+const outlineObservations = [];
+
+/**
+ * Compares a produced Artifact against its Flow's outline, and decides what a deviation means here.
+ *
+ * A guided run is told the outline is exact ("no extra section, none omitted"), so any deviation is
+ * that run failing to follow its instructions, and it fails.
+ *
+ * A cold run is told nothing, and the first one measured what that produces: every declared section
+ * present in both Artifacts it wrote -- 6 of 6 in the proposal, 8 of 8 in the design -- plus one
+ * heading the outline does not list, `## Coverage and next action`. `missing` was empty both times.
+ * Killing a six-dollar run over an extra heading that carries real content is the harness enforcing
+ * something the product deliberately does not: `validator: outline` reports omission only, on the
+ * reasoning that an extra section is usually more information and that demanding exact equality
+ * pushes an author to bury content under a heading that does not fit it. That reasoning was an
+ * argument when it was written; this is the measurement.
+ *
+ * So `extra` is an observation in a cold run and `missing` remains a failure in any run -- a
+ * declared section that is absent breaks whatever is keyed to it, which is the case for enforcing
+ * anything here at all.
+ */
+function assertArtifactOutline({ projectRoot, flowName, artifactId, file, mode, strict = true }) {
   const args = ['--root', projectRoot, '--flow', flowName, '--artifact', artifactId, '--file', file];
   if (mode) args.push('--mode', mode);
   const result = spawnSync(process.execPath, [path.join(scriptsRoot, 'assert-artifact-outline.mjs'), ...args], {
@@ -566,7 +593,13 @@ function assertArtifactOutline({ projectRoot, flowName, artifactId, file, mode }
   });
   let json = null;
   try { json = JSON.parse(result.stdout); } catch {}
-  if (result.status !== 0 || !json?.ok) {
+  const unreadable = result.status !== 0 && !json;
+  if (!unreadable && !json?.ok && !strict && (json.missing ?? []).length === 0) {
+    outlineObservations.push({ artifact: artifactId, file, extra: json.extra ?? [] });
+    process.stdout.write(`${JSON.stringify({ outlineObservation: artifactId, extra: json.extra ?? [] })}\n`);
+    return json;
+  }
+  if (unreadable || !json?.ok) {
     throw new Error(`Outline check failed for ${flowName}:${artifactId} (${file}): ${JSON.stringify(json ?? result.stdout)}`);
   }
   return json;
@@ -1081,7 +1114,7 @@ for (let index = 0; index < stages.length; ) {
       stoppedInStage = true;
       break;
     }
-    assertArtifactOutline({ projectRoot, flowName, artifactId, file, mode });
+    assertArtifactOutline({ projectRoot, flowName, artifactId, file, mode, strict: scenarioConfig.intent !== 'cold' });
   }
   if (stoppedInStage) {
     commit(projectRoot, `Live engine stage stopped awaiting declaration: ${scenarioName}:${stage.id}`);
@@ -1390,6 +1423,7 @@ timeline.outcome = outcome;
 timeline.reworks = reworks;
 timeline.cli = setup.cli ?? null;
 timeline.friction = summariseFriction();
+timeline.outlineObservations = outlineObservations;
 await writeFile(path.join(resultsRoot, `${scenarioName}-timeline.json`), `${JSON.stringify(timeline, null, 2)}\n`);
 
 /*
@@ -1425,6 +1459,9 @@ process.stdout.write(`${JSON.stringify({
      tool for forty turns" are different results, and only one of them is improved by explaining the
      tool in the prompt. */
   friction: timeline.friction,
+  /* What a cold run did differently, kept as a result rather than a crash. Empty for guided runs,
+     which fail on the same deviation instead of recording it. */
+  outlineObservations,
   stoppedAtCheck,
   stoppedAwaitingDeclaration,
   project: projectRoot,
