@@ -162,3 +162,7 @@ tests/.tmp/
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Probe fixtures are frozen copies of live-run projects: large, regenerable, and only
+# meaningful next to the Flow version recorded in their probe-fixture.json.
+tests/probe/fixtures/

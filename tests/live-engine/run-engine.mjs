@@ -104,22 +104,27 @@ const prompt = await readFile(promptPath, 'utf8');
 await mkdir(path.dirname(outputPath), { recursive: true });
 await mkdir(claudeConfigRoot, { recursive: true });
 
+/*
+ * The limits an existing policy must already agree with, and nothing else.
+ *
+ * `stages` is deliberately absent. `assertLiveEnginePolicy` compares every key it is handed against
+ * the policy by identity, and the Stage list lives on `stageIds` while `policy.stages` is the
+ * per-Stage attempt record -- so including it compared an array against an object and refused every
+ * run that supplied its own policy file.
+ */
 const policySettings = {
   suiteBudgetUsd: Number(selected['suite-budget']),
   maxAttemptsPerStage: Number(selected['max-attempts']),
   timeoutSeconds: Number(selected['timeout-seconds']),
-  /* The stage this invocation was given, which is the only one it can spend against. Creating a
-     policy without saying so used to fall back to a default list that predated the current Stage
-     graphs, so running this script directly against any real Stage -- the whole point of it taking
-     `--stage` -- was refused with LIVE_STAGE_INVALID before a single call was made. `run-matrix`
-     never saw it because it always passes the Flow's own list. */
-  stages: [stage],
 };
 let policy = await readJson(policyPath);
 if (policy) {
   assertLiveEnginePolicy(policy, policySettings);
 } else {
-  policy = createLiveEnginePolicy(policySettings);
+  /* The Stage this invocation was handed, which is the only one it can spend against. Creating a
+     policy without saying so used to fall back to a Stage list that predated the current graphs, so
+     running this script directly for one Stage was refused before a single call was made. */
+  policy = createLiveEnginePolicy({ ...policySettings, stages: [stage] });
 }
 const isolation = selected['sandbox-launcher'] ? 'external-launcher' : 'behavioral';
 const startedAt = new Date().toISOString();

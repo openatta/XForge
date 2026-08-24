@@ -19,6 +19,34 @@ const repositoryRoot = path.resolve(fileURLToPath(new URL('.', import.meta.url))
  * run ever reached the approval it misdescribed.
  */
 describe('live-engine fixtures agree with the Flow they exercise', () => {
+  /*
+   * The two Artifacts whose Skills are told to report what the CLI found must have somewhere to
+   * put it.
+   *
+   * Not a general law about gated Stages -- `propose` declares the structure Gate and its Proposal
+   * has no business reporting on it. It is these two specifically: `xforge-check` says to run
+   * `xforge check` and report "CLI results", and `xforge-verify` produces assurance from Gate
+   * Evidence. `assurance` carried `## Gates and evidence` all along; `check-report` did not, and a
+   * cold live run showed the consequence -- given only a feature request it wrote three Artifacts
+   * with their declared headings verbatim, then invented `## Gate evidence (CLI, deterministic)`
+   * on this one. It was obeying the Skill into a space the outline did not offer.
+   */
+  it('gives check-report and assurance a section for what the Gates reported', async () => {
+    for (const name of ['solid', 'major']) {
+      const flow = parse(await readFile(
+        path.join(repositoryRoot, `scaffold/payload/xforge/flows/${name}.yaml`), 'utf8',
+      ));
+      for (const artifactId of ['check-report', 'assurance']) {
+        const artifact = flow.artifacts.find((entry: any) => entry.id === artifactId);
+        expect(artifact, `${name} has no ${artifactId}`).toBeDefined();
+        expect(
+          artifact.outline,
+          `${name}/${artifactId} has no section for what the Gates reported`,
+        ).toContain('## Gates and evidence');
+      }
+    }
+  });
+
   it('does not describe Major approval as needing two signatures or two roles', async () => {
     const request = await readFile(
       path.join(repositoryRoot, 'tests/live-engine/scenarios/major/project-seed/TEST_REQUEST.md'),
