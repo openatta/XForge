@@ -2,7 +2,7 @@ apiVersion: xforge.dev/v1alpha2
 kind: Flow
 metadata:
   name: major
-  version: 5
+  version: 6
   description: High-assurance governance for high-risk, cross-system, or critical-impact changes
 policy:
   assuranceLevel: major
@@ -84,12 +84,13 @@ artifacts:
   - id: check-report
     generates: check-report.md
     description: Narrate the pre-implementation semantic review across Artifacts
-    instruction: Explain completeness, consistency, testability, risk, and feasibility. Stage exit is decided by the findings ledger, not by this prose.
+    instruction: Explain completeness, consistency, testability, risk, and feasibility, and record under Gates and evidence what `xforge check` actually reported. Use Rework to name the Stage a blocker sends this Change back to and what must change there, and say plainly when there is nothing to rework. Do not write a verdict on whether Check passes — the findings ledger decides that, and a verdict in prose only competes with the record that governs.
     outline: |
       ## Completeness
       ## Consistency
       ## Testability
       ## Feasibility and risk
+      ## Gates and evidence
       ## Rework
   - id: check-findings
     generates: evidence/check-findings.yaml

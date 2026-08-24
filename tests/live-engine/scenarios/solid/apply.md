@@ -18,6 +18,5 @@ and result, and the expected remaining XForge next action. Do not create
 delivery or Gate Evidence; the external harness does that independently.
 
 Every Markdown Artifact you write must use exactly the `##` section set its
-Flow `artifacts[].outline` defines — no extra section, none omitted. The
-outline is the contract; if something you want to report has no section, put
-it inside the closest one rather than inventing a heading.
+Flow `artifacts[].outline` defines — no extra section, none omitted.
+The outline is the contract.

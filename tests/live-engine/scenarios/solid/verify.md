@@ -29,9 +29,8 @@ is a blocker even when `npm test` passes: record a failed verdict, do not claim
 archive readiness, and request rework instead of downgrading it to a warning.
 
 Every Markdown Artifact you write must use exactly the `##` section set its
-Flow `artifacts[].outline` defines — no extra section, none omitted. The
-outline is the contract; if something you want to report has no section, put
-it inside the closest one rather than inventing a heading.
+Flow `artifacts[].outline` defines — no extra section, none omitted.
+The outline is the contract.
 
 The `unit-tests` Gate runs whatever this project declared and refuses when it has
 declared nothing, so on a fresh project it will refuse. That refusal is correct

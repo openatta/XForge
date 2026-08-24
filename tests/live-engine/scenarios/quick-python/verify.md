@@ -29,9 +29,8 @@ claim archive readiness, and request rework instead of downgrading it to a
 warning.
 
 Every Markdown Artifact you write must use exactly the `##` section set its
-Flow `artifacts[].outline` defines — no extra section, none omitted. The
-outline is the contract; if something you want to report has no section, put
-it inside the closest one rather than inventing a heading.
+Flow `artifacts[].outline` defines — no extra section, none omitted.
+The outline is the contract.
 
 This project is not a Node project and has no `package.json`, so the `unit-tests`
 Gate has no command declared and refuses rather than passing. That refusal is
