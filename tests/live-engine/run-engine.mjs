@@ -108,6 +108,12 @@ const policySettings = {
   suiteBudgetUsd: Number(selected['suite-budget']),
   maxAttemptsPerStage: Number(selected['max-attempts']),
   timeoutSeconds: Number(selected['timeout-seconds']),
+  /* The stage this invocation was given, which is the only one it can spend against. Creating a
+     policy without saying so used to fall back to a default list that predated the current Stage
+     graphs, so running this script directly against any real Stage -- the whole point of it taking
+     `--stage` -- was refused with LIVE_STAGE_INVALID before a single call was made. `run-matrix`
+     never saw it because it always passes the Flow's own list. */
+  stages: [stage],
 };
 let policy = await readJson(policyPath);
 if (policy) {

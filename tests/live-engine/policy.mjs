@@ -1,8 +1,3 @@
-// The default 3-stage set kept for backward compatibility with the original Solid-only
-// runbook. `createLiveEnginePolicy`/`assertLiveEnginePolicy` accept any non-empty stage id
-// list now, so Quick/Major stage graphs (which differ from Solid's) are not hardcoded here.
-export const LIVE_ENGINE_STAGES = ['plan', 'apply', 'verify'];
-
 /** Below this round-trip, the shipped per-stage timeout stands unchanged. */
 export const PROBE_BASELINE_MS = 3_000;
 /** A provider slower than this multiple is a problem to report, not one to wait out. */
@@ -63,8 +58,18 @@ function rounded(value) {
   return Math.round((value + Number.EPSILON) * 1_000_000) / 1_000_000;
 }
 
+/**
+ * `stages` has no default, deliberately.
+ *
+ * It used to fall back to `['plan', 'apply', 'verify']`, the Stage names of a Solid-only runbook
+ * that no Flow has used for a long time. Nothing caught it because `run-matrix` always passes the
+ * Flow's own list, so the default was only reachable from the one entry point nobody had used --
+ * `run-engine.mjs` invoked directly for a single Stage, which is refused outright by a policy that
+ * does not know that Stage exists. A default that is wrong for every real caller is worse than no
+ * default: it turns "you forgot to say" into "you said something false".
+ */
 export function createLiveEnginePolicy({
-  suiteBudgetUsd = 9, maxAttemptsPerStage = 2, timeoutSeconds = 900, stages = LIVE_ENGINE_STAGES,
+  suiteBudgetUsd = 9, maxAttemptsPerStage = 2, timeoutSeconds = 900, stages,
 } = {}) {
   if (!Array.isArray(stages) || stages.length === 0 || stages.some((stage) => typeof stage !== 'string' || !stage)) {
     throw new LiveEnginePolicyError('LIVE_POLICY_INVALID', 'stages must be a non-empty array of stage id strings.');
