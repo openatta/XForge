@@ -14,9 +14,22 @@ const c8 = path.join(packageRoot, 'node_modules', 'c8', 'bin', 'c8.js');
 await rm(coverageRoot, { recursive: true, force: true });
 await mkdir(rawRoot, { recursive: true });
 
+/*
+ * Coverage runs spawn the CLI, and only coverage runs do.
+ *
+ * Nothing wraps vitest here. Each spawned CLI writes its own raw V8 coverage into `rawRoot` and
+ * `c8 report` merges them afterwards, so a CLI invoked in-process contributes nothing at all --
+ * the code runs, and the measurement cannot see it. Switching the suite to in-process calls cut
+ * the wall time from six minutes to two and, unnoticed for one run, reported line coverage of
+ * 43% against a threshold of 78% for code that was every bit as exercised as before.
+ *
+ * So the two runs answer different questions and pay different prices. `npm test` is the loop you
+ * work in and calls the CLI directly; the coverage gate spawns, and takes the older, slower path
+ * because that is the only one it can measure.
+ */
 const tests = spawnSync(process.execPath, [vitest, 'run', 'test'], {
   cwd: packageRoot,
-  env: { ...process.env, XFORGE_TEST_NODE_V8_COVERAGE: rawRoot },
+  env: { ...process.env, XFORGE_TEST_NODE_V8_COVERAGE: rawRoot, XFORGE_TEST_SPAWN_CLI: '1' },
   stdio: 'inherit',
 });
 

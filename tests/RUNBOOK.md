@@ -17,6 +17,12 @@
 | `tests/live-engine/**`（场景、prompt、matrix） | `npm run test:product` | 两道 harness 闸门在里面跑，见下 |
 | 发版前 | `npm run verify` | build + scaffold 校验 + 全部套件 + 覆盖率阈值 |
 
+**`npm test` 与覆盖率跑的是两条路径，别混淆。** `npm test`（约 2 分钟）**直接调用** CLI；
+覆盖率门禁**必须 spawn**——它靠每个子进程各自写 V8 原始数据、最后 `c8 report` 合并，
+进程内调用一个字节都不产生。所以 `run-coverage.mjs` 自己强制 `XFORGE_TEST_SPAWN_CLI=1`，
+用较慢的老路径，因为那是它唯一测得到的路径。**这一条踩过**：切成进程内后覆盖率报 43%
+（阈值 78%），而代码的实际执行一点没少。
+
 **为什么改 Skill 要实跑**：静态测试能证明 CLI、Gate、控制面按约定工作，
 **证明不了"Skill 写得是否可被理解、Agent 是否遵守它"**——只有让真实模型读一遍才知道。
 这也是这里不再保留录制/回放的原因：回放用录像顶替模型的输出，恰恰跳过了唯一要验证的东西。
