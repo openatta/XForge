@@ -25,6 +25,7 @@ import { executeUpgrade, renderUpgradeText } from './commands/upgrade.js';
 import { XForgeError, diagnostic } from './core/errors.js';
 import { actualGitIdentity, runtimeCliIntegrity } from './core/identity.js';
 import { loadProject } from './core/project-loader.js';
+import { outlineSections } from './core/artifact-markers.js';
 import { detectScaffoldLanguage, parseScaffoldLanguage } from './core/language.js';
 import { envelope, present } from './protocol/envelope.js';
 import type { Diagnostic, Envelope, FlowAuthority, NextAction, ScaffoldLanguage } from './types.js';
@@ -544,7 +545,7 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
     if (project.compatibility.mode === 'portable') nextActions.push({ action: 'resolve-declared-xforge', reason: 'Managed operations require the exact declared CLI identity.' });
     const stateChange = (result.data.change ?? null) as {
       flow?: string;
-      nextArtifact?: { id?: string; outputPaths?: string[]; writePath?: string; missingDependencies?: string[] } | null;
+      nextArtifact?: { id?: string; outputPaths?: string[]; writePath?: string; missingDependencies?: string[]; outline?: string; generates?: string } | null;
       workPackages?: { packages?: Array<{ id: string; inputs: string[]; write_paths: string[]; done_when: string[] }> } | null;
     } | null;
     const stages = flowStages(result.data, stateChange?.flow);
@@ -554,6 +555,12 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
          check-stage Artifact under assurance-write. A Flow that declares no producing Stage for it
          leaves the field off rather than inventing a level. */
       const authority = stages.find((stage) => (stage.produces ?? []).includes(artifactId))?.authority;
+      /* A glob Artifact's outline is a repeating template, not a section set, so it has no literal
+         headings to state. `outlineSections` returns none for one either way; the check keeps the
+         intent visible. */
+      const sections = stateChange.nextArtifact.generates?.includes('*')
+        ? []
+        : outlineSections(stateChange.nextArtifact.outline ?? '');
       nextActions.push({
         action: 'create-artifact',
         type: 'artifact',
@@ -567,6 +574,10 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
         writes: stateChange.nextArtifact.outputPaths?.length
           ? stateChange.nextArtifact.outputPaths
           : [stateChange.nextArtifact.writePath].filter((item): item is string => Boolean(item)),
+        /* The headings verbatim, so the author is not left inferring them from a Markdown fragment.
+           Omitted for a glob Artifact, whose outline is a repeating template rather than a section
+           set, and when the Flow declares none. */
+        ...(sections.length > 0 ? { requiredSections: sections } : {}),
         doneWhen: [`Artifact ${artifactId} exists and satisfies the active Flow instructions.`],
         requiredEvidence: ['xforge state reports the artifact as done for the current Change revision.'],
         reason: `Next Flow Artifact is ${artifactId}.`,

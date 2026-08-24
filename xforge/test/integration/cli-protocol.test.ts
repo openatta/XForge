@@ -308,4 +308,39 @@ describe('a next action states where it writes', () => {
       }
     }
   });
+
+  /*
+   * And which headings it must carry, verbatim.
+   *
+   * `outline` is a Markdown fragment in the Flow and reads as a suggested shape. A cold live run --
+   * one given only a feature request, with nothing said about outlines -- wrote every required
+   * section of its proposal and design, then on its check-report decorated two headings it wanted
+   * to qualify: `## Completeness` became `## Completeness (at the current revision)`. The content
+   * was right and the heading no longer resolved, which is what markers and brief's EXTRACTED
+   * passages are keyed to.
+   */
+  it('states the headings the next Artifact must carry, verbatim', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await rm(path.join(root, 'xforge', 'changes', 'add-feature', 'design.md'));
+
+    const state = await runCli(root, ['state', '--change', 'add-feature']);
+    const design = (state.json.nextActions as any[]).find((item) => item.id === 'design');
+    expect(design).toBeDefined();
+    expect(design.requiredSections).toEqual([
+      'Context', 'Goals and non-goals', 'Decisions and alternatives',
+      'Failure modes and compatibility', 'Migration and rollback', 'Verification notes',
+    ]);
+  });
+
+  /* A delta Spec's outline is a repeating template, so it has no literal section set to state. */
+  it('states no headings for an Artifact whose outline is a repeating template', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await rm(path.join(root, 'xforge', 'changes', 'add-feature', 'specs', 'widget', 'spec.md'));
+
+    const state = await runCli(root, ['state', '--change', 'add-feature']);
+    const specs = (state.json.nextActions as any[]).find((item) => item.id === 'delta-specs');
+    if (specs) expect(specs.requiredSections).toBeUndefined();
+  });
 });

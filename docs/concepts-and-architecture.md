@@ -353,8 +353,8 @@ Gate 重跑后**重新 plan**，再执行原子事务。任何中间错误都保
                         ▼
         ┌──────────────────────────────────────────┐
         │  Action 自带 instruction / outline /      │
-        │  inputs / writes / doneWhen /             │
-        │  requiredEvidence / command(argv)         │
+        │  inputs / writes / requiredSections /     │
+        │  doneWhen / requiredEvidence / command    │
         │  → Skill 严格照它执行                      │
         └───────────────┬──────────────────────────┘
                         │  产出 artifacts
@@ -576,6 +576,17 @@ Adapter 报告 `guidance`、`permissionPolicy`、`runtimeHook.*`、`auditDeliver
 `ArtifactState` 里有个容易踩的区别：`generates` 相对 **Change 目录**，
 `writePath` 才是**从项目根算起**的路径；`nextAction.writes` 由后者构建，
 所以目的地是**被陈述的**，不是被推断的。
+
+`requiredSections` 是 Artifact Action 里那份**逐字**的 `## ` 标题清单。
+`outline` 在 Flow 里是一段 Markdown 片段，读起来像"建议的形状"而不是字面契约——
+一次冷启动实跑（只给功能需求、完全不提 outline）把 proposal 和 design 的每一节都写全了，
+到 check-report 却把两个想加限定语的标题改了写法：`## Completeness` 写成了
+`## Completeness (at the current revision)`。内容是对的，标题解析不到了，
+而 marker 与 brief 的 EXTRACTED 段正是挂在标题上的。
+
+**理由和 `writes` 一样**：CLI 在作者动笔的那一刻就知道答案，
+产品能自己说出来的事实，就不必让任何 Skill 去背。
+写 glob 的 Artifact（delta Spec）不带这个字段——它的 outline 是可重复的模板，没有固定节集。
 
 `blockedBy` 的完整词汇表见 [治理模型 §6](governance-model.md#6-排障blockedby-词汇表)。
 
