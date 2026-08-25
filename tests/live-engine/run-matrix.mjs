@@ -1056,6 +1056,8 @@ if (scenarioConfig.standalone) {
   timeline.outcome = failures.length === 0 ? 'standalone-satisfied' : 'standalone-unsatisfied';
   timeline.cli = setup.cli ?? null;
   timeline.stages.push({ stage: scenarioName, checks: observed });
+  /* On the timeline, not only the envelope: the timeline is the artefact that outlives the run and the one `release:check --require-tag` reads. */
+  timeline.testedBuild = testedBuild();
   await writeFile(path.join(resultsRoot, `${scenarioName}-timeline.json`), `${JSON.stringify(timeline, null, 2)}\n`);
 
   const standalonePassed = failures.length === 0
@@ -1476,6 +1478,8 @@ timeline.reworks = reworks;
 timeline.cli = setup.cli ?? null;
 timeline.friction = summariseFriction();
 timeline.outlineObservations = outlineObservations;
+/* On the timeline, not only the envelope: the timeline is the artefact that outlives the run and the one `release:check --require-tag` reads. */
+timeline.testedBuild = testedBuild();
 await writeFile(path.join(resultsRoot, `${scenarioName}-timeline.json`), `${JSON.stringify(timeline, null, 2)}\n`);
 
 /*
