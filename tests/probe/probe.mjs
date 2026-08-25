@@ -82,8 +82,20 @@ await cp(fixture, projectRoot, { recursive: true });
 /* The Flow the fixture froze is replaced by the one under test -- that difference is the point. */
 await cp(shippedFlowPath, path.join(projectRoot, 'xforge', 'flows', `${manifest.flow}.yaml`));
 
-const caseModule = await import(path.join(here, 'cases', `${manifest.stage}.mjs`));
-await caseModule.prepare?.({ projectRoot, change: manifest.change });
+/*
+ * A Stage with no case of its own still gets measured.
+ *
+ * `cases/<stage>.mjs` holds what is specific to a Stage — the Check Agent keeping its verdict out of
+ * the prose, and so on. Everything else a Stage owes is stated by the Flow already: which Artifacts
+ * it produces, where each one lands, and what sections it declares. `_generic.mjs` reads that, so a
+ * fixture for a Stage nobody has written a case for is worth capturing rather than worth nothing.
+ */
+const casePath = path.join(here, 'cases', `${manifest.stage}.mjs`);
+const caseModule = existsSync(casePath)
+  ? await import(casePath)
+  : await import(path.join(here, 'cases', '_generic.mjs'));
+const caseContext = { projectRoot, change: manifest.change, repositoryRoot, flow: manifest.flow, stage: manifest.stage };
+await caseModule.prepare?.(caseContext);
 
 const resultsRoot = path.join(workRoot, 'probe-results');
 await mkdir(resultsRoot, { recursive: true });
@@ -98,9 +110,26 @@ await writeFile(policyPath, `${JSON.stringify(createLiveEnginePolicy({
   timeoutSeconds: Number(selected['timeout-seconds']),
 }), null, 2)}\n`);
 
-const prompt = selected.prompt
-  ? path.resolve(selected.prompt)
-  : path.join(repositoryRoot, 'tests', 'live-engine', 'scenarios', `${manifest.flow}-cold`, `${manifest.stage}.md`);
+/*
+ * The Stage prompt, from whichever scenario directory actually carries one.
+ *
+ * This used to name `<flow>-cold` and nothing else, which is a directory only `major` has — so a
+ * fixture for any other Flow pointed at a file that does not exist and the probe died after doing
+ * all the setup. Cold is preferred where it exists because it hands the Agent less, and the Flow's
+ * own scenario is the fallback every Flow has.
+ */
+const promptCandidates = selected.prompt
+  ? [path.resolve(selected.prompt)]
+  : [`${manifest.flow}-cold`, manifest.flow].map((scenario) =>
+    path.join(repositoryRoot, 'tests', 'live-engine', 'scenarios', scenario, `${manifest.stage}.md`));
+const prompt = promptCandidates.find((candidate) => existsSync(candidate));
+if (!prompt) {
+  throw new Error([
+    `No prompt for ${manifest.flow}:${manifest.stage}. Looked for:`,
+    ...promptCandidates.map((candidate) => `  ${path.relative(repositoryRoot, candidate)}`),
+    '  Pass --prompt <file> to name one directly.',
+  ].join('\n'));
+}
 
 const engine = spawnSync(process.execPath, [
   path.join(repositoryRoot, 'tests', 'live-engine', 'run-engine.mjs'),
@@ -113,7 +142,7 @@ const engine = spawnSync(process.execPath, [
 
 if (engine.status !== 0) throw new Error(`Engine call failed for ${manifest.flow}:${manifest.stage}. See ${outputPath}.`);
 
-const checks = await caseModule.assert({ projectRoot, change: manifest.change, repositoryRoot });
+const checks = await caseModule.assert(caseContext);
 const failures = checks.filter((check) => !check.ok);
 const run = JSON.parse(await readFile(outputPath, 'utf8'));
 process.stdout.write(`${JSON.stringify({
