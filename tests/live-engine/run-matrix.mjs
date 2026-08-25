@@ -289,7 +289,24 @@ const SCENARIOS = {
       manifest.scaffold.version = AGED_SCAFFOLD_VERSION;
       manifest.scaffold.source.version = AGED_SCAFFOLD_VERSION;
       await writeFile(manifestPath, stringify(manifest));
-      commit(projectRoot, 'Project adapted the unit-tests Gate to its own command');
+
+      /*
+       * Age a Flow too, because a Flow is the asset this whole exercise is about.
+       *
+       * The fixture used to age only the Scaffold, so `xforge/flows/` arrived byte-identical and
+       * the merge never had to touch one -- the run proved the layout did not break and proved
+       * nothing about the case it exists for. This drifts Solid the way a real project drifts:
+       * behind on version, and carrying a governance choice of its own. Adopting the shipped Flow
+       * wholesale would silently drop that choice, which is exactly the failure the Skill is told
+       * to refuse.
+       */
+      const flowPath = path.join(projectRoot, 'xforge', 'flows', 'solid.yaml');
+      const flow = parse(await readFile(flowPath, 'utf8'));
+      flow.metadata.version = 1;
+      for (const policy of flow.governance?.approvalPolicies ?? []) policy.minApprovers = 2;
+      await writeFile(flowPath, stringify(flow));
+
+      commit(projectRoot, 'Project adapted the unit-tests Gate and chose two approvers for Solid');
       /* Stage the upgrade the Skill is asked to complete. */
       const staged = spawnXforge(projectRoot, ['upgrade-scaffold']);
       if (staged.status !== 0) throw new Error(`Could not stage an upgrade for ${'standalone-upgrade-scaffold'}: ${staged.stderr || staged.stdout}`);
@@ -298,10 +315,22 @@ const SCENARIOS = {
     assert: async (projectRoot) => {
       const gatePath = path.join(projectRoot, 'xforge', 'scaffold', 'gates', 'unit-tests.yaml');
       const merged = existsSync(gatePath) ? await readFile(gatePath, 'utf8') : '';
+      /* The Flow half: a governance choice this project made must not be adopted away. */
+      const solidPath = path.join(projectRoot, 'xforge', 'flows', 'solid.yaml');
+      const solid = existsSync(solidPath) ? parse(await readFile(solidPath, 'utf8')) : null;
+      const approverCounts = (solid?.governance?.approvalPolicies ?? []).map((policy) => policy.minApprovers);
       const stagedLeft = readdirSync(path.join(projectRoot, 'xforge')).filter((name) => name.startsWith('scaffold-'));
       return [
         /* The whole point: the project's own command survived a merge that also adopted the release. */
         { name: 'kept-project-command', ok: merged.includes(PROJECT_ADAPTED_TEST_COMMAND[0]), detail: `expected ${PROJECT_ADAPTED_TEST_COMMAND.join(' ')} to survive` },
+        /*
+         * A Flow states how many approvals a Stage needs. This project chose two; the shipped Flow
+         * asks for one. Adopting the incoming file wholesale would drop that choice without anyone
+         * deciding to, which is the failure the merge is told to refuse -- and the exact shape of
+         * the drift a real team reported after running an entire Major on a Flow nobody had
+         * compared.
+         */
+        { name: 'kept-project-governance', ok: approverCounts.length > 0 && approverCounts.every((count) => count === 2), detail: `minApprovers ${JSON.stringify(approverCounts)}, expected every policy to stay at 2` },
         { name: 'upgrade-completed', ok: stagedLeft.length === 0, detail: stagedLeft.join(', ') || 'no staged directory left behind' },
       ];
     },
@@ -415,6 +444,28 @@ function declaredVerification(projectRoot, gate) {
     const entry = (manifest?.verification?.[gate] ?? []).find((item) => Array.isArray(item?.command));
     return entry?.command ?? null;
   } catch { return null; }
+}
+
+/**
+ * The repository commit this run exercised, and whether it was exercised cleanly.
+ *
+ * Every result already carried its cost, its token count and the limits it ran under, and none of
+ * them said *which build* produced it. So a run could validate one commit while the release tag
+ * pointed at another, and nothing in the artefact would show it. That is not hypothetical: three
+ * Flow scenarios validated one commit, a feature landed afterwards, the tag moved to include it,
+ * and the only thing between that and a publish was somebody noticing.
+ *
+ * `dirty` carries as much weight as the hash. A run against uncommitted work is not a run against
+ * any commit at all, and reporting HEAD alone would claim otherwise.
+ */
+function testedBuild() {
+  try {
+    const head = run('git', ['rev-parse', 'HEAD'], repositoryRoot).trim();
+    const status = run('git', ['status', '--porcelain'], repositoryRoot).trim();
+    return { commit: head, dirty: status.length > 0 };
+  } catch {
+    return { commit: null, dirty: null };
+  }
 }
 
 function commit(projectRoot, message) {
@@ -1021,6 +1072,7 @@ if (scenarioConfig.standalone) {
     project: projectRoot,
     suiteTokens: finalPolicy.tokens ?? null,
     budgetAccountingComplete: finalPolicy.budgetAccountingComplete,
+    testedBuild: testedBuild(),
     policyPath,
   }, null, 2)}\n`);
   process.exitCode = standalonePassed ? 0 : 1;
@@ -1471,6 +1523,7 @@ process.stdout.write(`${JSON.stringify({
      whichever engine served the request, so it is not comparable across runs. */
   suiteTokens: finalPolicy.tokens ?? null,
   budgetAccountingComplete: finalPolicy.budgetAccountingComplete,
+  testedBuild: testedBuild(),
   policyPath,
 }, null, 2)}\n`);
 process.exitCode = passed ? 0 : 1;

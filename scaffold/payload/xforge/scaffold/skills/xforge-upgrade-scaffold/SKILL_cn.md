@@ -8,7 +8,8 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 - 先读 `xforge/scaffold-<version>/MERGE.md` 和 `plan.json`。它们已经把整个工作面说清楚，不需要靠翻脚手架去发现。
 - `identical` 的文件已成定局，**不要打开它们**——计划存在的意义，就是让工作量是那几个有差异的文件，而不是那七十八个没差异的。
-- `xforge/scaffold/**` 是项目的，`xforge/scaffold-<version>/**` 是发行版的。**默认谁也不压过谁。**
+- `xforge/scaffold/**` 与 `xforge/flows/**` 是项目的，`xforge/scaffold-<version>/**` 是发行版的，且按合并去向组织（`scaffold/` 进前者，`flows/` 进后者）。**默认谁也不压过谁。**
+- **Flow 永远不是例行采纳。** 它规定一个 Stage 需要几个审批、blocker 把工作退回哪里——那是项目自己的治理规则。只报告差异，交由人决定；采纳它还会作废该 Flow 上所有在途 Change 的审批。
 - `xforge/.rollback/**` 是还原点，绝不写入。
 - 用 `xforge state --kind skills`（以及 `--kind rules`）读取本项目当前选中了什么，不要去解析 `xforge/manifest.yaml`。选中了什么是 CLI 报告的**已解析事实**，而那个文件只是它的输入之一。
 - `manifest.scaffold.version` 跟随的是脚手架的**内容**，只有 `upgrade-scaffold --complete` 会推进它；因此「CLI 比脚手架新」是正常状态，不是故障。若 `xforge upgrade-scaffold` 因声明的 CLI 与运行的 CLI 不一致而拒绝，先跑 `xforge update`：它只动 CLI 那个版本号，脚手架的版本号仍停在文件所在的位置。

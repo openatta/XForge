@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
@@ -46,6 +46,53 @@ if (requireTag) {
   const head = git(['rev-parse', 'HEAD']).trim();
   const taggedCommit = git(['rev-list', '-n', '1', expectedTag]).trim();
   assert(head === taggedCommit, `${expectedTag} does not point to HEAD.`);
+  assertLiveEngineCoversHead(head);
+}
+
+/**
+ * Refuses to release a build the live scenarios did not actually exercise.
+ *
+ * Static suites run in the same breath as the release check, so they always describe the commit
+ * being released. Live runs do not: they take the better part of an hour, they are started by hand,
+ * and their results sit in `tests/.tmp/live-engine-results/` outliving whatever came next. So the
+ * ordinary sequence -- run the Flows, decide the release is good, land one more change, move the
+ * tag -- silently produces a release nobody has driven a model against.
+ *
+ * That happened here. Three Flow scenarios validated one commit, a feature landed after them, the
+ * tag moved to include it, and the only thing between that and a publish was a person noticing.
+ * A check is cheaper than noticing.
+ *
+ * Every shipped Flow must have a result, each recorded against this exact commit and against a
+ * clean tree, because a run over uncommitted work describes no commit at all. Missing results are
+ * refused as loudly as stale ones: "we never ran it" and "we ran it against something else" are the
+ * same failure from the reader's side.
+ */
+function assertLiveEngineCoversHead(head) {
+  const resultsRoot = 'tests/.tmp/live-engine-results';
+  const required = readdirSync('scaffold/payload/xforge/flows')
+    .filter((name) => name.endsWith('.yaml'))
+    .map((name) => name.slice(0, -'.yaml'.length))
+    .sort();
+
+  const problems = [];
+  for (const scenario of required) {
+    const file = path.join(resultsRoot, `${scenario}-timeline.json`);
+    let timeline;
+    try { timeline = JSON.parse(readFileSync(file, 'utf8')); }
+    catch { problems.push(`${scenario}: no live-engine result at ${file}`); continue; }
+    const built = timeline.testedBuild;
+    if (!built?.commit) { problems.push(`${scenario}: its result records no commit, so it cannot be matched to this release`); continue; }
+    if (built.dirty) { problems.push(`${scenario}: ran against a dirty worktree, which describes no commit`); continue; }
+    if (built.commit !== head) problems.push(`${scenario}: ran against ${built.commit.slice(0, 12)}, released commit is ${head.slice(0, 12)}`);
+  }
+
+  assert(problems.length === 0, [
+    'The live-engine runs do not cover the commit being released.',
+    ...problems.map((line) => `  - ${line}`),
+    '',
+    '  Re-run the affected scenarios against this commit:',
+    ...required.map((scenario) => `    node tests/live-engine/run-matrix.mjs --scenario ${scenario} --cli-source local`),
+  ].join('\n'));
 }
 
 run(process.execPath, ['scripts/privacy-check.mjs']);

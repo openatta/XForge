@@ -136,7 +136,7 @@ resources:
     kind: skill
     license: project
     version: "1"
-  - digest: 0a4898fa40834ef75bd43d680ff1e9b5d3781a4605ff7391204fd9922d6969ef
+  - digest: b187d075ddf40a24217c982fb7a3aa6bad6a0becf354299aa3d4512199fd1c25
     id: xforge-upgrade-scaffold
     kind: skill
     license: project
@@ -160,7 +160,7 @@ targets:
   - opencode
   - github-copilot
 xforge:
-  integrity: sha256:82fc375b5649a1b695c7d2a0318028f3fab20548e790062e19e457b5a5373b6a
+  integrity: sha256:e0770b3a0e6048d06534073f73f9c0fbe30ff356a47564911859a3ae19390f6d
   package: "@xforge/cli"
   protocol: "2"
   source: npm

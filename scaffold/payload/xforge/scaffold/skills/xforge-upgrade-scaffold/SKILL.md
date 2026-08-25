@@ -8,7 +8,8 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 - Read `xforge/scaffold-<version>/MERGE.md` and `plan.json` first. They name the whole job; nothing here requires reading the Scaffold to discover it.
 - The `identical` files are already settled. Do not open them — the plan exists so the work is the few files that differ, not the seventy-eight that do not.
-- `xforge/scaffold/**` is the project's; `xforge/scaffold-<version>/**` is the release's. Neither is authoritative over the other by default.
+- `xforge/scaffold/**` and `xforge/flows/**` are the project's; `xforge/scaffold-<version>/**` is the release's, laid out the way it merges (`scaffold/` into the first, `flows/` into the second). Neither side is authoritative over the other by default.
+- A Flow is never a routine adopt. It states how many approvals a Stage needs and where a blocker sends the work back — the project's own governance. Report what differs and leave the decision to a person; adopting one also invalidates the approvals of any Change still running under it.
 - `xforge/.rollback/**` is the restore point. Never write to it.
 - Read what this project currently selects with `xforge state --kind skills` (and `--kind rules`), not by parsing `xforge/manifest.yaml`. What is selected is a resolved fact the CLI reports; the file is one input to it.
 - `manifest.scaffold.version` tracks the Scaffold's *content* and only `upgrade-scaffold --complete` advances it, so a project whose CLI is newer than its Scaffold is in a normal state, not a broken one. If `xforge upgrade-scaffold` refuses because the declared CLI does not match the running one, run `xforge update` first: it moves the CLI pin alone and leaves the Scaffold pin where the files are.
