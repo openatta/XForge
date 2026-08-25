@@ -106,6 +106,14 @@ export interface Manifest {
     policies?: string[];
     hooks: string[];
     gates: string[];
+    /**
+     * Which Flows this project runs, and therefore which ones an upgrade may propose changes to.
+     *
+     * Optional because every project initialised before Flows joined the managed set has no such
+     * list, and a Flow it never declared is one the upgrade reports as unselected rather than one
+     * it silently starts maintaining.
+     */
+    flows?: string[];
     mcpServers?: string[];
   };
   scripts?: string[];

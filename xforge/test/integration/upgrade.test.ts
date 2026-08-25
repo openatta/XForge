@@ -41,6 +41,57 @@ async function agedProject(): Promise<string> {
   return root;
 }
 
+/*
+ * Flows are managed now, and this is the case that was structurally impossible before.
+ *
+ * `xforge/flows/` sits beside `xforge/scaffold/` rather than inside it, and the upgrade read only
+ * the second, so a Flow was never brought, never diffed, and never mentioned. A project ran
+ * whatever Flow it was initialised with for as long as it existed while the upgrade log reported
+ * that every file the plan named now matched -- true, of a plan that could not name it. One team
+ * completed an entire Major three releases behind its own toolchain and found out by reading the
+ * npm payload by hand.
+ *
+ * Bringing it is still not adopting it. A Flow says how many approvals a Stage needs and where a
+ * blocker sends the work back; the upgrade stages the incoming copy and the project decides.
+ */
+describe('staging an upgrade that changes a Flow', () => {
+  it('classifies a drifted Flow and stages the incoming one without touching the project copy', async () => {
+    const root = await fixture();
+    const flowPath = path.join(root, 'xforge', 'flows', 'solid.yaml');
+    const original = await readFile(flowPath, 'utf8');
+    /* An older Flow, the shape every project initialised before a Flow moved actually has. */
+    await writeFile(flowPath, original.replace(/^  version: \d+$/m, '  version: 1'), 'utf8');
+
+    const staged = await runCli(root, ['upgrade-scaffold']);
+    expect(staged.code, JSON.stringify(staged.json?.diagnostics)).toBe(0);
+
+    const entry = (staged.json.data.plan.entries as any[]).find((item) => item.path === 'xforge/flows/solid.yaml');
+    expect(entry, 'the plan never mentioned the Flow').toBeDefined();
+    expect(entry.disposition).toBe('changed');
+
+    /* Staged copies mirror their destination, so where each one belongs is readable from its path. */
+    const stagedRoot = staged.json.data.staged;
+    expect(await readFile(path.join(root, ...stagedRoot.split('/'), 'flows', 'solid.yaml'), 'utf8'))
+      .not.toContain('  version: 1');
+
+    /* And the project's own Flow is untouched until somebody merges it. */
+    expect(await readFile(flowPath, 'utf8')).toContain('  version: 1');
+  });
+
+  it('reports a Flow the project does not declare rather than adopting it', async () => {
+    const root = await fixture();
+    await updateYaml(root, 'xforge/manifest.yaml', (manifest: any) => {
+      manifest.scaffold.flows = manifest.scaffold.flows.filter((id: string) => id !== 'major');
+    });
+
+    const staged = await runCli(root, ['upgrade-scaffold']);
+    expect(staged.code).toBe(0);
+    const unselected = (staged.json.data.plan.unselected as any[]).filter((item) => item.kind === 'flow');
+    expect(unselected.map((item) => item.id)).toEqual(['major']);
+    expect(unselected[0].path).toBe('xforge/flows/major.yaml');
+  });
+});
+
 describe('staging an upgrade', () => {
   it('classifies the Scaffold and writes nothing into it', async () => {
     const root = await agedProject();

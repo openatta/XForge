@@ -171,7 +171,8 @@ xforge [--root <path>] doctor [--kind <kind>] [--strict] [--text]
 Flow 漂移会报成两条不同的 `info`，因为修法不同：
 
 - `XFORGE_DOCTOR_FLOW_VERSION_DRIFT` —— 本地版本落后出厂版本。常见情形，
-  `upgrade-scaffold` 够不着 flows，所以这个差异会一直存在，直到有人决定采纳或声明保留。
+  跑 `xforge upgrade-scaffold` 会把出厂 Flow 暂存到你的旁边，由你决定是否采纳——
+  Flow 规定了一个 Stage 需要几个审批、blocker 把工作退回哪里，所以它只被**带来**，不会被替你采纳。
 - `XFORGE_DOCTOR_FLOW_CONTENT_DRIFT` —— **版本号相同但内容不同**。要么是有人就地改了 Flow
   却没动版本号，要么它来自一个用同一编号发出不同内容的构建。**只比版本号看不见这一种**，
   而两边号一致，所以其它任何检查也不会提它。

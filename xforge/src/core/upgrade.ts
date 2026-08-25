@@ -46,6 +46,29 @@ export interface UpgradePlan {
 }
 
 export const SCAFFOLD_PREFIX = 'xforge/scaffold/';
+export const FLOWS_PREFIX = 'xforge/flows/';
+
+/**
+ * Every tree an upgrade proposes changes to, and the one root they are staged beneath.
+ *
+ * `xforge/scaffold/` was the whole managed set, so a Flow -- which lives beside it rather than
+ * inside it -- was never brought, never diffed, and never mentioned. A project ran whatever Flow it
+ * was initialised with for as long as it existed, and the upgrade log said "every file the plan
+ * named now matches" of a plan that could not name them. `SELECTABLE` has carried a `flow` row all
+ * along, pointing at `xforge/scaffold/flows/`, a directory that has never existed in any payload:
+ * the intent was written down and the wiring was not.
+ *
+ * Adoption is still nobody's decision but the project's. A Flow states how many approvals a Stage
+ * needs and where a blocker sends the work back; bringing the file is not the same as adopting it,
+ * and `complete` measures what the merge kept rather than assuming it kept everything.
+ */
+export const MANAGED_PREFIXES = [SCAFFOLD_PREFIX, FLOWS_PREFIX] as const;
+
+/** The root every managed tree hangs from, and the prefix staged copies are keyed against. */
+export const MANAGED_ROOT = 'xforge/';
+
+export const isManagedPath = (relative: string): boolean =>
+  MANAGED_PREFIXES.some((prefix) => relative.startsWith(prefix));
 
 /**
  * Classifies every Scaffold file, by content alone.
@@ -81,13 +104,15 @@ export function classifyScaffold(
  * list selects it. Skills are a directory of files; everything else is one file per id.
  */
 const SELECTABLE = [
-  { kind: 'skill', directory: 'skills', list: 'skills', directoryAsset: true },
-  { kind: 'rule', directory: 'rules', list: 'rules', directoryAsset: false },
-  { kind: 'gate', directory: 'gates', list: 'gates', directoryAsset: false },
-  { kind: 'flow', directory: 'flows', list: 'flows', directoryAsset: false },
-  { kind: 'hook', directory: 'hooks', list: 'hooks', directoryAsset: false },
-  { kind: 'policy', directory: 'policies', list: 'policies', directoryAsset: false },
-  { kind: 'mcpServer', directory: 'mcp-servers', list: 'mcpServers', directoryAsset: false },
+  { kind: 'skill', prefix: SCAFFOLD_PREFIX, directory: 'skills', list: 'skills', directoryAsset: true },
+  { kind: 'rule', prefix: SCAFFOLD_PREFIX, directory: 'rules', list: 'rules', directoryAsset: false },
+  { kind: 'gate', prefix: SCAFFOLD_PREFIX, directory: 'gates', list: 'gates', directoryAsset: false },
+  /* Flows sit beside the Scaffold rather than inside it, which is why this row selected nothing for
+     as long as it assumed otherwise. */
+  { kind: 'flow', prefix: 'xforge/', directory: 'flows', list: 'flows', directoryAsset: false },
+  { kind: 'hook', prefix: SCAFFOLD_PREFIX, directory: 'hooks', list: 'hooks', directoryAsset: false },
+  { kind: 'policy', prefix: SCAFFOLD_PREFIX, directory: 'policies', list: 'policies', directoryAsset: false },
+  { kind: 'mcpServer', prefix: SCAFFOLD_PREFIX, directory: 'mcp-servers', list: 'mcpServers', directoryAsset: false },
 ] as const;
 
 /**
@@ -101,10 +126,10 @@ const SELECTABLE = [
 export function unselectedAssets(manifest: Manifest, incoming: Map<string, Buffer>): UnselectedAsset[] {
   const scaffold = (manifest.scaffold ?? {}) as Record<string, unknown>;
   const found: UnselectedAsset[] = [];
-  for (const { kind, directory, list, directoryAsset } of SELECTABLE) {
+  for (const { kind, prefix: root, directory, list, directoryAsset } of SELECTABLE) {
     const selected = new Set((Array.isArray(scaffold[list]) ? scaffold[list] as string[] : []));
     const ids = new Set<string>();
-    const prefix = `${SCAFFOLD_PREFIX}${directory}/`;
+    const prefix = `${root}${directory}/`;
     for (const relative of incoming.keys()) {
       if (!relative.startsWith(prefix)) continue;
       const rest = relative.slice(prefix.length);
@@ -211,9 +236,10 @@ export function adoptionReport(plan: UpgradePlan, merged: Map<string, Buffer>): 
 }
 
 export function scaffoldRelative(payloadPath: string): string | null {
-  return payloadPath.startsWith(SCAFFOLD_PREFIX) ? payloadPath : null;
+  return isManagedPath(payloadPath) ? payloadPath : null;
 }
 
-export function stagedPathFor(version: string, scaffoldPath: string): string {
-  return path.posix.join(stagedDirectory(version), scaffoldPath.slice(SCAFFOLD_PREFIX.length));
+/** Staged copies mirror their destination under `xforge/`, so where each one belongs is legible. */
+export function stagedPathFor(version: string, managedPath: string): string {
+  return path.posix.join(stagedDirectory(version), managedPath.slice(MANAGED_ROOT.length));
 }

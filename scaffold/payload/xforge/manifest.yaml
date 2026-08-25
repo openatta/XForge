@@ -55,6 +55,10 @@ scaffold:
     - constitution-check
     - unit-tests
     - security-scan
+  flows:
+    - quick
+    - solid
+    - major
   mcpServers:
     - enterprise-approvals
 scripts:

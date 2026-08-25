@@ -479,7 +479,7 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
         scope: 'flows',
         code: 'XFORGE_DOCTOR_FLOW_VERSION_DRIFT',
         id: name,
-        message: `Flow ${name} is at version ${local}; ${CLI_NAME}@${CLI_VERSION} ships version ${shipped.version}. Flows live outside xforge/scaffold/, so upgrade-scaffold never proposes changes to them and this difference will persist through every upgrade. Compare the two and either adopt the shipped Flow or record at the top of ${relative} that the difference is deliberate, so the next reader does not take it for a missed upgrade.`,
+        message: `Flow ${name} is at version ${local}; ${CLI_NAME}@${CLI_VERSION} ships version ${shipped.version}. Run xforge upgrade-scaffold to stage the shipped Flow beside yours and decide -- a Flow states how many approvals a Stage needs and where a blocker sends the work back, so it is brought, never adopted for you. If the difference is deliberate, record that at the top of ${relative} so the next reader does not take it for a missed upgrade.`,
         path: relative,
         severity: 'info',
       });

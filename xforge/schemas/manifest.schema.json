@@ -128,6 +128,9 @@
         "gates": {
           "$ref": "#/$defs/idList"
         },
+        "flows": {
+          "$ref": "#/$defs/idList"
+        },
         "mcpServers": {
           "$ref": "#/$defs/idList"
         }
@@ -445,7 +448,7 @@
     },
     "semver": {
       "type": "string",
-      "description": "Shared by every field that pins an npm-published @xforge/cli release: xforge.version, scaffold.version, and scaffold.source.version. All three are written from the same CLI_VERSION by `xforge update`'s declared-version reconciliation, so they must accept the same shape \u2014 including prereleases, which the CLI does publish.",
+      "description": "Shared by every field that pins an npm-published @xforge/cli release: xforge.version, scaffold.version, and scaffold.source.version. All three are written from the same CLI_VERSION by `xforge update`'s declared-version reconciliation, so they must accept the same shape — including prereleases, which the CLI does publish.",
       "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$"
     },
     "npmScaffoldSource": {

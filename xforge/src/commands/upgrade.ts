@@ -9,7 +9,7 @@ import { assertManaged, writeScaffoldVersion } from '../core/project-loader.js';
 import { safeResolve } from '../core/path-safety.js';
 import { loadBundledScaffold } from '../core/bundled-scaffold.js';
 import {
-  ROLLBACK_MANIFEST, SCAFFOLD_PREFIX, UPGRADE_LOG, adoptionReport, buildUpgradePlan, digestMap,
+  MANAGED_PREFIXES, MANAGED_ROOT, ROLLBACK_MANIFEST, UPGRADE_LOG, adoptionReport, buildUpgradePlan, digestMap, isManagedPath,
   driftedPaths, rollbackDirectory, stagedDirectory,
   type RollbackManifest, type UpgradePlan,
 } from '../core/upgrade.js';
@@ -68,10 +68,25 @@ async function readTree(root: string, relative: string, keyPrefix: string): Prom
   return files;
 }
 
-const currentScaffold = (root: string) => readTree(root, 'xforge/scaffold', SCAFFOLD_PREFIX);
+/**
+ * Every managed tree the project currently has, keyed by its project-relative path.
+ *
+ * Two trees now, not one: `xforge/scaffold/` and `xforge/flows/`. A Flow lives beside the Scaffold
+ * rather than inside it, so for as long as this read one directory a Flow was never brought,
+ * diffed, or mentioned -- and the upgrade log's "every file the plan named now matches" was true of
+ * a plan that could not name it.
+ */
+async function currentManaged(root: string): Promise<Map<string, Buffer>> {
+  const files = new Map<string, Buffer>();
+  for (const prefix of MANAGED_PREFIXES) {
+    const relative = prefix.slice(0, -1);
+    for (const [key, content] of await readTree(root, relative, prefix)) files.set(key, content);
+  }
+  return files;
+}
 
-function incomingScaffold(files: Map<string, Buffer>): Map<string, Buffer> {
-  return new Map([...files.entries()].filter(([relative]) => relative.startsWith(SCAFFOLD_PREFIX)));
+function incomingManaged(files: Map<string, Buffer>): Map<string, Buffer> {
+  return new Map([...files.entries()].filter(([relative]) => isManagedPath(relative)));
 }
 
 function gitHead(root: string): string | null {
@@ -142,8 +157,8 @@ async function stage(project: ProjectContext, options: UpgradeOptions): Promise<
     ));
   }
 
-  const current = await currentScaffold(project.root);
-  const incoming = incomingScaffold(bundle.files);
+  const current = await currentManaged(project.root);
+  const incoming = incomingManaged(bundle.files);
   const plan = buildUpgradePlan({ fromVersion, toVersion, manifest: project.manifest, current, incoming });
   /*
    * The Manifest says the Scaffold is already this version, and the files say otherwise.
@@ -173,7 +188,7 @@ async function stage(project: ProjectContext, options: UpgradeOptions): Promise<
   const snapshot = rollbackDirectory(fromVersion);
   await rm(path.join(project.root, 'xforge', '.rollback'), { recursive: true, force: true });
   for (const [relative, content] of current) {
-    const target = path.posix.join(snapshot, relative.slice(SCAFFOLD_PREFIX.length));
+    const target = path.posix.join(snapshot, relative.slice(MANAGED_ROOT.length));
     await atomicWrite(project.root, target, content);
   }
   const manifestRecord: RollbackManifest = {
@@ -184,7 +199,7 @@ async function stage(project: ProjectContext, options: UpgradeOptions): Promise<
   changes.push({ action: 'create', path: snapshot, source: `snapshot:${fromVersion}` });
 
   for (const [relative, content] of incoming) {
-    const target = path.posix.join(staged, relative.slice(SCAFFOLD_PREFIX.length));
+    const target = path.posix.join(staged, relative.slice(MANAGED_ROOT.length));
     await atomicWrite(project.root, target, content);
     changes.push({ action: 'create', path: target, digest: sha256(content), source: `npm:${bundle.package}@${toVersion}:scaffold` });
   }
@@ -207,7 +222,7 @@ async function complete(project: ProjectContext, options: UpgradeOptions): Promi
     ));
   }
   const staged = stagedDirectory(record.toVersion);
-  const stagedFiles = await readTree(project.root, staged, SCAFFOLD_PREFIX);
+  const stagedFiles = await readTree(project.root, staged, MANAGED_ROOT);
   if (stagedFiles.size === 0 && record.completedAt) {
     throw new XForgeError(diagnostic(
       'XFORGE_UPGRADE_ALREADY_COMPLETE',
@@ -217,7 +232,7 @@ async function complete(project: ProjectContext, options: UpgradeOptions): Promi
   }
 
   const planText = await readFile(path.join(project.root, ...staged.split('/'), 'plan.json'), 'utf8').catch(() => null);
-  const merged = await currentScaffold(project.root);
+  const merged = await currentManaged(project.root);
   const report = planText
     ? adoptionReport(JSON.parse(planText) as UpgradePlan, merged)
     : { considered: 0, matching: 0, notMatching: [] as string[] };
@@ -263,7 +278,7 @@ async function rollback(project: ProjectContext, options: UpgradeOptions): Promi
     ));
   }
 
-  const current = await currentScaffold(project.root);
+  const current = await currentManaged(project.root);
   /*
    * Before the merge is complete there is no `after` baseline, so the comparison is against the
    * pre-upgrade state and any difference is the merge itself — which is exactly what abandoning an
@@ -280,7 +295,7 @@ async function rollback(project: ProjectContext, options: UpgradeOptions): Promi
   }
 
   const snapshot = rollbackDirectory(record.fromVersion);
-  const saved = await readTree(project.root, snapshot, SCAFFOLD_PREFIX);
+  const saved = await readTree(project.root, snapshot, MANAGED_ROOT);
   if (saved.size === 0) {
     throw new XForgeError(diagnostic(
       'XFORGE_UPGRADE_ROLLBACK_MISSING',
@@ -397,7 +412,7 @@ export function renderPlanText(plan: UpgradePlan, staged: string, snapshot: stri
 export function renderMergePrompt(plan: UpgradePlan, staged: string, snapshot: string): string {
   const changed = plan.entries.filter((entry) => entry.disposition === 'changed').map((entry) => entry.path);
   const added = plan.entries.filter((entry) => entry.disposition === 'added').map((entry) => entry.path);
-  const stagedFor = (relative: string) => path.posix.join(staged, relative.slice(SCAFFOLD_PREFIX.length));
+  const stagedFor = (relative: string) => path.posix.join(staged, relative.slice(MANAGED_ROOT.length));
   return [
     `# Merge the ${plan.toVersion} Scaffold into this project`,
     ``,
