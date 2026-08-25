@@ -67,6 +67,16 @@ export function flowPlanningArtifactIds(flow: Flow): Set<string> {
     .flatMap((stage) => stage.produces));
 }
 
+/**
+ * `tracks` is legacy-only and stays in the shape on purpose.
+ *
+ * It names a v1alpha1 Flow's task-tracker file, which `core/archiver.ts` still reads behind an
+ * `if (tracker)` to refuse an archive with tasks left open. A Stage Flow has no such file — Stages
+ * carry that meaning now — so it is null there, and null is the value `archiver` reads as "this
+ * Flow does not track tasks". Dropping the key rather than nulling it would change the documented
+ * `xforge state` shape (`docs/concepts-and-architecture.md` prints `apply: { ready, requires,
+ * tracks }`) for the v1alpha1 Flows that still populate it. It goes when v1alpha1 goes, not before.
+ */
 export function flowApplyOperation(flow: Flow): { requires: string[]; tracks: string | null } {
   if (!isStageFlow(flow)) return flow.operations.apply;
   const apply = flow.stages.find((stage) => stage.id === 'apply');
@@ -150,6 +160,29 @@ function stageGraphDiagnostics(flow: StageFlow, filePath: string): Diagnostic[] 
       }
       if (dependency === stage.id && stage.requires.includes(dependency)) {
         diagnostics.push(diagnostic('XFORGE_FLOW_DEPENDENCY_CYCLE', `Stage ${stage.id} requires itself.`, filePath));
+      }
+    }
+    /*
+     * A `requires` pointing at a Stage that comes later, which the cycle check cannot see.
+     *
+     * `A requires B` where B sits further down `stages` is perfectly acyclic, so the DFS above walks
+     * it and says nothing. But a Change moves through `stages` in array order — `legalTransitionTargets`
+     * offers the next index plus `reworkTo` and nothing else — so B has not run when A is reached and
+     * never will have. `flowArtifacts` then hands every Artifact A produces a dependency on B's
+     * output, and those Artifacts sit at `blocked` for the life of the Change: `nextArtifact` skips
+     * them, `apply.ready` cannot become true, and no Gate, condition or approval is involved in any
+     * of it. The Flow author sees a Change that stops advancing and no diagnostic anywhere, because
+     * every check that exists is satisfied. This is the one that says which way the arrow points.
+     */
+    const stageIndex = stageIds.indexOf(stage.id);
+    for (const dependency of stage.requires) {
+      const dependencyIndex = stageIds.indexOf(dependency);
+      if (dependencyIndex > stageIndex) {
+        diagnostics.push(diagnostic(
+          'XFORGE_FLOW_STAGE_FORWARD_DEPENDENCY',
+          `Stage ${stage.id} requires Stage ${dependency}, which comes after it. A Change walks ${filePath.split('/').pop()}'s Stages in the order they are listed, so ${dependency} cannot have run by the time ${stage.id} is reached, and every Artifact ${stage.id} produces stays blocked on an output that never arrives. Either move ${dependency} before ${stage.id}, or say the relationship with \`reworkTo\` if what was meant is that ${stage.id} can be returned to.`,
+          filePath,
+        ));
       }
     }
   }

@@ -306,13 +306,32 @@ schema 的 `oneOf` 里仍留着裸映射形态，但**所有读取方都会忽�
 
 **依赖某个 marker 的规则，在 Flow 未声明该 marker 时什么也不报告，绝不退化为猜测。**
 
-### 2.8 `outline` 由谁检查：没有人
+### 2.8 `outline` 由谁检查：默认没有人，除非你开
 
-没有任何 Gate、`check` 或归档步骤会校验 Artifact 是否包含 `outline` 声明的小节。
-一次实测中，Proposal 缺少 `quick.yaml` 声明的一个小节，从 Propose 一路到归档看到的都是
-`Structural validation passed.`
+`outline` 默认是写作指引，不是要求。一次实测中，Proposal 缺少 `quick.yaml` 声明的一个小节，
+从 Propose 一路到归档看到的都是 `Structural validation passed.`
 
-**如果你需要某个小节是必需的，给它一个带 `minOccurrences` 的 marker。那是唯一会让 Change 失败的机制。**
+要让它被检查，在那个 Artifact 上写 `validator: outline`：
+
+```yaml
+artifacts:
+  - id: proposal
+    # ... generates / description / instruction 照常
+    validator: outline        # 缺小节时报 XFORGE_ARTIFACT_OUTLINE_SECTION_MISSING
+    outline: |
+      ## 背景
+      ## 方案
+```
+
+**这是 warning，不阻塞 Change**：它告诉你有小节没写，锚在那些小节上的 marker 或引用会取不到东西。
+只查遗漏 —— `outline` 没列的额外 `##` 小节不报告。
+
+随包的三个 Flow **都没有声明 `validator: outline`**，能力与采用决策是分开的：
+`quick` 的 `proposal` 声明了 6 个小节、`assurance` 5 个，一旦开启，每个 Change 都得把它们写全。
+那是项目自己的取舍，不该由随包默认替它做主。
+
+**如果你需要某个小节是硬性必需、缺了就让 Change 失败，仍然要给它一个带 `minOccurrences` 的
+marker。那是唯一会让 Change 失败的机制。**
 
 ### 2.9 让 Flow 可被选用
 

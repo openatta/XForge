@@ -66,6 +66,40 @@ describe('Flow artifact graph', () => {
   });
 
   /*
+   * A `requires` pointing forward, which every existing check walks straight past.
+   *
+   * `design requires check` is acyclic, so the DFS says nothing. But a Change moves through
+   * `stages` in array order, so `check` cannot have run when `design` is reached: every Artifact
+   * `design` produces stays blocked on an output that never arrives, `nextArtifact` skips them, and
+   * `apply.ready` can never become true. No Gate, condition or approval is involved, so the author
+   * sees a Change that stops advancing and not one diagnostic anywhere.
+   */
+  it('reports a stage that requires a stage declared after it', async () => {
+    const root = await fixture();
+    await updateYaml(root, 'xforge/flows/solid.yaml', (flow: any) => {
+      flow.stages.find((stage: any) => stage.id === 'design').requires = ['check'];
+    });
+    const project = await loadProject(root);
+    const { diagnostics } = await loadFlows(project);
+    const finding = diagnostics.find((item) => item.code === 'XFORGE_FLOW_STAGE_FORWARD_DEPENDENCY');
+    expect(finding, JSON.stringify(diagnostics)).toBeTruthy();
+    /* Names both ends and the repair, because "which way does the arrow point" is the whole
+       question and a bare "invalid dependency" would leave it unanswered. */
+    expect(finding!.message).toContain('design');
+    expect(finding!.message).toContain('check');
+    expect(finding!.message).toContain('reworkTo');
+  });
+
+  /* A new diagnostic that fires on the shipped Flows would teach every project to skim past the
+     report. All three declare strictly backward `requires`, and this pins that. */
+  it('reports nothing of the kind for the Flows the release ships', async () => {
+    const root = await fixture();
+    const project = await loadProject(root);
+    const { diagnostics } = await loadFlows(project);
+    expect(diagnostics.filter((item) => item.code === 'XFORGE_FLOW_STAGE_FORWARD_DEPENDENCY')).toEqual([]);
+  });
+
+  /*
    * Check is the Stage that holds `check-findings` and `constitution-check`, so a violation found
    * during implementation has to be answerable there. `legalTransitionTargets` offers the next Stage
    * plus `reworkTo` and nothing else, and Major listed `[propose, clarify, design]` — so Apply could

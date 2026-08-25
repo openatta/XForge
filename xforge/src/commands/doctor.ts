@@ -411,12 +411,13 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
   /*
    * Flow versions the project runs, against the versions this CLI ships.
    *
-   * `xforge/flows/` is outside `xforge/scaffold/`, which is the only tree `upgrade-scaffold` walks,
-   * so a Flow never moves when a project upgrades and nothing has ever said so. A project ran an
+   * `xforge/flows/` was outside `xforge/scaffold/`, the only tree `upgrade-scaffold` then walked, so
+   * a Flow never moved when a project upgraded and nothing had ever said so. A project ran an
    * entire Major three CLI releases behind its own toolchain -- two approvers where the shipped
    * Flow asks for one non-implementer, and a Check Stage missing from `verify.reworkTo` -- and
-   * found out by reading the payload by hand. `install` does not look, and the upgrade log's "every
-   * file the plan named now matches" is true of a plan that never named these files.
+   * found out by reading the payload by hand. The upgrade now walks both trees, so the drift has a
+   * repair; this is still what makes it visible before somebody goes looking, because `install`
+   * does not compare Flow versions and a project only upgrades when it decides to.
    *
    * Reported as `info`, and worded as a comparison rather than a defect, because customising a Flow
    * is a supported thing to do: a project that deliberately requires two approvers is not
@@ -459,7 +460,7 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
        * Two different findings, because they have different repairs.
        *
        * A version behind is the ordinary case: the project was initialised before a Flow moved, and
-       * `upgrade-scaffold` cannot carry it because Flows live outside `xforge/scaffold/`.
+       * has not run the `upgrade-scaffold` that would stage the newer one beside it.
        *
        * A version that matches while the bytes do not is the one a version comparison alone would
        * miss, and it is the more interesting of the two -- either the Flow was edited in place

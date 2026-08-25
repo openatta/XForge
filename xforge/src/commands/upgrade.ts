@@ -9,7 +9,7 @@ import { assertManaged, writeScaffoldVersion } from '../core/project-loader.js';
 import { safeResolve } from '../core/path-safety.js';
 import { loadBundledScaffold } from '../core/bundled-scaffold.js';
 import {
-  MANAGED_PREFIXES, MANAGED_ROOT, ROLLBACK_MANIFEST, UPGRADE_LOG, adoptionReport, buildUpgradePlan, digestMap, isManagedPath,
+  MANAGED_PREFIXES, MANAGED_ROOT, ROLLBACK_MANIFEST, SCAFFOLD_PREFIX, UPGRADE_LOG, adoptionReport, buildUpgradePlan, digestMap, isManagedPath,
   driftedPaths, rollbackDirectory, stagedDirectory,
   type RollbackManifest, type UpgradePlan,
 } from '../core/upgrade.js';
@@ -278,6 +278,7 @@ async function rollback(project: ProjectContext, options: UpgradeOptions): Promi
     ));
   }
 
+  const diagnostics: Diagnostic[] = [];
   const current = await currentManaged(project.root);
   /*
    * Before the merge is complete there is no `after` baseline, so the comparison is against the
@@ -309,7 +310,36 @@ async function rollback(project: ProjectContext, options: UpgradeOptions): Promi
   }
 
   const changes: FileChange[] = [];
-  await rm(path.join(project.root, 'xforge', 'scaffold'), { recursive: true, force: true });
+  /*
+   * Every managed tree is cleared before the snapshot is written back, and only the trees the
+   * snapshot actually holds.
+   *
+   * Clearing matters because restoring is a write of the files that were saved, and a file the
+   * merge *added* was never saved. Deleting only `xforge/scaffold/` left those survivors behind in
+   * `xforge/flows/`, where a Flow the project never adopted is not inert: `loadFlows` reads every
+   * `.yaml` in that directory rather than the Manifest's selection, and `flowEligibilityDiagnostics`
+   * measures each Change against every Flow that declares `policy.requiredWhen`. An orphan could
+   * demand a Flow of work that had rolled back to a Scaffold which never mentioned it.
+   *
+   * The `savedPrefixes` filter is the part that is not symmetry for its own sake. Snapshots written
+   * before Flows were managed contain `xforge/scaffold/` alone, and a project can hold one: stage an
+   * upgrade on the older CLI, install this one, roll back. Deleting a tree this snapshot cannot
+   * restore would take the project's entire governance definition with nothing to put back, which is
+   * a worse outcome than the leftover file this fix exists to prevent. So a tree the snapshot does
+   * not cover is left exactly as it stands, and said out loud rather than passed over in silence.
+   */
+  const savedPrefixes = MANAGED_PREFIXES.filter((prefix) => [...saved.keys()].some((relative) => relative.startsWith(prefix)));
+  for (const prefix of savedPrefixes) {
+    await rm(path.join(project.root, ...prefix.slice(0, -1).split('/')), { recursive: true, force: true });
+  }
+  for (const prefix of MANAGED_PREFIXES.filter((prefix) => !savedPrefixes.includes(prefix))) {
+    diagnostics.push(diagnostic(
+      'XFORGE_UPGRADE_ROLLBACK_TREE_UNCOVERED',
+      `The snapshot at ${snapshot} holds no files under ${prefix}, so that tree was left as it stands rather than restored. It was taken by a CLI that managed ${SCAFFOLD_PREFIX} alone, and removing a tree it cannot put back would discard more than this rollback was asked to. Check ${prefix} against the ${record.fromVersion} release by hand.`,
+      prefix.slice(0, -1),
+      'warning',
+    ));
+  }
   for (const [relative, content] of saved) {
     await atomicWrite(project.root, relative, content);
     changes.push({ action: 'create', path: relative, digest: sha256(content) });
@@ -325,7 +355,7 @@ async function rollback(project: ProjectContext, options: UpgradeOptions): Promi
 
   return {
     data: { mode: 'rollback', to: record.fromVersion, restored: saved.size, forced: Boolean(options.force && drifted.length) },
-    diagnostics: [diagnostic(
+    diagnostics: [...diagnostics, diagnostic(
       'XFORGE_UPGRADE_ROLLED_BACK',
       `Restored the ${record.fromVersion} Scaffold. Run \`xforge install\` to reproject it, then \`xforge doctor\`.`,
       'xforge/scaffold', 'info',

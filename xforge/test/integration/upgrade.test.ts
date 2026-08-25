@@ -211,6 +211,88 @@ describe('rolling back', () => {
     expect((await runCli(root, ['upgrade-scaffold', '--rollback', '--force'])).code).toBe(0);
   });
 
+  /*
+   * The tree the restore loop cannot repair on its own.
+   *
+   * Restoring writes back the files the snapshot holds, so a file the merge *added* — never in the
+   * snapshot — survives it. That was harmless for `xforge/scaffold/` only because the delete before
+   * the loop covered that tree; `xforge/flows/` had no such delete, and a Flow left behind there is
+   * not inert. `loadFlows` reads every `.yaml` in the directory rather than the Manifest's
+   * selection, and `flowEligibilityDiagnostics` measures each Change against every Flow declaring
+   * `policy.requiredWhen` — so an orphan can demand a Flow of work that rolled back to a Scaffold
+   * which never mentioned it.
+   */
+  it('clears an adopted Flow the snapshot never held, in both trees', async () => {
+    const root = await agedProject();
+    const flowsBefore = await tree(root, 'xforge/flows');
+    await runCli(root, ['upgrade-scaffold']);
+    /* What a merge does with a `added` Flow: copies it in. The Manifest is deliberately not told,
+       which is exactly why nothing else would ever notice the file again. */
+    await writeFile(path.join(root, 'xforge', 'flows', 'adopted.yaml'), 'apiVersion: xforge.dev/v1alpha2\n', 'utf8');
+    await mkdir(scaffold(root, 'skills', 'xforge-architect'), { recursive: true });
+    await writeFile(scaffold(root, 'skills', 'xforge-architect', 'SKILL.md'), 'adopted', 'utf8');
+    await runCli(root, ['upgrade-scaffold', '--complete']);
+
+    expect((await runCli(root, ['upgrade-scaffold', '--rollback'])).code).toBe(0);
+    expect(same(flowsBefore, await tree(root, 'xforge/flows'))).toBe(true);
+  });
+
+  /* The same survivor, on the path that reaches it without a completed upgrade: before `complete`
+     there is no `after` baseline, so the drift guard compares nothing and lets the rollback run. */
+  it('clears it on an abandoned upgrade too, where the drift guard has no baseline', async () => {
+    const root = await agedProject();
+    const flowsBefore = await tree(root, 'xforge/flows');
+    await runCli(root, ['upgrade-scaffold']);
+    await writeFile(path.join(root, 'xforge', 'flows', 'adopted.yaml'), 'apiVersion: xforge.dev/v1alpha2\n', 'utf8');
+
+    expect((await runCli(root, ['upgrade-scaffold', '--rollback'])).code).toBe(0);
+    expect(same(flowsBefore, await tree(root, 'xforge/flows'))).toBe(true);
+  });
+
+  /*
+   * The reason the fix is not a symmetric delete.
+   *
+   * Every published CLI up to 0.7.18 snapshotted `xforge/scaffold/` alone, and a project can be
+   * holding one: stage an upgrade there, install this CLI, roll back. Deleting a tree the snapshot
+   * cannot restore would take the project's whole governance definition with nothing to put back —
+   * strictly worse than the leftover file the fix exists to prevent. So an uncovered tree is left
+   * standing, and said out loud.
+   */
+  it('refuses an older-shaped snapshot outright, and spares the uncovered tree when forced past it', async () => {
+    const root = await agedProject();
+    await runCli(root, ['upgrade-scaffold']);
+    await runCli(root, ['upgrade-scaffold', '--complete']);
+    const flowsNow = await tree(root, 'xforge/flows');
+    expect(flowsNow.size).toBeGreaterThan(0);
+
+    /* An older CLI's snapshot, reproduced: the flows half removed from both the directory and the
+       digest maps that decide whether a rollback is safe. */
+    const snapshot = (await readdir(path.join(root, 'xforge', '.rollback')))
+      .find((name) => name.startsWith('scaffold-'))!;
+    await rm(path.join(root, 'xforge', '.rollback', snapshot, 'flows'), { recursive: true, force: true });
+    const manifestPath = path.join(root, 'xforge', '.rollback', 'manifest.json');
+    const record = JSON.parse(await readFile(manifestPath, 'utf8'));
+    for (const key of ['before', 'after'] as const) {
+      if (!record[key]) continue;
+      record[key] = Object.fromEntries(Object.entries(record[key]).filter(([p]) => !p.startsWith('xforge/flows/')));
+    }
+    await writeFile(manifestPath, `${JSON.stringify(record, null, 2)}\n`, 'utf8');
+
+    /* The first line of defence, and it turns out to be the drift guard rather than anything added
+       for this: `currentManaged` reads a flows tree the trimmed `after` never recorded, so every
+       file in it counts as work done since, and the rollback is refused before any delete runs. */
+    const refused = await runCli(root, ['upgrade-scaffold', '--rollback']);
+    expect(refused.code).not.toBe(0);
+    expect(refused.json.diagnostics[0].code).toBe('XFORGE_UPGRADE_ROLLBACK_DRIFT');
+
+    /* The second line, which is the one that matters: `--force` exists precisely to walk past that
+       refusal, and past it the delete would have taken a tree nothing could put back. */
+    const back = await runCli(root, ['upgrade-scaffold', '--rollback', '--force']);
+    expect(back.code).toBe(0);
+    expect(same(flowsNow, await tree(root, 'xforge/flows'))).toBe(true);
+    expect(back.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_UPGRADE_ROLLBACK_TREE_UNCOVERED');
+  });
+
   it('refuses when there is nothing to roll back to', async () => {
     const root = await agedProject();
     const refused = await runCli(root, ['upgrade-scaffold', '--rollback']);
