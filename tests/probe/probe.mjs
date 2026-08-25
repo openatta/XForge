@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createLiveEnginePolicy } from '../live-engine/policy.mjs';
+import { installCli } from '../live-engine/cli-source.mjs';
 
 /**
  * One Stage, one model call, one set of assertions.
@@ -97,6 +98,30 @@ const caseModule = existsSync(casePath)
 const caseContext = { projectRoot, change: manifest.change, repositoryRoot, flow: manifest.flow, stage: manifest.stage };
 await caseModule.prepare?.(caseContext);
 
+/*
+ * The CLI the Agent will find on PATH, installed beside the project the way the live harness does.
+ *
+ * `run-engine.mjs` prepends `cliBinDirectory(projectRoot)` — `<projectRoot>-tmp/cli/node_modules/.bin`
+ * — and nothing here ever put a CLI there, so `xforge` fell through to whatever the machine had
+ * installed globally. That was survivable while the published CLI and the working tree agreed and
+ * became a wrong answer the moment they did not: a probe run against a fixture carrying
+ * `scaffold.flows` met the published 0.7.18, which has no such property, and every `xforge` call in
+ * the session died on `XFORGE_SCHEMA_INVALID`. The Agent diagnosed it correctly and reported an
+ * environmental blocker — forty turns and a real charge to discover that the probe had not
+ * installed the thing under test.
+ *
+ * `local` rather than `npm`, always: a probe exists to measure the working tree, and installing the
+ * published version would measure the last release instead, silently.
+ */
+const cliRoot = path.join(`${projectRoot}-tmp`, 'cli');
+await rm(cliRoot, { recursive: true, force: true });
+const cli = await installCli({
+  cliRoot,
+  mode: 'local',
+  packRoot: path.join(`${projectRoot}-tmp`, 'npm-pack'),
+  npmCache: process.env.XFORGE_LIVE_ENGINE_NPM_CACHE,
+});
+
 const resultsRoot = path.join(workRoot, 'probe-results');
 await mkdir(resultsRoot, { recursive: true });
 const outputPath = path.join(resultsRoot, `${selected.fixture}.json`);
@@ -152,6 +177,9 @@ process.stdout.write(`${JSON.stringify({
   fixture: selected.fixture,
   flow: manifest.flow,
   stage: manifest.stage,
+  /* Which CLI the Agent actually had. Reported because the run that made this necessary looked
+     exactly like a Stage failure until somebody read the diagnostics inside it. */
+  cli: { version: cli.version, source: cli.source },
   checks,
   friction: { turns: run.num_turns ?? null, permissionDenials: run.permission_denials?.length ?? null, costUsd: run.total_cost_usd ?? null },
   project: projectRoot,
