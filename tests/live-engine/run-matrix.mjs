@@ -880,6 +880,53 @@ async function runApprovals({ projectRoot, policyIds, transition, changeId, simu
   }
 }
 
+/**
+ * The Stage-exit approvals, when the Agent obtained them itself.
+ *
+ * `runApprovals` supplies what a human normally would, and it assumed it would be the only party to
+ * do so: collect through `enterprise-approvals`, then perform the transition. But a policy listing
+ * `local` is one the Agent can satisfy on its own. `commands/approve.ts` is explicit that a pty
+ * answering the prompts yields a receipt identical to a typed one, and calls that "honest-agent
+ * governance ... a deliberate, recorded act instead of an accident" rather than a hole; a policy
+ * wanting more "should not list `local` in its providers at all". `planning-solid` lists it, with
+ * `minApprovers: 1` and `separationOfDuties: false`.
+ *
+ * A live solid run took that path: the Check Agent approved locally, transitioned itself, and the
+ * harness then asked `enterprise-approvals` to approve a transition that had already happened. The
+ * CLI correctly refused with `XFORGE_APPROVAL_TRANSITION_UNKNOWN`, and a scenario whose four model
+ * Stages had all passed was recorded as a failure.
+ *
+ * An Agent driving its own governance is this harness working, not failing — refusing to transition
+ * on the Agent's behalf exists precisely to find out whether the Agent can. What must not be lost is
+ * the evidence that the door was really opened, so this asserts rather than assumes: it counts the
+ * receipts the CLI itself accepted, since `governance.approvals` carries only those that passed
+ * their digest and chain checks. An Agent that moved the Stage without them still fails, loudly.
+ */
+function assertAgentCollectedApprovals(projectRoot, flowDefinition, stage, nextStage, policyIds) {
+  const receipts = changeState(projectRoot).governance.approvals ?? [];
+  const policies = flowDefinition.governance?.approvalPolicies ?? [];
+  for (const policyId of policyIds) {
+    const definition = policies.find((candidate) => candidate.id === policyId);
+    if (!definition) {
+      throw new Error(`Stage ${stage.id} declares approval policy ${policyId}, which Flow ${flowDefinition.metadata.name} does not define.`);
+    }
+    const granted = receipts.filter((receipt) => receipt.policyId === policyId
+      && receipt.stage === stage.id
+      && receipt.transition === nextStage.id
+      && receipt.decision === 'approve');
+    if (granted.length < definition.minApprovers) {
+      throw new Error(
+        `The Agent transitioned ${stage.id} -> ${nextStage.id} carrying ${granted.length} valid ${policyId} approval(s), and the policy requires ${definition.minApprovers}. `
+        + 'A Stage exit that moved without the approvals it declares is the failure this scenario exists to catch.',
+      );
+    }
+  }
+  return policyIds.map((policyId) => {
+    const receipt = receipts.find((item) => item.policyId === policyId && item.transition === nextStage.id);
+    return { policy: policyId, approver: receipt?.approver?.id ?? null, provider: receipt?.approver?.provider ?? null };
+  });
+}
+
 assertCatalogueMatchesTable();
 const selected = options(process.argv.slice(2));
 const scenarioConfig = SCENARIOS[selected.scenario];
@@ -1244,7 +1291,14 @@ for (let index = 0; index < stages.length; ) {
     timelineStep(projectRoot, scenarioConfig.inject.stageLabel);
   }
 
-  if (stage.exit?.approvals?.length) {
+  if (stage.exit?.approvals?.length && nextStage
+    && changeState(projectRoot).governance.currentStage === nextStage.id) {
+    /* The Agent already opened this door and walked through it. Verified, recorded, not re-driven —
+       see `assertAgentCollectedApprovals` for why that is a pass rather than a missed step. */
+    const collected = assertAgentCollectedApprovals(projectRoot, flow, stage, nextStage, stage.exit.approvals);
+    process.stdout.write(`${JSON.stringify({ approvals: 'agent-collected', stage: stage.id, to: nextStage.id, collected })}\n`);
+    commit(projectRoot, `Agent collected ${stage.id} approvals and transitioned into ${nextStage.id}`);
+  } else if (stage.exit?.approvals?.length) {
     await runApprovals({
       projectRoot, policyIds: stage.exit.approvals, transition: nextStage?.id ?? 'verify', changeId: changeId,
     });
