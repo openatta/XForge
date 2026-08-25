@@ -5,7 +5,7 @@
 它把规格、工作流状态、工程规则、质量证据、审批与审计历史，变成**版本化的项目事实**，
 再把相应的 Skills、Agent 定义、权限策略与 Hook **投影**到团队已经在用的 AI 编程工具里。
 
-> **当前版本：** `@xforge/cli 0.7.19`、Protocol 2、Node.js 20 或更高。
+> **当前版本：** `@xforge/cli 0.7.20`、Protocol 2、Node.js 20 或更高。
 > 只支持从 npm 安装精确版本，不支持从源码安装。实现仍在活跃开发中。
 
 ---
@@ -167,7 +167,7 @@ governingRevision    = hash(截至当前 Stage 的产出 + policySnapshotDigest)
 ### 方式二：手动
 
 ```bash
-npm install -g @xforge/cli@0.7.19
+npm install -g @xforge/cli@0.7.20
 xforge version                       # 确认版本与解析位置
 xforge init --language zh-CN --dry-run
 xforge init --language zh-CN
@@ -197,7 +197,7 @@ xforge install --target codex
 要构建多个项目时，按项目安装：
 
 ```bash
-npm install --save-dev --save-exact @xforge/cli@0.7.19
+npm install --save-dev --save-exact @xforge/cli@0.7.20
 npx --no-install xforge version
 ```
 

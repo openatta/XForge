@@ -3,7 +3,7 @@
 > 命令参考。**概念与机制**见 [概念与架构](concepts-and-architecture.md)，
 > 这份只讲「有哪些命令、接什么参数、返回什么」。
 >
-> 对应实现：`@xforge/cli 0.7.19`、Protocol 2。
+> 对应实现：`@xforge/cli 0.7.20`、Protocol 2。
 > 本文档以 `xforge/src/cli.ts` 的命令表为准；有出入时以 `xforge help --text` 为准。
 
 ---
