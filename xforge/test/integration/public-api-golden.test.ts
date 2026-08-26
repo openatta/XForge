@@ -23,27 +23,22 @@ import { xforgeRoot } from '../helpers.js';
  */
 describe('published API', () => {
   it('exports exactly the recorded surface', async () => {
-    const source = await readFile(path.join(xforgeRoot, 'src', 'index.ts'), 'utf8');
-
-    const named = [...source.matchAll(/export\s*\{([^}]*)\}\s*from\s*'([^']+)'/g)]
-      .flatMap(([, names, module]) => names
-        .split(',')
-        .map((entry) => entry.trim().split(/\s+as\s+/).pop()!.trim())
-        .filter(Boolean)
-        .map((name) => `${name}  <- ${module}`));
-
-    /* `export * from './types.js'` publishes whatever that module exports, so the surface is only
-       knowable by reading it — which is exactly why it is recorded rather than assumed. */
-    const starred: string[] = [];
-    for (const [, module] of source.matchAll(/export\s*\*\s*from\s*'([^']+)'/g)) {
-      const file = path.join(xforgeRoot, 'src', module.replace(/^\.\//, '').replace(/\.js$/, '.ts'));
-      const exported = await readFile(file, 'utf8');
-      for (const match of exported.matchAll(/^export\s+(?:declare\s+)?(?:async\s+)?(?:function|const|class|interface|type|enum)\s+([A-Za-z_][A-Za-z0-9_]*)/gm)) {
-        starred.push(`${match[1]}  <- ${module}`);
-      }
-    }
-
-    const { actual, expected } = await golden('public-api.txt', `${[...named, ...starred].sort().join('\n')}\n`);
+    /*
+     * Re-export chains are followed to the end, because a barrel that points at another barrel is
+     * exactly what this package now has. The first version of this resolver stopped after one hop,
+     * so splitting `types.ts` into eight domain modules made the published surface read as empty —
+     * a harness that reports a hundred lost exports when nothing was lost is worse than none.
+     */
+    const surface = await surfaceOf(path.join(xforgeRoot, 'src', 'index.ts'), './index.js');
+    const lines = [...surface].map(([name, module]) => `${name}  <- ${module}`).sort();
+    const { actual, expected } = await golden('public-api.txt', `${lines.join('\n')}\n`);
+    /*
+     * The names first, and separately. Moving one between modules changes the recording's second
+     * column and nothing a consumer can observe, so the two are worth failing apart: this assertion
+     * is the one that says the surface itself is intact.
+     */
+    const names = (text: string) => text.trim().split('\n').map((line) => line.split('  <- ')[0]).sort();
+    expect(names(actual)).toEqual(names(expected));
     expect(actual).toBe(expected);
   });
 
@@ -68,7 +63,8 @@ describe('published API', () => {
      * somebody may depend on this name; making one by habit is how a module ends up unable to change
      * its own internals without looking like it broke an API.
      *
-     * `src/index.ts` and `src/types.ts` are exempt by construction — they exist to be re-exported —
+     * `src/index.ts`, `src/types.ts` and the `src/types/` modules behind it are exempt by construction —
+     * they exist to be re-exported —
      * and the test directories count as consumers, because a symbol exported for a unit test is
      * exported for a reason a reader can check.
      */
@@ -89,7 +85,8 @@ describe('published API', () => {
 
     const offenders: string[] = [];
     for (const [file, source] of sources) {
-      if (file.endsWith('src/index.ts') || file.endsWith('src/types.ts')) continue;
+      /* The barrel and everything it re-exports: these modules exist to be imported through it. */
+      if (file.endsWith('src/index.ts') || file.endsWith('src/types.ts') || file.includes(`src${path.sep}types${path.sep}`)) continue;
       for (const match of source.matchAll(/^export\s+(?:async\s+)?(?:function|const|class|interface|type|enum)\s+([A-Za-z_][A-Za-z0-9_]*)/gm)) {
         const name = match[1]!;
         const token = new RegExp(`(?<![A-Za-z0-9_])${name}(?![A-Za-z0-9_])`);
@@ -100,6 +97,41 @@ describe('published API', () => {
     expect(offenders.sort()).toEqual([]);
   });
 });
+
+/**
+ * Every name a module publishes, with the module a reader would import it from.
+ *
+ * `attributed` is the *declaring* module rather than the barrel, so the recording stays stable when
+ * a name moves between barrels and changes when it moves between homes — which is the distinction
+ * the split this was written for depends on.
+ */
+async function surfaceOf(file: string, attributed: string, seen = new Set<string>(), into = new Map<string, string>()): Promise<Map<string, string>> {
+  if (seen.has(file)) return into;
+  seen.add(file);
+  const source = await readFile(file, 'utf8');
+  /*
+   * Declarations win over re-exports, and a name is recorded once.
+   *
+   * The published surface is a set of names, not a count of the routes to one: `isVerificationRun`
+   * is both named explicitly by the barrel and declared in the module the barrel recurses into, and
+   * counting it twice made a pure move look like an addition. Attributing it to where it is declared
+   * is also the more useful column — that is the file a reader opens.
+   */
+  for (const match of source.matchAll(/^export\s+(?:declare\s+)?(?:async\s+)?(?:function|const|class|interface|type|enum)\s+([A-Za-z_][A-Za-z0-9_]*)/gm)) {
+    into.set(match[1]!, attributed);
+  }
+  for (const [, exported, module] of source.matchAll(/export\s*\{([^}]*)\}\s*from\s*'([^']+)'/g)) {
+    for (const entry of exported.split(',')) {
+      const name = entry.trim().split(/\s+as\s+/).pop()?.trim();
+      if (name && !into.has(name)) into.set(name, module);
+    }
+  }
+  for (const [, module] of source.matchAll(/export\s+(?:type\s+)?\*\s*from\s*'([^']+)'/g)) {
+    const target = path.resolve(path.dirname(file), module.replace(/\.js$/, '.ts'));
+    await surfaceOf(target, module, seen, into);
+  }
+  return into;
+}
 
 async function collect(directory: string, into: string[]): Promise<void> {
   let entries;
