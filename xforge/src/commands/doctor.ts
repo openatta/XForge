@@ -1,4 +1,5 @@
 import { access, readFile, readdir } from 'node:fs/promises';
+import fg from 'fast-glob';
 import path from 'node:path';
 import type { Diagnostic, FileChange, ProjectContext, StageFlow } from '../types.js';
 import { checkStructure } from '../core/checker.js';
@@ -316,6 +317,39 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
       id: 'xforge-architect',
       message: 'This project has no xforge/architecture.md, so each Change designs without a durable record of the decisions the last one made. Run the xforge-architect Skill to write one — from the existing code, by answering a few questions, or from a description. It is a suggestion, not a requirement: nothing is blocked without it.',
       path: 'xforge/architecture.md',
+      severity: 'info',
+    });
+  }
+
+  /*
+   * A Rule whose `scope.paths` match nothing in this repository.
+   *
+   * Two independent readers consume that list and they read it differently. XForge compares it with
+   * the paths a Change declares in `change.yaml`, which is what decides whether the Rule reaches the
+   * Agent's instruction context at all. The Adapters hand the same list to the host as a native file
+   * matcher — Claude's `paths:`, Copilot's `applyTo:`, Cursor's `globs:` — where it genuinely is a
+   * filesystem glob. Both readings fail together on a layout the scope was not written for, and
+   * neither says so: the shipped `src/**` / `tests/**` is a guess about repository shape, and in a
+   * monorepo whose code lives under `apps/` and `packages/` it matches no file and no Change.
+   *
+   * Globbing the repository is the check that catches this, because it is the one question with an
+   * answer that does not depend on which Change happens to be open. `info`, and never a failure: a
+   * scope may legitimately name paths that do not exist yet.
+   */
+  for (const [name, rule] of structure.resources.rules) {
+    const paths = normalizeRule(rule.value).paths;
+    if (paths.length === 0) continue;
+    const matches = await fg(paths, {
+      cwd: project.root, onlyFiles: true, followSymbolicLinks: false, dot: false, unique: true,
+      ignore: ['**/node_modules/**', '**/.git/**'],
+    });
+    if (matches.length > 0) continue;
+    suggestions.push({
+      scope: 'rules',
+      code: 'XFORGE_DOCTOR_RULE_SCOPE_EMPTY',
+      id: name,
+      message: `Rule ${name} is scoped to ${paths.join(', ')}, which matches no file in this repository. XForge compares that list with the paths a Change declares in change.yaml, and the installed Adapters hand it to the host as a file matcher; on this layout both come up empty, so the Rule is registered, enforceable, and reaching nothing. Rewrite scope.paths to the paths this repository actually uses, or drop it to have the Rule apply everywhere.`,
+      path: `xforge/scaffold/rules/${name}.yaml`,
       severity: 'info',
     });
   }

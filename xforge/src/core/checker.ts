@@ -11,6 +11,7 @@ import { resolveWorkPackages, type WorkPackageResolution } from './work-packages
 import { normalizeRule } from './governance.js';
 import { loadTransitionReceipts } from './control-plane.js';
 import { validateChangeSpecDeltas } from './spec-delta.js';
+import { validateSpecMergeFeasibility } from './spec-merger.js';
 import { validateArtifactMarkers } from './artifact-markers.js';
 
 export interface StructureResult {
@@ -214,6 +215,14 @@ export async function checkStructure(project: ProjectContext, changeId?: string)
       `${project.changesPath}/${changeId}/change.yaml`,
     ));
     diagnostics.push(...await validateChangeSpecDeltas(project, changeId));
+    /*
+     * The delta validated above is checked against itself; this checks it against the main Specs it
+     * will be merged into. The distinction is the whole point: a MODIFIED block is well-formed and
+     * still unmergeable when its heading — the merge key — no longer matches the requirement it
+     * means to change. See `validateSpecMergeFeasibility` for why that answer used to be
+     * unavailable until after the closing approval had been given.
+     */
+    if (resolved.state.archive.syncSpecs) diagnostics.push(...await validateSpecMergeFeasibility(project, changeId));
     diagnostics.push(...await validateArtifactMarkers(project, changeId));
     for (const module of resolved.config.scope.modules) {
       if (!moduleIds.has(module)) diagnostics.push(diagnostic('XFORGE_CHANGE_MODULE_UNKNOWN', `Change references unknown module ${module}.`, `${project.changesPath}/${changeId}/change.yaml`));

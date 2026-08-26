@@ -34,6 +34,8 @@ import { REVIEW_ACK_DIRECTORY, reviewEvidenceDigest, type ReviewAckReceipt } fro
 export async function executeReviewAcknowledge(project: ProjectContext, options: {
   change: string;
   evidence: string;
+  /** The reviewer's own statement of what they covered; recorded verbatim, never inferred. */
+  scope?: string;
   dryRun: boolean;
 }): Promise<{ data: Record<string, unknown>; diagnostics: Diagnostic[]; changes: FileChange[] }> {
   assertManaged(project, 'review acknowledge');
@@ -92,6 +94,9 @@ export async function executeReviewAcknowledge(project: ProjectContext, options:
     contentRevision: revision.contentRevision,
     evidence,
     evidenceDigest: reviewEvidenceDigest(await readFile(evidenceAbsolute)),
+    /* Omitted rather than defaulted when unstated: a receipt that claims a scope nobody gave is
+       worse evidence than one that admits it has none. */
+    ...(options.scope ? { scope: options.scope } : {}),
     actor: { id: process.env.USER ?? 'unknown', provider: 'local-os', role: 'reviewer', type: 'agent' as const },
     acknowledgedAt: new Date().toISOString(),
   };

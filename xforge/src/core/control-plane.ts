@@ -827,6 +827,33 @@ export async function resolveControlPlane(
     else if (rule.severity === 'must' && enforceableRefs.length === 0) coverage.push('unenforceable');
     return { id: rule.id, severity: rule.severity, instruction: rule.instruction, coverage, gateRefs: rule.gateRefs, policyRefs: rule.policyRefs, approvalRefs: rule.approvalRefs, enforceableRefs };
   });
+  /*
+   * A `must` Rule this Change never sees, said out loud once.
+   *
+   * `ruleApplies` compares a Rule's `scope.paths` against the paths this Change declares in its own
+   * `change.yaml` — not against the repository — and a Rule that matches none of them is absent
+   * from `context.rules`, which is how a Rule reaches the Agent at all. It is not weakened, not
+   * downgraded, not reported: it is simply not there, and the Change proceeds as though it had
+   * never been written. A live monorepo run finished a Major Change with `governance.rules: []`
+   * while `observable-requirements-are-tested` (severity `must`) sat selected in the Manifest, its
+   * shipped `src/**` scope matching nothing in a repository whose code is under `apps/` and
+   * `packages/`. `doctor` reported nothing wrong, correctly — the Rule is registered and its
+   * enforcement resolves; only its reach was empty.
+   *
+   * One `info` for the whole set, because non-application is often right: a docs-only Change should
+   * not be told about a testing Rule. What was missing was any way to notice when it is wrong.
+   */
+  const outOfScope = [...resources.rules.values()]
+    .map((item) => normalizeRule(item.value))
+    .filter((rule) => rule.severity === 'must' && rule.paths.length > 0 && !ruleApplies(rule, config, currentStage));
+  if (outOfScope.length > 0) {
+    diagnostics.push(diagnostic(
+      'XFORGE_RULE_OUT_OF_CHANGE_SCOPE',
+      `${outOfScope.length} severity-must Rule(s) do not apply to this Change and are not in its instruction context: ${outOfScope.map((rule) => `${rule.id} (scope ${rule.paths.join(', ')})`).join('; ')}. A Rule's scope.paths is compared with the paths this Change declares in change.yaml, never with the repository, so a Rule reaches this Change only when the two share a root. If one of these was meant to apply, widen the Change's scope.paths or correct the Rule's.`,
+      `${project.changesPath}/${changeId}/change.yaml`,
+      'info',
+    ));
+  }
   for (const rule of rules) {
     if (!rule.coverage.includes('unenforceable')) continue;
     diagnostics.push(diagnostic(

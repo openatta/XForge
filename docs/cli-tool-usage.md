@@ -174,6 +174,18 @@ xforge [--root <path>] check [--change <id>] [--gate <id>] [--stage <id> | --all
 `--stage verify` 就是那条路。四种写法在这一点上行为一致，
 输出里的 `workPackagesSelected` 明说这一趟跑没跑工作包。
 
+`check` 还会**把 delta Spec 与主 Specs 比一次**，回答「这份 delta 能不能合并进去」：
+每条 `MODIFIED` / `REMOVED` / `RENAMED` 指名的 Requirement 在主 Specs 里是否定位得到。
+标题就是合并键，所以**改了标题的 MODIFIED 块结构上完全合法、却定位不到它要改的那条**——
+诊断会顺带指出主 Specs 里引用同一编号的那条标题。
+
+> **为什么这条必须在 `check` 做**：`archive` 在任何治理阻塞存在时**会在计算合并计划之前返回**，
+> 而「还没过渡到 ready-to-archive」和「收尾审批还没拿到」都是治理阻塞。
+> 也就是说 `archive --dry-run` **结构上不可能**用来提前问这个问题——合并计划只在其余一切都通过后才算。
+> 一次实测的 Major 因此在 `closing-major` 已签之后才撞上 `XFORGE_SPEC_MERGE_CONFLICT`，
+> 而唯一的退路 `transition repair` 会作废那次审批。
+> `check` 里这条是必要不充分的：别的 Change 可能先归档并改动同一份主 Specs，所以 `archive` 仍然会重判一次。
+
 **当前 Stage 一个 Gate 都不声明时**（`solid` 的 design / apply、`quick` 的 apply），
 返回的是 `gates: []` 且 `ok: true`——这是如实报告，不是「Gate 都过了」。
 这种情况下 `check` 会额外给一条 `XFORGE_CHECK_NO_GATES_AT_STAGE`（info）说明这一点：
@@ -404,7 +416,7 @@ xforge [--root <path>] verification draft-receipt --change <id> [--text]
 ### `review`
 
 ```bash
-xforge [--root <path>] review acknowledge --change <id> --evidence <path> [--dry-run] [--text]
+xforge [--root <path>] review acknowledge --change <id> --evidence <path> [--scope <text>] [--dry-run] [--text]
 ```
 
 记录「本 Change 交付的工作被复核过」，**用于没有工作包计划的 Change**。
@@ -418,7 +430,8 @@ xforge [--root <path>] review acknowledge --change <id> --evidence <path> [--dry
 xforge [--root <path>] work-package dispatch    --change <id> --package <id> [--dry-run] [--text]
 xforge [--root <path>] work-package draft       --change <id> --package <id> [--text]
 xforge [--root <path>] work-package acknowledge --change <id> --package <id> \
-                                    --as <integrator|reviewer> --evidence <path> [--dry-run] [--text]
+                                    --as <integrator|reviewer> --evidence <path> \
+                                    [--scope <text>] [--dry-run] [--text]
 ```
 
 | 子命令 | 作用 |
@@ -426,6 +439,18 @@ xforge [--root <path>] work-package acknowledge --change <id> --package <id> \
 | `dispatch` | 只允许 Apply Stage 的 ready 节点，且**整份计划校验无 error** 后才原子写入派工 receipt |
 | `draft` | 回填机器已知的那一半：execution id、两个 commit、`changed_paths`、每条声明的 `verify` 命令与实际退出码。**这些不要手抄** |
 | `acknowledge` | 记录集成或复核证据；ack receipt 绑定 `deliveryDigest`，无法被重放到另一份 delivery 上 |
+
+> **复核转录写 `evidence/agents/<package>/review/<execution>.md`**，不要写成
+> `evidence/agents/<package>/*.yaml`——那一层是**交付记录**的解析面，
+> 写在那里的转录会被当成交付记录校验：一份只读复核在那个信封里没有诚实的 `status`
+> （枚举只有 `succeeded|blocked|failed`），也给不出 `changed_paths`，
+> 结果要么把已 `succeeded` 的包压回 `blocked`，要么被要求提供它不可能有的 dispatch receipt 与
+> `done_when_evidence`。误放时 CLI 会直接报 `XFORGE_WORK_PACKAGE_DELIVERY_SLOT_MISUSED` 指出真正的原因。
+
+`acknowledge` 的 `--scope <text>` 记录**这次确认实际覆盖了什么**，逐字写进回执。
+可选，且绝不推断——不写就等于没人说过。
+`independentReview` 只问「有没有复核」，一份「我全面复核了这个包」和一份
+「我只验了上面列的五条修法」在回执上本来无法区分，而它们的证据强度差很多。
 
 ### `archive`
 

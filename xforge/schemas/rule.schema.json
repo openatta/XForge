@@ -21,7 +21,7 @@
           "type": "object", "additionalProperties": false, "required": ["severity", "instruction", "scope", "enforcement"],
           "properties": {
             "severity": { "enum": ["must", "should"] }, "instruction": { "type": "string", "minLength": 1 },
-            "scope": { "type": "object", "additionalProperties": false, "properties": { "modules": { "$ref": "#/$defs/idList" }, "paths": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }, "stages": { "$ref": "#/$defs/idList" } } },
+            "scope": { "type": "object", "additionalProperties": false, "description": "Which Changes this Rule reaches. `paths` is NOT matched against the repository: XForge compares it with the paths a Change declares in its own change.yaml, and the Rule applies when the two share a root. A Rule that matches no declared scope is absent from that Change\u0027s instruction context entirely. The installed Adapters separately hand the same list to the host as a native file matcher (Claude `paths:`, Copilot `applyTo:`, Cursor `globs:`), where it is a filesystem glob \u2014 so the list has to make sense as both. `xforge doctor` reports a scope that matches no file in the repository.", "properties": { "modules": { "$ref": "#/$defs/idList" }, "paths": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }, "stages": { "$ref": "#/$defs/idList" } } },
             "enforcement": { "type": "object", "additionalProperties": false, "required": ["gateRefs", "policyRefs"], "properties": { "gateRefs": { "$ref": "#/$defs/idList" }, "policyRefs": { "$ref": "#/$defs/idList" }, "approvalRefs": { "$ref": "#/$defs/idList" } } }
           }
         }

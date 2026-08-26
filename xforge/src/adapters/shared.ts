@@ -138,7 +138,21 @@ export function renderRuleMarkdown(
     ...(options.description === false ? {} : { description: `${rule.metadata.name} (${normalized.severity})` }),
     ...extra,
   };
-  return `${renderFrontmatter(frontmatter)}# ${rule.metadata.name}\n\nSeverity: ${normalized.severity}\n\n${normalized.instruction.trim()}\n\nEnforcement: gates=${normalized.gateRefs.join(', ') || 'none'}; policies=${normalized.policyRefs.join(', ') || 'none'}; approvals=${normalized.approvalRefs.join(', ') || 'none'}.\n`;
+  /*
+   * The scope is stated in the body, not left to the frontmatter alone.
+   *
+   * Every adapter projects `scope.paths` into its host's own file-matching key — Claude `paths:`,
+   * Copilot `applyTo:`, Cursor `globs:` — where it means "files this Rule attaches to". XForge
+   * means something else by the same list: the paths a *Change* declares in `change.yaml`, which is
+   * what decides whether this Rule is in that Change's instruction context. A reader who sees only
+   * the host key reads the host meaning, and in a repository the scope was not written for both
+   * readings quietly come up empty. Saying it here costs one line and removes the ambiguity at the
+   * only place the reader is actually looking.
+   */
+  const scope = normalized.paths.length > 0
+    ? `\n\nScope: ${normalized.paths.join(', ')} — this Rule reaches a Change whose declared scope.paths share a root with these, and your host also treats them as file globs.`
+    : '';
+  return `${renderFrontmatter(frontmatter)}# ${rule.metadata.name}\n\nSeverity: ${normalized.severity}${scope}\n\n${normalized.instruction.trim()}\n\nEnforcement: gates=${normalized.gateRefs.join(', ') || 'none'}; policies=${normalized.policyRefs.join(', ') || 'none'}; approvals=${normalized.approvalRefs.join(', ') || 'none'}.\n`;
 }
 
 export function rulePaths(rule: RuleResource): string[] {

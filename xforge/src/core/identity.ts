@@ -20,11 +20,47 @@ function git(args: string[]): string | null {
   }
 }
 
+/**
+ * Whether the repository `git -C packageRoot` lands in is one that actually contains this package.
+ *
+ * `git -C <dir>` walks up until it finds a repository, and an installed package has no `.git` of
+ * its own — so it reports whatever repository happens to contain the install prefix. On a machine
+ * whose global npm prefix is Homebrew's Node prefix, `xforge version` answered with
+ * `repository: https://github.com/Homebrew/brew` and a Homebrew commit. A live run read that as
+ * "xforge was installed by Homebrew" and sent its operator to `brew uninstall xforge`, which fails
+ * with "No available formula" because the package was installed by npm all along.
+ *
+ * Asking whether the package's own `package.json` is tracked settles it: in a development checkout
+ * of this repository it is, and the identity is the build's; under any install prefix it is not,
+ * and the honest answer is that this build carries no repository identity. Publishing can supply
+ * one through `XFORGE_BUILD_COMMIT` / `XFORGE_BUILD_REPOSITORY`, which are consulted first.
+ */
+function packageIsTracked(): boolean {
+  try {
+    execFileSync('git', ['-C', packageRoot, 'ls-files', '--error-unmatch', 'package.json'], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function actualGitIdentity(): { commit: string | null; repository: string | null } {
-  return {
-    commit: process.env.XFORGE_BUILD_COMMIT ?? git(['rev-parse', 'HEAD']),
-    repository: process.env.XFORGE_BUILD_REPOSITORY ?? git(['remote', 'get-url', 'origin']),
-  };
+  const stamped = { commit: process.env.XFORGE_BUILD_COMMIT ?? null, repository: process.env.XFORGE_BUILD_REPOSITORY ?? null };
+  if (stamped.commit || stamped.repository) return stamped;
+  if (!packageIsTracked()) return { commit: null, repository: null };
+  return { commit: git(['rev-parse', 'HEAD']), repository: git(['remote', 'get-url', 'origin']) };
+}
+
+/**
+ * Where the running CLI actually lives, and whether that location is a checkout or an install.
+ *
+ * Reported next to `buildIdentity` because the two answer different questions and the reader who
+ * has to act needs the second one: "which copy is answering, and how did it get here" is what
+ * decides whether to reinstall, uninstall, or fix PATH. Before this, a null `buildIdentity` left
+ * nothing at all to go on.
+ */
+export function runtimeInstallation(): { path: string; kind: 'git-checkout' | 'package' } {
+  return { path: packageRoot, kind: packageIsTracked() ? 'git-checkout' : 'package' };
 }
 
 function filesUnder(directory: string, prefix: string): string[] {

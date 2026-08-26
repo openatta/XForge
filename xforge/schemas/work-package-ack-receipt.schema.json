@@ -14,6 +14,12 @@
     "as": { "enum": ["reviewer", "integrator"] },
     "status": { "enum": ["reviewed", "integrated"] },
     "deliveryDigest": { "$ref": "#/$defs/hash" },
+    "scope": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 400,
+      "description": "What this acknowledgement actually covered, in the acknowledger's own words. Optional and never inferred: absent means nobody said. A full re-review of a package and a check limited to five named fixes are different evidence, and without this they are indistinguishable on the receipt."
+    },
     "actor": {
       "type": "object",
       "additionalProperties": false,

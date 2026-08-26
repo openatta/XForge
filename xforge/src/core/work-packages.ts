@@ -409,6 +409,11 @@ function protectedWritePaths(project: ProjectContext, changeId: string, config: 
   return [...paths].sort();
 }
 
+/** The package directory a `evidence/agents/<pkg>/<file>` path names. */
+function directoryIdOf(name: string): string {
+  return name.split('/')[2] ?? '<package>';
+}
+
 async function loadDeliveries(
   project: ProjectContext,
   changeId: string,
@@ -437,7 +442,27 @@ async function loadDeliveries(
     }
     const schemaDiagnostics = await validateSchema('work-package-delivery', delivery, projectPath);
     diagnostics.push(...schemaDiagnostics);
-    if (schemaDiagnostics.some((item) => item.severity === 'error')) continue;
+    if (schemaDiagnostics.some((item) => item.severity === 'error')) {
+      /*
+       * Says which file does not belong here, rather than only which fields it lacks.
+       *
+       * Everything directly under `evidence/agents/<package>/` with a `.yaml` extension is read as a
+       * delivery record, and a review transcript parked there is therefore validated as one. The
+       * resulting report is accurate and useless: it asks for a dispatch receipt, non-empty
+       * `changed_paths` and per-criterion `done_when_evidence`, none of which a read-only review can
+       * ever have. A live Major run spent six rounds — including bisecting by moving files out of
+       * the directory and back — to find that the file simply should not have been there. The
+       * Skill now writes transcripts to `review/<execution>.md`; this is for the ones already on
+       * disk, and for anything else that lands in the delivery slot by accident.
+       */
+      if (/(^|\/)review[-.]/.test(name)) diagnostics.push(diagnostic(
+        'XFORGE_WORK_PACKAGE_DELIVERY_SLOT_MISUSED',
+        `${projectPath} sits where delivery records live, so it was validated as one, and the errors above are about the delivery shape rather than about this file. A read-only review transcript belongs in evidence/agents/${directoryIdOf(name)}/review/ with a .md extension, where nothing parses it as a delivery; move it there and acknowledge it with --as reviewer --evidence <the new path>.`,
+        projectPath,
+        'error',
+      ));
+      continue;
+    }
 
     const parts = name.split('/');
     const directoryId = parts[2]!;
@@ -477,12 +502,14 @@ async function loadDispatches(
   project: ProjectContext,
   changeId: string,
   knownPackages: Set<string>,
+  /** Restricts the scan to one package's receipts; without it every package in the plan is read. */
+  onlyPackage?: string,
 ): Promise<{ dispatches: Map<string, WorkPackageDispatchReceipt[]>; diagnostics: Diagnostic[] }> {
   const diagnostics: Diagnostic[] = [];
   const dispatches = new Map<string, WorkPackageDispatchReceipt[]>();
   const changeRoot = `${project.changesPath}/${changeId}`;
   const changeDirectory = await safeResolve(project.root, changeRoot);
-  const names = (await fg('evidence/agents/*/dispatch/*.json', {
+  const names = (await fg(onlyPackage ? `evidence/agents/${onlyPackage}/dispatch/*.json` : 'evidence/agents/*/dispatch/*.json', {
     cwd: changeDirectory,
     onlyFiles: true,
     followSymbolicLinks: false,
@@ -530,8 +557,20 @@ export async function latestDispatchFor(
   project: ProjectContext,
   changeId: string,
   packageId: string,
+  knownPackages?: Set<string>,
 ): Promise<{ dispatch: WorkPackageDispatchReceipt | null; diagnostics: Diagnostic[] }> {
-  const loaded = await loadDispatches(project, changeId, new Set([packageId]));
+  /*
+   * Scoped to the one package, because `loadDispatches` walks every package's receipts.
+   *
+   * It used to be handed `new Set([packageId])` as the known-package set while still scanning
+   * `evidence/agents/<id>/dispatch/*.json`, so every *other* package's receipt was reported as
+   * `XFORGE_WORK_PACKAGE_DISPATCH_UNKNOWN` — an error, carried into the envelope by
+   * `work-package draft`. The count scaled with the plan: a live Major run with thirteen packages
+   * got twelve errors on every draft, whichever package it asked for, and wrote all thirteen
+   * delivery records by hand as a result. `draft` reads back one execution's bindings; validating
+   * the rest of the plan is `check`'s job, and it still does it.
+   */
+  const loaded = await loadDispatches(project, changeId, knownPackages ?? new Set([packageId]), packageId);
   return { dispatch: latestDispatch(loaded.dispatches.get(packageId)), diagnostics: loaded.diagnostics };
 }
 

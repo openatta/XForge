@@ -248,6 +248,8 @@ export async function executeWorkPackageAcknowledge(project: ProjectContext, opt
   packageId: string;
   role: 'integrator' | 'reviewer';
   evidence: string;
+  /** What this acknowledgement covered, verbatim from the acknowledger; never inferred. */
+  scope?: string;
   dryRun: boolean;
 }): Promise<{
   data: { change: string; packageId: string; role: 'integrator' | 'reviewer'; evidence: string; status: 'integrated' | 'reviewed'; dryRun: boolean };
@@ -331,6 +333,9 @@ export async function executeWorkPackageAcknowledge(project: ProjectContext, opt
       as: options.role,
       status,
       deliveryDigest,
+      /* Omitted rather than defaulted when unstated — a receipt that claims a reach nobody gave it
+         is worse evidence than one that admits it has none. */
+      ...(options.scope ? { scope: options.scope } : {}),
       actor: { id: process.env.USER ?? 'unknown', provider: 'local-os', role: options.role, type: 'agent' as const },
       acknowledgedAt: new Date().toISOString(),
     };

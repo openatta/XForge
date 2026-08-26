@@ -9,6 +9,7 @@ import {
   acknowledgementAttestationDigest,
   approvalVerifiedInChain,
   auditIndexDigest,
+  INDEX_VERSION,
   pruneExpiredAuditEvents,
   readAcknowledgementAttestations,
   readAuditEvents,
@@ -467,7 +468,9 @@ describe('enterprise audit', () => {
        rebuilt document is a superset and the inherited flag no longer says anything about it. */
     await refreshChangeAuditIndex(project, change);
     const healed = await readChangeAuditIndex(project, change);
-    expect(healed!.document.version).toBe(3);
+    /* Current, not a literal: the point is that healing produces an index this CLI wrote, and
+       pinning the number meant every later shape change failed here rather than where it changed. */
+    expect(healed!.document.version).toBe(INDEX_VERSION);
     expect(healed!.document.governanceComplete).toBe(true);
     const attestations = await readTransitionAttestations(project, change);
     expect(attestations.complete).toBe(true);

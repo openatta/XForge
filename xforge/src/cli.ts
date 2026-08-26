@@ -26,7 +26,7 @@ import { executeWorkPackageAcknowledge, executeWorkPackageDispatch, executeWorkP
 import { executeDoctor } from './commands/doctor.js';
 import { executeUpgrade, renderUpgradeText } from './commands/upgrade.js';
 import { XForgeError, diagnostic } from './core/errors.js';
-import { actualGitIdentity, runtimeCliIntegrity } from './core/identity.js';
+import { actualGitIdentity, runtimeCliIntegrity, runtimeInstallation } from './core/identity.js';
 import { loadProject } from './core/project-loader.js';
 import { outlineSections } from './core/artifact-markers.js';
 import { detectScaffoldLanguage, parseScaffoldLanguage } from './core/language.js';
@@ -82,6 +82,7 @@ interface ParsedArguments {
   justification?: string;
   findingId?: string;
   answer?: string;
+  scope?: string;
   by?: string;
   receiptId?: string;
   field?: string;
@@ -89,7 +90,7 @@ interface ParsedArguments {
 
 const COMMANDS: CommandName[] = ['help', 'version', 'init', 'state', 'install', 'sync', 'update', 'uninstall', 'check', 'brief', 'verification', 'transition', 'approve', 'audit', 'work-package', 'hook', 'archive', 'doctor', 'upgrade-scaffold', 'review', 'findings'];
 const VALID_KINDS = ['skills', 'agents', 'rules', 'policies', 'hooks', 'gates', 'scripts', 'flows', 'approvals', 'mcp-servers'] as const;
-const VALUE_OPTIONS = ['--root', '--change', '--kind', '--target', '--gate', '--to', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--provider', '--output', '--event', '--package', '--language', '--as', '--evidence', '--stage', '--attach-triage', '--gate-name', '--command', '--module', '--covers', '--working-directory', '--timeout-seconds', '--not-applicable', '--justification', '--by', '--receipt', '--field', '--id', '--answer'] as const;
+const VALUE_OPTIONS = ['--root', '--change', '--kind', '--target', '--gate', '--to', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--provider', '--output', '--event', '--package', '--language', '--as', '--evidence', '--stage', '--attach-triage', '--gate-name', '--command', '--module', '--covers', '--working-directory', '--timeout-seconds', '--not-applicable', '--justification', '--by', '--receipt', '--field', '--id', '--answer', '--scope'] as const;
 
 function isValueOption(token: string): boolean {
   return VALUE_OPTIONS.includes(token as (typeof VALUE_OPTIONS)[number]);
@@ -191,7 +192,7 @@ const HELP: Record<CommandName, { usage: string; description: string; options: s
   transition: { usage: 'xforge [--root <path>] transition --change <id> --to <stage> [--dry-run] [--text]\n       xforge [--root <path>] transition repair --change <id> --receipt <receiptId> [--dry-run] [--text]', description: 'Evaluate and record a governed Stage transition, or repair the receipt chain by dropping one leaf receipt. Repair is not a --force: it discards a recorded transition, reverting the Change to the Stage that transition left, and records what it discarded in the audit chain. Only a leaf may go — a receipt some later receipt chains to is load-bearing and is refused.', options: ['--root', '--change', '--to', '--receipt', '--dry-run', '--text'] },
   approve: { usage: 'xforge [--root <path>] approve --change <id> --for <transition-id|archive> [--policy <id>] [--provider <mcp-provider-id> | local fields] [--dry-run] [--text]', description: 'Record an interactive human approval at the terminal, or submit/poll an mcp provider. There is no other approval mechanism. --for takes the id of the transition the approval unlocks (the value xforge state reports in nextActions[].command), not a literal word.', options: ['--root', '--change', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--provider', '--dry-run', '--text'] },
   audit: { usage: 'xforge [--root <path>] audit <status|verify|export|retry|prune> [--change <id>] [--output <path>] [--text]', description: 'Inspect, verify, export, redeliver, or prune the append-only audit chain.', options: ['--root', '--change', '--output', '--text'] },
-  'work-package': { usage: 'xforge [--root <path>] work-package <dispatch|draft|acknowledge> --change <id> --package <id> [--as <integrator|reviewer> --evidence <path>] [--dry-run] [--text]', description: 'Dispatch a work package, draft its delivery record from what XForge already knows, or acknowledge integration/review evidence.', options: ['--root', '--change', '--package', '--as', '--evidence', '--dry-run', '--text'] },
+  'work-package': { usage: 'xforge [--root <path>] work-package <dispatch|draft|acknowledge> --change <id> --package <id> [--as <integrator|reviewer> --evidence <path> [--scope <text>]] [--dry-run] [--text]', description: 'Dispatch a work package, draft its delivery record from what XForge already knows, or acknowledge integration/review evidence. --scope records what the acknowledgement actually covered, in the acknowledger\'s own words; it is optional and never inferred, so an absent scope means nobody said.', options: ['--root', '--change', '--package', '--as', '--evidence', '--scope', '--dry-run', '--text'] },
   hook: { usage: 'xforge hook dispatch --target <target> --event <event>', description: 'Internal platform Hook dispatcher.', options: ['--root', '--target', '--event'] },
   archive: { usage: 'xforge [--root <path>] archive --change <id> [--dry-run] [--text]', description: 'Verify, merge Specs, and atomically archive a Change.', options: ['--root', '--change', '--dry-run', '--text'] },
   'upgrade-scaffold': {
@@ -200,9 +201,9 @@ const HELP: Record<CommandName, { usage: string; description: string; options: s
     options: ['--root', '--complete', '--rollback', '--with-active-changes', '--force', '--dry-run', '--text'],
   },
   review: {
-    usage: 'xforge [--root <path>] review acknowledge --change <id> --evidence <path> [--dry-run] [--text]',
+    usage: 'xforge [--root <path>] review acknowledge --change <id> --evidence <path> [--scope <text>] [--dry-run] [--text]',
     description: "Record that this Change's delivered work was reviewed, for Changes delivered without a work-package plan. The per-package form is `work-package acknowledge --as reviewer`, and this is refused when a plan exists. There is no --by: the actor comes from the environment, because a field inviting a reviewer's name invites a fabricated one.",
-    options: ['--root', '--change', '--evidence', '--dry-run', '--text'],
+    options: ['--root', '--change', '--evidence', '--scope', '--dry-run', '--text'],
   },
   doctor: { usage: 'xforge [--root <path>] doctor [--kind <kind>] [--strict] [--text]', description: 'Report unreferenced and dangling Flow/Skill/Rule/Gate/Hook/PermissionPolicy/Approval/McpServer extensions.', options: ['--root', '--kind', '--strict', '--text'] },
 };
@@ -269,6 +270,7 @@ function parseArguments(argv: string[]): ParsedArguments {
     if (token === '--justification') parsed.justification = value;
     if (token === '--id') parsed.findingId = value;
     if (token === '--answer') parsed.answer = value;
+    if (token === '--scope') parsed.scope = value;
     if (token === '--by') parsed.by = value;
     if (token === '--attach-triage') parsed.attachTriage = value;
     if (token === '--as') {
@@ -410,8 +412,8 @@ function parseArguments(argv: string[]): ParsedArguments {
     if (parsed.subcommand === 'acknowledge' && (!parsed.acknowledgeAs || !parsed.evidence)) {
       throw new XForgeError(diagnostic('XFORGE_WORK_PACKAGE_ACK_ARGUMENTS_REQUIRED', 'work-package acknowledge requires --as <integrator|reviewer> and --evidence <path>.'));
     }
-    if (parsed.subcommand !== 'acknowledge' && (parsed.acknowledgeAs || parsed.evidence)) {
-      throw new XForgeError(diagnostic('XFORGE_OPTION_NOT_ALLOWED', '--as and --evidence are only valid for work-package acknowledge.'));
+    if (parsed.subcommand !== 'acknowledge' && (parsed.acknowledgeAs || parsed.evidence || parsed.scope)) {
+      throw new XForgeError(diagnostic('XFORGE_OPTION_NOT_ALLOWED', '--as, --evidence and --scope are only valid for work-package acknowledge.'));
     }
   }
   return parsed;
@@ -481,7 +483,9 @@ function versionEnvelope(): Envelope {
       version: CLI_VERSION,
       protocolVersion: PROTOCOL_VERSION,
       nodeVersion: process.version,
+      /* Null on an installed copy, and that is the honest answer — see `actualGitIdentity`. */
       buildIdentity: actualGitIdentity(),
+      installation: runtimeInstallation(),
       integrity: runtimeCliIntegrity(),
       /*
        * Which file is actually answering. A global install and a project-local one resolve the
@@ -708,7 +712,7 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
     return envelope({ command, root: project.root, ...result });
   }
   if (command === 'review') {
-    const result = await executeReviewAcknowledge(project, { change: parsed.change!, evidence: parsed.evidence!, dryRun: parsed.dryRun });
+    const result = await executeReviewAcknowledge(project, { change: parsed.change!, evidence: parsed.evidence!, scope: parsed.scope, dryRun: parsed.dryRun });
     return envelope({ command, root: project.root, ...result });
   }
   if (command === 'transition') {
@@ -783,7 +787,7 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
       const result = await executeWorkPackageDraft(project, { change: parsed.change!, packageId: parsed.packageId! });
       return envelope({ command, root: project.root, ...result });
     }
-    const result = await executeWorkPackageAcknowledge(project, { change: parsed.change!, packageId: parsed.packageId!, role: parsed.acknowledgeAs!, evidence: parsed.evidence!, dryRun: parsed.dryRun });
+    const result = await executeWorkPackageAcknowledge(project, { change: parsed.change!, packageId: parsed.packageId!, role: parsed.acknowledgeAs!, evidence: parsed.evidence!, scope: parsed.scope, dryRun: parsed.dryRun });
     return envelope({ command, root: project.root, ...result });
   }
   if (command === 'hook') {

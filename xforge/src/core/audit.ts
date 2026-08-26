@@ -26,7 +26,12 @@ const TAIL_WINDOW_BYTES = 65_536;
  * `recordIndexEvent` rebuilds any index whose version is not the current one, so a project heals on
  * its next recorded event rather than needing a migration command.
  */
-const INDEX_VERSION = 3;
+/**
+ * Bumped whenever the index's own shape changes, which makes every older document rebuild itself
+ * (`recordIndexEvent` falls back to `refreshChangeAuditIndex`) rather than be read under the wrong
+ * schema. Exported so tests assert "current" instead of pinning a literal that goes stale.
+ */
+export const INDEX_VERSION = 4;
 /**
  * How many *residual* (non-governance) workflow events the committed index retains. Runtime events
  * are summarized rather than enumerated, and governance events (see `GOVERNANCE_EVENT_TYPES`) are
@@ -561,7 +566,18 @@ export interface AuditIndexDocument {
   change: string;
   generatedAt: string;
   chain: { anchor: string | null; head: string | null; eventCount: number; valid: boolean; prunedCount: number; prunedThrough: string | null };
-  delivery: { remoteConfigured: boolean; pending: number; delivered: number };
+  /**
+   * `remoteDeclared` is a Manifest fact: the project names the environment variables a remote sink
+   * would be read from. `remoteEndpointResolved` is an environment fact: that variable actually has
+   * a value in the process writing this index.
+   *
+   * They were one field, `remoteConfigured`, computed as `Boolean(manifest.audit?.remote)` — and the
+   * shipped Manifest always carries that block, so it read `true` in every project that had never
+   * configured anything. Beside `delivered: 0` and a four-figure `pending`, a live run read it as
+   * "delivery is set up and failing" when the truth was "no endpoint was ever set". One field could
+   * not say both things, and the one it did say was the one nobody needed.
+   */
+  delivery: { remoteDeclared: boolean; remoteEndpointResolved: boolean; pending: number; delivered: number };
   eventTypes: Record<string, { count: number; lastTimestamp: string; lastHash: string }>;
   coverageGaps: string[];
   runtimeEventCount: number;
@@ -693,12 +709,18 @@ export async function readChangeAuditIndex(project: ProjectContext, changeId: st
   return { path: relative, document, digestValid: selfConsistent && signature === 'ok', signature };
 }
 
-function emptyIndex(changeId: string, anchor: AnchorRecord, remoteConfigured: boolean): Omit<AuditIndexDocument, 'digest'> {
+/** The two independent facts about remote delivery, read once. */
+function remoteDeliveryFacts(project: ProjectContext): { declared: boolean; resolved: boolean } {
+  const remote = project.manifest.audit?.remote;
+  return { declared: Boolean(remote), resolved: Boolean(remote?.endpointEnv && process.env[remote.endpointEnv]) };
+}
+
+function emptyIndex(changeId: string, anchor: AnchorRecord, remote: { declared: boolean; resolved: boolean }): Omit<AuditIndexDocument, 'digest'> {
   return {
     apiVersion: 'xforge.dev/v1alpha2', kind: 'AuditIndex', version: INDEX_VERSION, change: changeId,
     generatedAt: new Date().toISOString(),
     chain: { anchor: anchor.base, head: anchor.base, eventCount: anchor.prunedCount, valid: true, prunedCount: anchor.prunedCount, prunedThrough: anchor.prunedThrough },
-    delivery: { remoteConfigured, pending: 0, delivered: 0 },
+    delivery: { remoteDeclared: remote.declared, remoteEndpointResolved: remote.resolved, pending: 0, delivered: 0 },
     eventTypes: { ...(anchor.prunedEventTypes ?? {}) }, coverageGaps: [], runtimeEventCount: 0, events: [], eventsTruncated: false,
     governanceComplete: true,
     chainHead: anchor.base, chainValid: true,
@@ -826,7 +848,7 @@ export async function refreshChangeAuditIndex(project: ProjectContext, changeId:
   const anchor = await anchorFor(project, shardKey);
   const legacy = (await readLog(project, null)).filter((event) => event.change === changeId);
   const shard = shardKey === null ? [] : await readLog(project, shardKey);
-  let document = emptyIndex(changeId, anchor, Boolean(project.manifest.audit?.remote));
+  let document = emptyIndex(changeId, anchor, remoteDeliveryFacts(project));
   for (const event of [...legacy, ...shard]) applyEvent(document, event);
   const verification = verifyChain(shard, anchor.base, chainSigner(project));
   const valid = verification.diagnostics.length === 0;
@@ -1073,7 +1095,7 @@ export interface ChangeAuditFacts {
   eventTypes: string[];
   eventCount: number;
   chain: { valid: boolean; head: string | null; anchor: string | null; prunedCount: number };
-  delivery: { remoteConfigured: boolean; pending: number; delivered: number };
+  delivery: { remoteDeclared: boolean; remoteEndpointResolved: boolean; pending: number; delivered: number };
   coverageGaps: string[];
   diagnostics: Array<{ code: string; message: string; eventId?: string }>;
   indexPath: string | null;
@@ -1089,7 +1111,7 @@ export interface ChangeAuditFacts {
  */
 export async function readChangeAuditEvents(project: ProjectContext, changeId: string): Promise<ChangeAuditFacts> {
   const diagnostics: ChangeAuditFacts['diagnostics'] = [];
-  const remoteConfigured = Boolean(project.manifest.audit?.remote);
+  const remote = remoteDeliveryFacts(project);
   const signer = chainSigner(project);
   const loaded = await readChangeAuditIndex(project, changeId);
   if (loaded && loaded.signature !== 'ok') {
@@ -1168,7 +1190,8 @@ export async function readChangeAuditEvents(project: ProjectContext, changeId: s
       prunedCount: Math.max(anchor.prunedCount, index?.chain.prunedCount ?? 0),
     },
     delivery: {
-      remoteConfigured,
+      remoteDeclared: remote.declared,
+      remoteEndpointResolved: remote.resolved,
       pending: source === 'index' ? index!.delivery.pending : pendingDelivery(events, events),
       delivered: index?.delivery.delivered ?? events.filter((event) => event.eventType === 'audit.delivery' && event.outcome === 'succeeded').length,
     },

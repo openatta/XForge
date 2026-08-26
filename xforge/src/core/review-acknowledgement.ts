@@ -67,6 +67,17 @@ export interface ReviewAckReceipt {
   contentRevision: string;
   evidence: string;
   evidenceDigest: string;
+  /**
+   * What the reviewer says they covered. Optional and never inferred — an absent scope means
+   * nobody said, which is exactly what every receipt written before this field existed means.
+   *
+   * `independentReview` asks whether a review happened, and had nowhere to record how far it
+   * reached. A live Major run finished with thirteen package reviews of deliberately different
+   * breadth — early rounds full, the last one restricted to verifying ten named fixes — and the
+   * receipts recorded them identically. The difference in evidential strength survived only in the
+   * transcript prose, which nothing indexes and nothing carries forward.
+   */
+  scope?: string;
   actor: { id: string; provider: string; role: string; type: 'human' | 'agent' | 'system' };
   acknowledgedAt: string;
   digest: string;

@@ -980,6 +980,8 @@ export interface WorkPackageAckReceipt {
   status: 'reviewed' | 'integrated';
   /** Binds this ack to the specific delivery content acknowledged, so it cannot be replayed against a different delivery. */
   deliveryDigest: string;
+  /** What this acknowledgement covered, verbatim from the acknowledger. Absent means nobody said. */
+  scope?: string;
   actor: { id: string; provider: string; role: string; type: 'human' | 'agent' | 'system' };
   acknowledgedAt: string;
   digest: string;

@@ -12,6 +12,12 @@
     "contentRevision": { "$ref": "#/$defs/hash" },
     "evidence": { "type": "string", "minLength": 1 },
     "evidenceDigest": { "$ref": "#/$defs/hash" },
+    "scope": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 400,
+      "description": "What this review actually covered, in the reviewer's own words. Optional, and never inferred: an absent scope means nobody said, which is what every receipt written before this field existed means. A receipt for 'I re-read the whole package' and one for 'I checked only the five fixes listed above' are different evidence, and until this field they were indistinguishable on the receipt — the distinction survived only in the transcript prose, which nothing indexes."
+    },
     "actor": {
       "type": "object",
       "additionalProperties": false,

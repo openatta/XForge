@@ -310,6 +310,68 @@ unenforceable 它引用了机制，但在当前 Flow 下那个机制不存在
 > `xforge/scaffold/rules/` 在这七类资源里是唯一**为项目留白**的：
 > 随包的五条是示例与自我治理，你的工程标准要自己写。
 
+### 5.4 `scope.paths` 有两个读者，读法不一样
+
+**XForge 这一侧：`scope.paths` 不与仓库比对，与 Change 比对。**
+`ruleApplies` 拿它和这个 Change 在自己 `change.yaml` 里声明的 `scope.paths` 做**前缀包含**判断
+（剥掉 `/**` 之后，两个根相等、或其中一个是另一个的前缀，即算命中）。
+命中才进 `state` 的 `context.rules`——**而那是 Rule 唯一到达 Agent 的通道**。
+没命中的 Rule 不是被削弱，是**根本不在场**。
+
+**宿主那一侧：它就是文件 glob。** 三个 Adapter 都把同一个列表投影成宿主原生的匹配键——
+Claude 的 `paths:`、Copilot 的 `applyTo:`、Cursor 的 `globs:`——在那里它确实按文件匹配。
+
+**所以这个列表必须同时说得通。** 随包的 `src/**` / `tests/**` 是对仓库形状的一个猜测：
+在代码位于 `apps/*/src/**`、`packages/*/src/**` 的 monorepo 里，两侧同时落空——
+宿主匹配不到文件，XForge 匹配不到 Change 声明的 scope，而 `doctor` 当时只看引用完整性，
+一个字都不会说。一次实测的 Major Change 就是这样带着 `governance.rules: []` 走完全程，
+而 `observable-requirements-are-tested`（severity `must`）一直在 manifest 里选着。
+
+现在有两处会说话：
+
+- `xforge doctor` 报 `XFORGE_DOCTOR_RULE_SCOPE_EMPTY`——某条 Rule 的 `scope.paths`
+  **在本仓一个文件都匹配不到**（info，不是失败：scope 可以合法地指向尚不存在的路径）。
+- `xforge state` / `check` 报 `XFORGE_RULE_OUT_OF_CHANGE_SCOPE`——本 Change 有哪些 `must` 级 Rule
+  因为 scope 不相交而**不在它的指令上下文里**（info，整批一条：不适用常常是对的，
+  一个只改文档的 Change 不需要被告知测试规则；缺的是「什么时候这件事是错的」的可见性）。
+
+### 5.5 把结构纪律写成会红的断言
+
+Rule 表达得了「哪些 Change 受某条纪律管」和「由哪个 Gate 兜底」，
+**表达不了纪律本身**——比如「本仓所有 MCP tool 的输入 schema 必须是固定形状」，
+这种判据在代码结构里，不在某个 Gate 的退出码里。
+
+可用的手法只有一个，而且**不需要任何新能力**：**把纪律编码成一张必须逐项作答的表，
+新增一项而不作答就编译不过或测试红。** 三种形态：
+
+```ts
+// 1. 封闭映射 + 逐项遍历断言：新增一种拒绝类型而不给错误码，测试红
+const ERROR_CODE: Record<RejectionKind, string> = { ... };
+for (const kind of ALL_REJECTION_KINDS) expect(ERROR_CODE[kind]).toBeDefined();
+
+// 2. keyof 强制清单封闭：端口新增方法而不在清单里作答，编译不过
+const REQUIRED: Record<keyof Tx, boolean> = { ... };
+
+// 3. 注册期断言：违反即启动失败，而不是等到调用
+registry.register(tool);   // 内部 assertNarrowSchema(tool.inputSchema)
+```
+
+第 3 种要额外小心一点，实测踩过：**验收这条防线的测试，很容易不验它自称验的东西**——
+一次实跑里，测试构造非法输入期望 `register` 拒绝，但非法输入在**更早的 schema 生成阶段**
+就抛了 `TypeError`，根本走不到 `register`，而裸的 `expect(...).toThrow()` 照单全收。
+**反向验证是唯一可靠的检查**：把被测的那道防线短路掉，看断言是不是真的变红。
+
+**要让「这个 Change 有没有遵守这条纪律」成为 `xforge check` 能回答的问题**，
+现有机制已经够用，路径是：
+
+1. 在 `xforge/scaffold/gates/` 下写一个项目自己的 Gate（`builtin: declared`）——
+   `protected-files` **刻意不 deny 这个目录**；
+2. `xforge verification declare --gate-name <它> --command '[...]' --by <人>` 声明它怎么跑；
+3. 在 Rule 的 `enforcement.gateRefs` 引用它，Rule 的 `coverage` 于是变成 `verified`；
+4. 由 Integrator 或人把它加进 Flow 的某个 stage——`xforge/flows/**` 是受保护的，这一步需要授权。
+
+这条链路一直存在，只是没有一处文档把四步连起来写过。
+
 ---
 
 ## 6. PermissionPolicy 与 Hook

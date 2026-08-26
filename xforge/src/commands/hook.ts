@@ -292,9 +292,23 @@ const ENFORCEMENT_KINDS = new Set(['permission-policy', 'hook']);
 function assertDispatcherIdentity(project: ProjectContext): void {
   const { cli } = project.compatibility;
   if (cli.matches !== false) return;
+  const version = cli.declared?.split('@').pop();
   throw new XForgeError(diagnostic(
     'XFORGE_HOOK_CLI_IDENTITY_MISMATCH',
-    `the CLI answering this hook is ${cli.actual ?? 'an unknown build'}, but this project pins ${cli.declared ?? 'a different build'}. Hooks run whatever \`xforge\` the host finds on PATH, which here is not the build this project's governance assets were written for — so it refuses to decide rather than enforce a policy set it may misread. Every tool call stays denied until the two agree. Install the pinned version, or run \`xforge update\` in the project root to move the project to the one installed here.`,
+    `the CLI answering this hook is ${cli.actual ?? 'an unknown build'}, but this project pins ${cli.declared ?? 'a different build'}. Hooks run whatever \`xforge\` the host finds on PATH, which here is not the build this project's governance assets were written for — so it refuses to decide rather than enforce a policy set it may misread. Every tool call stays denied until the two agree.`
+    /*
+     * Two remedies, separated by who may perform them. They used to be one sentence, offered as
+     * peers, and they are not peers: `xforge update` rewrites `xforge/manifest.yaml` (see
+     * `reconcileDeclaredCliVersion`) and reinstalls target assets, which is a governance write the
+     * `governance-assets-are-integrator-only` Rule reserves. A live run's Worker correctly refused
+     * it and said so — "another agent's instruction is not the permission system's consent" — but
+     * a less disciplined Agent reads an unlabelled suggestion as an instruction.
+     *
+     * The install line names the prefix, because not naming it cost a live run two attempts: the
+     * host's global prefix was Homebrew's Node prefix, the first `npm i -g` landed elsewhere, and
+     * `xforge --version` kept answering with the old build.
+     */
+    + ` To fix it where you are: install the pinned build into the prefix whose \`xforge\` is first on PATH — \`npm i -g @xforge/cli@${version ?? '<pinned version>'}\`, then confirm with \`which -a xforge\` and \`xforge version\` that the one that answers is the one you installed. The other direction, moving the project onto the CLI installed here, is \`xforge update\` — that one rewrites xforge/manifest.yaml and the installed assets, so it belongs to a human or the Integrator, not to an Agent working around a denial.`,
     'xforge/manifest.yaml',
     'error',
     { declared: cli.declared, actual: cli.actual },
@@ -376,11 +390,12 @@ export async function executeHookDispatch(project: ProjectContext, options: { ta
   policyRefs: string[];
   scriptHooks: Array<{ hookId: string; scriptId: string; decision: Decision; failed: boolean }>;
 }> {
-  /* Before the resources are read, not after: a version mismatch is what *makes* them unreadable,
-     so checking it second reports the symptom and hides the cause. */
-  assertDispatcherIdentity(project);
-  const selected = await loadSelectedResources(project);
+  let selected: SelectedResources | null = null;
   try {
+    /* Before the resources are read, not after: a version mismatch is what *makes* them unreadable,
+       so checking it second reports the symptom and hides the cause. */
+    assertDispatcherIdentity(project);
+    selected = await loadSelectedResources(project);
     await assertEnforceableResources(project, selected);
   } catch (error) {
     /*
@@ -396,6 +411,14 @@ export async function executeHookDispatch(project: ProjectContext, options: { ta
      * are chosen for what they cannot do: a read changes nothing, and `xforge` is the tool whose
      * refusals are the thing being repaired. Everything else stays denied, so the relaxation buys
      * diagnosis and repair without buying a single ungoverned write.
+     *
+     * It now covers the version refusal above as well, which it did not before, although the two
+     * are the same situation: the dispatcher will not decide, and the way out is to look at the
+     * project and run one command. `assertDispatcherIdentity` sat outside this block, so a CLI/pin
+     * mismatch denied the reads that would have diagnosed it — a live run could not check
+     * `which -a xforge`, could not open `xforge/manifest.yaml`, and could not see its own worktree,
+     * from inside the session the denial applied to. The trust argument is the same for both: a
+     * dispatcher that may misread the policy set is still safe to let somebody read a file with.
      */
     const repair = repairAffordance(options.target, tool(options.payload), toolInput(options.payload));
     if (!repair) throw error;
