@@ -20,7 +20,7 @@ exit: 0
       "kind": "git-checkout"
     },
     "integrity": "sha256:<sha256>",
-    "executablePath": "<CHECKOUT>/node_modules/vitest/dist/workers/forks.js"
+    "executablePath": "<executable>"
   },
   "diagnostics": [],
   "changes": [],

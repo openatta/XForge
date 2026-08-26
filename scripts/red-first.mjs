@@ -20,7 +20,14 @@
  * candidate test files are copied into it, and it is removed afterwards.
  *
  * Exit codes: 0 every candidate test file failed against the base (proved). 1 at least one passed
- * (not proved). 2 the run could not decide — no candidate tests, or the base build failed.
+ * (not proved). 2 the run could not decide — the base would not build. 3 there was nothing to
+ * prove, because the change added no tests.
+ *
+ * 2 and 3 were one code, and they are not the same situation: "no tests were added" is an ordinary
+ * outcome for a commit that changes no behaviour, while "the base would not build" means the proof
+ * did not run and nobody knows. Folding them together is what stopped this from being wired into a
+ * gate — anything tolerant enough to pass the first would have swallowed the second.
+ * `--allow-nothing-to-prove` turns 3 into 0 for exactly that reason, and leaves 2 failing.
  */
 import { cpSync, existsSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -32,10 +39,11 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 
 function options(argv) {
-  const parsed = { base: 'HEAD', keep: false };
+  const parsed = { base: 'HEAD', keep: false, allowNothing: false };
   for (let index = 0; index < argv.length; index += 1) {
     if (argv[index] === '--base') { parsed.base = argv[index + 1]; index += 1; }
     else if (argv[index] === '--keep') parsed.keep = true;
+    else if (argv[index] === '--allow-nothing-to-prove') parsed.allowNothing = true;
     else if (argv[index] === '--help' || argv[index] === '-h') parsed.help = true;
     else { console.error(`Unknown argument: ${argv[index]}`); process.exit(2); }
   }
@@ -96,7 +104,7 @@ function main() {
   if (tests.length === 0) {
     console.error(`No added or modified test files against ${parsed.base} (${baseSha.slice(0, 8)}).`);
     console.error('A fix ships with a test that fails without it. There is nothing here to prove.');
-    return 2;
+    return parsed.allowNothing ? 0 : 3;
   }
 
   console.log(`Base: ${parsed.base} (${baseSha.slice(0, 8)})`);

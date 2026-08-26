@@ -53,16 +53,31 @@ if (tests.status !== 0) {
     `--temp-directory=${rawRoot}`,
     '--all',
     '--include=dist/**/*.js',
+    /*
+     * Type-only modules. `types.js` and the eight domain modules behind it compile to `export {}`
+     * or to a single narrowing guard, so `--all` counts them as files with no covered lines and
+     * drags the global figure down by three points for code that has almost no runtime to cover.
+     * The one guard that does live there, `isVerificationRun`, is exercised through
+     * `core/verification.ts` and measured on that module's behalf.
+     */
     '--exclude=dist/**/types.js',
+    '--exclude=dist/types/**',
     '--reporter=text',
     '--reporter=json-summary',
     '--reporter=lcov',
     `--reports-dir=${coverageRoot}`,
     '--check-coverage',
-    '--statements=78',
-    '--branches=65',
-    '--functions=80',
-    '--lines=78',
+    /*
+     * Set just under what the suite actually reaches, rather than at a round number well below it.
+     * At 78/65 against an actual 88/75 the gate could not detect a regression until ten points of
+     * coverage had already gone -- enough for a whole module to arrive untested. These have to be
+     * raised whenever the real figure rises, which is the point: a threshold that never moves is a
+     * threshold nobody is defending.
+     */
+    '--statements=87',
+    '--branches=74',
+    '--functions=90',
+    '--lines=87',
   ], { cwd: packageRoot, stdio: 'inherit' });
   process.exitCode = report.status ?? 1;
 }

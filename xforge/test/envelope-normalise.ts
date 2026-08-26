@@ -43,6 +43,13 @@ const RULES: Array<[RegExp, string]> = [
    * assertion is for.
    */
   [/\bin \d+ms\b/g, 'in <ms>'],
+  /*
+   * `executablePath` is the file node was launched with, which is the product's own binary when the
+   * CLI is spawned and a vitest worker when it is called in process. The suite runs both ways --
+   * the coverage gate spawns because that is the only path it can measure -- so recording either
+   * spelling pins the harness rather than the product. Its presence and position stay covered.
+   */
+  [/"executablePath":\s*"[^"]*"/g, '"executablePath": "<executable>"'],
   /* Node's own version travels in `xforge version`, and the suite runs on more than one. */
   [/"nodeVersion":\s*"v[\d.]+"/g, '"nodeVersion": "<node>"'],
   [/\bv\d+\.\d+\.\d+\b/g, '<node>'],
