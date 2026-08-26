@@ -222,6 +222,14 @@ export function reconcileConstitutionReferences(
   gatePassed: Set<string>,
   existingPaths: Set<string>,
   resolvesOnDisk: Set<string>,
+  /**
+   * Every Gate the project selects, run or not.
+   *
+   * Kept in step with `core/constitution-check.ts`'s `describeDangling`: the two report the same
+   * citation, and a reader who sees them disagree reads it as a defect in whichever component they
+   * happen to be looking at. That has already happened once with this rule.
+   */
+  declaredGates: Set<string> = new Set(),
 ): ReconciliationObservation[] {
   const observations: ReconciliationObservation[] = [];
   const anchors = new Set(requirements.map((entry) => entry.anchor));
@@ -231,12 +239,15 @@ export function reconcileConstitutionReferences(
       const gate = /^gate:(.+)$/i.exec(reference);
       if (gate) {
         if (gatePassed.has(gate[1]!.trim())) continue;
+        const name = gate[1]!.trim();
         observations.push({
           id: `RC-5:${principle.principle}:${reference}`,
           rule: 'RC-5',
           code: 'XFORGE_BRIEF_REFERENCE_UNRESOLVABLE',
           provenance: 'computed',
-          summary: `Principle "${principle.principle}" cites ${reference}, and no Gate Evidence for this revision records that Gate as passed.`,
+          summary: declaredGates.has(name)
+            ? `Principle "${principle.principle}" cites ${reference}. That Gate is selected by this project and has produced no Evidence at this revision — it runs at a later Stage than the one this ledger was written at, and the citation resolves once it has run. This states a timing difference, not a wrong citation.`
+            : `Principle "${principle.principle}" cites ${reference}, and this project selects no Gate by that name.`,
           refs: [reference],
         });
         continue;

@@ -57,6 +57,25 @@ async function addMcpServer(root: string, id: string): Promise<void> {
  * never clear is how a report gets skimmed.
  */
 describe('doctor and Flow version drift', () => {
+  it('says when a policy exemption cannot fire on any target this project installs', async () => {
+    /*
+     * `exceptActors` is expressible in no shipped target's own permission layer, so the exemption
+     * lives only in the runtime Hook bridge — which needs the host to identify the calling
+     * sub-agent. A live run configured one, watched the exempted actor be denied along with
+     * everyone else, and had nothing telling it that the policy had become an unconditional deny.
+     */
+    const root = await fixture();
+    const result = await runCli(root, ['doctor']);
+    const finding = result.json.data.suggestions.find((item: any) => item.code === 'XFORGE_DOCTOR_POLICY_EXEMPTION_UNENFORCEABLE');
+    expect(finding.id).toBe('protected-files');
+    expect(finding.severity).toBe('info');
+    expect(finding.message).toContain('unconditional deny');
+    /* Reported by doctor rather than by install: the condition holds for every project today, so a
+       per-install warning would fire on every run. */
+    const installed = await runCli(root, ['install']);
+    expect(installed.json.diagnostics.some((item: any) => item.code.includes('EXEMPTION'))).toBe(false);
+  });
+
   it('reports a Flow whose version differs from the one this CLI ships', async () => {
     const root = await fixture();
     await updateYaml(root, 'xforge/flows/solid.yaml', (flow) => { flow.metadata.version = 1; });

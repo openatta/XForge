@@ -223,7 +223,7 @@ exit: 0
     {
       "code": "XFORGE_POLICY_STATIC_LAYER_DEGRADED",
       "severity": "info",
-      "message": "Target codex has no static permission-policy projection at all, so PermissionPolicy protected-files (which uses exceptActors/match.stages) is enforced only by the XForge runtime Hook bridge.",
+      "message": "Target codex has no static permission-policy projection at all, so PermissionPolicy protected-files (which uses exceptActors/match.stages) is enforced only by the XForge runtime Hook bridge. Enforcement then rests entirely on the runtime Hook bridge, which applies `exceptActors` only when the host puts a sub-agent identity in the hook payload — a sub-agent whose contract was carried in a prompt rather than registered with the host sends none, and the exemption silently does not fire.",
       "path": "xforge/scaffold/policies/protected-files.yaml",
       "details": {
         "target": "codex",
@@ -235,7 +235,7 @@ exit: 0
     {
       "code": "XFORGE_POLICY_STATIC_LAYER_DEGRADED",
       "severity": "info",
-      "message": "Target codex has no static permission-policy projection at all, so PermissionPolicy protected-manifest (which uses exceptActors/match.stages) is enforced only by the XForge runtime Hook bridge.",
+      "message": "Target codex has no static permission-policy projection at all, so PermissionPolicy protected-manifest (which uses exceptActors/match.stages) is enforced only by the XForge runtime Hook bridge. Enforcement then rests entirely on the runtime Hook bridge, which applies `exceptActors` only when the host puts a sub-agent identity in the hook payload — a sub-agent whose contract was carried in a prompt rather than registered with the host sends none, and the exemption silently does not fire.",
       "path": "xforge/scaffold/policies/protected-manifest.yaml",
       "details": {
         "target": "codex",
@@ -247,7 +247,7 @@ exit: 0
     {
       "code": "XFORGE_POLICY_STATIC_LAYER_DEGRADED",
       "severity": "warning",
-      "message": "Target claude cannot express exceptActors in its static permission layer, so PermissionPolicy protected-files is withheld from it and enforced only by the XForge runtime Hook bridge.",
+      "message": "Target claude cannot express exceptActors in its static permission layer, so PermissionPolicy protected-files is withheld from it and enforced only by the XForge runtime Hook bridge. Enforcement then rests entirely on the runtime Hook bridge, which applies `exceptActors` only when the host puts a sub-agent identity in the hook payload — a sub-agent whose contract was carried in a prompt rather than registered with the host sends none, and the exemption silently does not fire.",
       "path": "xforge/scaffold/policies/protected-files.yaml",
       "details": {
         "target": "claude",
@@ -260,7 +260,7 @@ exit: 0
     {
       "code": "XFORGE_POLICY_STATIC_LAYER_DEGRADED",
       "severity": "warning",
-      "message": "Target claude cannot express exceptActors in its static permission layer, so PermissionPolicy protected-manifest is withheld from it and enforced only by the XForge runtime Hook bridge.",
+      "message": "Target claude cannot express exceptActors in its static permission layer, so PermissionPolicy protected-manifest is withheld from it and enforced only by the XForge runtime Hook bridge. Enforcement then rests entirely on the runtime Hook bridge, which applies `exceptActors` only when the host puts a sub-agent identity in the hook payload — a sub-agent whose contract was carried in a prompt rather than registered with the host sends none, and the exemption silently does not fire.",
       "path": "xforge/scaffold/policies/protected-manifest.yaml",
       "details": {
         "target": "claude",
@@ -273,7 +273,7 @@ exit: 0
     {
       "code": "XFORGE_POLICY_STATIC_LAYER_DEGRADED",
       "severity": "info",
-      "message": "Target cursor has no static permission-policy projection at all, so PermissionPolicy protected-files (which uses exceptActors/match.stages) is enforced only by the XForge runtime Hook bridge.",
+      "message": "Target cursor has no static permission-policy projection at all, so PermissionPolicy protected-files (which uses exceptActors/match.stages) is enforced only by the XForge runtime Hook bridge. Enforcement then rests entirely on the runtime Hook bridge, which applies `exceptActors` only when the host puts a sub-agent identity in the hook payload — a sub-agent whose contract was carried in a prompt rather than registered with the host sends none, and the exemption silently does not fire.",
       "path": "xforge/scaffold/policies/protected-files.yaml",
       "details": {
         "target": "cursor",
@@ -285,7 +285,7 @@ exit: 0
     {
       "code": "XFORGE_POLICY_STATIC_LAYER_DEGRADED",
       "severity": "info",
-      "message": "Target cursor has no static permission-policy projection at all, so PermissionPolicy protected-manifest (which uses exceptActors/match.stages) is enforced only by the XForge runtime Hook bridge.",
+      "message": "Target cursor has no static permission-policy projection at all, so PermissionPolicy protected-manifest (which uses exceptActors/match.stages) is enforced only by the XForge runtime Hook bridge. Enforcement then rests entirely on the runtime Hook bridge, which applies `exceptActors` only when the host puts a sub-agent identity in the hook payload — a sub-agent whose contract was carried in a prompt rather than registered with the host sends none, and the exemption silently does not fire.",
       "path": "xforge/scaffold/policies/protected-manifest.yaml",
       "details": {
         "target": "cursor",
@@ -297,7 +297,7 @@ exit: 0
     {
       "code": "XFORGE_POLICY_STATIC_LAYER_DEGRADED",
       "severity": "warning",
-      "message": "Target opencode cannot express exceptActors in its static permission layer, so PermissionPolicy protected-files is withheld from it and enforced only by the XForge runtime Hook bridge.",
+      "message": "Target opencode cannot express exceptActors in its static permission layer, so PermissionPolicy protected-files is withheld from it and enforced only by the XForge runtime Hook bridge. Enforcement then rests entirely on the runtime Hook bridge, which applies `exceptActors` only when the host puts a sub-agent identity in the hook payload — a sub-agent whose contract was carried in a prompt rather than registered with the host sends none, and the exemption silently does not fire.",
       "path": "xforge/scaffold/policies/protected-files.yaml",
       "details": {
         "target": "opencode",
@@ -310,7 +310,7 @@ exit: 0
     {
       "code": "XFORGE_POLICY_STATIC_LAYER_DEGRADED",
       "severity": "warning",
-      "message": "Target opencode cannot express exceptActors in its static permission layer, so PermissionPolicy protected-manifest is withheld from it and enforced only by the XForge runtime Hook bridge.",
+      "message": "Target opencode cannot express exceptActors in its static permission layer, so PermissionPolicy protected-manifest is withheld from it and enforced only by the XForge runtime Hook bridge. Enforcement then rests entirely on the runtime Hook bridge, which applies `exceptActors` only when the host puts a sub-agent identity in the hook payload — a sub-agent whose contract was carried in a prompt rather than registered with the host sends none, and the exemption silently does not fire.",
       "path": "xforge/scaffold/policies/protected-manifest.yaml",
       "details": {
         "target": "opencode",
@@ -323,7 +323,7 @@ exit: 0
     {
       "code": "XFORGE_POLICY_STATIC_LAYER_DEGRADED",
       "severity": "info",
-      "message": "Target github-copilot has no static permission-policy projection at all, so PermissionPolicy protected-files (which uses exceptActors/match.stages) is enforced only by the XForge runtime Hook bridge.",
+      "message": "Target github-copilot has no static permission-policy projection at all, so PermissionPolicy protected-files (which uses exceptActors/match.stages) is enforced only by the XForge runtime Hook bridge. Enforcement then rests entirely on the runtime Hook bridge, which applies `exceptActors` only when the host puts a sub-agent identity in the hook payload — a sub-agent whose contract was carried in a prompt rather than registered with the host sends none, and the exemption silently does not fire.",
       "path": "xforge/scaffold/policies/protected-files.yaml",
       "details": {
         "target": "github-copilot",
@@ -335,7 +335,7 @@ exit: 0
     {
       "code": "XFORGE_POLICY_STATIC_LAYER_DEGRADED",
       "severity": "info",
-      "message": "Target github-copilot has no static permission-policy projection at all, so PermissionPolicy protected-manifest (which uses exceptActors/match.stages) is enforced only by the XForge runtime Hook bridge.",
+      "message": "Target github-copilot has no static permission-policy projection at all, so PermissionPolicy protected-manifest (which uses exceptActors/match.stages) is enforced only by the XForge runtime Hook bridge. Enforcement then rests entirely on the runtime Hook bridge, which applies `exceptActors` only when the host puts a sub-agent identity in the hook payload — a sub-agent whose contract was carried in a prompt rather than registered with the host sends none, and the exemption silently does not fire.",
       "path": "xforge/scaffold/policies/protected-manifest.yaml",
       "details": {
         "target": "github-copilot",

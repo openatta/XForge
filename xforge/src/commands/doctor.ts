@@ -14,6 +14,7 @@ import { sha256 } from '../core/hash.js';
 import { safeResolve } from '../core/path-safety.js';
 import { parse as parseYaml } from 'yaml';
 import { loadYaml } from '../core/yaml.js';
+import { getAdapter } from '../adapters/index.js';
 import { capabilityGapDiagnostics } from '../install/planner.js';
 import { verificationEntriesFor } from '../core/verification.js';
 import { exists } from '../core/files.js';
@@ -316,6 +317,43 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
       path: 'xforge/architecture.md',
       severity: 'info',
     });
+  }
+
+  /*
+   * A policy whose exemption cannot fire anywhere this project installs.
+   *
+   * `exceptActors` is expressible in no shipped target's own permission layer, so the exemption
+   * exists only in the runtime Hook bridge -- which can apply it only when the host identifies the
+   * calling sub-agent. A sub-agent whose contract was carried in a prompt rather than registered
+   * with the host sends no identity, and the exemption silently does not fire: the policy is then an
+   * unconditional deny for every actor, including the one it names.
+   *
+   * A live run met exactly that. It configured `protected-files` with `exceptActors: [integrator]`,
+   * watched the Integrator be denied along with everyone else, and read `actorScoped: false` on all
+   * five targets as "unsupported" -- half right, and the half it got wrong is the half that decides
+   * what the policy means. The honest summary of the state it was in: an Agent that respects the
+   * policy could not write the file at all, while `cat > file` was never in the hook's matching
+   * surface to begin with.
+   *
+   * Reported here rather than by `install`, and as a suggestion. The condition is a property of the
+   * product's targets rather than of anything this project did, so it holds on every install of
+   * every project today -- a per-install warning would fire every single time, which is how a
+   * channel stops being read.
+   */
+  const actorScoped = project.manifest.targets.filter((target) => getAdapter(target).capability.permissionPolicyScopes?.actorScoped);
+  if (actorScoped.length === 0) {
+    for (const [id, policy] of structure.resources.policies) {
+      const exempted = policy.value.spec.exceptActors ?? [];
+      if (exempted.length === 0) continue;
+      suggestions.push({
+        scope: 'policies',
+        code: 'XFORGE_DOCTOR_POLICY_EXEMPTION_UNENFORCEABLE',
+        id,
+        message: `PermissionPolicy ${id} exempts ${exempted.join(', ')}, and none of this project's targets (${project.manifest.targets.join(', ')}) can express an actor exemption in its own permission layer. The exemption therefore lives only in the XForge runtime Hook bridge, which applies it only when the host reports the calling sub-agent's identity — so wherever it does not, this policy is an unconditional ${policy.value.spec.effect} for every actor including the exempted one. Confirm the exempted actors are registered sub-agents of a target that reports them, or write the policy so it does not rely on an exemption.`,
+        path: policy.yamlPath,
+        severity: 'info',
+      });
+    }
   }
 
   /*

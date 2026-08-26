@@ -134,7 +134,7 @@ export function capabilityGapDiagnostics(resources: SelectedResources, targets: 
       if (!scopes.capabilities.includes(spec.capability)) {
         result.push(diagnostic(
           'XFORGE_POLICY_STATIC_LAYER_DEGRADED',
-          `Target ${target} has no static permission-policy projection at all, so PermissionPolicy ${id} (which uses exceptActors/match.stages) is enforced only by the XForge runtime Hook bridge.`,
+          `Target ${target} has no static permission-policy projection at all, so PermissionPolicy ${id} (which uses exceptActors/match.stages) is enforced only by the XForge runtime Hook bridge.${usesExceptActors ? ' Enforcement then rests entirely on the runtime Hook bridge, which applies `exceptActors` only when the host puts a sub-agent identity in the hook payload — a sub-agent whose contract was carried in a prompt rather than registered with the host sends none, and the exemption silently does not fire.' : ''}`,
           policy.yamlPath,
           'info',
           { target, policy: id, capability: spec.capability, reason: 'no-static-projection' },
@@ -149,7 +149,7 @@ export function capabilityGapDiagnostics(resources: SelectedResources, targets: 
       if (unexpressible.length === 0) continue;
       result.push(diagnostic(
         'XFORGE_POLICY_STATIC_LAYER_DEGRADED',
-        `Target ${target} cannot express ${unexpressible.join(' or ')} in its static permission layer, so PermissionPolicy ${id} is withheld from it and enforced only by the XForge runtime Hook bridge.`,
+        `Target ${target} cannot express ${unexpressible.join(' or ')} in its static permission layer, so PermissionPolicy ${id} is withheld from it and enforced only by the XForge runtime Hook bridge.${usesExceptActors && !scopes.actorScoped ? ' Enforcement then rests entirely on the runtime Hook bridge, which applies `exceptActors` only when the host puts a sub-agent identity in the hook payload — a sub-agent whose contract was carried in a prompt rather than registered with the host sends none, and the exemption silently does not fire.' : ''}`,
         policy.yamlPath,
         'warning',
         { target, policy: id, unexpressible },

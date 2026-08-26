@@ -15,7 +15,7 @@ exit: 0
       "unusedFlows": 2,
       "unusableApprovals": 0,
       "conformance": 0,
-      "suggestions": 5
+      "suggestions": 7
     },
     "danglingReferences": [],
     "deadCode": [],
@@ -45,6 +45,22 @@ exit: 0
         "id": "xforge-architect",
         "message": "This project has no xforge/architecture.md, so each Change designs without a durable record of the decisions the last one made. Run the xforge-architect Skill to write one — from the existing code, by answering a few questions, or from a description. It is a suggestion, not a requirement: nothing is blocked without it.",
         "path": "xforge/architecture.md",
+        "severity": "info"
+      },
+      {
+        "scope": "policies",
+        "code": "XFORGE_DOCTOR_POLICY_EXEMPTION_UNENFORCEABLE",
+        "id": "protected-files",
+        "message": "PermissionPolicy protected-files exempts integrator, and none of this project's targets (codex, claude, cursor, opencode, github-copilot) can express an actor exemption in its own permission layer. The exemption therefore lives only in the XForge runtime Hook bridge, which applies it only when the host reports the calling sub-agent's identity — so wherever it does not, this policy is an unconditional deny for every actor including the exempted one. Confirm the exempted actors are registered sub-agents of a target that reports them, or write the policy so it does not rely on an exemption.",
+        "path": "xforge/scaffold/policies/protected-files.yaml",
+        "severity": "info"
+      },
+      {
+        "scope": "policies",
+        "code": "XFORGE_DOCTOR_POLICY_EXEMPTION_UNENFORCEABLE",
+        "id": "protected-manifest",
+        "message": "PermissionPolicy protected-manifest exempts integrator, and none of this project's targets (codex, claude, cursor, opencode, github-copilot) can express an actor exemption in its own permission layer. The exemption therefore lives only in the XForge runtime Hook bridge, which applies it only when the host reports the calling sub-agent's identity — so wherever it does not, this policy is an unconditional ask for every actor including the exempted one. Confirm the exempted actors are registered sub-agents of a target that reports them, or write the policy so it does not rely on an exemption.",
+        "path": "xforge/scaffold/policies/protected-manifest.yaml",
         "severity": "info"
       },
       {
@@ -99,6 +115,18 @@ exit: 0
       "severity": "info",
       "message": "This project has no xforge/architecture.md, so each Change designs without a durable record of the decisions the last one made. Run the xforge-architect Skill to write one — from the existing code, by answering a few questions, or from a description. It is a suggestion, not a requirement: nothing is blocked without it.",
       "path": "xforge/architecture.md"
+    },
+    {
+      "code": "XFORGE_DOCTOR_POLICY_EXEMPTION_UNENFORCEABLE",
+      "severity": "info",
+      "message": "PermissionPolicy protected-files exempts integrator, and none of this project's targets (codex, claude, cursor, opencode, github-copilot) can express an actor exemption in its own permission layer. The exemption therefore lives only in the XForge runtime Hook bridge, which applies it only when the host reports the calling sub-agent's identity — so wherever it does not, this policy is an unconditional deny for every actor including the exempted one. Confirm the exempted actors are registered sub-agents of a target that reports them, or write the policy so it does not rely on an exemption.",
+      "path": "xforge/scaffold/policies/protected-files.yaml"
+    },
+    {
+      "code": "XFORGE_DOCTOR_POLICY_EXEMPTION_UNENFORCEABLE",
+      "severity": "info",
+      "message": "PermissionPolicy protected-manifest exempts integrator, and none of this project's targets (codex, claude, cursor, opencode, github-copilot) can express an actor exemption in its own permission layer. The exemption therefore lives only in the XForge runtime Hook bridge, which applies it only when the host reports the calling sub-agent's identity — so wherever it does not, this policy is an unconditional ask for every actor including the exempted one. Confirm the exempted actors are registered sub-agents of a target that reports them, or write the policy so it does not rely on an exemption.",
+      "path": "xforge/scaffold/policies/protected-manifest.yaml"
     },
     {
       "code": "XFORGE_DOCTOR_RULE_SCOPE_EMPTY",

@@ -562,7 +562,7 @@ export async function readBrief(project: ProjectContext, options: BriefOptions):
     ...reconcileRequirementAnchors(requirements, sources),
     ...reconcileCoverageSections(requirements, sources),
     ...reconcileDeclaredGaps(sources, findingsResult.findings),
-    ...reconcileConstitutionReferences(principlesResult.principles, requirements, sources, gatePassed, existingPaths, resolvesOnDisk),
+    ...reconcileConstitutionReferences(principlesResult.principles, requirements, sources, gatePassed, existingPaths, resolvesOnDisk, new Set(project.manifest.scaffold.gates ?? [])),
     ...reconcileMaterialDecisions(await readMaterialDecisions(project, options.change), sources),
   ];
 

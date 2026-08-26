@@ -89,6 +89,16 @@ function list(value: unknown): string[] {
 interface CitableFacts {
   /** Gate name -> latest recorded status, from the Change's own `evidence/*.json`. */
   gates: Map<string, string>;
+  /**
+   * Every Gate this project has selected, whether or not it has run.
+   *
+   * Carried so a citation that cannot be resolved can say *why*. `gate:unit-tests` written into the
+   * ledger at the Check Stage names a Gate that runs at Verify: there is no Evidence yet, and the
+   * same citation resolves later, at archive, where this ledger is re-decided. Reporting that
+   * identically to `gate:no-such-thing` is what led a live run to abandon the citation form
+   * altogether rather than move the citation.
+   */
+  declaredGates: Set<string>;
   /** Lower-cased Requirement heading text, plus its leading id token when the heading has one. */
   requirements: Set<string>;
 }
@@ -137,6 +147,25 @@ async function readRequirements(project: ProjectContext, changeId: string): Prom
     }
   }
   return requirements;
+}
+
+/**
+ * Why one citation did not resolve, in the terms its author can act on.
+ *
+ * The three cases need three different actions and used to read the same. A Gate this project does
+ * not have is a typo. A Gate it has that has not run yet is a *timing* problem -- the ledger is
+ * written at Check and this Gate runs at Verify -- and the citation will resolve when this same
+ * ledger is re-decided at archive, so the answer is to cite something available now or to move the
+ * citation, not to abandon the form. Anything else is a path or Requirement that is simply absent.
+ */
+function describeDangling(reference: string, facts: CitableFacts): string {
+  const gate = /^gate:(.+)$/i.exec(reference);
+  if (!gate) return reference;
+  const name = gate[1]!.trim();
+  if (!facts.declaredGates.has(name)) return `${reference} (this project selects no Gate by that name)`;
+  const status = facts.gates.get(name);
+  if (status === undefined) return `${reference} (that Gate is selected but has produced no Evidence yet — it runs at a later Stage than the one this ledger is written at, and the citation resolves once it has)`;
+  return `${reference} (that Gate ran and recorded ${status}, not passed)`;
 }
 
 async function resolveReference(
@@ -248,6 +277,7 @@ export async function evaluateConstitutionCheck(
 
   const facts: CitableFacts = {
     gates: await readGateEvidence(project, changeId),
+    declaredGates: new Set(project.manifest.scaffold.gates ?? []),
     requirements: await readRequirements(project, changeId),
   };
   const approvals = options.approvals ?? (await loadReceipts(project, changeId));
@@ -282,7 +312,7 @@ export async function evaluateConstitutionCheck(
       if (references.length === 0) {
         problems.push(`${relative}: principle "${principle}" is answered compliant with no references; cite at least one machine-locatable reference — a Requirement id from this Change's delta Specs, a path that exists, or gate:<name> for a Gate this Change has passed.`);
       } else if (resolved.length === 0) {
-        problems.push(`${relative}: principle "${principle}" cites only references this project cannot locate (${dangling.join(', ')}); a citation nobody can follow is not evidence of compliance.`);
+        problems.push(`${relative}: principle "${principle}" cites only references this project cannot locate (${dangling.map((reference) => describeDangling(reference, facts)).join('; ')}); a citation nobody can follow is not evidence of compliance.`);
       } else if (resolved.every((reference) => APPROVAL_RECEIPT_REFERENCE.test(reference))) {
         /*
          * Every citation resolves, and none of them is evidence. Refused here rather than left to

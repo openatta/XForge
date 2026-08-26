@@ -1161,7 +1161,7 @@ exit: 0
             "actor": {
               "id": "xbitshans",
               "provider": "local-os",
-              "type": "human"
+              "type": "system"
             },
             "approvals": [],
             "gates": [
@@ -1188,7 +1188,7 @@ exit: 0
             "actor": {
               "id": "xbitshans",
               "provider": "local-os",
-              "type": "human"
+              "type": "system"
             },
             "approvals": [],
             "gates": [],
@@ -1213,7 +1213,7 @@ exit: 0
             "actor": {
               "id": "xbitshans",
               "provider": "local-os",
-              "type": "human"
+              "type": "system"
             },
             "approvals": [
               "<sha256>"
@@ -1244,7 +1244,7 @@ exit: 0
             "actor": {
               "id": "xbitshans",
               "provider": "local-os",
-              "type": "human"
+              "type": "system"
             },
             "approvals": [],
             "gates": [],

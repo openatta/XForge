@@ -81,6 +81,15 @@ async function unattestedReceipts(
   };
 }
 
+function transitionActor(): TransitionReceipt['actor'] {
+  const declared = process.env.XFORGE_ACTOR_TYPE;
+  return {
+    id: process.env.XFORGE_ACTOR_ID ?? process.env.USER ?? 'unknown',
+    provider: process.env.XFORGE_ACTOR_PROVIDER ?? 'local-os',
+    type: declared === 'agent' || declared === 'human' ? declared : 'system',
+  };
+}
+
 export async function executeTransition(project: ProjectContext, options: { change: string; to: string; dryRun: boolean }): Promise<{
   data: { change: string; from: string; to: string; ready: boolean; receipt: TransitionReceipt | null; dryRun: boolean };
   diagnostics: Diagnostic[];
@@ -186,7 +195,16 @@ export async function executeTransition(project: ProjectContext, options: { chan
     flow: resolved.flow.metadata.name, from: control.governance.currentStage, to: options.to, contentRevision: control.governance.revision.contentRevision,
     stateRevisionBefore: control.governance.revision.stateRevision, policySnapshotDigest: control.governance.revision.policySnapshotDigest,
     gitHead: control.governance.revision.gitHead, previousReceiptDigest: control.governance.transitionHead, transitionedAt: new Date().toISOString(),
-    actor: { id: process.env.XFORGE_ACTOR_ID ?? process.env.USER ?? 'unknown', provider: process.env.XFORGE_ACTOR_PROVIDER ?? 'local-os', type: process.env.XFORGE_ACTOR_TYPE === 'agent' ? 'agent' as const : 'human' as const },
+    /*
+     * `system` when nothing says otherwise, not `human`.
+     *
+     * The default used to be `human`, so a receipt written by an unattended process claimed a person
+     * performed the transition -- an unearned claim of exactly the kind `decidedBy`, `resolvedBy` and
+     * the approval dialogue all exist to refuse. `XFORGE_ACTOR_TYPE` is still only an assertion, but
+     * an absent one now reads as "nobody said" rather than as "a person did it", and it agrees with
+     * what the audit chain records for the same operation (`ambientActor` in `core/audit.ts`).
+     */
+    actor: transitionActor(),
     approvals: requirement.approvals.map((item) => item.digest).sort(), gates: requirement.gates.map((item) => item.digest).sort(), auditHead: ownAudit.chain.head,
   };
   const receipt: TransitionReceipt = { ...unsigned, digest: sha256(stableStringify(unsigned)) };

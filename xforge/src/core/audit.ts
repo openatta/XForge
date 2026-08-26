@@ -584,6 +584,32 @@ export async function refreshChangeAuditIndex(project: ProjectContext, changeId:
   return await writeIndex(project, changeId, document) ?? { ...document, digest: auditIndexDigest(document) };
 }
 
+/**
+ * Who this process is acting as, when the caller does not say.
+ *
+ * The three environment variables were already read -- by `commands/transition.ts`, and by nothing
+ * else -- so the audit chain answered "who did this" accurately for Stage transitions and fell back
+ * to the local OS user for every Gate run, approval, dispatch and delivery in the same session. A
+ * chain that is precise about one event type and generic about the rest is harder to read than one
+ * that is uniformly generic, because the difference looks like a finding.
+ *
+ * What it records is a *claimed* identity. Nothing here authenticates the variables; a caller that
+ * sets `XFORGE_ACTOR_TYPE=human` is asserting it, exactly as `--attestation human` was an assertion
+ * before `approve` stopped accepting one. The value of recording it is that an agent-driven session
+ * can be told apart from a person's afterwards -- not that the assertion can be trusted against an
+ * actor who wants to lie. Approval receipts do not come through here; they carry the identity the
+ * terminal dialogue collected.
+ */
+function ambientActor(): AuditEvent['actor'] {
+  const declared = process.env.XFORGE_ACTOR_TYPE;
+  return {
+    id: process.env.XFORGE_ACTOR_ID ?? process.env.USER ?? 'unknown',
+    provider: process.env.XFORGE_ACTOR_PROVIDER ?? 'local-os',
+    role: 'operator',
+    type: declared === 'agent' || declared === 'human' || declared === 'external-system' ? declared : 'system',
+  };
+}
+
 /** O(1) index maintenance for high-volume runtime events; falls back to a rebuild when out of sync. */
 async function recordIndexEvent(project: ProjectContext, changeId: string, event: AuditEvent): Promise<void> {
   if (!isChangeId(changeId)) return;
@@ -1049,7 +1075,7 @@ export async function recordAudit(project: ProjectContext, input: RecordAuditInp
     apiVersion: 'xforge.dev/v1alpha2', kind: 'AuditEvent', eventId: randomUUID(), eventType: input.eventType,
     timestamp: new Date().toISOString(), plane, platform: input.platform ?? 'xforge', surface: input.surface ?? 'local',
     sessionId: input.sessionId ?? 'unknown', turnId: input.turnId ?? 'unknown', toolCallId: input.toolCallId ?? 'unknown', correlationId: input.correlationId ?? randomUUID(),
-    actor: input.actor ?? { id: process.env.USER ?? 'unknown', provider: 'local-os', role: 'operator', type: 'system' },
+    actor: input.actor ?? ambientActor(),
     change, flow: input.flow ?? null, stage: input.stage ?? null, workPackage: input.workPackage ?? null,
     stateRevision: input.revision?.stateRevision ?? 'unknown', gitBase: input.revision?.gitBase ?? 'unknown', gitHead: input.revision?.gitHead ?? 'unknown',
     refs: { rules: input.refs?.rules ?? [], policies: input.refs?.policies ?? [], gates: input.refs?.gates ?? [] },
