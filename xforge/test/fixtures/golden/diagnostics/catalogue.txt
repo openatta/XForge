@@ -431,6 +431,7 @@ XFORGE_WORK_PACKAGE_VERIFY_UNRUNNABLE  error  path  src/commands/check.ts
 XFORGE_WORK_PACKAGE_VERIFY_UNSAFE  error  path  src/core/work-packages.ts
 XFORGE_WORK_PACKAGE_WRITE_ESCAPE  error  path  src/core/work-packages.ts
 XFORGE_WORK_PACKAGE_WRITE_PATH_DIRECTORY  error  path  src/core/work-packages.ts
+XFORGE_WORK_PACKAGE_WRITE_PATH_UNSUPPORTED_GLOB  error  path  src/core/work-packages.ts
 XFORGE_WORK_PACKAGE_WRITE_TOO_BROAD  error  path  src/core/work-packages.ts
 XFORGE_YAML_INVALID  error  path  src/commands/findings.ts
 XFORGE_YAML_INVALID  error  path  src/core/yaml.ts

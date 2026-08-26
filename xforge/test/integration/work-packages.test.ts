@@ -122,6 +122,49 @@ describe('work-package protocol', () => {
    * the string form is the one place a Change's own content becomes a command line. The string form
    * survives one more version, but only where it means the same thing with and without a shell.
    */
+  /*
+   * Both of these refuse a `write_paths` pattern the boundary matcher cannot honour, at plan time.
+   *
+   * They are the same failure twice. `matchesWritePath` supports `*` and `**` and matches every
+   * other character literally, so a pattern using anything else quietly matches a file of that exact
+   * name — the plan validates, `xforge state` reports nothing, every package dispatches, and the
+   * first symptom is XFORGE_WORK_PACKAGE_WRITE_ESCAPE at delivery with the code already committed.
+   * The trailing-slash form cost a real project seven re-declared packages before it was refused
+   * here; the character-class form was found by `test/unit/path-semantics.test.ts`, which feeds the
+   * same inputs to this matcher and to the PermissionPolicy one and records where they part.
+   */
+  it('refuses a write path that ends in a slash, naming the pattern that means what was intended', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([
+      workPackage('T001', { write_paths: ['src/t001/'] }),
+    ]));
+    await initializeGit(root);
+
+    const result = await runCli(root, ['state', '--change', 'add-feature']);
+    const refusal = result.json.diagnostics.find((item: any) => item.code === 'XFORGE_WORK_PACKAGE_WRITE_PATH_DIRECTORY');
+    expect(refusal.severity).toBe('error');
+    expect(refusal.message).toContain('src/t001/**');
+  });
+
+  it('refuses a write path using glob characters it would match literally', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([
+      workPackage('T001', { write_paths: ['src/[ab]/**'] }),
+      workPackage('T002', { write_paths: ['src/t00?/**'] }),
+    ]));
+    await initializeGit(root);
+
+    const result = await runCli(root, ['state', '--change', 'add-feature']);
+    const refusals = result.json.diagnostics.filter((item: any) => item.code === 'XFORGE_WORK_PACKAGE_WRITE_PATH_UNSUPPORTED_GLOB');
+    expect(refusals).toHaveLength(2);
+    expect(refusals[0].severity).toBe('error');
+    /* Says which character, because the author has to know which one to remove. */
+    expect(refusals.map((item: any) => item.message).join('\n')).toContain('contains "["');
+    expect(refusals.map((item: any) => item.message).join('\n')).toContain('contains "?"');
+  });
+
   it('rejects a legacy verify string containing shell metacharacters and deprecates the rest', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);

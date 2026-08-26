@@ -74,7 +74,14 @@ function globRegex(pattern: string): RegExp {
   return new RegExp(`${source}$`);
 }
 
-function matchesPattern(filePath: string, pattern: string): boolean {
+/**
+ * Whether a changed path falls inside a declared write boundary.
+ *
+ * Exported for the differential test that compares it with `core/governance.ts`'s two matchers:
+ * three implementations of "does this path match this glob" live in this package, and the only
+ * honest way to hold them together is to feed them the same inputs and record where they part.
+ */
+export function matchesWritePath(filePath: string, pattern: string): boolean {
   return globRegex(pattern).test(filePath);
 }
 
@@ -793,7 +800,7 @@ async function validateDeliveryHead(
     let changed: string;
     try { changed = normalizeRelative(item, 'Git changed path'); } catch { unattributed.push(item); continue; }
     if (isControlPlaneBookkeeping(changed, changeRoot)) continue;
-    if (context.attributablePaths.some((pattern) => matchesPattern(changed, pattern))) continue;
+    if (context.attributablePaths.some((pattern) => matchesWritePath(changed, pattern))) continue;
     unattributed.push(changed);
   }
   /*
@@ -909,7 +916,7 @@ async function validateSuccessfulDelivery(
      * exempted from write_paths here too, on the same reasoning.
      */
     if (isControlPlaneBookkeeping(changed, changeRoot)) continue;
-    if (!workPackage.write_paths.some((pattern) => matchesPattern(changed, pattern))) {
+    if (!workPackage.write_paths.some((pattern) => matchesWritePath(changed, pattern))) {
       diagnostics.push(diagnostic(
         'XFORGE_WORK_PACKAGE_WRITE_ESCAPE',
         `Work package ${workPackage.id} changed a path outside write_paths: ${changed}`,
@@ -1180,7 +1187,7 @@ export async function resolveWorkPackages(
     for (const patternInput of workPackage.write_paths) {
       try {
         /*
-         * A trailing slash reads as "this directory" and matches nothing, because `matchesPattern`
+         * A trailing slash reads as "this directory" and matches nothing, because `matchesWritePath`
          * compares against file paths. The plan validated, `xforge state` reported no diagnostic,
          * and every package dispatched — the first sign of trouble was
          * XFORGE_WORK_PACKAGE_WRITE_ESCAPE at delivery time, with the code already written and
@@ -1191,6 +1198,29 @@ export async function resolveWorkPackages(
           diagnostics.push(diagnostic(
             'XFORGE_WORK_PACKAGE_WRITE_PATH_DIRECTORY',
             `Work package ${workPackage.id} write path ends with a slash: ${patternInput}. A write path matches files, so this matches nothing — write ${patternInput.trim().replace(/\/+$/, '')}/** to mean everything under it.`,
+            planPath,
+            'error',
+            { packageId: workPackage.id, pattern: patternInput },
+          ));
+          continue;
+        }
+        /*
+         * The same failure as the slash above, found by the differential in
+         * `test/unit/path-semantics.test.ts` rather than by another project paying for it.
+         *
+         * `globRegex` supports `*` and `**` and escapes everything else, so `src/[ab].ts` and
+         * `src/a?c.ts` are honoured *literally*: they match a file of that exact name and nothing
+         * else. PermissionPolicy patterns, matched by `core/governance.ts`, do read them as a class
+         * and a single character — so the same string means two things in two places, and the one
+         * that means "literally this" is the one nobody writes on purpose. Refused here, where the
+         * edit is one character, rather than at delivery as XFORGE_WORK_PACKAGE_WRITE_ESCAPE with
+         * the code already written.
+         */
+        const literalGlob = /[?[\]{}]/.exec(patternInput);
+        if (literalGlob) {
+          diagnostics.push(diagnostic(
+            'XFORGE_WORK_PACKAGE_WRITE_PATH_UNSUPPORTED_GLOB',
+            `Work package ${workPackage.id} write path contains "${literalGlob[0]}": ${patternInput}. A write path supports only * and **; every other character is matched literally, so this matches a file of that exact name rather than the set you meant. Rewrite it with * or ** — or, if a file really is named that, split the boundary so no pattern needs the character.`,
             planPath,
             'error',
             { packageId: workPackage.id, pattern: patternInput },
