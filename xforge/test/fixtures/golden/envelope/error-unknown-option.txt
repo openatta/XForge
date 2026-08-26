@@ -1,0 +1,19 @@
+$ xforge state --frobnicate x
+exit: 1
+
+{
+  "protocolVersion": "2",
+  "ok": false,
+  "command": "state",
+  "root": null,
+  "data": null,
+  "diagnostics": [
+    {
+      "code": "XFORGE_OPTION_UNKNOWN",
+      "severity": "error",
+      "message": "Unknown option: --frobnicate"
+    }
+  ],
+  "changes": [],
+  "nextActions": []
+}

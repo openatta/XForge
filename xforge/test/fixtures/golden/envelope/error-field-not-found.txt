@@ -1,0 +1,1524 @@
+$ xforge state --change add-feature --field nope.nope
+exit: 1
+
+{
+  "protocolVersion": "2",
+  "ok": false,
+  "command": "state",
+  "root": "<ROOT>",
+  "data": {
+    "project": {
+      "name": "xforge-project",
+      "layout": "single",
+      "modules": [
+        {
+          "id": "root",
+          "path": ".",
+          "kind": "application"
+        }
+      ],
+      "paths": {
+        "specs": {
+          "value": "xforge/specs",
+          "source": "manifest"
+        },
+        "changes": {
+          "value": "xforge/changes",
+          "source": "manifest"
+        }
+      },
+      "compatibility": {
+        "mode": "managed",
+        "cli": {
+          "declared": "npm:@xforge/cli@0.7.20",
+          "actual": "npm:@xforge/cli@0.7.20",
+          "matches": true
+        },
+        "protocol": {
+          "declared": "2",
+          "actual": "2",
+          "matches": true
+        },
+        "scaffold": {
+          "declared": "0.7.20",
+          "locked": "0.7.20",
+          "matches": true
+        }
+      }
+    },
+    "scaffold": {
+      "version": "0.7.20",
+      "source": {
+        "type": "npm",
+        "package": "@xforge/cli",
+        "version": "0.7.20"
+      },
+      "language": "en",
+      "lockedResources": [
+        {
+          "digest": "<sha256>",
+          "id": "integrator",
+          "kind": "agent",
+          "license": "project",
+          "version": 2
+        },
+        {
+          "digest": "<sha256>",
+          "id": "reviewer",
+          "kind": "agent",
+          "license": "project",
+          "version": 3
+        },
+        {
+          "digest": "<sha256>",
+          "id": "worker",
+          "kind": "agent",
+          "license": "project",
+          "version": 2
+        },
+        {
+          "digest": "<sha256>",
+          "id": "check-findings",
+          "kind": "gate",
+          "license": "project",
+          "version": 1
+        },
+        {
+          "digest": "<sha256>",
+          "id": "constitution-check",
+          "kind": "gate",
+          "license": "project",
+          "version": 1
+        },
+        {
+          "digest": "<sha256>",
+          "id": "security-scan",
+          "kind": "gate",
+          "license": "project",
+          "version": 4
+        },
+        {
+          "digest": "<sha256>",
+          "id": "structure",
+          "kind": "gate",
+          "license": "project",
+          "version": 1
+        },
+        {
+          "digest": "<sha256>",
+          "id": "unit-tests",
+          "kind": "gate",
+          "license": "project",
+          "version": 4
+        },
+        {
+          "digest": "<sha256>",
+          "id": "protected-files",
+          "kind": "permission-policy",
+          "license": "project",
+          "version": 1
+        },
+        {
+          "digest": "<sha256>",
+          "id": "protected-manifest",
+          "kind": "permission-policy",
+          "license": "project",
+          "version": 1
+        },
+        {
+          "digest": "<sha256>",
+          "id": "design-decisions-need-a-human",
+          "kind": "rule",
+          "license": "project",
+          "version": 3
+        },
+        {
+          "digest": "<sha256>",
+          "id": "design-within-the-declared-architecture",
+          "kind": "rule",
+          "license": "project",
+          "version": 1
+        },
+        {
+          "digest": "<sha256>",
+          "id": "governance-assets-are-integrator-only",
+          "kind": "rule",
+          "license": "project",
+          "version": 1
+        },
+        {
+          "digest": "<sha256>",
+          "id": "observable-requirements-are-tested",
+          "kind": "rule",
+          "license": "project",
+          "version": 1
+        },
+        {
+          "digest": "<sha256>",
+          "id": "prefer-small-explicit-contracts",
+          "kind": "rule",
+          "license": "project",
+          "version": 1
+        },
+        {
+          "digest": "<sha256>",
+          "id": "project-context",
+          "kind": "script",
+          "license": "project",
+          "version": 1
+        },
+        {
+          "digest": "<sha256>",
+          "id": "xforge-apply",
+          "kind": "skill",
+          "license": "project",
+          "version": "1"
+        },
+        {
+          "digest": "<sha256>",
+          "id": "xforge-architect",
+          "kind": "skill",
+          "license": "project",
+          "version": "1"
+        },
+        {
+          "digest": "<sha256>",
+          "id": "xforge-check",
+          "kind": "skill",
+          "license": "project",
+          "version": "1"
+        },
+        {
+          "digest": "<sha256>",
+          "id": "xforge-clarify",
+          "kind": "skill",
+          "license": "project",
+          "version": "1"
+        },
+        {
+          "digest": "<sha256>",
+          "id": "xforge-design",
+          "kind": "skill",
+          "license": "project",
+          "version": "1"
+        },
+        {
+          "digest": "<sha256>",
+          "id": "xforge-kanban",
+          "kind": "skill",
+          "license": "project",
+          "version": "1"
+        },
+        {
+          "digest": "<sha256>",
+          "id": "xforge-propose",
+          "kind": "skill",
+          "license": "project",
+          "version": "1"
+        },
+        {
+          "digest": "<sha256>",
+          "id": "xforge-revise",
+          "kind": "skill",
+          "license": "project",
+          "version": "1"
+        },
+        {
+          "digest": "<sha256>",
+          "id": "xforge-scaffold",
+          "kind": "skill",
+          "license": "project",
+          "version": "1"
+        },
+        {
+          "digest": "<sha256>",
+          "id": "xforge-status",
+          "kind": "skill",
+          "license": "project",
+          "version": "1"
+        },
+        {
+          "digest": "<sha256>",
+          "id": "xforge-upgrade-scaffold",
+          "kind": "skill",
+          "license": "project",
+          "version": "1"
+        },
+        {
+          "digest": "<sha256>",
+          "id": "xforge-verify",
+          "kind": "skill",
+          "license": "project",
+          "version": "1"
+        }
+      ]
+    },
+    "xforge": {
+      "declaration": {
+        "source": "npm",
+        "package": "@xforge/cli",
+        "version": "0.7.20",
+        "protocol": "2"
+      },
+      "integrity": "sha256:<sha256>"
+    },
+    "specs": [],
+    "changes": [
+      "add-feature"
+    ],
+    "activeChanges": [
+      {
+        "id": "add-feature",
+        "flow": "solid",
+        "stage": "verify",
+        "risk": "medium"
+      }
+    ],
+    "flows": [
+      {
+        "id": "major",
+        "version": 6,
+        "apiVersion": "xforge.dev/v1alpha2",
+        "description": "High-assurance governance for high-risk, cross-system, or critical-impact changes",
+        "policy": {
+          "assuranceLevel": "major",
+          "eligibleWhen": {
+            "risk": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "criticalImpacts": "allowed"
+          },
+          "requiredWhen": {
+            "risk": [
+              "high"
+            ],
+            "anyImpact": [
+              "security",
+              "privacy",
+              "publicApi",
+              "dataMigration"
+            ]
+          }
+        },
+        "stages": [
+          {
+            "id": "propose",
+            "skill": "xforge-propose",
+            "authority": "planning-write",
+            "requires": [],
+            "produces": [
+              "proposal",
+              "delta-specs"
+            ]
+          },
+          {
+            "id": "clarify",
+            "skill": "xforge-clarify",
+            "authority": "planning-write",
+            "requires": [
+              "propose"
+            ],
+            "produces": [
+              "clarifications",
+              "material-questions"
+            ]
+          },
+          {
+            "id": "design",
+            "skill": "xforge-design",
+            "authority": "planning-write",
+            "requires": [
+              "clarify"
+            ],
+            "produces": [
+              "design"
+            ]
+          },
+          {
+            "id": "check",
+            "skill": "xforge-check",
+            "authority": "assurance-write",
+            "requires": [
+              "design"
+            ],
+            "produces": [
+              "check-report",
+              "check-findings",
+              "constitution-check"
+            ]
+          },
+          {
+            "id": "apply",
+            "skill": "xforge-apply",
+            "authority": "implementation-write",
+            "requires": [
+              "check"
+            ],
+            "produces": []
+          },
+          {
+            "id": "verify",
+            "skill": "xforge-verify",
+            "authority": "assurance-write",
+            "requires": [
+              "apply"
+            ],
+            "produces": [
+              "assurance"
+            ]
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "proposal",
+            "generates": "proposal.md",
+            "requires": []
+          },
+          {
+            "id": "delta-specs",
+            "generates": "specs/**/*.md",
+            "requires": [
+              "proposal"
+            ]
+          },
+          {
+            "id": "clarifications",
+            "generates": "clarifications.md",
+            "requires": [
+              "proposal",
+              "delta-specs"
+            ]
+          },
+          {
+            "id": "material-questions",
+            "generates": "evidence/conditions/materialQuestions.yaml",
+            "requires": [
+              "proposal",
+              "delta-specs",
+              "clarifications"
+            ]
+          },
+          {
+            "id": "design",
+            "generates": "design.md",
+            "requires": [
+              "proposal",
+              "delta-specs",
+              "clarifications",
+              "material-questions"
+            ]
+          },
+          {
+            "id": "check-report",
+            "generates": "check-report.md",
+            "requires": [
+              "proposal",
+              "delta-specs",
+              "clarifications",
+              "material-questions",
+              "design"
+            ]
+          },
+          {
+            "id": "check-findings",
+            "generates": "evidence/check-findings.yaml",
+            "requires": [
+              "proposal",
+              "delta-specs",
+              "clarifications",
+              "material-questions",
+              "design",
+              "check-report"
+            ]
+          },
+          {
+            "id": "constitution-check",
+            "generates": "evidence/constitution-check.yaml",
+            "requires": [
+              "proposal",
+              "delta-specs",
+              "clarifications",
+              "material-questions",
+              "design",
+              "check-report",
+              "check-findings"
+            ]
+          },
+          {
+            "id": "assurance",
+            "generates": "assurance.md",
+            "requires": [
+              "proposal",
+              "delta-specs",
+              "clarifications",
+              "material-questions",
+              "design",
+              "check-report",
+              "check-findings",
+              "constitution-check"
+            ]
+          }
+        ],
+        "applyRequires": [
+          "check-report",
+          "check-findings",
+          "constitution-check"
+        ],
+        "archiveRequires": [
+          "assurance"
+        ],
+        "mandatoryGates": [
+          "structure",
+          "unit-tests",
+          "security-scan"
+        ]
+      },
+      {
+        "id": "quick",
+        "version": 4,
+        "apiVersion": "xforge.dev/v1alpha2",
+        "description": "Fast delivery for low-risk, single-module, clearly scoped, and easily reversible changes",
+        "policy": {
+          "assuranceLevel": "quick",
+          "eligibleWhen": {
+            "risk": [
+              "low"
+            ],
+            "criticalImpacts": "forbidden",
+            "maxModules": 1
+          }
+        },
+        "stages": [
+          {
+            "id": "propose",
+            "skill": "xforge-propose",
+            "authority": "planning-write",
+            "requires": [],
+            "produces": [
+              "proposal",
+              "delta-specs"
+            ]
+          },
+          {
+            "id": "apply",
+            "skill": "xforge-apply",
+            "authority": "implementation-write",
+            "requires": [
+              "propose"
+            ],
+            "produces": []
+          },
+          {
+            "id": "verify",
+            "skill": "xforge-verify",
+            "authority": "assurance-write",
+            "requires": [
+              "apply"
+            ],
+            "produces": [
+              "assurance"
+            ]
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "proposal",
+            "generates": "proposal.md",
+            "requires": []
+          },
+          {
+            "id": "delta-specs",
+            "generates": "specs/**/*.md",
+            "requires": [
+              "proposal"
+            ]
+          },
+          {
+            "id": "assurance",
+            "generates": "assurance.md",
+            "requires": [
+              "proposal",
+              "delta-specs"
+            ]
+          }
+        ],
+        "applyRequires": [
+          "proposal",
+          "delta-specs"
+        ],
+        "archiveRequires": [
+          "assurance"
+        ],
+        "mandatoryGates": [
+          "structure",
+          "unit-tests"
+        ]
+      },
+      {
+        "id": "solid",
+        "version": 6,
+        "apiVersion": "xforge.dev/v1alpha2",
+        "description": "Stable and maintainable delivery for ordinary product and engineering changes",
+        "policy": {
+          "assuranceLevel": "solid",
+          "eligibleWhen": {
+            "risk": [
+              "low",
+              "medium"
+            ],
+            "criticalImpacts": "forbidden"
+          }
+        },
+        "stages": [
+          {
+            "id": "propose",
+            "skill": "xforge-propose",
+            "authority": "planning-write",
+            "requires": [],
+            "produces": [
+              "proposal",
+              "delta-specs"
+            ]
+          },
+          {
+            "id": "design",
+            "skill": "xforge-design",
+            "authority": "planning-write",
+            "requires": [
+              "propose"
+            ],
+            "produces": [
+              "design"
+            ]
+          },
+          {
+            "id": "check",
+            "skill": "xforge-check",
+            "authority": "assurance-write",
+            "requires": [
+              "design"
+            ],
+            "produces": [
+              "check-report",
+              "check-findings",
+              "constitution-check"
+            ]
+          },
+          {
+            "id": "apply",
+            "skill": "xforge-apply",
+            "authority": "implementation-write",
+            "requires": [
+              "check"
+            ],
+            "produces": []
+          },
+          {
+            "id": "verify",
+            "skill": "xforge-verify",
+            "authority": "assurance-write",
+            "requires": [
+              "apply"
+            ],
+            "produces": [
+              "assurance"
+            ]
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "proposal",
+            "generates": "proposal.md",
+            "requires": []
+          },
+          {
+            "id": "delta-specs",
+            "generates": "specs/**/*.md",
+            "requires": [
+              "proposal"
+            ]
+          },
+          {
+            "id": "design",
+            "generates": "design.md",
+            "requires": [
+              "proposal",
+              "delta-specs"
+            ]
+          },
+          {
+            "id": "check-report",
+            "generates": "check-report.md",
+            "requires": [
+              "proposal",
+              "delta-specs",
+              "design"
+            ]
+          },
+          {
+            "id": "check-findings",
+            "generates": "evidence/check-findings.yaml",
+            "requires": [
+              "proposal",
+              "delta-specs",
+              "design",
+              "check-report"
+            ]
+          },
+          {
+            "id": "constitution-check",
+            "generates": "evidence/constitution-check.yaml",
+            "requires": [
+              "proposal",
+              "delta-specs",
+              "design",
+              "check-report",
+              "check-findings"
+            ]
+          },
+          {
+            "id": "assurance",
+            "generates": "assurance.md",
+            "requires": [
+              "proposal",
+              "delta-specs",
+              "design",
+              "check-report",
+              "check-findings",
+              "constitution-check"
+            ]
+          }
+        ],
+        "applyRequires": [
+          "check-report",
+          "check-findings",
+          "constitution-check"
+        ],
+        "archiveRequires": [
+          "assurance"
+        ],
+        "mandatoryGates": [
+          "structure",
+          "unit-tests"
+        ]
+      }
+    ],
+    "resources": {
+      "skills": [
+        "xforge-propose",
+        "xforge-clarify",
+        "xforge-design",
+        "xforge-check",
+        "xforge-apply",
+        "xforge-verify",
+        "xforge-status",
+        "xforge-revise",
+        "xforge-scaffold",
+        "xforge-kanban",
+        "xforge-architect",
+        "xforge-upgrade-scaffold"
+      ],
+      "agents": [
+        "worker",
+        "integrator",
+        "reviewer"
+      ],
+      "rules": [
+        "governance-assets-are-integrator-only",
+        "observable-requirements-are-tested",
+        "design-decisions-need-a-human",
+        "prefer-small-explicit-contracts",
+        "design-within-the-declared-architecture"
+      ],
+      "policies": [
+        "protected-files",
+        "protected-manifest"
+      ],
+      "hooks": [],
+      "gates": [
+        "structure",
+        "check-findings",
+        "constitution-check",
+        "unit-tests",
+        "security-scan"
+      ],
+      "scripts": [
+        "project-context"
+      ],
+      "mcp-servers": [
+        "enterprise-approvals"
+      ]
+    },
+    "targets": {
+      "codex": {
+        "skills": "native",
+        "commands": "unsupported",
+        "agents": "native",
+        "rules": "degraded",
+        "hooks": "native",
+        "guidance": "degraded",
+        "permissionPolicy": "degraded",
+        "runtimeHook": {
+          "events": [
+            "agent.session.start",
+            "agent.session.end",
+            "agent.prompt.submit",
+            "agent.tool.before",
+            "agent.tool.after",
+            "agent.permission.request",
+            "agent.subagent.start",
+            "agent.subagent.stop",
+            "agent.turn.stop"
+          ],
+          "blocking": "native",
+          "managed": "native",
+          "local": "native",
+          "cloud": "unsupported",
+          "trust": "platform-review",
+          "bypasses": [
+            "hosted tools",
+            "specialized opt-out tool paths"
+          ]
+        },
+        "auditDelivery": "native",
+        "subagent": "native",
+        "permissionPolicyScopes": {
+          "capabilities": [
+            "shell"
+          ],
+          "actorScoped": false,
+          "stageScoped": false
+        }
+      },
+      "claude": {
+        "skills": "native",
+        "commands": "native",
+        "agents": "native",
+        "rules": "native",
+        "hooks": "native",
+        "guidance": "native",
+        "permissionPolicy": "native",
+        "runtimeHook": {
+          "events": [
+            "agent.session.start",
+            "agent.session.end",
+            "agent.prompt.submit",
+            "agent.tool.before",
+            "agent.tool.after",
+            "agent.permission.request",
+            "agent.subagent.start",
+            "agent.subagent.stop",
+            "agent.turn.stop"
+          ],
+          "blocking": "native",
+          "managed": "degraded",
+          "local": "native",
+          "cloud": "degraded",
+          "trust": "platform-review",
+          "bypasses": []
+        },
+        "auditDelivery": "native",
+        "subagent": "native",
+        "permissionPolicyScopes": {
+          "capabilities": [
+            "fs.read",
+            "fs.write",
+            "shell",
+            "network",
+            "subagent",
+            "mcp"
+          ],
+          "actorScoped": false,
+          "stageScoped": false
+        }
+      },
+      "cursor": {
+        "skills": "native",
+        "commands": "native",
+        "agents": "native",
+        "rules": "native",
+        "hooks": "native",
+        "guidance": "native",
+        "permissionPolicy": "degraded",
+        "runtimeHook": {
+          "events": [
+            "agent.session.start",
+            "agent.session.end",
+            "agent.prompt.submit",
+            "agent.tool.before",
+            "agent.tool.after",
+            "agent.turn.stop"
+          ],
+          "blocking": "native",
+          "managed": "native",
+          "local": "native",
+          "cloud": "native",
+          "trust": "platform-review",
+          "bypasses": [
+            "events not exposed by Cursor"
+          ]
+        },
+        "auditDelivery": "native",
+        "subagent": "degraded",
+        "permissionPolicyScopes": {
+          "capabilities": [],
+          "actorScoped": false,
+          "stageScoped": false
+        }
+      },
+      "opencode": {
+        "skills": "native",
+        "commands": "native",
+        "agents": "native",
+        "rules": "degraded",
+        "hooks": "native",
+        "guidance": "degraded",
+        "permissionPolicy": "degraded",
+        "runtimeHook": {
+          "events": [
+            "agent.tool.before",
+            "agent.tool.after",
+            "agent.permission.request"
+          ],
+          "blocking": "degraded",
+          "managed": "degraded",
+          "local": "native",
+          "cloud": "degraded",
+          "trust": "none",
+          "bypasses": [
+            "events not emitted by the plugin API"
+          ]
+        },
+        "auditDelivery": "native",
+        "subagent": "native",
+        "permissionPolicyScopes": {
+          "capabilities": [
+            "fs.read",
+            "fs.write",
+            "shell",
+            "network",
+            "subagent",
+            "external.write"
+          ],
+          "actorScoped": false,
+          "stageScoped": false
+        }
+      },
+      "github-copilot": {
+        "skills": "native",
+        "commands": "native",
+        "agents": "native",
+        "rules": "native",
+        "hooks": "native",
+        "guidance": "native",
+        "permissionPolicy": "degraded",
+        "runtimeHook": {
+          "events": [
+            "agent.session.start",
+            "agent.session.end",
+            "agent.prompt.submit",
+            "agent.tool.before",
+            "agent.tool.after",
+            "agent.turn.stop"
+          ],
+          "blocking": "degraded",
+          "managed": "degraded",
+          "local": "native",
+          "cloud": "degraded",
+          "trust": "platform-review",
+          "bypasses": [
+            "events not exposed by Copilot hooks"
+          ]
+        },
+        "auditDelivery": "native",
+        "subagent": "degraded",
+        "permissionPolicyScopes": {
+          "capabilities": [],
+          "actorScoped": false,
+          "stageScoped": false
+        }
+      }
+    },
+    "installation": {
+      "recordVersion": 2,
+      "targets": [],
+      "files": 0,
+      "healthy": true,
+      "lastSyncedAt": {}
+    },
+    "change": {
+      "id": "add-feature",
+      "path": "xforge/changes/add-feature",
+      "flow": "solid",
+      "classification": {
+        "dataMigration": false,
+        "privacy": false,
+        "publicApi": false,
+        "risk": "medium",
+        "security": false
+      },
+      "scope": {
+        "modules": [
+          "root"
+        ],
+        "paths": [
+          "src/**"
+        ]
+      },
+      "artifacts": [
+        {
+          "id": "proposal",
+          "generates": "proposal.md",
+          "description": "Explain the reason, boundaries, and Flow choice",
+          "instruction": "Describe Why, Scope, Non-goals, Success criteria, impact, rollback, and the factual basis for choosing Solid.",
+          "outline": "## Why\n## Scope\n## Non-goals\n## Success criteria\n## Flow choice\n## Impact and rollback\n",
+          "requires": [],
+          "status": "done",
+          "outputPaths": [
+            "proposal.md"
+          ],
+          "writePath": "xforge/changes/add-feature/proposal.md",
+          "missingDependencies": []
+        },
+        {
+          "id": "delta-specs",
+          "generates": "specs/**/*.md",
+          "description": "Define observable requirement and scenario deltas",
+          "instruction": "Use stable Requirement IDs for success, failure, boundary, and compatibility scenarios without implementation detail.",
+          "outline": "## ADDED Requirements\n### Requirement: <REQ-ID> <name>\n#### Scenario: <name>\n- **WHEN** ...\n- **THEN** ...\n",
+          "requires": [
+            "proposal"
+          ],
+          "status": "done",
+          "outputPaths": [
+            "specs/widget/spec.md"
+          ],
+          "writePath": "xforge/changes/add-feature/specs/**/*.md",
+          "missingDependencies": []
+        },
+        {
+          "id": "design",
+          "generates": "design.md",
+          "description": "Record the technical approach, alternatives, and verification notes",
+          "instruction": "Cover current state, target integration points, decisions, failure modes, compatibility, migration, rollback, and verification without becoming a file-by-file task list.",
+          "outline": "## Context\n## Goals and non-goals\n## Decisions and alternatives\n## Failure modes and compatibility\n## Migration and rollback\n## Verification notes\n",
+          "markers": [
+            {
+              "id": "verification-coverage",
+              "section": "Verification notes",
+              "role": "requirement-coverage"
+            },
+            {
+              "id": "rejected-alternative",
+              "section": "Decisions and alternatives",
+              "role": "decision-alternative",
+              "pattern": [
+                "**Rejected alternative:",
+                "**被否决的替代方案："
+              ]
+            }
+          ],
+          "requires": [
+            "proposal",
+            "delta-specs"
+          ],
+          "status": "done",
+          "outputPaths": [
+            "design.md"
+          ],
+          "writePath": "xforge/changes/add-feature/design.md",
+          "missingDependencies": []
+        },
+        {
+          "id": "check-report",
+          "generates": "check-report.md",
+          "description": "Narrate the pre-implementation review across Proposal, delta Specs, and Design",
+          "instruction": "Explain completeness, consistency, testability, feasibility, and risk, and record under Gates and evidence what `xforge check` actually reported. Use Rework to name the Stage a blocker sends this Change back to and what must change there, and say plainly when there is nothing to rework. Do not write a verdict on whether Check passes — the findings ledger decides that, and a verdict in prose only competes with the record that governs.",
+          "outline": "## Completeness\n## Consistency\n## Testability\n## Feasibility and risk\n## Gates and evidence\n## Rework\n",
+          "requires": [
+            "proposal",
+            "delta-specs",
+            "design"
+          ],
+          "status": "done",
+          "outputPaths": [
+            "check-report.md"
+          ],
+          "writePath": "xforge/changes/add-feature/check-report.md",
+          "missingDependencies": []
+        },
+        {
+          "id": "check-findings",
+          "generates": "evidence/check-findings.yaml",
+          "description": "Machine-decidable findings ledger the Check Gate can actually decide",
+          "instruction": "One entry per finding with id, severity (blocker|warning|suggestion), summary, refs to the Artifacts it concerns, and for a blocker a status, a reworkTo Stage while open, and a resolvedBy identity once resolved. Record an explicit empty list when the review found nothing. The Stage cannot exit while any blocker is unresolved.",
+          "outline": "findings:\n  - id: <finding-id>\n    severity: <blocker|warning|suggestion>\n    summary: <what is wrong>\n    refs: [<artifact or spec path>]\n    status: <open|resolved>\n    reworkTo: <stage id, required while a blocker is open>\n    resolvedBy: <name or email, required once status is resolved for a blocker; must match a known approver or Git author>\n",
+          "requires": [
+            "proposal",
+            "delta-specs",
+            "design",
+            "check-report"
+          ],
+          "status": "done",
+          "outputPaths": [
+            "evidence/check-findings.yaml"
+          ],
+          "writePath": "xforge/changes/add-feature/evidence/check-findings.yaml",
+          "missingDependencies": []
+        },
+        {
+          "id": "constitution-check",
+          "generates": "evidence/constitution-check.yaml",
+          "description": "Answer every Constitution principle for this Change",
+          "instruction": "One entry per `## ` principle in xforge/constitution.md, each with status compliant|violation|not-applicable. Every entry must cite at least one machine-locatable reference in `references` — a Requirement id from this Change's delta Specs, a file path that exists, or `gate:<name>` for a Gate that passed. A violation additionally needs a justification and a named approvedBy; not-applicable needs a justification. A general claim of compliance does not satisfy the Gate, and neither does an approval receipt on its own — a receipt records that someone approved a transition, not why this Change satisfies the principle.",
+          "outline": "principles:\n  - principle: <exact `## ` heading from constitution.md>\n    status: <compliant|violation|not-applicable>\n    references: [<Requirement id | existing path | gate:<name>>]\n    justification: <required for violation and not-applicable>\n    approvedBy: <named person, required for violation>\n",
+          "requires": [
+            "proposal",
+            "delta-specs",
+            "design",
+            "check-report",
+            "check-findings"
+          ],
+          "status": "done",
+          "outputPaths": [
+            "evidence/constitution-check.yaml"
+          ],
+          "writePath": "xforge/changes/add-feature/evidence/constitution-check.yaml",
+          "missingDependencies": []
+        },
+        {
+          "id": "assurance",
+          "generates": "assurance.md",
+          "description": "Record verification against requirements, design, tests, and constraints",
+          "instruction": "Summarize completeness, correctness, coherence, and Gates with traceable evidence.",
+          "outline": "## Completeness\n## Correctness\n## Coherence\n## Gates and evidence\n## Findings\n",
+          "markers": [
+            {
+              "id": "verification-coverage",
+              "section": "Completeness",
+              "role": "requirement-coverage"
+            }
+          ],
+          "requires": [
+            "proposal",
+            "delta-specs",
+            "design",
+            "check-report",
+            "check-findings",
+            "constitution-check"
+          ],
+          "status": "done",
+          "outputPaths": [
+            "assurance.md"
+          ],
+          "writePath": "xforge/changes/add-feature/assurance.md",
+          "missingDependencies": []
+        }
+      ],
+      "nextArtifact": null,
+      "apply": {
+        "ready": true,
+        "requires": [
+          "check-report",
+          "check-findings",
+          "constitution-check"
+        ],
+        "tracks": null
+      },
+      "archive": {
+        "ready": true,
+        "requires": [
+          "assurance"
+        ],
+        "mandatoryGates": [
+          "structure",
+          "unit-tests"
+        ],
+        "syncSpecs": true
+      },
+      "workPackages": null,
+      "governance": {
+        "currentStage": "verify",
+        "transitionHead": "<sha256>",
+        "transitions": [
+          {
+            "apiVersion": "xforge.dev/v1alpha2",
+            "kind": "TransitionReceipt",
+            "receiptId": "<uuid>",
+            "sequence": 1,
+            "change": "add-feature",
+            "flow": "solid",
+            "from": "propose",
+            "to": "design",
+            "contentRevision": "<sha256>",
+            "stateRevisionBefore": "<sha256>",
+            "policySnapshotDigest": "<sha256>",
+            "gitHead": "unknown",
+            "previousReceiptDigest": null,
+            "transitionedAt": "<timestamp>",
+            "actor": {
+              "id": "xbitshans",
+              "provider": "local-os",
+              "type": "human"
+            },
+            "approvals": [],
+            "gates": [
+              "<sha256>"
+            ],
+            "auditHead": "<sha256>",
+            "digest": "<sha256>"
+          },
+          {
+            "apiVersion": "xforge.dev/v1alpha2",
+            "kind": "TransitionReceipt",
+            "receiptId": "<uuid>",
+            "sequence": 2,
+            "change": "add-feature",
+            "flow": "solid",
+            "from": "design",
+            "to": "check",
+            "contentRevision": "<sha256>",
+            "stateRevisionBefore": "<sha256>",
+            "policySnapshotDigest": "<sha256>",
+            "gitHead": "unknown",
+            "previousReceiptDigest": "<sha256>",
+            "transitionedAt": "<timestamp>",
+            "actor": {
+              "id": "xbitshans",
+              "provider": "local-os",
+              "type": "human"
+            },
+            "approvals": [],
+            "gates": [],
+            "auditHead": "<sha256>",
+            "digest": "<sha256>"
+          },
+          {
+            "apiVersion": "xforge.dev/v1alpha2",
+            "kind": "TransitionReceipt",
+            "receiptId": "<uuid>",
+            "sequence": 3,
+            "change": "add-feature",
+            "flow": "solid",
+            "from": "check",
+            "to": "apply",
+            "contentRevision": "<sha256>",
+            "stateRevisionBefore": "<sha256>",
+            "policySnapshotDigest": "<sha256>",
+            "gitHead": "unknown",
+            "previousReceiptDigest": "<sha256>",
+            "transitionedAt": "<timestamp>",
+            "actor": {
+              "id": "xbitshans",
+              "provider": "local-os",
+              "type": "human"
+            },
+            "approvals": [
+              "<sha256>"
+            ],
+            "gates": [
+              "<sha256>",
+              "<sha256>",
+              "<sha256>"
+            ],
+            "auditHead": "<sha256>",
+            "digest": "<sha256>"
+          },
+          {
+            "apiVersion": "xforge.dev/v1alpha2",
+            "kind": "TransitionReceipt",
+            "receiptId": "<uuid>",
+            "sequence": 4,
+            "change": "add-feature",
+            "flow": "solid",
+            "from": "apply",
+            "to": "verify",
+            "contentRevision": "<sha256>",
+            "stateRevisionBefore": "<sha256>",
+            "policySnapshotDigest": "<sha256>",
+            "gitHead": "unknown",
+            "previousReceiptDigest": "<sha256>",
+            "transitionedAt": "<timestamp>",
+            "actor": {
+              "id": "xbitshans",
+              "provider": "local-os",
+              "type": "human"
+            },
+            "approvals": [],
+            "gates": [],
+            "auditHead": "<sha256>",
+            "digest": "<sha256>"
+          }
+        ],
+        "revision": {
+          "contentRevision": "<sha256>",
+          "stateRevision": "<sha256>",
+          "policySnapshotDigest": "<sha256>",
+          "gitBase": "unknown",
+          "gitHead": "unknown",
+          "governingRevision": "<sha256>"
+        },
+        "pendingApprovals": [],
+        "approvals": [
+          {
+            "apiVersion": "xforge.dev/v1alpha2",
+            "kind": "ApprovalReceipt",
+            "receiptId": "<uuid>",
+            "change": "add-feature",
+            "flow": "solid",
+            "stage": "check",
+            "transition": "apply",
+            "policyId": "planning-solid",
+            "stateRevision": "<sha256>",
+            "contentRevision": "<sha256>",
+            "policySnapshotDigest": "<sha256>",
+            "gitBase": "unknown",
+            "gitHead": "unknown",
+            "governingDigest": "<sha256>",
+            "governingRevision": "<sha256>",
+            "decision": "approve",
+            "approver": {
+              "id": "owner@example.test",
+              "provider": "local",
+              "role": "owner",
+              "type": "human"
+            },
+            "decidedAt": "<timestamp>",
+            "reason": "Approved by the test governance dialogue.",
+            "expiresAt": "<timestamp>",
+            "attestation": {
+              "method": "cli-terminal",
+              "respondedAt": "<timestamp>"
+            },
+            "digest": "<sha256>"
+          }
+        ],
+        "rules": [
+          {
+            "id": "observable-requirements-are-tested",
+            "severity": "must",
+            "instruction": "Every externally observable requirement added or modified by a Change must have automated verification. A requirement whose only evidence is prose is not verified.",
+            "coverage": [
+              "instructed",
+              "verified"
+            ],
+            "gateRefs": [
+              "unit-tests"
+            ],
+            "policyRefs": [],
+            "approvalRefs": [],
+            "enforceableRefs": [
+              "unit-tests"
+            ]
+          },
+          {
+            "id": "prefer-small-explicit-contracts",
+            "severity": "should",
+            "instruction": "Prefer small, testable modules with explicit contracts over broad shared helpers. Judgement guidance only; XForge does not claim to enforce it.",
+            "coverage": [
+              "instructed"
+            ],
+            "gateRefs": [],
+            "policyRefs": [],
+            "approvalRefs": [],
+            "enforceableRefs": []
+          },
+          {
+            "id": "design-within-the-declared-architecture",
+            "severity": "should",
+            "instruction": "When xforge/architecture.md exists, read it before designing or implementing, and state in the Stage's Artifact how this Change stands against each decision it touches: within it, deliberately departing from it (say why), or proposing to change it. A departure that is written down is a fact somebody can act on; the same departure recorded in a build-file comment is one nobody will find. Proposing a change is a legitimate third answer, not a failure — an architecture that can only be complied with is one every Change will quietly route around. When the file does not exist, proceed normally and say so once: it is a project that has not written its architecture down, not a project in violation. Judgement guidance only; XForge does not claim to enforce it.",
+            "coverage": [
+              "instructed"
+            ],
+            "gateRefs": [],
+            "policyRefs": [],
+            "approvalRefs": [],
+            "enforceableRefs": []
+          }
+        ],
+        "policies": [
+          {
+            "id": "protected-files",
+            "capability": "fs.write",
+            "effect": "deny",
+            "applicable": false
+          },
+          {
+            "id": "protected-manifest",
+            "capability": "fs.write",
+            "effect": "ask",
+            "applicable": false
+          }
+        ],
+        "hooks": [],
+        "audit": {
+          "chainValid": true,
+          "chainHead": "<sha256>",
+          "eventCount": 44,
+          "remotePending": 22,
+          "coverageGaps": []
+        },
+        "readyTransitions": [
+          {
+            "to": "ready-to-archive",
+            "ready": true,
+            "blockedBy": []
+          },
+          {
+            "to": "apply",
+            "ready": true,
+            "blockedBy": []
+          }
+        ]
+      },
+      "mandatoryGateEvidence": [
+        {
+          "gate": "structure",
+          "status": "passed",
+          "command": [
+            "builtin:structure"
+          ],
+          "evidencePath": "xforge/changes/add-feature/evidence/structure.json",
+          "currentContentRevision": true,
+          "gitHead": "unknown",
+          "sourceFilesChangedSince": null
+        },
+        {
+          "gate": "unit-tests",
+          "status": "passed",
+          "command": [
+            "builtin:declared:unit-tests"
+          ],
+          "evidencePath": "xforge/changes/add-feature/evidence/tests.json",
+          "currentContentRevision": true,
+          "gitHead": "unknown",
+          "sourceFilesChangedSince": null
+        }
+      ]
+    },
+    "context": {
+      "constitution": {
+        "version": "1.1.0",
+        "ratified": "2026-08-08",
+        "lastAmended": "2026-08-08",
+        "content": "---\nversion: 1.1.0\nratified: 2026-08-08\nlastAmended: 2026-08-08\n---\n\n# Project Constitution\n\n## Mission and boundaries\n\nDeliver the project's declared behavior without silently expanding scope,\nauthority, data collection, or dependencies.\n\n## Architecture principles\n\nPrefer small, testable modules and explicit contracts. Preserve existing\nproject layout and compatibility unless an approved Change says otherwise.\n\n## Security, privacy, and compliance\n\nUse least privilege, keep secrets out of repository assets and output, validate\nall trust-boundary input, and record security/privacy impact explicitly.\n\n## Quality and observability\n\nExternally observable requirements need automated verification. Failures must\nbe diagnosable without exposing sensitive data. No Change is complete without\ncurrent evidence from its mandatory gates.\n\n## Parallel Development\n\nParallelize only dependency-ready work packages whose write paths do not\noverlap and whose shared resources can be isolated. Every write-capable Worker\nuses an assigned worktree and fixed base commit, and each path has a single\nwriter at a time. Shared contracts, migrations, generated files, and lock files\nhave one Integrator writer. Accept delivery only from verified Git diffs,\ndeclared verification commands, and current Gate Evidence; Agent prose is not\nproof. No Agent may approve its own exception.\n\n## Compatibility and versioning\n\nPublic interfaces, stored data, and protocols change deliberately with a\ndocumented migration and rollback strategy.\n\n## Governance\n\nThis Constitution outranks ordinary Rules. Amend it through an independently\nreviewed Change and update its semantic version: MAJOR for breaking principles,\nMINOR for new or materially broader principles, PATCH for clarification.\nHumans or authorized external systems grant approvals; an AI Agent cannot\nself-approve an exception.\n",
+        "path": "xforge/constitution.md"
+      },
+      "rules": [
+        {
+          "id": "observable-requirements-are-tested",
+          "severity": "must",
+          "instruction": "Every externally observable requirement added or modified by a Change must have automated verification. A requirement whose only evidence is prose is not verified.",
+          "gateRefs": [
+            "unit-tests"
+          ],
+          "policyRefs": [],
+          "approvalRefs": []
+        },
+        {
+          "id": "prefer-small-explicit-contracts",
+          "severity": "should",
+          "instruction": "Prefer small, testable modules with explicit contracts over broad shared helpers. Judgement guidance only; XForge does not claim to enforce it.",
+          "gateRefs": [],
+          "policyRefs": [],
+          "approvalRefs": []
+        },
+        {
+          "id": "design-within-the-declared-architecture",
+          "severity": "should",
+          "instruction": "When xforge/architecture.md exists, read it before designing or implementing, and state in the Stage's Artifact how this Change stands against each decision it touches: within it, deliberately departing from it (say why), or proposing to change it. A departure that is written down is a fact somebody can act on; the same departure recorded in a build-file comment is one nobody will find. Proposing a change is a legitimate third answer, not a failure — an architecture that can only be complied with is one every Change will quietly route around. When the file does not exist, proceed normally and say so once: it is a project that has not written its architecture down, not a project in violation. Judgement guidance only; XForge does not claim to enforce it.",
+          "gateRefs": [],
+          "policyRefs": [],
+          "approvalRefs": []
+        }
+      ],
+      "relatedSpecs": [],
+      "nextArtifact": null,
+      "workPackages": null
+    }
+  },
+  "diagnostics": [
+    {
+      "code": "XFORGE_RULE_OUT_OF_CHANGE_SCOPE",
+      "severity": "info",
+      "message": "1 severity-must Rule(s) do not apply to this Change and are not in its instruction context: governance-assets-are-integrator-only (scope xforge/constitution.md, xforge/specs/**, xforge/manifest.yaml, xforge/lock.yaml, xforge/flows/**, xforge/.audit/**). A Rule's scope.paths is compared with the paths this Change declares in change.yaml, never with the repository, so a Rule reaches this Change only when the two share a root. If one of these was meant to apply, widen the Change's scope.paths or correct the Rule's.",
+      "path": "xforge/changes/add-feature/change.yaml"
+    },
+    {
+      "code": "XFORGE_FIELD_NOT_FOUND",
+      "severity": "error",
+      "message": "No value at --field nope.nope. data has no \"nope\" (it has: project, scaffold, xforge, specs, changes, activeChanges, flows, resources, targets, installation, change, context). Run the command without --field and without --text to see the shape of data."
+    }
+  ],
+  "changes": [],
+  "nextActions": [
+    {
+      "action": "transition",
+      "type": "transition",
+      "id": "ready-to-archive",
+      "actor": "main",
+      "status": "ready",
+      "inputs": [
+        "current Change state",
+        "required gates and approvals"
+      ],
+      "writes": [
+        "transition receipt"
+      ],
+      "doneWhen": [
+        "Current Stage is ready-to-archive."
+      ],
+      "requiredEvidence": [
+        "valid transition receipt"
+      ],
+      "reworkTo": [
+        "verify"
+      ],
+      "reason": "Transition to ready-to-archive is ready.",
+      "blockedBy": [],
+      "command": [
+        "xforge",
+        "transition",
+        "--change",
+        "add-feature",
+        "--to",
+        "ready-to-archive"
+      ]
+    },
+    {
+      "action": "transition",
+      "type": "transition",
+      "id": "apply",
+      "actor": "main",
+      "status": "ready",
+      "inputs": [
+        "current Change state",
+        "required gates and approvals"
+      ],
+      "writes": [
+        "transition receipt"
+      ],
+      "doneWhen": [
+        "Current Stage is apply."
+      ],
+      "requiredEvidence": [
+        "valid transition receipt"
+      ],
+      "reworkTo": [
+        "verify"
+      ],
+      "reason": "Transition to apply is ready.",
+      "blockedBy": [],
+      "command": [
+        "xforge",
+        "transition",
+        "--change",
+        "add-feature",
+        "--to",
+        "apply"
+      ]
+    }
+  ]
+}

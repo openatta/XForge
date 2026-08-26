@@ -1,0 +1,15 @@
+---
+paths:
+  - "src/**"
+  - "tests/**"
+---
+
+# observable-requirements-are-tested
+
+Severity: must
+
+Scope: src/**, tests/** — this Rule reaches a Change whose declared scope.paths share a root with these, and your host also treats them as file globs.
+
+Every externally observable requirement added or modified by a Change must have automated verification. A requirement whose only evidence is prose is not verified.
+
+Enforcement: gates=unit-tests; policies=none; approvals=none.

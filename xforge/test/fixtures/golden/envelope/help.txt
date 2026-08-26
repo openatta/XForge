@@ -1,0 +1,43 @@
+$ xforge help
+exit: 0
+
+{
+  "protocolVersion": "2",
+  "ok": true,
+  "command": "help",
+  "root": null,
+  "data": {
+    "usage": "xforge [--root <path>] <command> [options] [--text]",
+    "commands": {
+      "help": "Show general or command-specific help.",
+      "version": "Show CLI, protocol, runtime, and build identity.",
+      "init": "Initialize the bundled npm Scaffold and optionally project it into one Agent tool.",
+      "state": "Read resolved project and Change state. --field prints one value and nothing else, addressed as a dotted path through data (for example change.governance.revision.contentRevision, or change.governance.readyTransitions.0.to — both need --change). Use it instead of grepping the JSON: several governance fields repeat under every historical receipt, so a line-oriented match returns whichever came first rather than the current one.",
+      "install": "Install or idempotently reconcile selected project assets.",
+      "sync": "Incrementally sync localized Scaffold changes to installed targets.",
+      "update": "Fully reconcile installed targets, identities, and Adapter output.",
+      "uninstall": "Remove managed target files, refusing on a digest mismatch unless --force.",
+      "check": "Validate project structure, deliveries, and the Gates the current Stage requires. With no Gate selection this also executes the verify commands declared by every work package, which for a large plan is dozens of external commands and minutes of wall time; narrowing with --gate, --stage or --all-gates runs only the selected Gates and skips them.",
+      "brief": "Report what a human approval at this Stage turns on, separating computed facts from quoted Artifact text. --compact folds the EXTRACTED block in the text form, listing each quote's heading and source line instead of its text; the JSON is unchanged either way.",
+      "verification": "Declare how this project runs a declared-verification Gate, without hand-editing the Manifest; or draft the current Stage's verification receipt from what XForge already knows. The draft omits `status` and writes nothing: that field is the Stage's assertion that the work was verified, and a CLI filling it in would be deciding the thing the receipt exists to record.",
+      "transition": "Evaluate and record a governed Stage transition, or repair the receipt chain by dropping one leaf receipt. Repair is not a --force: it discards a recorded transition, reverting the Change to the Stage that transition left, and records what it discarded in the audit chain. Only a leaf may go — a receipt some later receipt chains to is load-bearing and is refused.",
+      "approve": "Record an interactive human approval at the terminal, or submit/poll an mcp provider. There is no other approval mechanism. --for takes the id of the transition the approval unlocks (the value xforge state reports in nextActions[].command), not a literal word.",
+      "audit": "Inspect, verify, export, redeliver, or prune the append-only audit chain.",
+      "work-package": "Dispatch a work package, draft its delivery record from what XForge already knows, or acknowledge integration/review evidence. --scope records what the acknowledgement actually covered, in the acknowledger's own words; it is optional and never inferred, so an absent scope means nobody said.",
+      "hook": "Internal platform Hook dispatcher.",
+      "archive": "Verify, merge Specs, and atomically archive a Change.",
+      "doctor": "Report unreferenced and dangling Flow/Skill/Rule/Gate/Hook/PermissionPolicy/Approval/McpServer extensions.",
+      "upgrade-scaffold": "Stage the Scaffold this CLI ships beside the project's own and classify every file, so a person or an Agent can merge it.",
+      "review": "Record that this Change's delivered work was reviewed, for Changes delivered without a work-package plan. The per-package form is `work-package acknowledge --as reviewer`, and this is refused when a plan exists. There is no --by: the actor comes from the environment, because a field inviting a reviewer's name invites a fabricated one.",
+      "findings": "Record a person's answer to one Check finding and mark it resolved. Only this one transition: findings are written by the Check Stage, and this closes an entry that already exists. --by is checked against the approvers and Git authors this Change records, so a decision-maker can be cited but not invented."
+    },
+    "globalOptions": {
+      "--root <path>": "Use an exact project root.",
+      "--text": "Present the same result as readable text."
+    },
+    "commandHelp": null
+  },
+  "diagnostics": [],
+  "changes": [],
+  "nextActions": []
+}

@@ -1,0 +1,19 @@
+$ xforge findings resolve --change add-feature
+exit: 1
+
+{
+  "protocolVersion": "2",
+  "ok": false,
+  "command": "findings",
+  "root": null,
+  "data": null,
+  "diagnostics": [
+    {
+      "code": "XFORGE_FINDINGS_ARGUMENTS_REQUIRED",
+      "severity": "error",
+      "message": "findings resolve requires --change <id>, --id <finding-id>, --answer <what was decided> and --by <the person who decided>. The answer and the person are required for the same reason the entry exists: it was pointed at somebody, and a status flag on its own records neither what they said nor who they were."
+    }
+  ],
+  "changes": [],
+  "nextActions": []
+}

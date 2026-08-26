@@ -1,0 +1,114 @@
+XForge state: OK
+Protocol: 2
+Root: <ROOT>
+Project: xforge-project (single) — scaffold 0.7.20 en
+  Specs: xforge/specs    Changes: xforge/changes    Compatibility: managed
+  Active Changes: [object Object]
+  Selected resources:
+    skills (12): xforge-propose, xforge-clarify, xforge-design, xforge-check, xforge-apply,
+    xforge-verify, xforge-status, xforge-revise, xforge-scaffold, xforge-kanban,
+    xforge-architect, xforge-upgrade-scaffold
+    agents (3): worker, integrator, reviewer
+    rules (5): governance-assets-are-integrator-only, observable-requirements-are-tested,
+    design-decisions-need-a-human, prefer-small-explicit-contracts,
+    design-within-the-declared-architecture
+    policies (2): protected-files, protected-manifest
+    hooks (0): (none)
+    gates (5): structure, check-findings, constitution-check, unit-tests, security-scan
+    scripts (1): project-context
+    mcp-servers (1): enterprise-approvals
+
+CHANGE add-feature — flow solid, stage verify
+  Risk medium; declared impacts: (none)
+  Content revision: <sha256>    Git head: unknown
+  Mandatory Gate Evidence:
+    structure: passed — current content revision, drift unknown
+      ran: builtin:structure
+    unit-tests: passed — current content revision, drift unknown
+      ran: builtin:declared:unit-tests
+  Transitions available:
+    → ready-to-archive: ready
+    → apply: ready
+  Approvals pending: (none)
+  Audit: chain valid, 44 events, 22 awaiting remote delivery, coverage gaps: (none)
+
+Not shown here: targets and installation ownership, every Artifact entry, the full transition and approval receipt history, and the Constitution/Rules context block.
+Drop --text for the complete envelope, or address one value with --field (for example --field change.governance.revision.contentRevision).
+The blocks below are the envelope's own, unchanged.
+Diagnostics: [
+  {
+    "code": "XFORGE_RULE_OUT_OF_CHANGE_SCOPE",
+    "severity": "info",
+    "message": "1 severity-must Rule(s) do not apply to this Change and are not in its instruction context: governance-assets-are-integrator-only (scope xforge/constitution.md, xforge/specs/**, xforge/manifest.yaml, xforge/lock.yaml, xforge/flows/**, xforge/.audit/**). A Rule's scope.paths is compared with the paths this Change declares in change.yaml, never with the repository, so a Rule reaches this Change only when the two share a root. If one of these was meant to apply, widen the Change's scope.paths or correct the Rule's.",
+    "path": "xforge/changes/add-feature/change.yaml"
+  }
+]
+Changes: []
+Next actions: [
+  {
+    "action": "transition",
+    "type": "transition",
+    "id": "ready-to-archive",
+    "actor": "main",
+    "status": "ready",
+    "inputs": [
+      "current Change state",
+      "required gates and approvals"
+    ],
+    "writes": [
+      "transition receipt"
+    ],
+    "doneWhen": [
+      "Current Stage is ready-to-archive."
+    ],
+    "requiredEvidence": [
+      "valid transition receipt"
+    ],
+    "reworkTo": [
+      "verify"
+    ],
+    "reason": "Transition to ready-to-archive is ready.",
+    "blockedBy": [],
+    "command": [
+      "xforge",
+      "transition",
+      "--change",
+      "add-feature",
+      "--to",
+      "ready-to-archive"
+    ]
+  },
+  {
+    "action": "transition",
+    "type": "transition",
+    "id": "apply",
+    "actor": "main",
+    "status": "ready",
+    "inputs": [
+      "current Change state",
+      "required gates and approvals"
+    ],
+    "writes": [
+      "transition receipt"
+    ],
+    "doneWhen": [
+      "Current Stage is apply."
+    ],
+    "requiredEvidence": [
+      "valid transition receipt"
+    ],
+    "reworkTo": [
+      "verify"
+    ],
+    "reason": "Transition to apply is ready.",
+    "blockedBy": [],
+    "command": [
+      "xforge",
+      "transition",
+      "--change",
+      "add-feature",
+      "--to",
+      "apply"
+    ]
+  }
+]

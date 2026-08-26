@@ -1,0 +1,42 @@
+$ xforge audit status --change add-feature
+exit: 0
+
+{
+  "protocolVersion": "2",
+  "ok": true,
+  "command": "audit",
+  "root": "<ROOT>",
+  "data": {
+    "change": "add-feature",
+    "eventCount": 44,
+    "chainHead": "<sha256>",
+    "chainValid": true,
+    "remotePending": 22,
+    "eventTypes": {
+      "approval.decided": 1,
+      "approval.requested": 1,
+      "audit.delivery": 22,
+      "gate.after": 6,
+      "gate.before": 6,
+      "stage.entered": 4,
+      "stage.entering": 4
+    },
+    "coverageGaps": [],
+    "source": "log",
+    "shards": {
+      "_global": null,
+      "add-feature": "<sha256>"
+    },
+    "retention": {
+      "localDays": 30,
+      "oldestEvent": "<timestamp>",
+      "expiredEvents": 0,
+      "enforced": false,
+      "prunedFromChain": 0,
+      "policy": "anchored prefix pruning keeps the per-Change chain verifiable; the committed index retains the event-type summary"
+    }
+  },
+  "diagnostics": [],
+  "changes": [],
+  "nextActions": []
+}

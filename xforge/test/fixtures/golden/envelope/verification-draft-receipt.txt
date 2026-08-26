@@ -1,0 +1,41 @@
+$ xforge verification draft-receipt --change add-feature
+exit: 0
+
+{
+  "protocolVersion": "2",
+  "ok": true,
+  "command": "verification",
+  "root": "<ROOT>",
+  "data": {
+    "change": "add-feature",
+    "target": "xforge/changes/add-feature/evidence/verification-receipt.yaml",
+    "supply": [
+      "status: passed — your assertion that this Stage verified the work. XForge will not write it for you."
+    ],
+    "receipt": {
+      "change": "add-feature",
+      "contentRevision": "<sha256>",
+      "gitHead": "unknown",
+      "gates": [
+        {
+          "gate": "structure",
+          "status": "passed"
+        },
+        {
+          "gate": "unit-tests",
+          "status": "passed"
+        }
+      ]
+    }
+  },
+  "diagnostics": [
+    {
+      "code": "XFORGE_RULE_OUT_OF_CHANGE_SCOPE",
+      "severity": "info",
+      "message": "1 severity-must Rule(s) do not apply to this Change and are not in its instruction context: governance-assets-are-integrator-only (scope xforge/constitution.md, xforge/specs/**, xforge/manifest.yaml, xforge/lock.yaml, xforge/flows/**, xforge/.audit/**). A Rule's scope.paths is compared with the paths this Change declares in change.yaml, never with the repository, so a Rule reaches this Change only when the two share a root. If one of these was meant to apply, widen the Change's scope.paths or correct the Rule's.",
+      "path": "xforge/changes/add-feature/change.yaml"
+    }
+  ],
+  "changes": [],
+  "nextActions": []
+}

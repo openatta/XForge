@@ -1,0 +1,20 @@
+$ xforge state --change no-such-change
+exit: 1
+
+{
+  "protocolVersion": "2",
+  "ok": false,
+  "command": "state",
+  "root": "<ROOT>",
+  "data": null,
+  "diagnostics": [
+    {
+      "code": "XFORGE_CHANGE_NOT_FOUND",
+      "severity": "error",
+      "message": "Active Change not found: no-such-change",
+      "path": "xforge/changes/no-such-change"
+    }
+  ],
+  "changes": [],
+  "nextActions": []
+}

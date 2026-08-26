@@ -1,0 +1,130 @@
+$ xforge doctor
+exit: 0
+
+{
+  "protocolVersion": "2",
+  "ok": true,
+  "command": "doctor",
+  "root": "<ROOT>",
+  "data": {
+    "kind": "all",
+    "summary": {
+      "dangling": 0,
+      "deadCode": 0,
+      "uncited": 0,
+      "unusedFlows": 2,
+      "unusableApprovals": 0,
+      "conformance": 0,
+      "suggestions": 5
+    },
+    "danglingReferences": [],
+    "deadCode": [],
+    "uncited": [],
+    "unusedFlows": [
+      {
+        "scope": "flows",
+        "code": "XFORGE_DOCTOR_UNUSED_FLOW",
+        "id": "major",
+        "message": "Flow major is not the Manifest default and is not used by any active Change.",
+        "path": "xforge/flows/major.yaml"
+      },
+      {
+        "scope": "flows",
+        "code": "XFORGE_DOCTOR_UNUSED_FLOW",
+        "id": "quick",
+        "message": "Flow quick is not the Manifest default and is not used by any active Change.",
+        "path": "xforge/flows/quick.yaml"
+      }
+    ],
+    "unusableApprovals": [],
+    "conformance": [],
+    "suggestions": [
+      {
+        "scope": "skills",
+        "code": "XFORGE_DOCTOR_ARCHITECTURE_ABSENT",
+        "id": "xforge-architect",
+        "message": "This project has no xforge/architecture.md, so each Change designs without a durable record of the decisions the last one made. Run the xforge-architect Skill to write one — from the existing code, by answering a few questions, or from a description. It is a suggestion, not a requirement: nothing is blocked without it.",
+        "path": "xforge/architecture.md",
+        "severity": "info"
+      },
+      {
+        "scope": "rules",
+        "code": "XFORGE_DOCTOR_RULE_SCOPE_EMPTY",
+        "id": "observable-requirements-are-tested",
+        "message": "Rule observable-requirements-are-tested is scoped to src/**, tests/**, which matches no file in this repository. XForge compares that list with the paths a Change declares in change.yaml, and the installed Adapters hand it to the host as a file matcher; on this layout both come up empty, so the Rule is registered, enforceable, and reaching nothing. Rewrite scope.paths to the paths this repository actually uses, or drop it to have the Rule apply everywhere.",
+        "path": "xforge/scaffold/rules/observable-requirements-are-tested.yaml",
+        "severity": "info"
+      },
+      {
+        "scope": "rules",
+        "code": "XFORGE_DOCTOR_RULE_SCOPE_EMPTY",
+        "id": "prefer-small-explicit-contracts",
+        "message": "Rule prefer-small-explicit-contracts is scoped to src/**, which matches no file in this repository. XForge compares that list with the paths a Change declares in change.yaml, and the installed Adapters hand it to the host as a file matcher; on this layout both come up empty, so the Rule is registered, enforceable, and reaching nothing. Rewrite scope.paths to the paths this repository actually uses, or drop it to have the Rule apply everywhere.",
+        "path": "xforge/scaffold/rules/prefer-small-explicit-contracts.yaml",
+        "severity": "info"
+      },
+      {
+        "scope": "rules",
+        "code": "XFORGE_DOCTOR_RULE_SCOPE_EMPTY",
+        "id": "design-within-the-declared-architecture",
+        "message": "Rule design-within-the-declared-architecture is scoped to src/**, which matches no file in this repository. XForge compares that list with the paths a Change declares in change.yaml, and the installed Adapters hand it to the host as a file matcher; on this layout both come up empty, so the Rule is registered, enforceable, and reaching nothing. Rewrite scope.paths to the paths this repository actually uses, or drop it to have the Rule apply everywhere.",
+        "path": "xforge/scaffold/rules/design-within-the-declared-architecture.yaml",
+        "severity": "info"
+      },
+      {
+        "scope": "approvals",
+        "code": "XFORGE_DOCTOR_APPROVALS_INTERACTIVE_ONLY",
+        "id": "local",
+        "message": "2 approval policies in the Flows this project uses can be satisfied only at an interactive terminal, because no mcp provider is both declared and configured for them: solid/planning-solid, solid/closing-solid. Those approvals cannot be collected from inside an Agent session — the approver has to open a real terminal each time. That is a working constraint, not a misconfiguration; the alternative is to configure an mcp approval provider. See docs/extension-guide.md.",
+        "path": "xforge/manifest.yaml",
+        "severity": "info"
+      }
+    ]
+  },
+  "diagnostics": [
+    {
+      "code": "XFORGE_DOCTOR_UNUSED_FLOW",
+      "severity": "warning",
+      "message": "Flow major is not the Manifest default and is not used by any active Change.",
+      "path": "xforge/flows/major.yaml"
+    },
+    {
+      "code": "XFORGE_DOCTOR_UNUSED_FLOW",
+      "severity": "warning",
+      "message": "Flow quick is not the Manifest default and is not used by any active Change.",
+      "path": "xforge/flows/quick.yaml"
+    },
+    {
+      "code": "XFORGE_DOCTOR_ARCHITECTURE_ABSENT",
+      "severity": "info",
+      "message": "This project has no xforge/architecture.md, so each Change designs without a durable record of the decisions the last one made. Run the xforge-architect Skill to write one — from the existing code, by answering a few questions, or from a description. It is a suggestion, not a requirement: nothing is blocked without it.",
+      "path": "xforge/architecture.md"
+    },
+    {
+      "code": "XFORGE_DOCTOR_RULE_SCOPE_EMPTY",
+      "severity": "info",
+      "message": "Rule observable-requirements-are-tested is scoped to src/**, tests/**, which matches no file in this repository. XForge compares that list with the paths a Change declares in change.yaml, and the installed Adapters hand it to the host as a file matcher; on this layout both come up empty, so the Rule is registered, enforceable, and reaching nothing. Rewrite scope.paths to the paths this repository actually uses, or drop it to have the Rule apply everywhere.",
+      "path": "xforge/scaffold/rules/observable-requirements-are-tested.yaml"
+    },
+    {
+      "code": "XFORGE_DOCTOR_RULE_SCOPE_EMPTY",
+      "severity": "info",
+      "message": "Rule prefer-small-explicit-contracts is scoped to src/**, which matches no file in this repository. XForge compares that list with the paths a Change declares in change.yaml, and the installed Adapters hand it to the host as a file matcher; on this layout both come up empty, so the Rule is registered, enforceable, and reaching nothing. Rewrite scope.paths to the paths this repository actually uses, or drop it to have the Rule apply everywhere.",
+      "path": "xforge/scaffold/rules/prefer-small-explicit-contracts.yaml"
+    },
+    {
+      "code": "XFORGE_DOCTOR_RULE_SCOPE_EMPTY",
+      "severity": "info",
+      "message": "Rule design-within-the-declared-architecture is scoped to src/**, which matches no file in this repository. XForge compares that list with the paths a Change declares in change.yaml, and the installed Adapters hand it to the host as a file matcher; on this layout both come up empty, so the Rule is registered, enforceable, and reaching nothing. Rewrite scope.paths to the paths this repository actually uses, or drop it to have the Rule apply everywhere.",
+      "path": "xforge/scaffold/rules/design-within-the-declared-architecture.yaml"
+    },
+    {
+      "code": "XFORGE_DOCTOR_APPROVALS_INTERACTIVE_ONLY",
+      "severity": "info",
+      "message": "2 approval policies in the Flows this project uses can be satisfied only at an interactive terminal, because no mcp provider is both declared and configured for them: solid/planning-solid, solid/closing-solid. Those approvals cannot be collected from inside an Agent session — the approver has to open a real terminal each time. That is a working constraint, not a misconfiguration; the alternative is to configure an mcp approval provider. See docs/extension-guide.md.",
+      "path": "xforge/manifest.yaml"
+    }
+  ],
+  "changes": [],
+  "nextActions": []
+}

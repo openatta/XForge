@@ -1,0 +1,19 @@
+$ xforge frobnicate
+exit: 1
+
+{
+  "protocolVersion": "2",
+  "ok": false,
+  "command": "frobnicate",
+  "root": null,
+  "data": null,
+  "diagnostics": [
+    {
+      "code": "XFORGE_COMMAND_UNKNOWN",
+      "severity": "error",
+      "message": "Unknown command: frobnicate. Run xforge help for supported commands."
+    }
+  ],
+  "changes": [],
+  "nextActions": []
+}

@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "command": "xforge hook dispatch --target cursor --event agent.tool.before",
+        "timeout": 10,
+        "matcher": "Shell|Read|Write|Edit|Delete|Task|MCP:.*|Fetch"
+      }
+    ]
+  }
+}

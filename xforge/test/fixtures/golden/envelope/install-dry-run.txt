@@ -1,0 +1,1768 @@
+$ xforge install --dry-run
+exit: 0
+
+{
+  "protocolVersion": "2",
+  "ok": true,
+  "command": "install",
+  "root": "<ROOT>",
+  "data": {
+    "mode": "install",
+    "dryRun": true,
+    "targets": [
+      "codex",
+      "claude",
+      "cursor",
+      "opencode",
+      "github-copilot"
+    ],
+    "capabilities": {
+      "codex": {
+        "skills": "native",
+        "commands": "unsupported",
+        "agents": "native",
+        "rules": "degraded",
+        "hooks": "native",
+        "guidance": "degraded",
+        "permissionPolicy": "degraded",
+        "runtimeHook": {
+          "events": [
+            "agent.session.start",
+            "agent.session.end",
+            "agent.prompt.submit",
+            "agent.tool.before",
+            "agent.tool.after",
+            "agent.permission.request",
+            "agent.subagent.start",
+            "agent.subagent.stop",
+            "agent.turn.stop"
+          ],
+          "blocking": "native",
+          "managed": "native",
+          "local": "native",
+          "cloud": "unsupported",
+          "trust": "platform-review",
+          "bypasses": [
+            "hosted tools",
+            "specialized opt-out tool paths"
+          ]
+        },
+        "auditDelivery": "native",
+        "subagent": "native",
+        "permissionPolicyScopes": {
+          "capabilities": [
+            "shell"
+          ],
+          "actorScoped": false,
+          "stageScoped": false
+        }
+      },
+      "claude": {
+        "skills": "native",
+        "commands": "native",
+        "agents": "native",
+        "rules": "native",
+        "hooks": "native",
+        "guidance": "native",
+        "permissionPolicy": "native",
+        "runtimeHook": {
+          "events": [
+            "agent.session.start",
+            "agent.session.end",
+            "agent.prompt.submit",
+            "agent.tool.before",
+            "agent.tool.after",
+            "agent.permission.request",
+            "agent.subagent.start",
+            "agent.subagent.stop",
+            "agent.turn.stop"
+          ],
+          "blocking": "native",
+          "managed": "degraded",
+          "local": "native",
+          "cloud": "degraded",
+          "trust": "platform-review",
+          "bypasses": []
+        },
+        "auditDelivery": "native",
+        "subagent": "native",
+        "permissionPolicyScopes": {
+          "capabilities": [
+            "fs.read",
+            "fs.write",
+            "shell",
+            "network",
+            "subagent",
+            "mcp"
+          ],
+          "actorScoped": false,
+          "stageScoped": false
+        }
+      },
+      "cursor": {
+        "skills": "native",
+        "commands": "native",
+        "agents": "native",
+        "rules": "native",
+        "hooks": "native",
+        "guidance": "native",
+        "permissionPolicy": "degraded",
+        "runtimeHook": {
+          "events": [
+            "agent.session.start",
+            "agent.session.end",
+            "agent.prompt.submit",
+            "agent.tool.before",
+            "agent.tool.after",
+            "agent.turn.stop"
+          ],
+          "blocking": "native",
+          "managed": "native",
+          "local": "native",
+          "cloud": "native",
+          "trust": "platform-review",
+          "bypasses": [
+            "events not exposed by Cursor"
+          ]
+        },
+        "auditDelivery": "native",
+        "subagent": "degraded",
+        "permissionPolicyScopes": {
+          "capabilities": [],
+          "actorScoped": false,
+          "stageScoped": false
+        }
+      },
+      "opencode": {
+        "skills": "native",
+        "commands": "native",
+        "agents": "native",
+        "rules": "degraded",
+        "hooks": "native",
+        "guidance": "degraded",
+        "permissionPolicy": "degraded",
+        "runtimeHook": {
+          "events": [
+            "agent.tool.before",
+            "agent.tool.after",
+            "agent.permission.request"
+          ],
+          "blocking": "degraded",
+          "managed": "degraded",
+          "local": "native",
+          "cloud": "degraded",
+          "trust": "none",
+          "bypasses": [
+            "events not emitted by the plugin API"
+          ]
+        },
+        "auditDelivery": "native",
+        "subagent": "native",
+        "permissionPolicyScopes": {
+          "capabilities": [
+            "fs.read",
+            "fs.write",
+            "shell",
+            "network",
+            "subagent",
+            "external.write"
+          ],
+          "actorScoped": false,
+          "stageScoped": false
+        }
+      },
+      "github-copilot": {
+        "skills": "native",
+        "commands": "native",
+        "agents": "native",
+        "rules": "native",
+        "hooks": "native",
+        "guidance": "native",
+        "permissionPolicy": "degraded",
+        "runtimeHook": {
+          "events": [
+            "agent.session.start",
+            "agent.session.end",
+            "agent.prompt.submit",
+            "agent.tool.before",
+            "agent.tool.after",
+            "agent.turn.stop"
+          ],
+          "blocking": "degraded",
+          "managed": "degraded",
+          "local": "native",
+          "cloud": "degraded",
+          "trust": "platform-review",
+          "bypasses": [
+            "events not exposed by Copilot hooks"
+          ]
+        },
+        "auditDelivery": "native",
+        "subagent": "degraded",
+        "permissionPolicyScopes": {
+          "capabilities": [],
+          "actorScoped": false,
+          "stageScoped": false
+        }
+      }
+    },
+    "recordVersion": 2,
+    "scannedSources": 32,
+    "changedSources": 32,
+    "renderedFiles": 182,
+    "recordOnly": 0,
+    "summary": {
+      "create": 183,
+      "modify": 0,
+      "delete": 0,
+      "skip": 0,
+      "conflict": 0
+    }
+  },
+  "diagnostics": [
+    {
+      "code": "XFORGE_POLICY_STATIC_LAYER_DEGRADED",
+      "severity": "info",
+      "message": "Target codex has no static permission-policy projection at all, so PermissionPolicy protected-files (which uses exceptActors/match.stages) is enforced only by the XForge runtime Hook bridge.",
+      "path": "xforge/scaffold/policies/protected-files.yaml",
+      "details": {
+        "target": "codex",
+        "policy": "protected-files",
+        "capability": "fs.write",
+        "reason": "no-static-projection"
+      }
+    },
+    {
+      "code": "XFORGE_POLICY_STATIC_LAYER_DEGRADED",
+      "severity": "info",
+      "message": "Target codex has no static permission-policy projection at all, so PermissionPolicy protected-manifest (which uses exceptActors/match.stages) is enforced only by the XForge runtime Hook bridge.",
+      "path": "xforge/scaffold/policies/protected-manifest.yaml",
+      "details": {
+        "target": "codex",
+        "policy": "protected-manifest",
+        "capability": "fs.write",
+        "reason": "no-static-projection"
+      }
+    },
+    {
+      "code": "XFORGE_POLICY_STATIC_LAYER_DEGRADED",
+      "severity": "warning",
+      "message": "Target claude cannot express exceptActors in its static permission layer, so PermissionPolicy protected-files is withheld from it and enforced only by the XForge runtime Hook bridge.",
+      "path": "xforge/scaffold/policies/protected-files.yaml",
+      "details": {
+        "target": "claude",
+        "policy": "protected-files",
+        "unexpressible": [
+          "exceptActors"
+        ]
+      }
+    },
+    {
+      "code": "XFORGE_POLICY_STATIC_LAYER_DEGRADED",
+      "severity": "warning",
+      "message": "Target claude cannot express exceptActors in its static permission layer, so PermissionPolicy protected-manifest is withheld from it and enforced only by the XForge runtime Hook bridge.",
+      "path": "xforge/scaffold/policies/protected-manifest.yaml",
+      "details": {
+        "target": "claude",
+        "policy": "protected-manifest",
+        "unexpressible": [
+          "exceptActors"
+        ]
+      }
+    },
+    {
+      "code": "XFORGE_POLICY_STATIC_LAYER_DEGRADED",
+      "severity": "info",
+      "message": "Target cursor has no static permission-policy projection at all, so PermissionPolicy protected-files (which uses exceptActors/match.stages) is enforced only by the XForge runtime Hook bridge.",
+      "path": "xforge/scaffold/policies/protected-files.yaml",
+      "details": {
+        "target": "cursor",
+        "policy": "protected-files",
+        "capability": "fs.write",
+        "reason": "no-static-projection"
+      }
+    },
+    {
+      "code": "XFORGE_POLICY_STATIC_LAYER_DEGRADED",
+      "severity": "info",
+      "message": "Target cursor has no static permission-policy projection at all, so PermissionPolicy protected-manifest (which uses exceptActors/match.stages) is enforced only by the XForge runtime Hook bridge.",
+      "path": "xforge/scaffold/policies/protected-manifest.yaml",
+      "details": {
+        "target": "cursor",
+        "policy": "protected-manifest",
+        "capability": "fs.write",
+        "reason": "no-static-projection"
+      }
+    },
+    {
+      "code": "XFORGE_POLICY_STATIC_LAYER_DEGRADED",
+      "severity": "warning",
+      "message": "Target opencode cannot express exceptActors in its static permission layer, so PermissionPolicy protected-files is withheld from it and enforced only by the XForge runtime Hook bridge.",
+      "path": "xforge/scaffold/policies/protected-files.yaml",
+      "details": {
+        "target": "opencode",
+        "policy": "protected-files",
+        "unexpressible": [
+          "exceptActors"
+        ]
+      }
+    },
+    {
+      "code": "XFORGE_POLICY_STATIC_LAYER_DEGRADED",
+      "severity": "warning",
+      "message": "Target opencode cannot express exceptActors in its static permission layer, so PermissionPolicy protected-manifest is withheld from it and enforced only by the XForge runtime Hook bridge.",
+      "path": "xforge/scaffold/policies/protected-manifest.yaml",
+      "details": {
+        "target": "opencode",
+        "policy": "protected-manifest",
+        "unexpressible": [
+          "exceptActors"
+        ]
+      }
+    },
+    {
+      "code": "XFORGE_POLICY_STATIC_LAYER_DEGRADED",
+      "severity": "info",
+      "message": "Target github-copilot has no static permission-policy projection at all, so PermissionPolicy protected-files (which uses exceptActors/match.stages) is enforced only by the XForge runtime Hook bridge.",
+      "path": "xforge/scaffold/policies/protected-files.yaml",
+      "details": {
+        "target": "github-copilot",
+        "policy": "protected-files",
+        "capability": "fs.write",
+        "reason": "no-static-projection"
+      }
+    },
+    {
+      "code": "XFORGE_POLICY_STATIC_LAYER_DEGRADED",
+      "severity": "info",
+      "message": "Target github-copilot has no static permission-policy projection at all, so PermissionPolicy protected-manifest (which uses exceptActors/match.stages) is enforced only by the XForge runtime Hook bridge.",
+      "path": "xforge/scaffold/policies/protected-manifest.yaml",
+      "details": {
+        "target": "github-copilot",
+        "policy": "protected-manifest",
+        "capability": "fs.write",
+        "reason": "no-static-projection"
+      }
+    },
+    {
+      "code": "XFORGE_CAPABILITY_CONTENT_UNSUPPORTED",
+      "severity": "info",
+      "message": "Target codex does not project Skill command files; these Skills install without a command entry point: xforge-propose, xforge-clarify, xforge-design, xforge-check, xforge-apply, xforge-verify, xforge-status, xforge-revise, xforge-scaffold, xforge-kanban, xforge-architect, xforge-upgrade-scaffold.",
+      "details": {
+        "target": "codex",
+        "dimension": "commands",
+        "kind": "Skill",
+        "count": 12,
+        "resources": [
+          {
+            "id": "xforge-propose",
+            "path": "xforge/scaffold/skills/xforge-propose/SKILL.md"
+          },
+          {
+            "id": "xforge-clarify",
+            "path": "xforge/scaffold/skills/xforge-clarify/SKILL.md"
+          },
+          {
+            "id": "xforge-design",
+            "path": "xforge/scaffold/skills/xforge-design/SKILL.md"
+          },
+          {
+            "id": "xforge-check",
+            "path": "xforge/scaffold/skills/xforge-check/SKILL.md"
+          },
+          {
+            "id": "xforge-apply",
+            "path": "xforge/scaffold/skills/xforge-apply/SKILL.md"
+          },
+          {
+            "id": "xforge-verify",
+            "path": "xforge/scaffold/skills/xforge-verify/SKILL.md"
+          },
+          {
+            "id": "xforge-status",
+            "path": "xforge/scaffold/skills/xforge-status/SKILL.md"
+          },
+          {
+            "id": "xforge-revise",
+            "path": "xforge/scaffold/skills/xforge-revise/SKILL.md"
+          },
+          {
+            "id": "xforge-scaffold",
+            "path": "xforge/scaffold/skills/xforge-scaffold/SKILL.md"
+          },
+          {
+            "id": "xforge-kanban",
+            "path": "xforge/scaffold/skills/xforge-kanban/SKILL.md"
+          },
+          {
+            "id": "xforge-architect",
+            "path": "xforge/scaffold/skills/xforge-architect/SKILL.md"
+          },
+          {
+            "id": "xforge-upgrade-scaffold",
+            "path": "xforge/scaffold/skills/xforge-upgrade-scaffold/SKILL.md"
+          }
+        ]
+      }
+    },
+    {
+      "code": "XFORGE_CAPABILITY_CONTENT_UNSUPPORTED",
+      "severity": "info",
+      "message": "Target codex does not project rule files; these Rules are not installed for that target: governance-assets-are-integrator-only, observable-requirements-are-tested, design-decisions-need-a-human, prefer-small-explicit-contracts, design-within-the-declared-architecture.",
+      "details": {
+        "target": "codex",
+        "dimension": "rules",
+        "kind": "Rule",
+        "count": 5,
+        "resources": [
+          {
+            "id": "governance-assets-are-integrator-only",
+            "path": "xforge/scaffold/rules/governance-assets-are-integrator-only.yaml"
+          },
+          {
+            "id": "observable-requirements-are-tested",
+            "path": "xforge/scaffold/rules/observable-requirements-are-tested.yaml"
+          },
+          {
+            "id": "design-decisions-need-a-human",
+            "path": "xforge/scaffold/rules/design-decisions-need-a-human.yaml"
+          },
+          {
+            "id": "prefer-small-explicit-contracts",
+            "path": "xforge/scaffold/rules/prefer-small-explicit-contracts.yaml"
+          },
+          {
+            "id": "design-within-the-declared-architecture",
+            "path": "xforge/scaffold/rules/design-within-the-declared-architecture.yaml"
+          }
+        ]
+      }
+    },
+    {
+      "code": "XFORGE_CAPABILITY_CONTENT_UNSUPPORTED",
+      "severity": "info",
+      "message": "Target opencode does not project rule files; these Rules are not installed for that target: governance-assets-are-integrator-only, observable-requirements-are-tested, design-decisions-need-a-human, prefer-small-explicit-contracts, design-within-the-declared-architecture.",
+      "details": {
+        "target": "opencode",
+        "dimension": "rules",
+        "kind": "Rule",
+        "count": 5,
+        "resources": [
+          {
+            "id": "governance-assets-are-integrator-only",
+            "path": "xforge/scaffold/rules/governance-assets-are-integrator-only.yaml"
+          },
+          {
+            "id": "observable-requirements-are-tested",
+            "path": "xforge/scaffold/rules/observable-requirements-are-tested.yaml"
+          },
+          {
+            "id": "design-decisions-need-a-human",
+            "path": "xforge/scaffold/rules/design-decisions-need-a-human.yaml"
+          },
+          {
+            "id": "prefer-small-explicit-contracts",
+            "path": "xforge/scaffold/rules/prefer-small-explicit-contracts.yaml"
+          },
+          {
+            "id": "design-within-the-declared-architecture",
+            "path": "xforge/scaffold/rules/design-within-the-declared-architecture.yaml"
+          }
+        ]
+      }
+    },
+    {
+      "code": "XFORGE_MCP_SERVER_NOT_PROJECTED",
+      "severity": "info",
+      "message": "McpServer enterprise-approvals defines an XForge approval channel and is not projected as a coding-tool MCP configuration; configure the server in the host's own MCP config (for example .mcp.json) if agents should call its tools.",
+      "path": "xforge/scaffold/mcp-servers/enterprise-approvals.yaml",
+      "details": {
+        "server": "enterprise-approvals",
+        "usedBy": "approvals"
+      }
+    }
+  ],
+  "changes": [
+    {
+      "action": "create",
+      "path": ".agents/skills/xforge-apply/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-apply:SKILL.md",
+      "target": "codex"
+    },
+    {
+      "action": "create",
+      "path": ".agents/skills/xforge-architect/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-architect:SKILL.md",
+      "target": "codex"
+    },
+    {
+      "action": "create",
+      "path": ".agents/skills/xforge-check/agents/openai.yaml",
+      "digest": "<sha256>",
+      "source": "skill:xforge-check:agents/openai.yaml",
+      "target": "codex"
+    },
+    {
+      "action": "create",
+      "path": ".agents/skills/xforge-check/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-check:SKILL.md",
+      "target": "codex"
+    },
+    {
+      "action": "create",
+      "path": ".agents/skills/xforge-clarify/agents/openai.yaml",
+      "digest": "<sha256>",
+      "source": "skill:xforge-clarify:agents/openai.yaml",
+      "target": "codex"
+    },
+    {
+      "action": "create",
+      "path": ".agents/skills/xforge-clarify/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-clarify:SKILL.md",
+      "target": "codex"
+    },
+    {
+      "action": "create",
+      "path": ".agents/skills/xforge-design/agents/openai.yaml",
+      "digest": "<sha256>",
+      "source": "skill:xforge-design:agents/openai.yaml",
+      "target": "codex"
+    },
+    {
+      "action": "create",
+      "path": ".agents/skills/xforge-design/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-design:SKILL.md",
+      "target": "codex"
+    },
+    {
+      "action": "create",
+      "path": ".agents/skills/xforge-kanban/scripts/git-activity.mjs",
+      "digest": "<sha256>",
+      "source": "skill:xforge-kanban:scripts/git-activity.mjs",
+      "target": "codex"
+    },
+    {
+      "action": "create",
+      "path": ".agents/skills/xforge-kanban/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-kanban:SKILL.md",
+      "target": "codex"
+    },
+    {
+      "action": "create",
+      "path": ".agents/skills/xforge-propose/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-propose:SKILL.md",
+      "target": "codex"
+    },
+    {
+      "action": "create",
+      "path": ".agents/skills/xforge-revise/agents/openai.yaml",
+      "digest": "<sha256>",
+      "source": "skill:xforge-revise:agents/openai.yaml",
+      "target": "codex"
+    },
+    {
+      "action": "create",
+      "path": ".agents/skills/xforge-revise/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-revise:SKILL.md",
+      "target": "codex"
+    },
+    {
+      "action": "create",
+      "path": ".agents/skills/xforge-scaffold/agents/openai.yaml",
+      "digest": "<sha256>",
+      "source": "skill:xforge-scaffold:agents/openai.yaml",
+      "target": "codex"
+    },
+    {
+      "action": "create",
+      "path": ".agents/skills/xforge-scaffold/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-scaffold:SKILL.md",
+      "target": "codex"
+    },
+    {
+      "action": "create",
+      "path": ".agents/skills/xforge-status/agents/openai.yaml",
+      "digest": "<sha256>",
+      "source": "skill:xforge-status:agents/openai.yaml",
+      "target": "codex"
+    },
+    {
+      "action": "create",
+      "path": ".agents/skills/xforge-status/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-status:SKILL.md",
+      "target": "codex"
+    },
+    {
+      "action": "create",
+      "path": ".agents/skills/xforge-upgrade-scaffold/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-upgrade-scaffold:SKILL.md",
+      "target": "codex"
+    },
+    {
+      "action": "create",
+      "path": ".agents/skills/xforge-verify/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-verify:SKILL.md",
+      "target": "codex"
+    },
+    {
+      "action": "create",
+      "path": ".codex/agents/integrator.toml",
+      "digest": "<sha256>",
+      "source": "agent:integrator",
+      "target": "codex"
+    },
+    {
+      "action": "create",
+      "path": ".codex/agents/reviewer.toml",
+      "digest": "<sha256>",
+      "source": "agent:reviewer",
+      "target": "codex"
+    },
+    {
+      "action": "create",
+      "path": ".codex/agents/worker.toml",
+      "digest": "<sha256>",
+      "source": "agent:worker",
+      "target": "codex"
+    },
+    {
+      "action": "create",
+      "path": ".codex/hooks.json",
+      "digest": "<sha256>",
+      "source": "governance:hooks",
+      "target": "codex"
+    },
+    {
+      "action": "create",
+      "path": ".claude/agents/integrator.md",
+      "digest": "<sha256>",
+      "source": "agent:integrator",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/agents/reviewer.md",
+      "digest": "<sha256>",
+      "source": "agent:reviewer",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/agents/worker.md",
+      "digest": "<sha256>",
+      "source": "agent:worker",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/commands/xforge/apply.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-apply",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/commands/xforge/architect.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-architect",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/commands/xforge/check.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-check",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/commands/xforge/clarify.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-clarify",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/commands/xforge/design.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-design",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/commands/xforge/kanban.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-kanban",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/commands/xforge/propose.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-propose",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/commands/xforge/revise.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-revise",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/commands/xforge/scaffold.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-scaffold",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/commands/xforge/status.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-status",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/commands/xforge/upgrade-scaffold.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-upgrade-scaffold",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/commands/xforge/verify.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-verify",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/rules/design-decisions-need-a-human.md",
+      "digest": "<sha256>",
+      "source": "rule:design-decisions-need-a-human",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/rules/design-within-the-declared-architecture.md",
+      "digest": "<sha256>",
+      "source": "rule:design-within-the-declared-architecture",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/rules/governance-assets-are-integrator-only.md",
+      "digest": "<sha256>",
+      "source": "rule:governance-assets-are-integrator-only",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/rules/observable-requirements-are-tested.md",
+      "digest": "<sha256>",
+      "source": "rule:observable-requirements-are-tested",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/rules/prefer-small-explicit-contracts.md",
+      "digest": "<sha256>",
+      "source": "rule:prefer-small-explicit-contracts",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/rules/xforge-bootstrap.md",
+      "digest": "<sha256>",
+      "source": "builtin:bootstrap",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/settings.json",
+      "digest": "<sha256>",
+      "source": "governance:settings",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/skills/xforge-apply/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-apply:SKILL.md",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/skills/xforge-architect/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-architect:SKILL.md",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/skills/xforge-check/agents/openai.yaml",
+      "digest": "<sha256>",
+      "source": "skill:xforge-check:agents/openai.yaml",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/skills/xforge-check/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-check:SKILL.md",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/skills/xforge-clarify/agents/openai.yaml",
+      "digest": "<sha256>",
+      "source": "skill:xforge-clarify:agents/openai.yaml",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/skills/xforge-clarify/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-clarify:SKILL.md",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/skills/xforge-design/agents/openai.yaml",
+      "digest": "<sha256>",
+      "source": "skill:xforge-design:agents/openai.yaml",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/skills/xforge-design/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-design:SKILL.md",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/skills/xforge-kanban/scripts/git-activity.mjs",
+      "digest": "<sha256>",
+      "source": "skill:xforge-kanban:scripts/git-activity.mjs",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/skills/xforge-kanban/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-kanban:SKILL.md",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/skills/xforge-propose/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-propose:SKILL.md",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/skills/xforge-revise/agents/openai.yaml",
+      "digest": "<sha256>",
+      "source": "skill:xforge-revise:agents/openai.yaml",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/skills/xforge-revise/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-revise:SKILL.md",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/skills/xforge-scaffold/agents/openai.yaml",
+      "digest": "<sha256>",
+      "source": "skill:xforge-scaffold:agents/openai.yaml",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/skills/xforge-scaffold/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-scaffold:SKILL.md",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/skills/xforge-status/agents/openai.yaml",
+      "digest": "<sha256>",
+      "source": "skill:xforge-status:agents/openai.yaml",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/skills/xforge-status/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-status:SKILL.md",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/skills/xforge-upgrade-scaffold/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-upgrade-scaffold:SKILL.md",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".claude/skills/xforge-verify/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-verify:SKILL.md",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": "CLAUDE.md",
+      "digest": "<sha256>",
+      "source": "builtin:claude-memory",
+      "target": "claude"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/agents/integrator.md",
+      "digest": "<sha256>",
+      "source": "agent:integrator",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/agents/reviewer.md",
+      "digest": "<sha256>",
+      "source": "agent:reviewer",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/agents/worker.md",
+      "digest": "<sha256>",
+      "source": "agent:worker",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/commands/xforge-apply.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-apply",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/commands/xforge-architect.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-architect",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/commands/xforge-check.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-check",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/commands/xforge-clarify.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-clarify",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/commands/xforge-design.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-design",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/commands/xforge-kanban.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-kanban",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/commands/xforge-propose.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-propose",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/commands/xforge-revise.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-revise",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/commands/xforge-scaffold.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-scaffold",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/commands/xforge-status.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-status",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/commands/xforge-upgrade-scaffold.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-upgrade-scaffold",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/commands/xforge-verify.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-verify",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/hooks.json",
+      "digest": "<sha256>",
+      "source": "governance:hooks",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/rules/design-decisions-need-a-human.mdc",
+      "digest": "<sha256>",
+      "source": "rule:design-decisions-need-a-human",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/rules/design-within-the-declared-architecture.mdc",
+      "digest": "<sha256>",
+      "source": "rule:design-within-the-declared-architecture",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/rules/governance-assets-are-integrator-only.mdc",
+      "digest": "<sha256>",
+      "source": "rule:governance-assets-are-integrator-only",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/rules/observable-requirements-are-tested.mdc",
+      "digest": "<sha256>",
+      "source": "rule:observable-requirements-are-tested",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/rules/prefer-small-explicit-contracts.mdc",
+      "digest": "<sha256>",
+      "source": "rule:prefer-small-explicit-contracts",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/rules/xforge-bootstrap.mdc",
+      "digest": "<sha256>",
+      "source": "builtin:bootstrap",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/skills/xforge-apply/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-apply:SKILL.md",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/skills/xforge-architect/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-architect:SKILL.md",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/skills/xforge-check/agents/openai.yaml",
+      "digest": "<sha256>",
+      "source": "skill:xforge-check:agents/openai.yaml",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/skills/xforge-check/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-check:SKILL.md",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/skills/xforge-clarify/agents/openai.yaml",
+      "digest": "<sha256>",
+      "source": "skill:xforge-clarify:agents/openai.yaml",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/skills/xforge-clarify/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-clarify:SKILL.md",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/skills/xforge-design/agents/openai.yaml",
+      "digest": "<sha256>",
+      "source": "skill:xforge-design:agents/openai.yaml",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/skills/xforge-design/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-design:SKILL.md",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/skills/xforge-kanban/scripts/git-activity.mjs",
+      "digest": "<sha256>",
+      "source": "skill:xforge-kanban:scripts/git-activity.mjs",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/skills/xforge-kanban/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-kanban:SKILL.md",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/skills/xforge-propose/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-propose:SKILL.md",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/skills/xforge-revise/agents/openai.yaml",
+      "digest": "<sha256>",
+      "source": "skill:xforge-revise:agents/openai.yaml",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/skills/xforge-revise/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-revise:SKILL.md",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/skills/xforge-scaffold/agents/openai.yaml",
+      "digest": "<sha256>",
+      "source": "skill:xforge-scaffold:agents/openai.yaml",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/skills/xforge-scaffold/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-scaffold:SKILL.md",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/skills/xforge-status/agents/openai.yaml",
+      "digest": "<sha256>",
+      "source": "skill:xforge-status:agents/openai.yaml",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/skills/xforge-status/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-status:SKILL.md",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/skills/xforge-upgrade-scaffold/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-upgrade-scaffold:SKILL.md",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/skills/xforge-verify/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-verify:SKILL.md",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".opencode/agents/integrator.md",
+      "digest": "<sha256>",
+      "source": "agent:integrator",
+      "target": "opencode"
+    },
+    {
+      "action": "create",
+      "path": ".opencode/agents/reviewer.md",
+      "digest": "<sha256>",
+      "source": "agent:reviewer",
+      "target": "opencode"
+    },
+    {
+      "action": "create",
+      "path": ".opencode/agents/worker.md",
+      "digest": "<sha256>",
+      "source": "agent:worker",
+      "target": "opencode"
+    },
+    {
+      "action": "create",
+      "path": ".opencode/commands/xforge-apply.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-apply",
+      "target": "opencode"
+    },
+    {
+      "action": "create",
+      "path": ".opencode/commands/xforge-architect.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-architect",
+      "target": "opencode"
+    },
+    {
+      "action": "create",
+      "path": ".opencode/commands/xforge-check.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-check",
+      "target": "opencode"
+    },
+    {
+      "action": "create",
+      "path": ".opencode/commands/xforge-clarify.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-clarify",
+      "target": "opencode"
+    },
+    {
+      "action": "create",
+      "path": ".opencode/commands/xforge-design.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-design",
+      "target": "opencode"
+    },
+    {
+      "action": "create",
+      "path": ".opencode/commands/xforge-kanban.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-kanban",
+      "target": "opencode"
+    },
+    {
+      "action": "create",
+      "path": ".opencode/commands/xforge-propose.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-propose",
+      "target": "opencode"
+    },
+    {
+      "action": "create",
+      "path": ".opencode/commands/xforge-revise.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-revise",
+      "target": "opencode"
+    },
+    {
+      "action": "create",
+      "path": ".opencode/commands/xforge-scaffold.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-scaffold",
+      "target": "opencode"
+    },
+    {
+      "action": "create",
+      "path": ".opencode/commands/xforge-status.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-status",
+      "target": "opencode"
+    },
+    {
+      "action": "create",
+      "path": ".opencode/commands/xforge-upgrade-scaffold.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-upgrade-scaffold",
+      "target": "opencode"
+    },
+    {
+      "action": "create",
+      "path": ".opencode/commands/xforge-verify.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-verify",
+      "target": "opencode"
+    },
+    {
+      "action": "create",
+      "path": ".opencode/plugins/xforge-governance.ts",
+      "digest": "<sha256>",
+      "source": "governance:hooks",
+      "target": "opencode"
+    },
+    {
+      "action": "create",
+      "path": ".opencode/skills/xforge-apply/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-apply:SKILL.md",
+      "target": "opencode"
+    },
+    {
+      "action": "create",
+      "path": ".opencode/skills/xforge-architect/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-architect:SKILL.md",
+      "target": "opencode"
+    },
+    {
+      "action": "create",
+      "path": ".opencode/skills/xforge-check/agents/openai.yaml",
+      "digest": "<sha256>",
+      "source": "skill:xforge-check:agents/openai.yaml",
+      "target": "opencode"
+    },
+    {
+      "action": "create",
+      "path": ".opencode/skills/xforge-check/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-check:SKILL.md",
+      "target": "opencode"
+    },
+    {
+      "action": "create",
+      "path": ".opencode/skills/xforge-clarify/agents/openai.yaml",
+      "digest": "<sha256>",
+      "source": "skill:xforge-clarify:agents/openai.yaml",
+      "target": "opencode"
+    },
+    {
+      "action": "create",
+      "path": ".opencode/skills/xforge-clarify/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-clarify:SKILL.md",
+      "target": "opencode"
+    },
+    {
+      "action": "create",
+      "path": ".opencode/skills/xforge-design/agents/openai.yaml",
+      "digest": "<sha256>",
+      "source": "skill:xforge-design:agents/openai.yaml",
+      "target": "opencode"
+    },
+    {
+      "action": "create",
+      "path": ".opencode/skills/xforge-design/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-design:SKILL.md",
+      "target": "opencode"
+    },
+    {
+      "action": "create",
+      "path": ".opencode/skills/xforge-kanban/scripts/git-activity.mjs",
+      "digest": "<sha256>",
+      "source": "skill:xforge-kanban:scripts/git-activity.mjs",
+      "target": "opencode"
+    },
+    {
+      "action": "create",
+      "path": ".opencode/skills/xforge-kanban/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-kanban:SKILL.md",
+      "target": "opencode"
+    },
+    {
+      "action": "create",
+      "path": ".opencode/skills/xforge-propose/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-propose:SKILL.md",
+      "target": "opencode"
+    },
+    {
+      "action": "create",
+      "path": ".opencode/skills/xforge-revise/agents/openai.yaml",
+      "digest": "<sha256>",
+      "source": "skill:xforge-revise:agents/openai.yaml",
+      "target": "opencode"
+    },
+    {
+      "action": "create",
+      "path": ".opencode/skills/xforge-revise/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-revise:SKILL.md",
+      "target": "opencode"
+    },
+    {
+      "action": "create",
+      "path": ".opencode/skills/xforge-scaffold/agents/openai.yaml",
+      "digest": "<sha256>",
+      "source": "skill:xforge-scaffold:agents/openai.yaml",
+      "target": "opencode"
+    },
+    {
+      "action": "create",
+      "path": ".opencode/skills/xforge-scaffold/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-scaffold:SKILL.md",
+      "target": "opencode"
+    },
+    {
+      "action": "create",
+      "path": ".opencode/skills/xforge-status/agents/openai.yaml",
+      "digest": "<sha256>",
+      "source": "skill:xforge-status:agents/openai.yaml",
+      "target": "opencode"
+    },
+    {
+      "action": "create",
+      "path": ".opencode/skills/xforge-status/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-status:SKILL.md",
+      "target": "opencode"
+    },
+    {
+      "action": "create",
+      "path": ".opencode/skills/xforge-upgrade-scaffold/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-upgrade-scaffold:SKILL.md",
+      "target": "opencode"
+    },
+    {
+      "action": "create",
+      "path": ".opencode/skills/xforge-verify/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-verify:SKILL.md",
+      "target": "opencode"
+    },
+    {
+      "action": "create",
+      "path": ".github/agents/integrator.agent.md",
+      "digest": "<sha256>",
+      "source": "agent:integrator",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/agents/reviewer.agent.md",
+      "digest": "<sha256>",
+      "source": "agent:reviewer",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/agents/worker.agent.md",
+      "digest": "<sha256>",
+      "source": "agent:worker",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/hooks/xforge.json",
+      "digest": "<sha256>",
+      "source": "governance:hooks",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/instructions/design-decisions-need-a-human.instructions.md",
+      "digest": "<sha256>",
+      "source": "rule:design-decisions-need-a-human",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/instructions/design-within-the-declared-architecture.instructions.md",
+      "digest": "<sha256>",
+      "source": "rule:design-within-the-declared-architecture",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/instructions/governance-assets-are-integrator-only.instructions.md",
+      "digest": "<sha256>",
+      "source": "rule:governance-assets-are-integrator-only",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/instructions/observable-requirements-are-tested.instructions.md",
+      "digest": "<sha256>",
+      "source": "rule:observable-requirements-are-tested",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/instructions/prefer-small-explicit-contracts.instructions.md",
+      "digest": "<sha256>",
+      "source": "rule:prefer-small-explicit-contracts",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/instructions/xforge-bootstrap.instructions.md",
+      "digest": "<sha256>",
+      "source": "builtin:bootstrap",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/prompts/xforge-apply.prompt.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-apply",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/prompts/xforge-architect.prompt.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-architect",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/prompts/xforge-check.prompt.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-check",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/prompts/xforge-clarify.prompt.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-clarify",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/prompts/xforge-design.prompt.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-design",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/prompts/xforge-kanban.prompt.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-kanban",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/prompts/xforge-propose.prompt.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-propose",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/prompts/xforge-revise.prompt.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-revise",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/prompts/xforge-scaffold.prompt.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-scaffold",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/prompts/xforge-status.prompt.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-status",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/prompts/xforge-upgrade-scaffold.prompt.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-upgrade-scaffold",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/prompts/xforge-verify.prompt.md",
+      "digest": "<sha256>",
+      "source": "skill-command:xforge-verify",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/skills/xforge-apply/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-apply:SKILL.md",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/skills/xforge-architect/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-architect:SKILL.md",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/skills/xforge-check/agents/openai.yaml",
+      "digest": "<sha256>",
+      "source": "skill:xforge-check:agents/openai.yaml",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/skills/xforge-check/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-check:SKILL.md",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/skills/xforge-clarify/agents/openai.yaml",
+      "digest": "<sha256>",
+      "source": "skill:xforge-clarify:agents/openai.yaml",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/skills/xforge-clarify/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-clarify:SKILL.md",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/skills/xforge-design/agents/openai.yaml",
+      "digest": "<sha256>",
+      "source": "skill:xforge-design:agents/openai.yaml",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/skills/xforge-design/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-design:SKILL.md",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/skills/xforge-kanban/scripts/git-activity.mjs",
+      "digest": "<sha256>",
+      "source": "skill:xforge-kanban:scripts/git-activity.mjs",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/skills/xforge-kanban/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-kanban:SKILL.md",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/skills/xforge-propose/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-propose:SKILL.md",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/skills/xforge-revise/agents/openai.yaml",
+      "digest": "<sha256>",
+      "source": "skill:xforge-revise:agents/openai.yaml",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/skills/xforge-revise/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-revise:SKILL.md",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/skills/xforge-scaffold/agents/openai.yaml",
+      "digest": "<sha256>",
+      "source": "skill:xforge-scaffold:agents/openai.yaml",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/skills/xforge-scaffold/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-scaffold:SKILL.md",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/skills/xforge-status/agents/openai.yaml",
+      "digest": "<sha256>",
+      "source": "skill:xforge-status:agents/openai.yaml",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/skills/xforge-status/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-status:SKILL.md",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/skills/xforge-upgrade-scaffold/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-upgrade-scaffold:SKILL.md",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/skills/xforge-verify/SKILL.md",
+      "digest": "<sha256>",
+      "source": "skill:xforge-verify:SKILL.md",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": "xforge/.state.json",
+      "digest": "<sha256>",
+      "source": "xforge:ownership"
+    }
+  ],
+  "nextActions": []
+}

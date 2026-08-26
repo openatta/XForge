@@ -1,0 +1,19 @@
+$ xforge brief
+exit: 1
+
+{
+  "protocolVersion": "2",
+  "ok": false,
+  "command": "brief",
+  "root": null,
+  "data": null,
+  "diagnostics": [
+    {
+      "code": "XFORGE_CHANGE_REQUIRED",
+      "severity": "error",
+      "message": "brief requires --change <id>."
+    }
+  ],
+  "changes": [],
+  "nextActions": []
+}

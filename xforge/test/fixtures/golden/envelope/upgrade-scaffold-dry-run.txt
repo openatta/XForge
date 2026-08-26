@@ -1,0 +1,20 @@
+$ xforge upgrade-scaffold --dry-run
+exit: 1
+
+{
+  "protocolVersion": "2",
+  "ok": false,
+  "command": "upgrade-scaffold",
+  "root": null,
+  "data": null,
+  "diagnostics": [
+    {
+      "code": "XFORGE_UPGRADE_ACTIVE_CHANGES",
+      "severity": "error",
+      "message": "1 Change(s) are still open: add-feature. Their remaining Stages would run under Gates and Skills their Design never saw. Archive them first, or pass --with-active-changes to accept that.",
+      "path": "xforge/changes"
+    }
+  ],
+  "changes": [],
+  "nextActions": []
+}

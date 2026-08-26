@@ -1,0 +1,18 @@
+{
+  "description": "XForge runtime governance bridge. Review and trust this exact definition in Codex.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "xforge hook dispatch --target codex --event agent.tool.before",
+            "timeout": 10,
+            "statusMessage": "Evaluating XForge policy"
+          }
+        ]
+      }
+    ]
+  }
+}

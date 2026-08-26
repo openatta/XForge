@@ -1,0 +1,49 @@
+$ xforge check --change add-feature --gate no-such-gate
+exit: 1
+
+{
+  "protocolVersion": "2",
+  "ok": false,
+  "command": "check",
+  "root": "<ROOT>",
+  "data": {
+    "structure": {
+      "passed": true
+    },
+    "change": "add-feature",
+    "stage": null,
+    "gateSelection": "explicit",
+    "workPackagesSelected": false,
+    "workPackages": [],
+    "gates": [
+      {
+        "id": "no-such-gate",
+        "status": "failed",
+        "evidence": null,
+        "evidencePath": null
+      }
+    ]
+  },
+  "diagnostics": [
+    {
+      "code": "XFORGE_ARTIFACT_MARKER_SECTION_MISSING",
+      "severity": "warning",
+      "message": "Artifact design declares marker verification-coverage in section \"Verification notes\", which this file does not contain. Rules keyed on that marker will report nothing for this Artifact.",
+      "path": "xforge/changes/add-feature/design.md"
+    },
+    {
+      "code": "XFORGE_ARTIFACT_MARKER_SECTION_MISSING",
+      "severity": "warning",
+      "message": "Artifact design declares marker rejected-alternative in section \"Decisions and alternatives\", which this file does not contain. Rules keyed on that marker will report nothing for this Artifact.",
+      "path": "xforge/changes/add-feature/design.md"
+    },
+    {
+      "code": "XFORGE_GATE_NOT_FOUND",
+      "severity": "error",
+      "message": "Selected Gate does not exist or is not enabled: no-such-gate",
+      "path": "xforge/manifest.yaml"
+    }
+  ],
+  "changes": [],
+  "nextActions": []
+}

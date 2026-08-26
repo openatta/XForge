@@ -1,0 +1,28 @@
+$ xforge version
+exit: 0
+
+{
+  "protocolVersion": "2",
+  "ok": true,
+  "command": "version",
+  "root": null,
+  "data": {
+    "name": "@xforge/cli",
+    "version": "0.7.20",
+    "protocolVersion": "2",
+    "nodeVersion": "<node>",
+    "buildIdentity": {
+      "commit": "<commit>",
+      "repository": "https://github.com/openatta/XForge"
+    },
+    "installation": {
+      "path": "<CHECKOUT>",
+      "kind": "git-checkout"
+    },
+    "integrity": "sha256:<sha256>",
+    "executablePath": "<CHECKOUT>/node_modules/vitest/dist/workers/forks.js"
+  },
+  "diagnostics": [],
+  "changes": [],
+  "nextActions": []
+}
