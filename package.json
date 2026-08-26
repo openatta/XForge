@@ -21,6 +21,6 @@
     "test:package": "npm run build && node scripts/package-smoke.mjs",
     "test:product": "npm --prefix xforge run test:product",
     "test:red-first": "node scripts/red-first.mjs",
-    "verify": "npm --prefix xforge run verify"
+    "verify": "npm --prefix xforge run verify && npm run test:package"
   }
 }

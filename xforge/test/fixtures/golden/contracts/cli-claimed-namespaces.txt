@@ -1,0 +1,5 @@
+evidence/agents/*/*.yaml  a work-package delivery record
+evidence/agents/*/ack/*.json  an acknowledgement receipt
+evidence/agents/*/dispatch/*.json  a dispatch receipt
+evidence/receipts/transitions/*.json  a transition receipt
+evidence/review/ack/*.json  a Change-level review receipt

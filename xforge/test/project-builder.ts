@@ -189,6 +189,7 @@ export class ProjectBuilder {
       const stage = flow.stages[index]!;
       const next = ids[index + 1] ?? 'ready-to-archive';
       if ((stage.gates ?? []).length > 0) await this.cli(root, ['check', '--change', this.changeId]);
+      if (stage.exit?.conditions?.independentReview !== undefined) await this.acknowledgeReview(root);
       if (stage.exit?.conditions?.verificationReceipt !== undefined) await this.writeReceipt(root);
       for (const policy of stage.exit?.approvals ?? []) {
         await approveCurrentRevision(root, this.changeId, next, policy);
@@ -201,6 +202,28 @@ export class ProjectBuilder {
       }
     }
     return target;
+  }
+
+  /**
+   * The Change-level independent review, recorded the way the product records one.
+   *
+   * `independentReview` is the condition Major declares to stop a Change being implemented and
+   * signed off by a single executor, and it is satisfied by an acknowledgement receipt rather than
+   * by a ledger -- which is why it is excluded from `writeConditionLedgers`. The transcript has to
+   * live under `evidence/review/` so it archives with the Change, and the receipt is only trusted
+   * once the audit chain records the event that produced it, so this goes through the CLI.
+   */
+  private async acknowledgeReview(root: string): Promise<void> {
+    if (this.packageCount > 0) {
+      /* The per-package form attaches to deliveries, which means dispatching and delivering every
+         package first. Refused rather than approximated: a builder that skipped it would hand back
+         a Change claiming a review that never happened, which is the one thing this condition
+         exists to prevent. */
+      throw new Error('independentReview with a work-package plan is not built yet: it needs a delivery per package, and approximating it would assert a review nobody did.');
+    }
+    const evidence = `xforge/changes/${this.changeId}/evidence/review/reviewer.md`;
+    await write(root, evidence, '# Review\n\nRead the delivered diff for the fixture.\n');
+    await this.cli(root, ['review', 'acknowledge', '--change', this.changeId, '--evidence', evidence]);
   }
 
   /**

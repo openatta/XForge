@@ -16,7 +16,7 @@
 | **Skill / Flow / Gate / Rule / Policy** | 上述之外，**挑受影响的场景做一次 live-engine 实跑**（§4） | 见 §3 |
 | `tests/live-engine/**`（场景、prompt、matrix） | `npm run test:product` | 两道 harness 闸门在里面跑，见下 |
 | **加了测试的任何提交** | `npm run test:red-first` | 把新增测试拿到父提交上跑；通过了说明它不区分好坏，判失败 |
-| 发版前 | `npm run verify` | build + scaffold 校验 + 全部套件 + 覆盖率阈值 + red-first |
+| 发版前 | `npm run verify` | build + scaffold 校验 + 全部套件 + 覆盖率阈值 + red-first + **打包安装冒烟** |
 
 **red-first 现在在 `verify` 里，但别指望它替你记住。** 它证明的是「这个测试没有它要修的 bug 就会红」，
 而 `verify` 只在发版前跑——中间每一个提交都可能带着一个不区分好坏的测试溜过去。
@@ -35,6 +35,15 @@
 （它报告的就是 node 被启动时指向的那个文件）。信封黄金里这个字段已归一化：
 它的存在与位置仍被覆盖，值不再钉死在某一种运行方式上。踩过一次——黄金录的是进程内的值，
 于是覆盖率闸门每次都红。
+
+**`npm run test:package` 现在也在 `verify` 里，而且它测的东西别处测不到。**
+它从 `npm pack` 的产物真装一遍再跑——那是**唯一**能观察到「已安装形态」的地方。
+实现套件永远在开发 checkout 里跑，而 `buildIdentity` 恰恰只在已安装形态下出错：
+`git -C <packageRoot>` 会**向上**找仓库，已安装的包没有自己的 `.git`，
+于是它报的是**恰好包含安装前缀的那个仓库**——实测里报成了 Homebrew，
+把人送去 `brew uninstall xforge`（那个 formula 不存在）。
+现在它断言已安装形态下 `buildIdentity` 必须是 null、`installation.kind` 必须是 `package`。
+代价是一次 npm install（约 4 分钟），只在发版路径上付。
 
 **当前阈值：lines 87 / branches 74 / functions 90**，实测 89.1 / 75.6。
 刻意贴着实际值而不是取整数留余量：78/65 对上实测 88/75 时，

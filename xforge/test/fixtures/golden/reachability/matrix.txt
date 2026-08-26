@@ -1,0 +1,102 @@
+quick  propose            state              stage=propose specPlan=0 next=transition
+quick  propose            check              gates=1
+quick  propose            brief              decision=none
+quick  propose            audit verify       refused: XFORGE_AUDIT_EVENT_MISSING
+quick  propose            draft-receipt      refused: XFORGE_VERIFICATION_RECEIPT_NOT_REQUIRED
+quick  propose            archive --dry-run  refused: XFORGE_ARCHIVE_GOVERNANCE_BLOCKED
+quick  apply              state              stage=apply specPlan=0 next=transition
+quick  apply              check              gates=0
+quick  apply              brief              decision=none
+quick  apply              audit verify       refused: XFORGE_AUDIT_EVENT_MISSING
+quick  apply              draft-receipt      refused: XFORGE_VERIFICATION_RECEIPT_NOT_REQUIRED
+quick  apply              archive --dry-run  refused: XFORGE_ARCHIVE_GOVERNANCE_BLOCKED
+quick  verify             state              stage=verify specPlan=0 next=transition
+quick  verify             check              gates=2
+quick  verify             brief              decision=none
+quick  verify             audit verify       refused: XFORGE_AUDIT_EVENT_MISSING
+quick  verify             draft-receipt      receipt=2 gate(s)
+quick  verify             archive --dry-run  refused: XFORGE_ARCHIVE_GOVERNANCE_BLOCKED
+quick  ready-to-archive   state              stage=ready-to-archive specPlan=0 next=archive
+quick  ready-to-archive   check              gates=2
+quick  ready-to-archive   brief              decision=applicable
+quick  ready-to-archive   audit verify       remoteDelivery=optional
+quick  ready-to-archive   draft-receipt      refused: XFORGE_VERIFICATION_RECEIPT_NOT_REQUIRED
+quick  ready-to-archive   archive --dry-run  specPlan=1
+solid  propose            state              stage=propose specPlan=0 next=transition
+solid  propose            check              gates=1
+solid  propose            brief              decision=none
+solid  propose            audit verify       refused: XFORGE_AUDIT_EVENT_MISSING
+solid  propose            draft-receipt      refused: XFORGE_VERIFICATION_RECEIPT_NOT_REQUIRED
+solid  propose            archive --dry-run  refused: XFORGE_ARCHIVE_GOVERNANCE_BLOCKED
+solid  design             state              stage=design specPlan=0 next=transition
+solid  design             check              gates=0
+solid  design             brief              decision=none
+solid  design             audit verify       refused: XFORGE_AUDIT_EVENT_MISSING
+solid  design             draft-receipt      refused: XFORGE_VERIFICATION_RECEIPT_NOT_REQUIRED
+solid  design             archive --dry-run  refused: XFORGE_ARCHIVE_GOVERNANCE_BLOCKED
+solid  check              state              stage=check specPlan=0 next=approve|transition
+solid  check              check              gates=3
+solid  check              brief              decision=applicable
+solid  check              audit verify       refused: XFORGE_AUDIT_EVENT_MISSING
+solid  check              draft-receipt      refused: XFORGE_VERIFICATION_RECEIPT_NOT_REQUIRED
+solid  check              archive --dry-run  refused: XFORGE_ARCHIVE_GOVERNANCE_BLOCKED
+solid  apply              state              stage=apply specPlan=0 next=transition
+solid  apply              check              gates=0
+solid  apply              brief              decision=none
+solid  apply              audit verify       remoteDelivery=optional
+solid  apply              draft-receipt      refused: XFORGE_VERIFICATION_RECEIPT_NOT_REQUIRED
+solid  apply              archive --dry-run  refused: XFORGE_ARCHIVE_GOVERNANCE_BLOCKED
+solid  verify             state              stage=verify specPlan=0 next=transition
+solid  verify             check              gates=2
+solid  verify             brief              decision=none
+solid  verify             audit verify       remoteDelivery=optional
+solid  verify             draft-receipt      receipt=2 gate(s)
+solid  verify             archive --dry-run  refused: XFORGE_ARCHIVE_GOVERNANCE_BLOCKED
+solid  ready-to-archive   state              stage=ready-to-archive specPlan=0 next=archive
+solid  ready-to-archive   check              gates=2
+solid  ready-to-archive   brief              decision=applicable
+solid  ready-to-archive   audit verify       remoteDelivery=optional
+solid  ready-to-archive   draft-receipt      refused: XFORGE_VERIFICATION_RECEIPT_NOT_REQUIRED
+solid  ready-to-archive   archive --dry-run  specPlan=1
+major  propose            state              stage=propose specPlan=0 next=transition
+major  propose            check              gates=1
+major  propose            brief              decision=none
+major  propose            audit verify       refused: XFORGE_AUDIT_EVENT_MISSING
+major  propose            draft-receipt      refused: XFORGE_VERIFICATION_RECEIPT_NOT_REQUIRED
+major  propose            archive --dry-run  refused: XFORGE_ARCHIVE_GOVERNANCE_BLOCKED
+major  clarify            state              stage=clarify specPlan=0 next=transition
+major  clarify            check              gates=0
+major  clarify            brief              decision=none
+major  clarify            audit verify       refused: XFORGE_AUDIT_EVENT_MISSING
+major  clarify            draft-receipt      refused: XFORGE_VERIFICATION_RECEIPT_NOT_REQUIRED
+major  clarify            archive --dry-run  refused: XFORGE_ARCHIVE_GOVERNANCE_BLOCKED
+major  design             state              stage=design specPlan=0 next=transition
+major  design             check              gates=0
+major  design             brief              decision=none
+major  design             audit verify       refused: XFORGE_AUDIT_EVENT_MISSING
+major  design             draft-receipt      refused: XFORGE_VERIFICATION_RECEIPT_NOT_REQUIRED
+major  design             archive --dry-run  refused: XFORGE_ARCHIVE_GOVERNANCE_BLOCKED
+major  check              state              stage=check specPlan=0 next=approve|transition
+major  check              check              gates=3
+major  check              brief              decision=applicable
+major  check              audit verify       refused: XFORGE_AUDIT_EVENT_MISSING
+major  check              draft-receipt      refused: XFORGE_VERIFICATION_RECEIPT_NOT_REQUIRED
+major  check              archive --dry-run  refused: XFORGE_ARCHIVE_GOVERNANCE_BLOCKED
+major  apply              state              stage=apply specPlan=0 next=transition
+major  apply              check              gates=0
+major  apply              brief              decision=none
+major  apply              audit verify       remoteDelivery=optional
+major  apply              draft-receipt      refused: XFORGE_VERIFICATION_RECEIPT_NOT_REQUIRED
+major  apply              archive --dry-run  refused: XFORGE_ARCHIVE_GOVERNANCE_BLOCKED
+major  verify             state              stage=verify specPlan=0 next=transition
+major  verify             check              gates=3
+major  verify             brief              decision=none
+major  verify             audit verify       remoteDelivery=optional
+major  verify             draft-receipt      receipt=3 gate(s)
+major  verify             archive --dry-run  refused: XFORGE_ARCHIVE_GOVERNANCE_BLOCKED
+major  ready-to-archive   state              stage=ready-to-archive specPlan=0 next=archive
+major  ready-to-archive   check              gates=3
+major  ready-to-archive   brief              decision=applicable
+major  ready-to-archive   audit verify       remoteDelivery=optional
+major  ready-to-archive   draft-receipt      refused: XFORGE_VERIFICATION_RECEIPT_NOT_REQUIRED
+major  ready-to-archive   archive --dry-run  specPlan=1
