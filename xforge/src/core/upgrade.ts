@@ -20,10 +20,10 @@ import type { Manifest } from '../types.js';
  * do carefully, where seventy-eight files and the word "merge" is not.
  */
 
-export const UPGRADE_DISPOSITIONS = ['identical', 'changed', 'added', 'project-only'] as const;
-export type UpgradeDisposition = (typeof UPGRADE_DISPOSITIONS)[number];
+const UPGRADE_DISPOSITIONS = ['identical', 'changed', 'added', 'project-only'] as const;
+type UpgradeDisposition = (typeof UPGRADE_DISPOSITIONS)[number];
 
-export interface UpgradeEntry {
+interface UpgradeEntry {
   /** Project-relative, e.g. `xforge/scaffold/skills/xforge-design/SKILL.md`. */
   path: string;
   disposition: UpgradeDisposition;
@@ -31,7 +31,7 @@ export interface UpgradeEntry {
   incomingDigest: string | null;
 }
 
-export interface UnselectedAsset {
+interface UnselectedAsset {
   kind: string;
   id: string;
   path: string;
@@ -46,7 +46,7 @@ export interface UpgradePlan {
 }
 
 export const SCAFFOLD_PREFIX = 'xforge/scaffold/';
-export const FLOWS_PREFIX = 'xforge/flows/';
+const FLOWS_PREFIX = 'xforge/flows/';
 
 /**
  * Every tree an upgrade proposes changes to, and the one root they are staged beneath.
@@ -148,7 +148,7 @@ export function unselectedAssets(manifest: Manifest, incoming: Map<string, Buffe
   return found;
 }
 
-export function countDispositions(entries: UpgradeEntry[]): Record<UpgradeDisposition, number> {
+function countDispositions(entries: UpgradeEntry[]): Record<UpgradeDisposition, number> {
   const counts = Object.fromEntries(UPGRADE_DISPOSITIONS.map((name) => [name, 0])) as Record<UpgradeDisposition, number>;
   for (const entry of entries) counts[entry.disposition] += 1;
   return counts;
@@ -235,11 +235,4 @@ export function adoptionReport(plan: UpgradePlan, merged: Map<string, Buffer>): 
   return { considered, matching: considered - notMatching.length, notMatching };
 }
 
-export function scaffoldRelative(payloadPath: string): string | null {
-  return isManagedPath(payloadPath) ? payloadPath : null;
-}
 
-/** Staged copies mirror their destination under `xforge/`, so where each one belongs is legible. */
-export function stagedPathFor(version: string, managedPath: string): string {
-  return path.posix.join(stagedDirectory(version), managedPath.slice(MANAGED_ROOT.length));
-}

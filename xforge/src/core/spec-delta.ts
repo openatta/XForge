@@ -4,34 +4,34 @@ import type { ArtifactDefinition, Diagnostic, ProjectContext } from '../types.js
 import { diagnostic } from './errors.js';
 import { safeResolve } from './path-safety.js';
 
-export type DeltaOperation = 'ADDED' | 'MODIFIED' | 'REMOVED' | 'RENAMED';
+type DeltaOperation = 'ADDED' | 'MODIFIED' | 'REMOVED' | 'RENAMED';
 
-export interface ParsedScenario {
+interface ParsedScenario {
   name: string;
   line: number;
   hasWhen: boolean;
   hasThen: boolean;
 }
 
-export interface ParsedRequirement {
+interface ParsedRequirement {
   name: string;
   line: number;
   scenarios: ParsedScenario[];
 }
 
-export interface ParsedSection {
+interface ParsedSection {
   operation: DeltaOperation;
   line: number;
   body: string;
   requirements: ParsedRequirement[];
 }
 
-export interface ParsedSpecDelta {
+interface ParsedSpecDelta {
   sections: ParsedSection[];
   orphanRequirements: ParsedRequirement[];
 }
 
-export interface RenameEntries {
+interface RenameEntries {
   pairs: Array<{ from: string; to: string }>;
   unmatchedFrom: string[];
   unmatchedTo: string[];

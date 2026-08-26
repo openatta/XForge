@@ -18,10 +18,10 @@ import { capabilityGapDiagnostics } from '../install/planner.js';
 import { verificationEntriesFor } from '../core/verification.js';
 import { exists } from '../core/files.js';
 
-export type DoctorKind = 'skills' | 'agents' | 'rules' | 'policies' | 'hooks' | 'gates' | 'scripts' | 'flows' | 'approvals' | 'mcp-servers';
+type DoctorKind = 'skills' | 'agents' | 'rules' | 'policies' | 'hooks' | 'gates' | 'scripts' | 'flows' | 'approvals' | 'mcp-servers';
 type DoctorScope = 'skills' | 'agents' | 'rules' | 'policies' | 'hooks' | 'gates' | 'flows' | 'approvals' | 'mcp-servers';
 
-export interface DoctorFinding {
+interface DoctorFinding {
   scope: DoctorScope;
   code: string;
   id?: string;
@@ -30,7 +30,7 @@ export interface DoctorFinding {
   severity?: Diagnostic['severity'];
 }
 
-export interface DoctorData {
+interface DoctorData {
   kind: DoctorKind | 'all';
   summary: { dangling: number; deadCode: number; uncited: number; unusedFlows: number; unusableApprovals: number; conformance: number; suggestions: number };
   danglingReferences: DoctorFinding[];

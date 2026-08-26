@@ -14,7 +14,7 @@ import { validateChangeSpecDeltas } from './spec-delta.js';
 import { validateSpecMergeFeasibility } from './spec-merger.js';
 import { validateArtifactMarkers } from './artifact-markers.js';
 
-export interface StructureResult {
+interface StructureResult {
   diagnostics: Diagnostic[];
   resources: SelectedResources;
   change: ChangeState | null;

@@ -14,7 +14,7 @@ export function actionId(skillId: string): string {
   return skillId.startsWith('xforge-') ? skillId.slice('xforge-'.length) : skillId;
 }
 
-export type FrontmatterValue = string | number | boolean | string[] | Record<string, string> | undefined;
+type FrontmatterValue = string | number | boolean | string[] | Record<string, string> | undefined;
 
 /**
  * Frontmatter used to be a `Record<string, string>` serialized with `JSON.stringify`, which made
@@ -22,7 +22,7 @@ export type FrontmatterValue = string | number | boolean | string[] | Record<str
  * `permission:` map — impossible to express. Values are now rendered in their real YAML shape and
  * empty values are dropped rather than emitted as `""`.
  */
-export function renderFrontmatter(fields: Record<string, FrontmatterValue>): string {
+function renderFrontmatter(fields: Record<string, FrontmatterValue>): string {
   const lines: string[] = [];
   for (const [key, value] of Object.entries(fields)) {
     if (value === undefined) continue;
@@ -53,7 +53,7 @@ export function commandBody(skillId: string, frontmatter: Record<string, Frontma
  * tool access through frontmatter; previously only Codex read it and the other four rendered it as
  * a bullet list in the prose body, which left "Reviewer is read-only" as an unenforced slogan.
  */
-export function agentAllows(agent: AgentResource, capability: 'read' | 'search' | 'write' | 'test' | 'network'): boolean {
+function agentAllows(agent: AgentResource, capability: 'read' | 'search' | 'write' | 'test' | 'network'): boolean {
   return agent.spec.tools.allow.includes(capability);
 }
 
@@ -111,7 +111,7 @@ export function renderAgentMarkdown(agent: AgentResource, instructions: string, 
   return `${renderFrontmatter({ name: agent.metadata.name, description: agent.spec.role, ...extra })}${renderAgentBody(agent, instructions)}`;
 }
 
-export function renderAgentBody(agent: AgentResource, instructions: string): string {
+function renderAgentBody(agent: AgentResource, instructions: string): string {
   return `${instructions.trim()}\n\n## XForge capabilities\n\n- Skills: ${agent.spec.skills.join(', ') || 'none'}\n- Allowed tools: ${agent.spec.tools.allow.join(', ') || 'none'}\n- Model class: ${agent.spec.model.class}\n- Max concurrency: ${agent.spec.delegation.maxConcurrency}\n`;
 }
 

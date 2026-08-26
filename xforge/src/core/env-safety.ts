@@ -6,7 +6,7 @@
  * like credentials are always dropped, even if explicitly allowed: a resource cannot opt a secret
  * back in.
  */
-export const DEFAULT_ENV_ALLOW = [
+const DEFAULT_ENV_ALLOW = [
   'PATH', 'HOME', 'SHELL', 'USER', 'LOGNAME', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TZ', 'TERM',
   'TMPDIR', 'TEMP', 'TMP',
   'SystemRoot', 'COMSPEC', 'PATHEXT', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'ProgramData',
@@ -17,10 +17,10 @@ export const DEFAULT_ENV_ALLOW = [
 ];
 
 /** `npm_config_*` carries registry/cache/proxy settings; credential-shaped names are filtered below. */
-export const DEFAULT_ENV_ALLOW_PREFIXES = ['npm_config_', 'NPM_CONFIG_'];
+const DEFAULT_ENV_ALLOW_PREFIXES = ['npm_config_', 'NPM_CONFIG_'];
 
 /** Never inherited, from any source: nothing can opt a credential-shaped name back in. */
-export const ENV_DENY = /(?:password|passwd|secret|token|api[_-]?key|auth|credential|cookie|session|private[_-]?key)/i;
+const ENV_DENY = /(?:password|passwd|secret|token|api[_-]?key|auth|credential|cookie|session|private[_-]?key)/i;
 
 export interface FilteredEnvironment {
   /** The environment to hand to `spawn`/`StdioClientTransport`. */

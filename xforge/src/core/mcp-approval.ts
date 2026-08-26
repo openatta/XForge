@@ -18,7 +18,7 @@ const CONNECT_BACKOFF_MS = 1000;
  */
 const MAX_TOOL_RESULT_BYTES = 256 * 1024;
 
-export interface McpApprovalSubmission {
+interface McpApprovalSubmission {
   change: string;
   flow: string;
   stage: string;
@@ -30,7 +30,7 @@ export interface McpApprovalSubmission {
   reason: string;
 }
 
-export type McpApprovalPoll =
+type McpApprovalPoll =
   | { status: 'pending' }
   | { status: 'decided'; decision: 'approve' | 'reject'; approver: { id: string; role: string }; reason: string; expiresAt?: string };
 

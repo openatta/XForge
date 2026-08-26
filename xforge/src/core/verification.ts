@@ -22,7 +22,7 @@ import { detectToolchains, suggestedWorkingDirectory, suggestionFor, type Detect
 export const VERIFICATION_NOT_DECLARED = 'XFORGE_VERIFICATION_NOT_DECLARED';
 export const VERIFICATION_TOOLCHAIN_UNCOVERED = 'XFORGE_VERIFICATION_TOOLCHAIN_UNCOVERED';
 
-export interface VerificationPlan {
+interface VerificationPlan {
   gate: string;
   runs: VerificationRun[];
   dismissals: VerificationDismissal[];

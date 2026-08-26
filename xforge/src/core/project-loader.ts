@@ -75,7 +75,7 @@ function lockCliMatches(manifest: Manifest, lock: Lockfile | null): boolean | nu
   return locked.source === 'npm' && locked.package === manifest.xforge.package && locked.version === manifest.xforge.version && locked.protocol === manifest.xforge.protocol;
 }
 
-export function resolveCompatibility(manifest: Manifest, lock: Lockfile | null): { value: Compatibility; diagnostics: Diagnostic[] } {
+function resolveCompatibility(manifest: Manifest, lock: Lockfile | null): { value: Compatibility; diagnostics: Diagnostic[] } {
   const diagnostics: Diagnostic[] = [];
   const protocolMatches = manifest.xforge.protocol === PROTOCOL_VERSION;
   let cliMatches = false;

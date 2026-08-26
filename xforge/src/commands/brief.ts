@@ -5,7 +5,7 @@ import type { ProjectContext } from '../types.js';
 import { loadYaml } from '../core/yaml.js';
 import { wrap } from '../protocol/render.js';
 
-export interface BriefCommandOptions {
+interface BriefCommandOptions {
   change: string;
   /** Path to a YAML or JSON file of triage entries; see `validateTriage`. */
   attachTriage?: string;

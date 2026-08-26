@@ -11,7 +11,7 @@ import { planProjection, type ProjectionMode } from '../install/planner.js';
 import { applyInstallPlan } from '../install/writer.js';
 import { exists } from '../core/files.js';
 
-export interface ProjectionCommandOptions {
+interface ProjectionCommandOptions {
   target?: TargetId;
   dryRun: boolean;
   verifyDigests?: boolean;

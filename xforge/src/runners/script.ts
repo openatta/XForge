@@ -12,7 +12,7 @@ import { stableStringify } from '../core/hash.js';
 import { assertManaged } from '../core/project-loader.js';
 import { redact } from '../core/redaction.js';
 
-export interface ScriptRunResult {
+interface ScriptRunResult {
   id: string;
   runtime: 'node' | 'python';
   command: string[];

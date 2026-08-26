@@ -51,6 +51,3 @@ export async function applyManagedTransaction(
   }
 }
 
-export function actionableChanges(changes: FileChange[]): FileChange[] {
-  return changes.filter((item) => item.action !== 'skip');
-}

@@ -48,7 +48,7 @@ export interface ApprovalTerminal {
   question(prompt: string): Promise<string>;
 }
 
-export interface ApproveOptions {
+interface ApproveOptions {
   change: string;
   transition: string;
   policy?: string;
@@ -65,7 +65,7 @@ export interface ApproveOptions {
   terminal?: ApprovalTerminal;
 }
 
-export interface ApproveResult {
+interface ApproveResult {
   data: {
     change: string;
     policy: string;

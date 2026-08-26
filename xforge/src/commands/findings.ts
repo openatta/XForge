@@ -50,7 +50,7 @@ import { VERIFICATION_RECEIPT_PATH } from '../core/verification-receipt.js';
  *   revision silently would be worse than the hand edit it replaces.
  */
 
-export interface FindingsResolveOptions {
+interface FindingsResolveOptions {
   change: string;
   /** The `id` of the finding to resolve, as written in the ledger. */
   id: string;

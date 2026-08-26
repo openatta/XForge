@@ -25,9 +25,9 @@ import type { Manifest, PermissionPolicyResource } from '../types.js';
  */
 
 export type Capability = PermissionPolicyResource['spec']['capability'];
-export type ResolvedCapability = Capability | 'none' | 'unknown';
+type ResolvedCapability = Capability | 'none' | 'unknown';
 
-export interface ToolCapabilityResolution {
+interface ToolCapabilityResolution {
   /** Authoritative classification used for auditing and for the unknown-tool decision. */
   capability: ResolvedCapability;
   /** Low-confidence heuristic guess, only ever set when `capability === 'unknown'`. */
@@ -37,7 +37,7 @@ export interface ToolCapabilityResolution {
 }
 
 /** Parsed form of a namespaced MCP tool call, e.g. `mcp__filesystem__read_file`. */
-export interface McpToolRef {
+interface McpToolRef {
   server: string;
   tool: string | null;
 }
@@ -269,9 +269,9 @@ export function resolveToolCapability(target: TargetId, toolName: string): ToolC
   return { capability: 'unknown', hint, source: hint ? 'heuristic' : 'unrecognised' };
 }
 
-export type UnknownToolPolicy = 'allow' | 'ask' | 'deny';
+type UnknownToolPolicy = 'allow' | 'ask' | 'deny';
 
-export const DEFAULT_UNKNOWN_TOOL_POLICY: UnknownToolPolicy = 'ask';
+const DEFAULT_UNKNOWN_TOOL_POLICY: UnknownToolPolicy = 'ask';
 
 export function unknownToolPolicy(manifest: Manifest): UnknownToolPolicy {
   const configured = manifest.runtime?.unknownToolPolicy;

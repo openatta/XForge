@@ -18,7 +18,7 @@ import { safeResolve } from './path-safety.js';
  * the whole document.
  */
 
-export interface DocumentSection {
+interface DocumentSection {
   /** 1-based line of the `## ` heading itself. */
   line: number;
   body: string;

@@ -1,8 +1,6 @@
 export const CLI_NAME = '@xforge/cli';
 export const CLI_VERSION = '0.7.20';
 export const PROTOCOL_VERSION = '2';
-export const API_VERSION = 'xforge.dev/v1alpha2';
-
 export const TARGETS = [
   'claude',
   'codex',

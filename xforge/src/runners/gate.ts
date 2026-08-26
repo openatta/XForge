@@ -171,7 +171,7 @@ async function runCommand(project: ProjectContext, gate: GateResource, override?
   };
 }
 
-export interface GateRunResult {
+interface GateRunResult {
   evidence: GateEvidence;
   diagnostic: Diagnostic | null;
   /** Human decisions this Gate is waiting on. Empty for every outcome the CLI can resolve alone. */

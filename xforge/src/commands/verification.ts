@@ -48,7 +48,7 @@ import { VERIFICATION_RECEIPT_CONDITION, VERIFICATION_RECEIPT_PATH } from '../co
  *   `reconcileDeclaredCliVersion` follows for the three version pins.
  */
 
-export interface VerificationDeclareOptions {
+interface VerificationDeclareOptions {
   gate: string;
   /** JSON array of argv, e.g. `["cargo","test"]`. */
   command?: string;

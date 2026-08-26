@@ -140,7 +140,7 @@ async function activeChangeSummaries(
   }));
 }
 
-export interface StateOptions {
+interface StateOptions {
   change?: string;
   kind?: 'skills' | 'agents' | 'rules' | 'policies' | 'hooks' | 'gates' | 'scripts' | 'flows' | 'approvals' | 'mcp-servers';
   target?: TargetId;

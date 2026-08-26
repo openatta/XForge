@@ -208,7 +208,7 @@ function verifyEntries(workPackage: WorkPackage): VerifyEntry[] {
   return workPackage.verify as unknown as VerifyEntry[];
 }
 
-export function normalizeVerify(workPackage: WorkPackage): NormalizedVerify[] {
+function normalizeVerify(workPackage: WorkPackage): NormalizedVerify[] {
   return verifyEntries(workPackage).map(normalizeVerifyEntry);
 }
 
@@ -333,7 +333,7 @@ function isControlPlaneBookkeeping(filePath: string, changeRoot: string): boolea
  * An entry may now read `<reference> — <explanation>`; only the reference is matched. An optional
  * `command:` / `path:` prefix states which kind is intended, and is stripped the same way.
  */
-export function evidenceReference(entry: string): string {
+function evidenceReference(entry: string): string {
   const withoutPrefix = entry.replace(/^\s*(?:command|path):\s*/i, '');
   /* An em dash, an en dash, or a spaced `--`. All three require surrounding spaces so a hyphen
      inside a filename or a command flag is never mistaken for the separator. */
@@ -354,7 +354,7 @@ export function evidenceReference(entry: string): string {
  * never interpreted — nothing here claims the cited line says what the entry says it does, which is
  * the same limit the whole check already operates under.
  */
-export function evidenceReferenceWithoutLine(reference: string): string | null {
+function evidenceReferenceWithoutLine(reference: string): string | null {
   const match = /^(.*[^/]):(\d+)(?:-(\d+))?$/.exec(reference);
   return match ? match[1]! : null;
 }
@@ -365,7 +365,7 @@ export function evidenceReferenceWithoutLine(reference: string): string | null {
  * Absent `role` means `worker`, so every plan written before the field existed keeps its meaning
  * exactly: a plan with no `integrator_paths` and no `role` is unaffected by any of this.
  */
-export function isIntegratorPackage(workPackage: Pick<WorkPackage, 'role'>): boolean {
+function isIntegratorPackage(workPackage: Pick<WorkPackage, 'role'>): boolean {
   return workPackage.role === 'integrator';
 }
 
@@ -1025,7 +1025,7 @@ async function validateSuccessfulDelivery(
   return { diagnostics, unattributed };
 }
 
-export interface ResolveWorkPackagesOptions {
+interface ResolveWorkPackagesOptions {
   requireDeliveries?: boolean;
 }
 
@@ -1445,7 +1445,7 @@ export async function resolveWorkPackages(
   };
 }
 
-export interface WorkPackageVerificationGate {
+interface WorkPackageVerificationGate {
   packageId: string;
   command: string;
   gate: GateResource;

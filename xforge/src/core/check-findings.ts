@@ -27,9 +27,9 @@ import { loadYaml, trimmedText } from './yaml.js';
  */
 export const CHECK_FINDINGS_PATH = 'evidence/check-findings.yaml';
 
-export type FindingSeverity = 'blocker' | 'warning' | 'suggestion';
+type FindingSeverity = 'blocker' | 'warning' | 'suggestion';
 
-export interface CheckFinding {
+interface CheckFinding {
   id?: unknown;
   severity?: unknown;
   summary?: unknown;
@@ -39,11 +39,11 @@ export interface CheckFinding {
   resolvedBy?: unknown;
 }
 
-export interface CheckFindingsLedger {
+interface CheckFindingsLedger {
   findings?: unknown;
 }
 
-export interface CheckFindingsResult {
+interface CheckFindingsResult {
   status: 'passed' | 'failed';
   /** One line per problem, in the order they were found; empty when the ledger is acceptable. */
   problems: string[];

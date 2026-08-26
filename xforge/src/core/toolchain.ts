@@ -23,7 +23,7 @@ import { exists } from './files.js';
  * Adding a language here is therefore a convenience, never a correctness fix.
  */
 
-export interface ToolchainMarker {
+interface ToolchainMarker {
   /** Stable id, used in messages only. */
   id: string;
   /** File name that identifies the toolchain, matched exactly in a scanned directory. */
@@ -32,7 +32,7 @@ export interface ToolchainMarker {
   suggests: Partial<Record<'unit-tests' | 'security-scan', string[]>>;
 }
 
-export const TOOLCHAIN_MARKERS: readonly ToolchainMarker[] = [
+const TOOLCHAIN_MARKERS: readonly ToolchainMarker[] = [
   { id: 'node', file: 'package.json', suggests: { 'unit-tests': ['npm', 'test'], 'security-scan': ['npm', 'audit', '--audit-level=high'] } },
   { id: 'rust', file: 'Cargo.toml', suggests: { 'unit-tests': ['cargo', 'test'], 'security-scan': ['cargo', 'audit'] } },
   { id: 'go', file: 'go.mod', suggests: { 'unit-tests': ['go', 'test', './...'], 'security-scan': ['govulncheck', './...'] } },

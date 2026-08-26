@@ -52,7 +52,7 @@ async function incompleteTasks(project: ProjectContext, changeId: string, tracks
   return [...source.matchAll(/^\s*-\s*\[ \]\s+(.+)$/gmi)].map((match) => match[1]!.trim());
 }
 
-export interface ArchivePlan {
+interface ArchivePlan {
   changeId: string;
   target: string;
   mutations: SpecMutation[];
@@ -61,7 +61,7 @@ export interface ArchivePlan {
   mandatoryGates: string[];
 }
 
-export interface PlanArchiveOptions {
+interface PlanArchiveOptions {
   /**
    * Audit facts captured before `archive` recorded any event of its own. Archive appends
    * `archive.before` and Gate events to the Change's chain while it runs; on a machine that only
@@ -107,7 +107,7 @@ async function uncommittedGateDefinitions(
   )];
 }
 
-export async function planArchive(project: ProjectContext, changeId: string, options: PlanArchiveOptions = {}): Promise<ArchivePlan> {
+async function planArchive(project: ProjectContext, changeId: string, options: PlanArchiveOptions = {}): Promise<ArchivePlan> {
   assertManaged(project, 'archive');
   const structure = await checkStructure(project, changeId);
   const diagnostics = [...structure.diagnostics];

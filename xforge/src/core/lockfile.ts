@@ -36,7 +36,7 @@ function contentDigest(files: Array<{ relative: string; content: Buffer }>): str
     .join(''));
 }
 
-export interface LockedResourceEntry {
+interface LockedResourceEntry {
   id: string;
   kind: string;
   version: string | number;

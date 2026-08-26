@@ -38,12 +38,12 @@ import { knownIdentities, unknownIdentityReason, unverifiableIdentityWarning, ty
  */
 export const CONSTITUTION_CHECK_PATH = 'evidence/constitution-check.yaml';
 
-export type PrincipleStatus = 'compliant' | 'violation' | 'not-applicable';
+type PrincipleStatus = 'compliant' | 'violation' | 'not-applicable';
 
 const STATUSES: PrincipleStatus[] = ['compliant', 'violation', 'not-applicable'];
 
 /** How a `references` entry resolved, for diagnostics. `null` means it resolved to nothing. */
-export type ReferenceKind = 'gate' | 'path' | 'requirement';
+type ReferenceKind = 'gate' | 'path' | 'requirement';
 
 /**
  * An approval receipt this Change holds, by the filename `core/approval-receipt.ts` writes.
@@ -59,7 +59,7 @@ export type ReferenceKind = 'gate' | 'path' | 'requirement';
  */
 const APPROVAL_RECEIPT_REFERENCE = /(?:^|\/)approvals\/[^/]+\/[0-9a-f-]{36}\.json$/i;
 
-export interface ConstitutionCheckResult {
+interface ConstitutionCheckResult {
   status: 'passed' | 'failed';
   problems: string[];
   /** Non-blocking observations, e.g. a principle the CLI could have cross-checked but had no evidence for. */
@@ -190,7 +190,7 @@ function citesApprovalReceipt(name: string, approvers: Set<string>): boolean {
   return Boolean(match && (approvers.has(match[1]!.trim()) || approvers.has(match[2]!.trim())));
 }
 
-export interface ConstitutionCheckOptions {
+interface ConstitutionCheckOptions {
   /**
    * Approval receipts this Change holds. Supplied by callers that already loaded them; when
    * omitted the receipts are read from disk, so the Gate behaves the same either way.

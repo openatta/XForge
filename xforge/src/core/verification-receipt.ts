@@ -41,14 +41,14 @@ export const VERIFICATION_RECEIPT_PATH = 'evidence/verification-receipt.yaml';
 /** The reserved exit-condition key that routes to this evaluator instead of a conditions ledger. */
 export const VERIFICATION_RECEIPT_CONDITION = 'verificationReceipt';
 
-export interface VerificationReceiptExpectation {
+interface VerificationReceiptExpectation {
   /** The Change's current content revision; the receipt must be bound to exactly this. */
   contentRevision: string;
   /** The Gate Evidence that actually passed for the Stage being closed. */
   gates: readonly GateEvidence[];
 }
 
-export interface VerificationReceiptResult {
+interface VerificationReceiptResult {
   status: 'passed' | 'failed';
   /** One line per problem, in the order they were found; empty when the receipt is acceptable. */
   problems: string[];

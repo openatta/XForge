@@ -80,7 +80,7 @@ export function legalTransitionTargets(flow: StageFlow, from: string): string[] 
 }
 
 /** A Transition receipt together with the file it came from, for callers that must rewrite it. */
-export interface TransitionReceiptFile {
+interface TransitionReceiptFile {
   name: string;
   relative: string;
   receipt: TransitionReceipt;
@@ -255,7 +255,7 @@ export async function loadApprovalReceipts(
  * `governingRevision` is the current binding; `stateRevision` is only consulted for receipts issued
  * before the split, which never carried a governing revision.
  */
-export interface ApprovalBinding {
+interface ApprovalBinding {
   governingRevision: string;
   stateRevision: string;
   /** Identities that did the work on this Change; an approver inside this set fails separation of duties. */
@@ -627,7 +627,7 @@ async function evaluateStageCondition(
   return evaluateExitCondition(project, changeId, key, expected, context.identities, context.reworkCutoff);
 }
 
-export interface TransitionRequirement {
+interface TransitionRequirement {
   approvals: ApprovalReceipt[];
   gates: GateEvidence[];
   blockedBy: string[];

@@ -39,7 +39,7 @@ export function declaredCliIdentity(project: ProjectContext): string {
   return sha256(stableStringify(project.manifest.xforge));
 }
 
-export function emptyOwnership(project: ProjectContext, now = new Date(0).toISOString()): OwnershipStateV2 {
+function emptyOwnership(project: ProjectContext, now = new Date(0).toISOString()): OwnershipStateV2 {
   return {
     version: 2,
     protocolVersion: PROTOCOL_VERSION,

@@ -59,7 +59,7 @@ export function flowArtifacts(flow: Flow): ArtifactDefinition[] {
   return result;
 }
 
-export function flowPlanningArtifactIds(flow: Flow): Set<string> {
+function flowPlanningArtifactIds(flow: Flow): Set<string> {
   if (!isStageFlow(flow)) return new Set(flow.artifacts.map((artifact) => artifact.id));
   const applyIndex = flow.stages.findIndex((stage) => stage.id === 'apply');
   return new Set(flow.stages

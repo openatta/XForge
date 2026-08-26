@@ -72,7 +72,7 @@ function enabledRuntimeHooks(input: GovernanceProjectionInput): Array<{ id: stri
  * runtime bridge alone, which honours both dimensions, and the omission is reported by
  * `planProjection` rather than left invisible.
  */
-export function staticLayerEligible(policy: PermissionPolicyResource): boolean {
+function staticLayerEligible(policy: PermissionPolicyResource): boolean {
   return !(policy.spec.exceptActors?.length) && !(policy.spec.match.stages?.length);
 }
 

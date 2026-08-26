@@ -1,8 +1,6 @@
 import type { ScaffoldLanguage } from '../types.js';
 import { XForgeError, diagnostic } from './errors.js';
 
-export const SCAFFOLD_LANGUAGES = ['en', 'zh-CN'] as const;
-
 function localeToken(value: string | undefined): string | null {
   if (!value) return null;
   const token = value.trim().split('.')[0]?.split('@')[0]?.replaceAll('_', '-');
@@ -10,7 +8,7 @@ function localeToken(value: string | undefined): string | null {
   return token;
 }
 
-export function normalizeScaffoldLanguage(value: string | undefined): ScaffoldLanguage | null {
+function normalizeScaffoldLanguage(value: string | undefined): ScaffoldLanguage | null {
   const token = localeToken(value);
   if (!token) return null;
   if (/^zh(?:-|$)/i.test(token)) return 'zh-CN';

@@ -476,7 +476,7 @@ async function chainHead(absolute: string): Promise<{ head: string | null; size:
 
 /* ------------------------------------------------------------------ verification */
 
-export interface AuditVerification {
+interface AuditVerification {
   valid: boolean;
   head: string | null;
   eventCount: number;
@@ -537,7 +537,7 @@ export async function verifyAudit(project: ProjectContext, changeId?: string): P
 
 /* ------------------------------------------------------------------ committed per-Change index */
 
-export interface AuditIndexEventSummary {
+interface AuditIndexEventSummary {
   eventId: string;
   eventType: string;
   timestamp: string;
@@ -555,7 +555,7 @@ export interface AuditIndexEventSummary {
   hash: string;
 }
 
-export interface AuditIndexDocument {
+interface AuditIndexDocument {
   apiVersion: 'xforge.dev/v1alpha2';
   kind: 'AuditIndex';
   version: number;
@@ -679,7 +679,7 @@ async function indexPathFor(project: ProjectContext, changeId: string): Promise<
   return root ? `${root}/evidence/audit/index.json` : null;
 }
 
-export interface LoadedAuditIndex {
+interface LoadedAuditIndex {
   path: string;
   document: AuditIndexDocument;
   /** True only when the document is both self-consistent and (when signed) correctly signed. */
@@ -1002,7 +1002,7 @@ export function transitionAttestationDigest(receiptDigest: string): string {
 }
 
 /** What this machine can prove about the `stage.entered` events behind one Change's receipts. */
-export interface TransitionAttestations {
+interface TransitionAttestations {
   /**
    * Whether the readable attestations can be treated as the *complete* set for this Change, so that
    * a missing one means something. A property of the Change, evaluated once, never of a receipt.
@@ -1288,7 +1288,7 @@ function deliveryMode(project: ProjectContext, plane: 'workflow' | 'runtime'): '
   return project.manifest.audit?.delivery?.[plane] ?? (plane === 'runtime' ? 'spool' : 'inline');
 }
 
-export interface RecordAuditInput {
+interface RecordAuditInput {
   eventType: string;
   plane?: 'workflow' | 'runtime';
   platform?: string;
@@ -1365,7 +1365,7 @@ export async function retryAuditDelivery(project: ProjectContext): Promise<{ att
 
 /* ------------------------------------------------------------------ retention */
 
-export interface AuditPruneResult {
+interface AuditPruneResult {
   retentionDays: number | null;
   shards: number;
   removed: number;

@@ -475,7 +475,7 @@ function sourceChanged(previous: SourceFingerprint | undefined, current: SourceF
     || previous.digest !== current.digest;
 }
 
-export interface ProjectionStats {
+interface ProjectionStats {
   scannedSources: number;
   changedSources: number;
   renderedFiles: number;

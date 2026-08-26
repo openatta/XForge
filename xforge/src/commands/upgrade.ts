@@ -34,16 +34,16 @@ import {
  *   the baseline `complete` records, it could not tell.
  */
 
-export type UpgradeMode = 'stage' | 'complete' | 'rollback';
+type UpgradeMode = 'stage' | 'complete' | 'rollback';
 
-export interface UpgradeOptions {
+interface UpgradeOptions {
   mode: UpgradeMode;
   dryRun?: boolean;
   force?: boolean;
   withActiveChanges?: boolean;
 }
 
-export interface UpgradeResult {
+interface UpgradeResult {
   data: Record<string, unknown>;
   diagnostics: Diagnostic[];
   changes: FileChange[];
@@ -404,7 +404,7 @@ function stagedDocuments(plan: UpgradePlan, staged: string, snapshot: string): R
   };
 }
 
-export function renderPlanText(plan: UpgradePlan, staged: string, snapshot: string): string {
+function renderPlanText(plan: UpgradePlan, staged: string, snapshot: string): string {
   const byDisposition = (name: string) => plan.entries.filter((entry) => entry.disposition === name);
   const lines: string[] = [
     `# Scaffold upgrade ${plan.fromVersion} → ${plan.toVersion}`,
@@ -439,7 +439,7 @@ export function renderPlanText(plan: UpgradePlan, staged: string, snapshot: stri
   return lines.join('\n');
 }
 
-export function renderMergePrompt(plan: UpgradePlan, staged: string, snapshot: string): string {
+function renderMergePrompt(plan: UpgradePlan, staged: string, snapshot: string): string {
   const changed = plan.entries.filter((entry) => entry.disposition === 'changed').map((entry) => entry.path);
   const added = plan.entries.filter((entry) => entry.disposition === 'added').map((entry) => entry.path);
   const stagedFor = (relative: string) => path.posix.join(staged, relative.slice(MANAGED_ROOT.length));

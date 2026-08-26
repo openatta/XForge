@@ -17,7 +17,7 @@ import { safeResolve } from '../core/path-safety.js';
 /** Stages that run before any implementation exists, so no work-package verify can be meaningful. */
 const PRE_APPLY_STAGES = new Set(['propose', 'clarify', 'design', 'check']);
 
-export interface CheckOptions {
+interface CheckOptions {
   change?: string;
   /**
    * A single Gate ID, or one of the overrides `all` (every Gate the Flow can ever require) and
@@ -32,9 +32,9 @@ export interface CheckOptions {
   force?: boolean;
 }
 
-export type GateSelection = 'none' | 'explicit' | 'stage' | 'all' | 'archive';
+type GateSelection = 'none' | 'explicit' | 'stage' | 'all' | 'archive';
 
-export interface CheckData {
+interface CheckData {
   structure: { passed: boolean };
   change: string | null;
   /** The Stage whose Gates were selected, or null when selection did not come from a Stage. */

@@ -19,8 +19,7 @@ import { sha256, stableStringify } from '../core/hash.js';
  */
 
 export type Fragment = NonNullable<DesiredFile['fragment']>;
-export type JsonFragment = Extract<Fragment, { format: 'json' }>;
-export type MarkerFragment = Extract<Fragment, { format: 'markers' }>;
+type MarkerFragment = Extract<Fragment, { format: 'markers' }>;
 
 /**
  * A fragment as it is persisted in the ownership record.
@@ -136,7 +135,7 @@ function deletePath(root: Record<string, unknown>, path: string[]): void {
   if (Object.keys(parent).length === 0) deletePath(root, path.slice(0, -1));
 }
 
-export function parseJsonObject(text: string | null, filePath: string): Record<string, unknown> | null {
+function parseJsonObject(text: string | null, filePath: string): Record<string, unknown> | null {
   if (text === null) return null;
   if (text.trim() === '') return {};
   let parsed: unknown;

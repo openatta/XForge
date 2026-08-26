@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ChangeConfig, PermissionPolicyResource, RuleResource } from '../types.js';
 
-export interface NormalizedRule {
+interface NormalizedRule {
   id: string;
   severity: 'must' | 'should';
   instruction: string;

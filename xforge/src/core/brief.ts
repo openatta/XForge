@@ -44,7 +44,7 @@ import { loadYaml } from './yaml.js';
  * This module never calls a model and never writes a file.
  */
 
-export type BriefProvenance = 'computed' | 'extracted' | 'authored';
+type BriefProvenance = 'computed' | 'extracted' | 'authored';
 
 export interface BriefItem {
   /** Stable within one brief, and the anchor an `authored` entry must cite. */
@@ -60,9 +60,9 @@ export interface BriefItem {
   basis?: string[];
 }
 
-export type ReconciliationRule = 'RC-1' | 'RC-2' | 'RC-3' | 'RC-4' | 'RC-5' | 'RC-6';
+type ReconciliationRule = 'RC-1' | 'RC-2' | 'RC-3' | 'RC-4' | 'RC-5' | 'RC-6';
 
-export interface ReconciliationObservation {
+interface ReconciliationObservation {
   id: string;
   rule: ReconciliationRule;
   code: string;
@@ -72,7 +72,7 @@ export interface ReconciliationObservation {
   refs: string[];
 }
 
-export interface BriefApproval {
+interface BriefApproval {
   policyId: string;
   transition: string;
   minApprovers: number;
@@ -81,7 +81,7 @@ export interface BriefApproval {
   missing: number;
 }
 
-export interface BriefUnavailable {
+interface BriefUnavailable {
   section: string;
   code: string;
   reason: string;
@@ -655,7 +655,7 @@ function reconcileConstitutionReferences(
 
 /* ------------------------------------------------------------------ the brief itself */
 
-export interface BriefOptions {
+interface BriefOptions {
   change: string;
   /** Triage entries to validate and attach, as parsed from `--attach-triage`. */
   triage?: unknown;
