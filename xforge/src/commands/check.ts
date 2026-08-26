@@ -480,6 +480,29 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
    * about this Change is a warning about a file inside it. A warning with no path at all is
    * project-level by construction — there is no Change file for it to be about.
    */
+  /*
+   * A run that executed no Gate says so, and says why.
+   *
+   * `gates: []` with `ok: true` is the truthful report of a Stage that declares no Gates — `solid`'s
+   * design and apply Stages, `quick`'s apply — but it is indistinguishable at a glance from "the
+   * Gates ran and found nothing", and a live run read it as verification having passed. Structural
+   * validation did run, and that is the part worth pointing at, because it is what the reader
+   * actually got.
+   *
+   * Narrow on purpose, so this does not become a line people learn to skip: only when the selection
+   * came from a Stage (an explicit `--gate`/`--all-gates` that matched nothing is a different
+   * mistake, already reported), and only when no work-package verification ran either — a run that
+   * executed a plan's verify commands is visibly not empty.
+   */
+  if (gateSelection === 'stage' && gateIds.length === 0 && workPackageResults.length === 0 && options.change && selectedStage) {
+    diagnostics.push(diagnostic(
+      'XFORGE_CHECK_NO_GATES_AT_STAGE',
+      `No Gate ran: Stage ${selectedStage} declares none, so this run validated project structure and nothing else. That is not a verification result for the work in this Stage — the Gates that decide it belong to a later Stage. Use --stage <id> or --all-gates to run a different set.`,
+      `${project.changesPath}/${options.change}`,
+      'info',
+    ));
+  }
+
   const changeRoot = options.change ? `${project.changesPath}/${options.change}/` : null;
   const advisories = diagnostics.filter((item) => item.severity === 'warning'
     && changeRoot !== null && item.path !== undefined && item.path.startsWith(changeRoot));

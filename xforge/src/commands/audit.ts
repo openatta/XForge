@@ -34,6 +34,17 @@ export async function executeAudit(project: ProjectContext, options: { action: '
   for (const item of facts?.diagnostics ?? []) {
     if (item.code === 'XFORGE_AUDIT_INDEX_TAMPERED') diagnostics.push({ code: item.code, severity: 'error', message: item.message });
   }
+  /**
+   * What `remotePending` means for *this* Change, resolved once and reported rather than left to be
+   * inferred from a bare number.
+   *
+   * `remotePending` is emitted unconditionally, but the only thing that makes it a blocker is a
+   * policy the reader cannot see from here. The shipped default is `remoteDelivery: optional` with
+   * `audit.remote.requiredFor: []`, so the ordinary case is a large pending count that means
+   * nothing at all — and a reader who cannot tell that from the output has to choose between
+   * chasing a non-problem and ignoring a real one.
+   */
+  let remoteDelivery: Record<string, unknown> | null = null;
   if (options.action === 'verify' && options.change) {
     const resolved = await resolveChangeState(project, options.change);
     if (isStageFlow(resolved.flow) && resolved.flow.governance) {
@@ -54,6 +65,27 @@ export async function executeAudit(project: ProjectContext, options: { action: '
       if (policy.runtimeCoverage === 'required' && coverageGaps.length > 0) diagnostics.push(diagnostic('XFORGE_AUDIT_RUNTIME_COVERAGE_GAP', `Runtime audit coverage has gaps: ${coverageGaps.join(', ')}.`));
       if (remoteRequired && !project.manifest.audit?.remote) diagnostics.push(diagnostic('XFORGE_AUDIT_REMOTE_NOT_CONFIGURED', 'The selected Flow requires remote audit delivery.'));
       if (remoteRequired && verification.remotePending > 0) diagnostics.push(diagnostic('XFORGE_AUDIT_REMOTE_PENDING', `${verification.remotePending} audit events still require remote delivery.`));
+      const endpointEnv = project.manifest.audit?.remote?.endpointEnv ?? null;
+      remoteDelivery = {
+        required: remoteRequired,
+        pending: verification.remotePending,
+        policy: policy.remoteDelivery ?? null,
+        requiredForAssuranceLevels: project.manifest.audit?.remote?.requiredFor ?? [],
+        endpointEnv,
+        endpointConfigured: Boolean(endpointEnv && process.env[endpointEnv]),
+      };
+      /*
+       * Said out loud, on the same principle as `check`'s XFORGE_CHECK_PASSED_WITH_WARNINGS: the
+       * number is in the output either way, and a number nobody can interpret is read as a problem
+       * or as nothing at random. `info`, because at this level it is neither a blocker nor advice —
+       * there is nothing to fix.
+       */
+      if (!remoteRequired && verification.remotePending > 0) diagnostics.push(diagnostic(
+        'XFORGE_AUDIT_REMOTE_PENDING_OPTIONAL',
+        `${verification.remotePending} audit event(s) are undelivered to a remote sink. Remote delivery is optional at assurance level ${resolved.flow.policy.assuranceLevel} (Flow remoteDelivery: ${policy.remoteDelivery ?? 'unset'}, manifest audit.remote.requiredFor: ${(project.manifest.audit?.remote?.requiredFor ?? []).join(', ') || 'empty'}), so these events live in the local chain only and do not block archive. To deliver them, set ${endpointEnv ?? 'audit.remote.endpointEnv'} and run \`xforge audit retry\`.`,
+        `${project.changesPath}/${options.change}/evidence/audit`,
+        'info',
+      ));
     }
   }
   if (options.action === 'retry') {
@@ -93,7 +125,7 @@ export async function executeAudit(project: ProjectContext, options: { action: '
   }
   const ordered = byTimestamp(events);
   return {
-    data: options.action === 'verify' ? { ...verification, change: facts ? { source: facts.source, trusted: facts.trusted, chain: facts.chain } : null } : {
+    data: options.action === 'verify' ? { ...verification, remoteDelivery, change: facts ? { source: facts.source, trusted: facts.trusted, chain: facts.chain } : null } : {
       change: options.change ?? null, eventCount: facts?.eventCount ?? events.length, chainHead: verification.head, chainValid: verification.valid,
       remotePending: verification.remotePending,
       eventTypes: Object.fromEntries([...new Set(events.map((event) => event.eventType))].sort().map((type) => [type, events.filter((event) => event.eventType === type).length])),

@@ -90,6 +90,7 @@ npx --no-install xforge <command>    # 项目本地安装（可执行文件在 n
 | `check` | 有条件写 | 结构诊断 + 真实的 Gate Evidence |
 | `verification` | 写 | 声明本项目怎么跑 declared Gate；起草验证 receipt |
 | `brief` | 读 | 人类审批前的分层简报 |
+| `findings` | 写 | 记录某条 Check finding 的答案并置为 resolved |
 | `transition` | 写 | 受保护的 Stage 转换；`repair` 丢弃一张叶子回执 |
 | `approve` | 写 | 交互式本地审批或 mcp provider 审批 |
 | `review` | 写 | 无工作包计划时记录 Change 级复核 |
@@ -132,6 +133,19 @@ xforge state --change <id> --field change.governance.readyTransitions.0.to
 
 `--field` **只打印一个值、不打印别的**，所以 `$(xforge state --field ...)` 是安全的。
 
+#### `--text`：要点清单，不是 JSON 转储
+
+`state` 的 `data` 是整个解析后的项目，在受治理的 Stage 上打印成 JSON 有五万字符量级。
+`--text` 因此渲染成要点清单：当前 Stage、内容 revision、下一个 Artifact、
+mandatory Gate Evidence（跑了什么命令、是否绑定当前内容 revision、之后源码动了几个文件）、
+可用的 Transition 及其 blockedBy、待办审批、审计链摘要。
+
+它**只改变呈现**——JSON 信封原样不变，机器读者用 JSON 或 `--field`，不要读这个。
+清单末尾会明说**没有显示什么**以及怎么拿到。这条改动的直接动因是：
+一次实测里 `xforge state --change <id>` 已经在 `nextActions` 里给出了完整的
+`xforge approve ... --for archive --policy <id>` 命令，但它排在四万多字符的 JSON 之后，
+操作者据此认为 CLI 没有给出审批命令。
+
 > ⚠️ **不要用 grep 从 JSON 里挑值。** `contentRevision` 在 `xforge state` 里
 > 每一份历史回执下都出现一次，`grep -m1` 会把一个**已被取代的** revision 当成当前值报出来
 > ——一次实测就是这样对着旧值手写了一份 receipt。
@@ -159,6 +173,11 @@ xforge [--root <path>] check [--change <id>] [--gate <id>] [--stage <id> | --all
 都只跑选中的 Gate 并跳过工作包 verify；Verify 阶段只想重跑三个 mandatory Gate 时，
 `--stage verify` 就是那条路。四种写法在这一点上行为一致，
 输出里的 `workPackagesSelected` 明说这一趟跑没跑工作包。
+
+**当前 Stage 一个 Gate 都不声明时**（`solid` 的 design / apply、`quick` 的 apply），
+返回的是 `gates: []` 且 `ok: true`——这是如实报告，不是「Gate 都过了」。
+这种情况下 `check` 会额外给一条 `XFORGE_CHECK_NO_GATES_AT_STAGE`（info）说明这一点：
+结构校验跑了，其余什么都没跑。
 
 ### `doctor`
 
@@ -306,7 +325,7 @@ XFORGE_APPROVAL_MCP_TOKEN_MISSING      XFORGE_APPROVAL_MCP_CONNECTION_FAILED
 ### `brief`
 
 ```bash
-xforge [--root <path>] brief --change <id> [--attach-triage <path>] [--text]
+xforge [--root <path>] brief --change <id> [--attach-triage <path>] [--text] [--compact]
 ```
 
 报告「这个 Stage 的一次人类审批到底取决于什么」，把**算出来的事实**与**原文引用**分开呈现。
@@ -315,6 +334,47 @@ xforge [--root <path>] brief --change <id> [--attach-triage <path>] [--text]
 
 > **不得转述、重排或概括。** 简报分层呈现的目的就是让读者不必信任措辞——
 > 用自己的话复述会毁掉读者区分二者的唯一依据。
+
+`--compact`（仅对 `--text` 生效）把 EXTRACTED 段**折叠**：不打印引文正文，
+改为逐条列出它的标题与来源 `文件:行号`，并给出取全文的命令。
+**折叠不是删除**——JSON 里每一条 `extracted` 原样都在，
+所以 `--attach-triage` 的锚点校验（`XFORGE_BRIEF_UNANCHORED_CLAIM`）判定的集合完全不变。
+三个 Skill 的指令里**刻意不提这个选项**：引文层正是让审批人不必只看「算出来的结论」的那一层，
+折不折叠应当由读的人决定，而不是由转交的 Agent 决定。
+
+### `findings`
+
+```bash
+xforge [--root <path>] findings resolve --change <id> --id <finding-id> \
+       --answer <what was decided> --by <person> [--dry-run] [--text]
+```
+
+记录某个人对**一条** Check finding 的答案，并把该条置为 `status: resolved`。
+
+它补的是一个**授权缺口**，不是便利性缺口：`xforge brief` 在每个收集审批的 Stage 都会打印
+「记录答案并把该条设为 `status: resolved`」，而 Check Stage 结束之后，**没有任何被授权的执行者能做这件事**
+——`xforge-check` 拥有 `evidence/check-findings.yaml` 但只在 Check 运行；
+`xforge-verify` 的权限止于 assurance 与验证 receipt；
+`xforge-revise` 覆盖 Proposal / Specs / Clarifications / Design，且明确排除 Check 报告。
+
+四条边界：
+
+- **只有一个状态转换**：open → resolved，且条目必须已存在。没有 `findings add`，不能改 severity，不能重开。
+  写 finding 仍然是 Check Stage 的事，仍然手写。
+- **`--answer` 必填且会被写入条目**。只翻一个状态位、不记录决定了什么，正是这个台账要防的失败。
+- **`--by` 要对得上本 Change 记录的身份**（receipt 上的审批人或 Git author，
+  与 `check-findings` Gate 对 blocker 的 `resolvedBy` 同一条标准）。Agent 可以**引用**决策人，不能**发明**决策人；
+  和 `verification declare --by` 一样，「不得代替用户回答」这一条靠 Skill 文本守着。
+- **在代价高的位置直接拒绝**：Change 已处于 `ready-to-archive` 时命令报
+  `XFORGE_FINDINGS_STAGE_CLOSED` 并指向 `archive --dry-run` / `transition repair`，
+  因为那里的写入会让收尾回执变 stale 并使已给出的审批作废。
+
+写入成功后命令会明说自己作废了什么（`XFORGE_FINDINGS_REVISION_MOVED`），
+并在 `nextActions` 里给出 `xforge check --change <id>`；已存在验证 receipt 时还会给出重新 draft 的命令。
+
+> 一条非 blocker 的 finding 被标为 resolved 却没有可核对的 `resolvedBy` 时，
+> `check-findings` Gate 会报 **warning**（不失败）。只有 blocker 的归属会让该 Gate 失败，
+> 这一点没有变——但「只有 blocker 被检查」以前是看不见的，而被指向审批人的条目通常恰恰是 warning。
 
 ### `verification`
 

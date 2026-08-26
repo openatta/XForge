@@ -119,7 +119,31 @@ async function evaluate(
       }
     }
 
-    if (severity !== 'blocker') continue;
+    if (severity !== 'blocker') {
+      /*
+       * A non-blocker marked resolved is reported, not enforced.
+       *
+       * Only a blocker's `resolvedBy` decides this Gate, and that stays true: promoting a warning's
+       * attribution to a failure would refuse ledgers that were valid before this rule existed. But
+       * "only blockers are checked" was invisible, and it is exactly the entries an approver is
+       * asked to answer that are usually warnings — `core/brief.ts`'s `awaitingDecision` set is
+       * built from findings with no `reworkTo`, at any severity. So an unattributed close on one of
+       * those used to read the same as a checked one. `xforge findings resolve` writes an
+       * attribution this can name; a hand edit may not, and now says so.
+       */
+      const status = text(finding.status) || 'open';
+      if (status === 'resolved') {
+        const resolvedBy = text(finding.resolvedBy);
+        if (!resolvedBy) {
+          warnings.push(`${relative}: ${severity} finding ${label} is marked resolved but names no resolvedBy. Only a blocker's attribution fails this Gate, so this is reported rather than refused.`);
+        } else {
+          resolvedNames.push(resolvedBy);
+          const reason = unknownIdentityReason(resolvedBy, known);
+          if (reason) warnings.push(`${relative}: ${severity} finding ${label} is resolved by "${resolvedBy}", which ${reason}. Only a blocker's attribution fails this Gate, so this is reported rather than refused.`);
+        }
+      }
+      continue;
+    }
     const status = text(finding.status) || 'open';
     if (status === 'resolved') {
       /* A resolution nobody can be held to does not count as one — same posture as the other ledgers. */

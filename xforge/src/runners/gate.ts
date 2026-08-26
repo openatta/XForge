@@ -282,8 +282,19 @@ export async function runGate(
       exitCode: findings.status === 'passed' ? 0 : 1,
       timedOut: false,
       outputTruncated: false,
+      /*
+       * The ledger's own warnings are part of what this run found, and until now they reached
+       * nobody: `evaluateCheckFindings` collected them, the Gate reported only `problems`, and both
+       * `core/check-findings.ts` and the `xforge-check` Skill describe a warning the reader never
+       * saw — including the one that says a `resolvedBy` was accepted without anything to check it
+       * against, which is the disclosure that stops a provisional pass being read as a real one.
+       * Appended to stdout on a pass, where a passing Gate's output is the only thing a reader has.
+       */
       stdout: findings.status === 'passed'
-        ? `Check findings ledger accepted: ${findings.counts.blocker} blocker(s) all resolved, ${findings.counts.warning} warning(s), ${findings.counts.suggestion} suggestion(s).`
+        ? [
+          `Check findings ledger accepted: ${findings.counts.blocker} blocker(s) all resolved, ${findings.counts.warning} warning(s), ${findings.counts.suggestion} suggestion(s).`,
+          ...findings.warnings.map((warning) => `warning: ${warning}`),
+        ].join('\n')
         : '',
       stderr: findings.status === 'passed' ? '' : findings.problems.join('\n'),
     };
@@ -298,8 +309,14 @@ export async function runGate(
       exitCode: constitution.status === 'passed' ? 0 : 1,
       timedOut: false,
       outputTruncated: false,
+      /* Same reasoning as the findings ledger above: this evaluator collects warnings — a dangling
+         citation, a principle that could not be cross-checked yet, an unverifiable `approvedBy` —
+         and reporting only `problems` meant a passing Gate said nothing about any of them. */
       stdout: constitution.status === 'passed'
-        ? `Constitution ledger accepted: ${constitution.covered.length}/${constitution.principles.length} principles answered, ${constitution.violations.length} recorded violation(s).`
+        ? [
+          `Constitution ledger accepted: ${constitution.covered.length}/${constitution.principles.length} principles answered, ${constitution.violations.length} recorded violation(s).`,
+          ...constitution.warnings.map((warning) => `warning: ${warning}`),
+        ].join('\n')
         : '',
       stderr: constitution.status === 'passed' ? '' : constitution.problems.join('\n'),
     };

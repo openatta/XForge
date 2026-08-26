@@ -265,7 +265,14 @@ export async function executeApprove(project: ProjectContext, options: ApproveOp
             'XFORGE_APPROVAL_DRY_RUN_VALID',
             `This approval is well-formed: policy ${policy.id} gates the transition to ${options.transition} from Stage ${control.governance.currentStage}, provider ${provider.id} is authorized for it, and a receipt recorded here would be counted. No request was submitted to the provider.`,
             undefined,
-            'warning',
+            /*
+             * `info`, not `warning`. Nothing is wrong here — this is the rehearsal reporting that it
+             * found nothing wrong — and a warning on the one command an Agent runs *to be careful*
+             * teaches the reader that this command's warnings can be ignored. The actionable half
+             * (the exact command to re-run) is carried by the `collect-approval` next action below,
+             * so a host that filters `info` out of what it shows a person loses no instruction.
+             */
+            'info',
           ),
         ],
         changes: [],
@@ -355,7 +362,8 @@ export async function executeApprove(project: ProjectContext, options: ApproveOp
             'XFORGE_APPROVAL_DRY_RUN_VALID',
             `This approval is well-formed: policy ${policy.id} gates the transition to ${options.transition} from Stage ${control.governance.currentStage}, and a receipt recorded here would be counted. Nothing was written, and no decision was requested. Re-run without --dry-run at an interactive terminal to collect it.`,
             undefined,
-            'warning',
+            /* See the mcp path above: informational by nature, so `info` rather than `warning`. */
+            'info',
           ),
         ],
         changes: [],

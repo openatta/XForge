@@ -78,8 +78,24 @@ function renderItems(items: BriefItem[], lines: string[]): void {
  * of carrying provenance in the data: a reader who wants to know whether a line was checked or
  * merely asserted should be able to tell from where it sits on the page, without trusting the
  * wording. `--text` changes presentation only — the JSON carries exactly the same entries.
+ *
+ * `compact` folds the EXTRACTED block, and folds is the operative word: the quoted text is the
+ * layer that keeps an approver from signing on computed summaries alone, so it is never dropped
+ * silently. What replaces it names every heading that was quoted, the file and line it came from,
+ * and the command that prints it in full — an omission the reader can see and reverse, rather than
+ * one they have to detect. Three things it deliberately does not do:
+ *
+ * - It does not touch `data`. The JSON carries every `extracted` entry either way, so triage
+ *   anchoring (`XFORGE_BRIEF_UNANCHORED_CLAIM`, which requires each authored entry to cite a
+ *   `computed`/`extracted` id *that exists in this brief*) decides on the same set it always did.
+ *   A folded brief with `--attach-triage` behaves exactly like an unfolded one.
+ * - It does not fold the decision block, COMPUTED, RECONCILIATION, UNAVAILABLE or NOT COVERED.
+ *   Those are what the approval turns on.
+ * - It is not mentioned in any Skill. The Skills tell an Agent to run `xforge brief --text` and
+ *   relay the output verbatim; leaving this flag out of them keeps the choice of how much a person
+ *   sees with the person, which is the whole reason the quoted layer exists.
  */
-export function renderBriefText(data: BriefData): string {
+export function renderBriefText(data: BriefData, options: { compact?: boolean } = {}): string {
   const lines: string[] = [];
   lines.push(`Decision brief — ${data.change} @ ${data.stage} (flow: ${data.flow})`);
   if (data.contentRevision) lines.push(`Content revision: ${data.contentRevision}`);
@@ -102,7 +118,10 @@ export function renderBriefText(data: BriefData): string {
     lines.push(`  Awaiting your answer: ${item.id} — ${item.summary}`);
   }
   if (data.decision.awaitingDecision.length > 0) {
-    lines.push('  These name no Stage to return to, so nothing sends them back. Recording the answer and setting the entry to `status: resolved` in the findings ledger is what clears them; left open, they are reported at every later Stage.');
+    /* Naming the command, not just the outcome. The previous wording described the edit — set
+       `status: resolved` — which after the Check Stage no Skill has the authority to make, so the
+       instruction had no executor and the edit happened by hand at the worst possible moment. */
+    lines.push('  These name no Stage to return to, so nothing sends them back. Record the answer with `xforge findings resolve --change <id> --id <finding-id> --answer <what you decided> --by <you>`; left open, they are reported at every later Stage. Doing it here is cheap: after the closing transition the same edit stales the receipt and voids the approval.');
   }
 
   lines.push('');
@@ -119,8 +138,25 @@ export function renderBriefText(data: BriefData): string {
   }
 
   lines.push('');
-  lines.push('EXTRACTED — verbatim from the Artifacts, located by headings the Flow declares.');
-  renderItems(data.extracted, lines);
+  if (options.compact && data.extracted.length > 0) {
+    lines.push(`EXTRACTED — folded: ${data.extracted.length} verbatim quote(s) are listed by heading, not printed.`);
+    /* One line per source, headings joined: naming every quote is what makes this an omission the
+       reader can see, and doing it per group is what keeps the fold shorter than the text it folds.
+       Per-entry lines were not — on a Change with short sections they cost more than the quotes. */
+    const sources = new Map<string, { path: string | undefined; labels: string[] }>();
+    for (const entry of data.extracted) {
+      const bucket = sources.get(entry.group) ?? { path: entry.path, labels: [] };
+      bucket.labels.push(entry.label);
+      sources.set(entry.group, bucket);
+    }
+    for (const [group, bucket] of sources) {
+      lines.push(...wrap(`[${group}]${bucket.path ? ` ${bucket.path}` : ''} — ${bucket.labels.join(', ')}`, 92, '  '));
+    }
+    lines.push('  Print them with the same command without --compact — nothing above was computed from them.');
+  } else {
+    lines.push('EXTRACTED — verbatim from the Artifacts, located by headings the Flow declares.');
+    renderItems(data.extracted, lines);
+  }
 
   if (data.authored.length > 0) {
     lines.push('');

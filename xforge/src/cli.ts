@@ -11,9 +11,10 @@ import { executeApprove, type ApprovalTerminal } from './commands/approve.js';
 import { executeAudit } from './commands/audit.js';
 import { executeBrief, renderBriefText } from './commands/brief.js';
 import { executeCheck } from './commands/check.js';
+import { executeFindingsResolve } from './commands/findings.js';
 import { executeVerificationDeclare, executeVerificationDraftReceipt } from './commands/verification.js';
 import { executeInstall } from './commands/install.js';
-import { executeState } from './commands/state.js';
+import { executeState, renderStateText } from './commands/state.js';
 import { executeSync } from './commands/sync.js';
 import { executeUninstall } from './commands/uninstall.js';
 import { executeUpdate } from './commands/update.js';
@@ -32,7 +33,7 @@ import { detectScaffoldLanguage, parseScaffoldLanguage } from './core/language.j
 import { envelope, present } from './protocol/envelope.js';
 import type { Diagnostic, Envelope, FlowAuthority, NextAction, ScaffoldLanguage } from './types.js';
 
-type CommandName = 'help' | 'version' | 'init' | 'state' | 'install' | 'sync' | 'update' | 'uninstall' | 'check' | 'brief' | 'verification' | 'transition' | 'approve' | 'audit' | 'work-package' | 'hook' | 'archive' | 'doctor' | 'upgrade-scaffold' | 'review';
+type CommandName = 'help' | 'version' | 'init' | 'state' | 'install' | 'sync' | 'update' | 'uninstall' | 'check' | 'brief' | 'verification' | 'transition' | 'approve' | 'audit' | 'work-package' | 'hook' | 'archive' | 'doctor' | 'upgrade-scaffold' | 'review' | 'findings';
 
 interface ParsedArguments {
   command: string;
@@ -46,6 +47,7 @@ interface ParsedArguments {
   complete: boolean;
   rollback: boolean;
   withActiveChanges: boolean;
+  compact: boolean;
   root?: string;
   stage?: string;
   helpCommand?: string;
@@ -78,14 +80,16 @@ interface ParsedArguments {
   timeoutSeconds?: string;
   notApplicable?: string;
   justification?: string;
+  findingId?: string;
+  answer?: string;
   by?: string;
   receiptId?: string;
   field?: string;
 }
 
-const COMMANDS: CommandName[] = ['help', 'version', 'init', 'state', 'install', 'sync', 'update', 'uninstall', 'check', 'brief', 'verification', 'transition', 'approve', 'audit', 'work-package', 'hook', 'archive', 'doctor', 'upgrade-scaffold', 'review'];
+const COMMANDS: CommandName[] = ['help', 'version', 'init', 'state', 'install', 'sync', 'update', 'uninstall', 'check', 'brief', 'verification', 'transition', 'approve', 'audit', 'work-package', 'hook', 'archive', 'doctor', 'upgrade-scaffold', 'review', 'findings'];
 const VALID_KINDS = ['skills', 'agents', 'rules', 'policies', 'hooks', 'gates', 'scripts', 'flows', 'approvals', 'mcp-servers'] as const;
-const VALUE_OPTIONS = ['--root', '--change', '--kind', '--target', '--gate', '--to', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--provider', '--output', '--event', '--package', '--language', '--as', '--evidence', '--stage', '--attach-triage', '--gate-name', '--command', '--module', '--covers', '--working-directory', '--timeout-seconds', '--not-applicable', '--justification', '--by', '--receipt', '--field'] as const;
+const VALUE_OPTIONS = ['--root', '--change', '--kind', '--target', '--gate', '--to', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--provider', '--output', '--event', '--package', '--language', '--as', '--evidence', '--stage', '--attach-triage', '--gate-name', '--command', '--module', '--covers', '--working-directory', '--timeout-seconds', '--not-applicable', '--justification', '--by', '--receipt', '--field', '--id', '--answer'] as const;
 
 function isValueOption(token: string): boolean {
   return VALUE_OPTIONS.includes(token as (typeof VALUE_OPTIONS)[number]);
@@ -178,7 +182,12 @@ const HELP: Record<CommandName, { usage: string; description: string; options: s
     description: 'Declare how this project runs a declared-verification Gate, without hand-editing the Manifest; or draft the current Stage\'s verification receipt from what XForge already knows. The draft omits `status` and writes nothing: that field is the Stage\'s assertion that the work was verified, and a CLI filling it in would be deciding the thing the receipt exists to record.',
     options: ['--root', '--change', '--gate-name', '--command', '--module', '--covers', '--working-directory', '--timeout-seconds', '--not-applicable', '--justification', '--by', '--dry-run', '--text'],
   },
-  brief: { usage: 'xforge [--root <path>] brief --change <id> [--attach-triage <path>] [--text]', description: 'Report what a human approval at this Stage turns on, separating computed facts from quoted Artifact text.', options: ['--root', '--change', '--attach-triage', '--text'] },
+  findings: {
+    usage: 'xforge [--root <path>] findings resolve --change <id> --id <finding-id> --answer <text> --by <person> [--dry-run] [--text]',
+    description: 'Record a person\'s answer to one Check finding and mark it resolved. Only this one transition: findings are written by the Check Stage, and this closes an entry that already exists. --by is checked against the approvers and Git authors this Change records, so a decision-maker can be cited but not invented.',
+    options: ['--root', '--change', '--id', '--answer', '--by', '--dry-run', '--text'],
+  },
+  brief: { usage: 'xforge [--root <path>] brief --change <id> [--attach-triage <path>] [--text] [--compact]', description: 'Report what a human approval at this Stage turns on, separating computed facts from quoted Artifact text. --compact folds the EXTRACTED block in the text form, listing each quote\'s heading and source line instead of its text; the JSON is unchanged either way.', options: ['--root', '--change', '--attach-triage', '--text', '--compact'] },
   transition: { usage: 'xforge [--root <path>] transition --change <id> --to <stage> [--dry-run] [--text]\n       xforge [--root <path>] transition repair --change <id> --receipt <receiptId> [--dry-run] [--text]', description: 'Evaluate and record a governed Stage transition, or repair the receipt chain by dropping one leaf receipt. Repair is not a --force: it discards a recorded transition, reverting the Change to the Stage that transition left, and records what it discarded in the audit chain. Only a leaf may go — a receipt some later receipt chains to is load-bearing and is refused.', options: ['--root', '--change', '--to', '--receipt', '--dry-run', '--text'] },
   approve: { usage: 'xforge [--root <path>] approve --change <id> --for <transition-id|archive> [--policy <id>] [--provider <mcp-provider-id> | local fields] [--dry-run] [--text]', description: 'Record an interactive human approval at the terminal, or submit/poll an mcp provider. There is no other approval mechanism. --for takes the id of the transition the approval unlocks (the value xforge state reports in nextActions[].command), not a literal word.', options: ['--root', '--change', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--provider', '--dry-run', '--text'] },
   audit: { usage: 'xforge [--root <path>] audit <status|verify|export|retry|prune> [--change <id>] [--output <path>] [--text]', description: 'Inspect, verify, export, redeliver, or prune the append-only audit chain.', options: ['--root', '--change', '--output', '--text'] },
@@ -199,7 +208,7 @@ const HELP: Record<CommandName, { usage: string; description: string; options: s
 };
 
 function parseArguments(argv: string[]): ParsedArguments {
-  const parsed: ParsedArguments = { command: '', text: false, dryRun: false, verifyDigests: false, strict: false, allGates: false, force: false, adopt: false, complete: false, rollback: false, withActiveChanges: false };
+  const parsed: ParsedArguments = { command: '', text: false, dryRun: false, verifyDigests: false, strict: false, allGates: false, force: false, adopt: false, complete: false, rollback: false, withActiveChanges: false, compact: false };
   const seen = new Set<string>();
   const positionals: string[] = [];
   let helpShortcut = false;
@@ -223,6 +232,7 @@ function parseArguments(argv: string[]): ParsedArguments {
     if (token === '--rollback') { parsed.rollback = true; continue; }
     if (token === '--with-active-changes') { parsed.withActiveChanges = true; continue; }
     if (token === '--all-gates') { parsed.allGates = true; continue; }
+    if (token === '--compact') { parsed.compact = true; continue; }
     if (token === '--force') { parsed.force = true; continue; }
     if (token === '--adopt') { parsed.adopt = true; continue; }
     if (!isValueOption(token)) {
@@ -257,6 +267,8 @@ function parseArguments(argv: string[]): ParsedArguments {
     if (token === '--timeout-seconds') parsed.timeoutSeconds = value;
     if (token === '--not-applicable') parsed.notApplicable = value;
     if (token === '--justification') parsed.justification = value;
+    if (token === '--id') parsed.findingId = value;
+    if (token === '--answer') parsed.answer = value;
     if (token === '--by') parsed.by = value;
     if (token === '--attach-triage') parsed.attachTriage = value;
     if (token === '--as') {
@@ -318,7 +330,7 @@ function parseArguments(argv: string[]): ParsedArguments {
     if (parsed.command === 'help') {
       parsed.helpCommand = positionals[1];
       if (positionals.length > 2) throw new XForgeError(diagnostic('XFORGE_ARGUMENT_UNEXPECTED', `Unexpected positional argument: ${positionals[2]}`));
-    } else if (parsed.command === 'audit' || parsed.command === 'hook' || parsed.command === 'work-package' || parsed.command === 'verification' || parsed.command === 'transition' || parsed.command === 'review') {
+    } else if (parsed.command === 'audit' || parsed.command === 'hook' || parsed.command === 'work-package' || parsed.command === 'verification' || parsed.command === 'transition' || parsed.command === 'review' || parsed.command === 'findings') {
       /* `transition` joined this list without breaking its original form, because that form carries
          no positional: `transition --change X --to Y` leaves positionals[1] undefined, which is
          exactly what the plain-transition branch below tests for. */
@@ -347,11 +359,23 @@ function parseArguments(argv: string[]): ParsedArguments {
     if (parsed.subcommand === 'declare' && (!parsed.gateName || !parsed.by)) throw new XForgeError(diagnostic('XFORGE_VERIFICATION_ARGUMENTS_REQUIRED', 'verification declare requires --gate-name <gate> and --by <person>. The person is required because nothing can decide mechanically whether a command verifies anything; this records who answered.'));
     if (parsed.subcommand === 'draft-receipt' && !parsed.change) throw new XForgeError(diagnostic('XFORGE_CHANGE_REQUIRED', 'verification draft-receipt requires --change <id>.'));
   }
+  if (parsed.command === 'findings') {
+    if (parsed.subcommand !== 'resolve') throw new XForgeError(diagnostic('XFORGE_FINDINGS_ACTION_REQUIRED', 'findings requires the resolve action. It closes one existing entry; writing findings stays the Check Stage\'s job.'));
+    if (!parsed.change || !parsed.findingId || !parsed.answer || !parsed.by) {
+      throw new XForgeError(diagnostic(
+        'XFORGE_FINDINGS_ARGUMENTS_REQUIRED',
+        'findings resolve requires --change <id>, --id <finding-id>, --answer <what was decided> and --by <the person who decided>. The answer and the person are required for the same reason the entry exists: it was pointed at somebody, and a status flag on its own records neither what they said nor who they were.',
+      ));
+    }
+  }
   if (parsed.command === 'review') {
     if (parsed.subcommand !== 'acknowledge') throw new XForgeError(diagnostic('XFORGE_REVIEW_ACTION_REQUIRED', 'review requires the acknowledge action.'));
     if (!parsed.change || !parsed.evidence) throw new XForgeError(diagnostic('XFORGE_REVIEW_ARGUMENTS_REQUIRED', 'review acknowledge requires --change <id> and --evidence <path>.'));
   }
   if (parsed.command === 'brief' && !parsed.change) throw new XForgeError(diagnostic('XFORGE_CHANGE_REQUIRED', 'brief requires --change <id>.'));
+  /* Refused rather than ignored: --compact folds a block of the *text* form, so on its own it looks
+     like it did something to a JSON envelope that is byte for byte what it always was. */
+  if (parsed.compact && !parsed.text) throw new XForgeError(diagnostic('XFORGE_OPTION_NOT_ALLOWED', '--compact only affects the --text form; the JSON envelope always carries every entry. Add --text, or drop --compact.'));
   if (parsed.command === 'transition') {
     if (parsed.subcommand !== undefined && parsed.subcommand !== 'repair') {
       throw new XForgeError(diagnostic('XFORGE_TRANSITION_ACTION_UNKNOWN', `transition takes no action word, or the repair action; got ${parsed.subcommand}.`));
@@ -673,6 +697,12 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
     });
     return envelope({ command, root: project.root, ...result });
   }
+  if (command === 'findings') {
+    const result = await executeFindingsResolve(project, {
+      change: parsed.change!, id: parsed.findingId!, answer: parsed.answer!, by: parsed.by!, dryRun: parsed.dryRun,
+    });
+    return envelope({ command, root: project.root, ...result });
+  }
   if (command === 'brief') {
     const result = await executeBrief(project, { change: parsed.change!, attachTriage: parsed.attachTriage });
     return envelope({ command, root: project.root, ...result });
@@ -815,7 +845,11 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
      result, which the standard text form already prints. */
   let render: ((data: unknown) => string) | undefined;
   if (parsed?.command === 'brief' && result.ok) {
-    render = (data: unknown) => renderBriefText(data as Parameters<typeof renderBriefText>[0]);
+    render = (data: unknown) => renderBriefText(data as Parameters<typeof renderBriefText>[0], { compact: parsed.compact });
+  } else if (parsed?.command === 'state' && result.ok) {
+    /* `state`'s `data` is the entire resolved project; printed as JSON it buries the envelope's own
+       `Next actions:` block under tens of thousands of characters. See `renderStateText`. */
+    render = (data: unknown) => renderStateText(data);
   } else if (parsed?.command === 'upgrade-scaffold' && result.ok) {
     /* The plan is the whole output of a staged upgrade, and a wall of JSON is not a thing anyone
        reads before deciding what to merge. */
@@ -837,7 +871,9 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
         ...result, ok: false,
         diagnostics: [...result.diagnostics, diagnostic(
           'XFORGE_FIELD_NOT_FOUND',
-          `No value at --field ${parsed.field}. ${resolved.reason} Run the command without --field to see the shape of data.`,
+          /* `--text` no longer prints `data` verbatim for every command, so the advice names both
+             flags: the shape lives in the JSON envelope, which is what dropping them returns. */
+          `No value at --field ${parsed.field}. ${resolved.reason} Run the command without --field and without --text to see the shape of data.`,
         )],
       }, textMode, render));
       return 1;
