@@ -6,6 +6,7 @@ import { XForgeError, diagnostic } from './errors.js';
 import { sha256 } from './hash.js';
 import { safeResolve } from './path-safety.js';
 import { hasDeltaSections, renamePairs } from './spec-delta.js';
+import { exists } from './files.js';
 
 interface RequirementBlock {
   name: string;
@@ -16,10 +17,6 @@ export interface SpecMutation {
   path: string;
   content: string | null;
   change: FileChange;
-}
-
-async function exists(filePath: string): Promise<boolean> {
-  try { await access(filePath); return true; } catch { return false; }
 }
 
 /**

@@ -3,6 +3,7 @@ import { readBrief } from '../core/brief.js';
 import { safeResolve } from '../core/path-safety.js';
 import type { ProjectContext } from '../types.js';
 import { loadYaml } from '../core/yaml.js';
+import { wrap } from '../protocol/render.js';
 
 export interface BriefCommandOptions {
   change: string;
@@ -18,25 +19,6 @@ export async function executeBrief(project: ProjectContext, options: BriefComman
     triage = await loadYaml<unknown>(await safeResolve(project.root, options.attachTriage), options.attachTriage);
   }
   return readBrief(project, { change: options.change, triage });
-}
-
-function wrap(text: string, width: number, indent: string): string[] {
-  const words = text.replace(/\s+/g, ' ').trim().split(' ');
-  const lines: string[] = [];
-  let current = '';
-  for (const word of words) {
-    /* A CJK-heavy line has few spaces, so word wrapping alone would emit one enormous line. Long
-       words are placed on their own line rather than broken: cutting mid-token would corrupt a
-       Requirement id, and this text is quoted so that ids stay greppable. */
-    if (current && `${current} ${word}`.length > width) {
-      lines.push(indent + current);
-      current = word;
-      continue;
-    }
-    current = current ? `${current} ${word}` : word;
-  }
-  if (current) lines.push(indent + current);
-  return lines;
 }
 
 function renderValue(value: unknown): string {

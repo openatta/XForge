@@ -1,2 +1,2 @@
-XFORGE_PROJECT_NOT_FOUND src/core/project-loader.ts:47
-XFORGE_ROOT_NOT_FOUND src/core/project-loader.ts:40
+XFORGE_PROJECT_NOT_FOUND src/core/project-loader.ts
+XFORGE_ROOT_NOT_FOUND src/core/project-loader.ts

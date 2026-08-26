@@ -1,22 +1,9 @@
 import { readFile, rm } from 'node:fs/promises';
 import type { FileChange, ProjectContext } from '../types.js';
-import { atomicWrite } from '../core/files.js';
+import { atomicWrite, backup, type Backup } from '../core/files.js';
 import { safeResolve } from '../core/path-safety.js';
 import type { InstallPlan } from './planner.js';
 import { OWNERSHIP_PATH } from './ownership.js';
-
-interface Backup {
-  path: string;
-  content: Buffer | null;
-}
-
-async function backup(project: Pick<ProjectContext, 'root'>, relative: string): Promise<Backup> {
-  try { return { path: relative, content: await readFile(await safeResolve(project.root, relative)) }; }
-  catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { path: relative, content: null };
-    throw error;
-  }
-}
 
 async function restore(project: Pick<ProjectContext, 'root'>, items: Backup[]): Promise<void> {
   for (const item of [...items].reverse()) {

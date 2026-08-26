@@ -25,13 +25,10 @@ import { normalizeRule } from './governance.js';
 import { sha256, stableStringify } from './hash.js';
 import { readAcknowledgementAttestations, readAuditEvents } from './audit.js';
 import type { AcknowledgementAttestations } from './audit.js';
+import { exists } from './files.js';
 
 const GLOB_MAGIC = /[*?{}[\]]/;
 const UNSUPPORTED_GLOB_MAGIC = /[?{}[\]]/;
-
-async function exists(filePath: string): Promise<boolean> {
-  try { await access(filePath); return true; } catch { return false; }
-}
 
 function appendErrorDiagnostics(diagnostics: Diagnostic[], error: unknown): void {
   if (error instanceof XForgeError) diagnostics.push(...error.diagnostics);

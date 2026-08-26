@@ -4,17 +4,13 @@ import { CLI_VERSION, type TargetId } from '../constants.js';
 import type { Diagnostic, FileChange, ProjectContext } from '../types.js';
 import { loadBundledScaffold } from '../core/bundled-scaffold.js';
 import { diagnostic } from '../core/errors.js';
-import { atomicWrite } from '../core/files.js';
+import { atomicWrite, exists } from '../core/files.js';
 import { sha256 } from '../core/hash.js';
 import { localizedVariant } from '../core/language.js';
 import { canUpgradeDeclaredCli, compareVersions, loadProject, reconcileDeclaredCliVersion } from '../core/project-loader.js';
 import { safeResolve } from '../core/path-safety.js';
 import { assertInstalledRecord } from '../install/planner.js';
 import { executeProjection } from './projection.js';
-
-async function exists(filePath: string): Promise<boolean> {
-  try { await access(filePath); return true; } catch { return false; }
-}
 
 /**
  * `xforge init` seeds the `xforge/`-root Agent documents once, from whatever the pinned CLI bundled

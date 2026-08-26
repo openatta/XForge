@@ -10,21 +10,12 @@ import {
 import type { Compatibility, Diagnostic, FileChange, Lockfile, Manifest, ProjectContext } from '../types.js';
 import { readConstitution } from './constitution.js';
 import { XForgeError, diagnostic } from './errors.js';
-import { atomicWrite } from './files.js';
+import { atomicWrite, exists } from './files.js';
 import { sha256 } from './hash.js';
 import { assertLogicalPaths, normalizeRelative, safeResolve } from './path-safety.js';
 import { validateSchema } from './validator.js';
 import { loadYaml } from './yaml.js';
 import { runtimeCliIntegrity } from './identity.js';
-
-async function exists(filePath: string): Promise<boolean> {
-  try {
-    await access(filePath);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 export async function findProjectRoot(start = process.cwd(), options: { exact?: boolean } = {}): Promise<string> {
   let cursor = path.resolve(start);

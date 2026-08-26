@@ -17,10 +17,7 @@ import { validateSchema, type SchemaName } from './validator.js';
 import { loadYaml } from './yaml.js';
 import { normalizeRule } from './governance.js';
 import { localizedVariant } from './language.js';
-
-async function exists(filePath: string): Promise<boolean> {
-  try { await access(filePath); return true; } catch { return false; }
-}
+import { exists } from './files.js';
 
 export interface SelectedResources {
   skills: Map<string, string>;

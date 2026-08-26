@@ -26,10 +26,7 @@ import { knownIdentities, unknownIdentityReason, type KnownIdentities } from './
 import { VERIFICATION_RECEIPT_CONDITION, evaluateVerificationReceipt } from './verification-receipt.js';
 import { resolveWorkPackages, type WorkPackageResolution } from './work-packages.js';
 import { parse as parseYaml } from 'yaml';
-
-async function exists(filePath: string): Promise<boolean> {
-  try { await access(filePath); return true; } catch { return false; }
-}
+import { exists } from './files.js';
 
 function receiptDigest<T extends { digest: string }>(receipt: T): string {
   const { digest: _digest, ...unsigned } = receipt;

@@ -2,7 +2,7 @@ import { access, readFile } from 'node:fs/promises';
 import type { ProjectContext } from '../types.js';
 import { knownIdentities, unknownIdentityReason, unverifiableIdentityWarning, type KnownIdentities } from './ledger-identity.js';
 import { safeResolve } from './path-safety.js';
-import { loadYaml } from './yaml.js';
+import { loadYaml, trimmedText } from './yaml.js';
 
 /**
  * The machine-decidable half of a Check report.
@@ -55,10 +55,6 @@ export interface CheckFindingsResult {
 
 const SEVERITIES: FindingSeverity[] = ['blocker', 'warning', 'suggestion'];
 
-function text(value: unknown): string {
-  return typeof value === 'string' ? value.trim() : '';
-}
-
 /** Resolves a `refs` entry the same way other Change-relative Artifact paths are resolved. */
 async function refExists(project: ProjectContext, changeId: string, ref: string): Promise<boolean> {
   try {
@@ -97,21 +93,21 @@ async function evaluate(
   const seen = new Set<string>();
   for (const [index, raw] of document.findings.entries()) {
     const finding = (raw ?? {}) as CheckFinding;
-    const label = text(finding.id) || `#${index + 1}`;
-    const id = text(finding.id);
+    const label = trimmedText(finding.id) || `#${index + 1}`;
+    const id = trimmedText(finding.id);
     if (!id) problems.push(`${relative}: finding ${label} has no id.`);
     else if (seen.has(id)) problems.push(`${relative}: duplicate finding id ${id}.`);
     else seen.add(id);
 
-    const severity = text(finding.severity) as FindingSeverity;
+    const severity = trimmedText(finding.severity) as FindingSeverity;
     if (!SEVERITIES.includes(severity)) {
-      problems.push(`${relative}: finding ${label} has severity "${text(finding.severity) || '(none)'}"; expected one of ${SEVERITIES.join(', ')}.`);
+      problems.push(`${relative}: finding ${label} has severity "${trimmedText(finding.severity) || '(none)'}"; expected one of ${SEVERITIES.join(', ')}.`);
       continue;
     }
     counts[severity] += 1;
 
-    if (!text(finding.summary)) problems.push(`${relative}: finding ${label} has no summary.`);
-    const refPaths = Array.isArray(finding.refs) ? finding.refs.map(text).filter(Boolean) : [];
+    if (!trimmedText(finding.summary)) problems.push(`${relative}: finding ${label} has no summary.`);
+    const refPaths = Array.isArray(finding.refs) ? finding.refs.map(trimmedText).filter(Boolean) : [];
     if (refPaths.length === 0) problems.push(`${relative}: finding ${label} cites no artifact; a finding nobody can locate cannot be acted on.`);
     for (const ref of refPaths) {
       if (!(await refExists(project, changeId, ref))) {
@@ -131,9 +127,9 @@ async function evaluate(
        * those used to read the same as a checked one. `xforge findings resolve` writes an
        * attribution this can name; a hand edit may not, and now says so.
        */
-      const status = text(finding.status) || 'open';
+      const status = trimmedText(finding.status) || 'open';
       if (status === 'resolved') {
-        const resolvedBy = text(finding.resolvedBy);
+        const resolvedBy = trimmedText(finding.resolvedBy);
         if (!resolvedBy) {
           warnings.push(`${relative}: ${severity} finding ${label} is marked resolved but names no resolvedBy. Only a blocker's attribution fails this Gate, so this is reported rather than refused.`);
         } else {
@@ -144,10 +140,10 @@ async function evaluate(
       }
       continue;
     }
-    const status = text(finding.status) || 'open';
+    const status = trimmedText(finding.status) || 'open';
     if (status === 'resolved') {
       /* A resolution nobody can be held to does not count as one — same posture as the other ledgers. */
-      const resolvedBy = text(finding.resolvedBy);
+      const resolvedBy = trimmedText(finding.resolvedBy);
       if (!resolvedBy) {
         problems.push(`${relative}: blocking finding ${label} is marked resolved but names no resolvedBy; an unattributed resolution does not count as resolved.`);
         openBlockers.push(id || label);
@@ -164,7 +160,7 @@ async function evaluate(
 
     openBlockers.push(id || label);
     /* A blocker must say where the work goes back to, otherwise "blocked" is not actionable. */
-    if (!text(finding.reworkTo)) problems.push(`${relative}: blocking finding ${label} does not name a reworkTo Stage.`);
+    if (!trimmedText(finding.reworkTo)) problems.push(`${relative}: blocking finding ${label} does not name a reworkTo Stage.`);
   }
 
   if (openBlockers.length > 0) problems.push(`${relative}: ${openBlockers.length} blocking finding(s) still open: ${openBlockers.join(', ')}.`);

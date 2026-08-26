@@ -26,6 +26,13 @@ interface InitResult {
   nextActions: NextAction[];
 }
 
+/**
+ * Whether a path is *occupied*, which is not the same question `core/files.ts`'s `exists` answers.
+ *
+ * `lstat`, not `access`: `init` refuses to write over anything already there, and a dangling
+ * symlink is already there — `access` follows it, finds nothing, and would report the path free.
+ * The two must stay separate for that reason.
+ */
 async function exists(filePath: string): Promise<boolean> {
   try { await lstat(filePath); return true; } catch { return false; }
 }

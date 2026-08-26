@@ -3,7 +3,7 @@ import path from 'node:path';
 import fg from 'fast-glob';
 import type { ApprovalReceipt, ProjectContext } from '../types.js';
 import { safeResolve } from './path-safety.js';
-import { loadYaml } from './yaml.js';
+import { loadYaml, trimmedText } from './yaml.js';
 import { knownIdentities, unknownIdentityReason, unverifiableIdentityWarning, type KnownIdentities } from './ledger-identity.js';
 
 /**
@@ -74,17 +74,13 @@ export function constitutionPrinciples(content: string): string[] {
   return [...content.matchAll(/^##\s+(.+?)\s*$/gm)].map((match) => match[1]!.trim()).filter(Boolean);
 }
 
-function text(value: unknown): string {
-  return typeof value === 'string' ? value.trim() : '';
-}
-
 function normalize(value: string): string {
   return value.toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
 function list(value: unknown): string[] {
-  if (Array.isArray(value)) return value.map(text).filter(Boolean);
-  const single = text(value);
+  if (Array.isArray(value)) return value.map(trimmedText).filter(Boolean);
+  const single = trimmedText(value);
   return single ? [single] : [];
 }
 
@@ -111,8 +107,8 @@ async function readGateEvidence(project: ProjectContext, changeId: string): Prom
   for (const name of names) {
     try {
       const evidence = JSON.parse(await readFile(path.join(directory, name), 'utf8')) as { gate?: unknown; status?: unknown };
-      const gate = text(evidence.gate);
-      const status = text(evidence.status);
+      const gate = trimmedText(evidence.gate);
+      const status = trimmedText(evidence.status);
       if (gate && status) gates.set(gate, status);
     } catch { /* Unreadable Evidence is the Gate runner's problem to report, not this ledger's. */ }
   }
@@ -181,7 +177,7 @@ function receiptApprovers(receipts: ApprovalReceipt[]): Set<string> {
   const approvers = new Set<string>();
   for (const receipt of receipts) {
     if (receipt.decision !== 'approve') continue;
-    const id = text(receipt.approver?.id);
+    const id = trimmedText(receipt.approver?.id);
     if (id) approvers.add(id.toLowerCase());
   }
   return approvers;
@@ -242,7 +238,7 @@ export async function evaluateConstitutionCheck(
 
   for (const [index, raw] of document.principles.entries()) {
     const entry = (raw ?? {}) as Record<string, unknown>;
-    const name = text(entry.principle);
+    const name = trimmedText(entry.principle);
     if (!name) { problems.push(`${relative}: entry #${index + 1} does not name a principle.`); continue; }
     const match = principles.find((candidate) => normalize(candidate) === normalize(name));
     if (!match) {
@@ -265,9 +261,9 @@ export async function evaluateConstitutionCheck(
     const entry = byName.get(principle);
     if (!entry) { problems.push(`${relative}: principle "${principle}" is not answered.`); continue; }
     covered.push(principle);
-    const status = text(entry.status) as PrincipleStatus;
+    const status = trimmedText(entry.status) as PrincipleStatus;
     if (!STATUSES.includes(status)) {
-      problems.push(`${relative}: principle "${principle}" has status "${text(entry.status) || '(none)'}"; expected one of ${STATUSES.join(', ')}.`);
+      problems.push(`${relative}: principle "${principle}" has status "${trimmedText(entry.status) || '(none)'}"; expected one of ${STATUSES.join(', ')}.`);
       continue;
     }
 
@@ -315,8 +311,8 @@ export async function evaluateConstitutionCheck(
     /* A deviation is allowed, but only as a recorded, reasoned decision — never as a silent one. */
     if (status === 'violation') {
       violations.push(principle);
-      if (!text(entry.justification)) problems.push(`${relative}: principle "${principle}" is declared a violation with no justification.`);
-      const approvedBy = text(entry.approvedBy);
+      if (!trimmedText(entry.justification)) problems.push(`${relative}: principle "${principle}" is declared a violation with no justification.`);
+      const approvedBy = trimmedText(entry.approvedBy);
       if (!approvedBy) problems.push(`${relative}: a Constitution violation needs a named approver in approvedBy; principle "${principle}" has none.`);
       else if (approvers.size > 0 && !citesApprovalReceipt(approvedBy, approvers)) {
         /*
@@ -335,7 +331,7 @@ export async function evaluateConstitutionCheck(
       }
     }
 
-    if (status === 'not-applicable' && !text(entry.justification)) {
+    if (status === 'not-applicable' && !trimmedText(entry.justification)) {
       problems.push(`${relative}: principle "${principle}" is marked not-applicable with no justification.`);
     }
   }

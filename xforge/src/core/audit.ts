@@ -5,7 +5,7 @@ import { hostname } from 'node:os';
 import path from 'node:path';
 import type { AuditEvent, GovernanceRevision, ProjectContext } from '../types.js';
 import { XForgeError, diagnostic } from './errors.js';
-import { atomicWrite } from './files.js';
+import { atomicWrite, exists } from './files.js';
 import { sha256, stableStringify } from './hash.js';
 import { safeResolve } from './path-safety.js';
 
@@ -38,10 +38,6 @@ export const INDEX_VERSION = 4;
  * exempt from this limit entirely.
  */
 const INDEX_EVENT_LIMIT = 1_000;
-
-async function exists(filePath: string): Promise<boolean> {
-  try { await access(filePath); return true; } catch { return false; }
-}
 
 function isChangeId(value: string | null | undefined): value is string {
   return typeof value === 'string' && CHANGE_ID_PATTERN.test(value);

@@ -5,7 +5,7 @@ import type { Diagnostic, FileChange, ProjectContext } from '../types.js';
 import { executeCheck } from '../commands/check.js';
 import { checkStructure } from './checker.js';
 import { XForgeError, diagnostic } from './errors.js';
-import { atomicWrite } from './files.js';
+import { atomicWrite, backup, exists, type Backup } from './files.js';
 import { assertManaged } from './project-loader.js';
 import { safeResolve } from './path-safety.js';
 import { planSpecMutations, type SpecMutation } from './spec-merger.js';
@@ -14,10 +14,6 @@ import { contentRevisionUnderPolicy } from './revision.js';
 import { loadSelectedResources, type SelectedResources } from './resource-loader.js';
 import { blockRemedy, resolveControlPlane, terminalGovernanceBlocks } from './control-plane.js';
 import { readChangeAuditEvents, recordAudit, type ChangeAuditFacts } from './audit.js';
-
-async function exists(filePath: string): Promise<boolean> {
-  try { await access(filePath); return true; } catch { return false; }
-}
 
 /**
  * `git status --porcelain` over specific paths, or `null` when the question cannot be asked here.
@@ -182,16 +178,6 @@ export async function planArchive(project: ProjectContext, changeId: string, opt
     { action: 'move' as const, from: `${project.changesPath}/${changeId}`, path: target, source: `change:${changeId}` },
   ];
   return { changeId, target, mutations, changes, diagnostics, mandatoryGates: structure.change?.archive.mandatoryGates ?? [] };
-}
-
-interface Backup { path: string; content: Buffer | null }
-
-async function backup(project: ProjectContext, relative: string): Promise<Backup> {
-  try { return { path: relative, content: await readFile(await safeResolve(project.root, relative)) }; }
-  catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { path: relative, content: null };
-    throw error;
-  }
 }
 
 async function applyArchiveTransaction(project: ProjectContext, plan: ArchivePlan): Promise<void> {

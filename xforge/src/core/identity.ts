@@ -12,6 +12,15 @@ import { fileURLToPath } from 'node:url';
  */
 const packageRoot = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
 
+/**
+ * Git, synchronously, against this package's own directory.
+ *
+ * Two other modules have a function of this name and none of the three may be merged:
+ * `core/revision.ts` is async and folds every failure into the string `unknown`, which is right for
+ * a revision lookup and wrong for a yes/no question; `commands/check.ts` is async, bounds its
+ * output, and disables `core.quotepath` because it parses porcelain paths. This one is sync because
+ * it answers during module-level identity resolution, before any await exists.
+ */
 function git(args: string[]): string | null {
   try {
     return execFileSync('git', ['-C', packageRoot, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || null;

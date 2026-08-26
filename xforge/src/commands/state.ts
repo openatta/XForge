@@ -1,3 +1,4 @@
+import { wrap } from '../protocol/render.js';
 export { readState as executeState } from '../core/state-reader.js';
 
 /**
@@ -56,23 +57,6 @@ interface ChangeLike {
     audit?: { chainValid?: boolean; eventCount?: number; remotePending?: number; coverageGaps?: string[] };
     rules?: Array<{ id?: string; severity?: string; coverage?: string[] }>;
   };
-}
-
-/** Wraps on spaces at `width`, so a long resource list does not become one unreadable line. */
-function wrap(text: string, width: number, indent: string): string[] {
-  const words = text.split(' ');
-  const lines: string[] = [];
-  let current = '';
-  for (const word of words) {
-    if (current && `${current} ${word}`.length > width) {
-      lines.push(indent + current);
-      current = word;
-      continue;
-    }
-    current = current ? `${current} ${word}` : word;
-  }
-  if (current) lines.push(indent + current);
-  return lines;
 }
 
 function list(values: readonly string[] | undefined, empty = '(none)'): string {

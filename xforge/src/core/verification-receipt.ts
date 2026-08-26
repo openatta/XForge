@@ -1,7 +1,7 @@
 import { access, readFile } from 'node:fs/promises';
 import type { GateEvidence, ProjectContext } from '../types.js';
 import { safeResolve } from './path-safety.js';
-import { loadYaml } from './yaml.js';
+import { loadYaml, trimmedText } from './yaml.js';
 
 /**
  * The machine-decidable half of the Verify Stage.
@@ -73,10 +73,6 @@ interface VerificationReceiptLedger {
   gates?: unknown;
 }
 
-function text(value: unknown): string {
-  return typeof value === 'string' ? value.trim() : '';
-}
-
 function failed(reason: string, problems: string[], cited: string[] = []): VerificationReceiptResult {
   return { status: 'failed', problems, reason, cited };
 }
@@ -87,17 +83,17 @@ function evaluate(
   relative: string,
   expected: VerificationReceiptExpectation,
 ): VerificationReceiptResult {
-  const subject = text(document.change);
+  const subject = trimmedText(document.change);
   if (subject && subject !== changeId) {
     return failed('subject-mismatch', [`${relative}: the receipt is bound to Change "${subject}", not ${changeId}.`]);
   }
 
-  const declared = text(document.status);
+  const declared = trimmedText(document.status);
   if (declared !== 'passed') {
     return failed(`status-${declared || 'missing'}`, [`${relative}: status is "${declared || '(none)'}"; a verification receipt records "passed" or it is not a receipt.`]);
   }
 
-  const contentRevision = text(document.contentRevision);
+  const contentRevision = trimmedText(document.contentRevision);
   if (!contentRevision) return failed('content-revision-missing', [`${relative}: no contentRevision; the receipt must name the content it verified.`]);
   if (contentRevision !== expected.contentRevision) {
     return failed('content-revision-stale', [
@@ -105,7 +101,7 @@ function evaluate(
     ]);
   }
 
-  const gitHead = text(document.gitHead);
+  const gitHead = trimmedText(document.gitHead);
   if (!gitHead) return failed('git-head-missing', [`${relative}: no gitHead; the receipt must name the commit it was produced at.`]);
 
   const citations = Array.isArray(document.gates) ? document.gates as ReceiptGateCitation[] : null;
@@ -120,7 +116,7 @@ function evaluate(
 
   for (const [index, raw] of citations.entries()) {
     const citation = (raw ?? {}) as ReceiptGateCitation;
-    const gate = text(citation.gate);
+    const gate = trimmedText(citation.gate);
     const label = gate || `#${index + 1}`;
     if (!gate) { problems.push(`${relative}: gate citation ${label} does not name a Gate.`); continue; }
     cited.push(gate);
@@ -144,7 +140,7 @@ function evaluate(
      * proves exactly that; requiring the cited set to be the set that actually passed is what a
      * hand-written receipt still cannot fake.
      */
-    const status = text(citation.status);
+    const status = trimmedText(citation.status);
     if (status && status !== 'passed') problems.push(`${relative}: Gate ${gate} is cited as "${status}"; only a passed Gate belongs in a verification receipt.`);
   }
 

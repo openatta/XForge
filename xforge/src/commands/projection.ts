@@ -9,10 +9,7 @@ import { resolvedLock } from '../core/lockfile.js';
 import { assertManaged, assertUpdateCompatible } from '../core/project-loader.js';
 import { planProjection, type ProjectionMode } from '../install/planner.js';
 import { applyInstallPlan } from '../install/writer.js';
-
-async function exists(filePath: string): Promise<boolean> {
-  try { await access(filePath); return true; } catch { return false; }
-}
+import { exists } from '../core/files.js';
 
 export interface ProjectionCommandOptions {
   target?: TargetId;

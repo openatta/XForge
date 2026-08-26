@@ -8,6 +8,13 @@ import type { SelectedResources } from './resource-loader.js';
 import { XForgeError, diagnostic } from './errors.js';
 import { runtimeCliIntegrity } from './identity.js';
 
+/**
+ * Every file under a locked resource, with its bytes, refusing symlinks outright.
+ *
+ * `core/identity.ts` has a function of the same name that returns paths and *skips* symlinks. The
+ * difference is deliberate and load-bearing: an integrity digest that silently skipped a symlink
+ * would let one be added without moving the digest, so this one throws where the other continues.
+ */
 async function filesUnder(directory: string, prefix = ''): Promise<Array<{ relative: string; content: Buffer }>> {
   const result: Array<{ relative: string; content: Buffer }> = [];
   for (const entry of (await readdir(directory, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {

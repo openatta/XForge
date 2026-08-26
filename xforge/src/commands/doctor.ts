@@ -16,6 +16,7 @@ import { parse as parseYaml } from 'yaml';
 import { loadYaml } from '../core/yaml.js';
 import { capabilityGapDiagnostics } from '../install/planner.js';
 import { verificationEntriesFor } from '../core/verification.js';
+import { exists } from '../core/files.js';
 
 export type DoctorKind = 'skills' | 'agents' | 'rules' | 'policies' | 'hooks' | 'gates' | 'scripts' | 'flows' | 'approvals' | 'mcp-servers';
 type DoctorScope = 'skills' | 'agents' | 'rules' | 'policies' | 'hooks' | 'gates' | 'flows' | 'approvals' | 'mcp-servers';
@@ -81,10 +82,6 @@ const DANGLING_CODE_SCOPE: Record<string, DoctorScope> = {
   XFORGE_FLOW_SKILL_DECLARED_GATE_UNCOVERED: 'skills',
   XFORGE_FLOW_SKILL_CONDITION_UNNAMED: 'skills',
 };
-
-async function exists(filePath: string): Promise<boolean> {
-  try { await access(filePath); return true; } catch { return false; }
-}
 
 async function activeChangeDirectories(project: ProjectContext): Promise<string[]> {
   const absolute = await safeResolve(project.root, project.changesPath);

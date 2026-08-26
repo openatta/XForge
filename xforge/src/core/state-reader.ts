@@ -17,10 +17,7 @@ import { resolveWorkPackages } from './work-packages.js';
 import { installationSummary, readOwnership } from '../install/ownership.js';
 import { loadTransitionReceipts, resolveControlPlane } from './control-plane.js';
 import { normalizeRule, ruleApplies } from './governance.js';
-
-async function exists(filePath: string): Promise<boolean> {
-  try { await access(filePath); return true; } catch { return false; }
-}
+import { exists } from './files.js';
 
 async function directoriesAt(root: string): Promise<string[]> {
   try {

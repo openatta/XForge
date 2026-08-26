@@ -2,6 +2,7 @@ import { access } from 'node:fs/promises';
 import path from 'node:path';
 import type { ProjectContext } from '../types.js';
 import { safeResolve } from './path-safety.js';
+import { exists } from './files.js';
 
 /**
  * Recognising a project's build system well enough to *suggest* a verification command.
@@ -58,10 +59,6 @@ export interface DetectedToolchain {
   /** The module this marker sits in, when it is a declared module root. */
   module?: string;
   suggests: ToolchainMarker['suggests'];
-}
-
-async function exists(target: string): Promise<boolean> {
-  try { await access(target); return true; } catch { return false; }
 }
 
 /**

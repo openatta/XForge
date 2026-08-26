@@ -26,6 +26,18 @@ export async function loadYaml<T>(filePath: string, projectPath?: string): Promi
   }
 }
 
+/**
+ * A YAML value read as a trimmed string, or the empty string for anything that is not one.
+ *
+ * Every governance ledger this product reads is Agent-authored YAML, so a field is `unknown` until
+ * something coerces it, and "absent", "null", "a number" and "  " all have to collapse to the same
+ * answer before any rule can be written against them. The three ledger evaluators each defined this
+ * identically before it lived here; that they agreed was luck, not design.
+ */
+export function trimmedText(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
 export function dumpYaml(value: unknown): string {
   return stringify(value, { sortMapEntries: true, lineWidth: 120 });
 }

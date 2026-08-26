@@ -78,9 +78,16 @@ describe('diagnostic catalogue', () => {
     const namesAFile = /`[^`]*\.(?:yaml|yml|json|md|ts)`|\b[a-z0-9_-]+\/[a-z0-9_./-]+\.(?:yaml|yml|json|md)\b/i;
     const offenders = (await readDiagnosticCatalogue())
       .filter((site) => !site.hasPath && namesAFile.test(site.message))
-      .map((site) => `${site.code ?? '(dynamic)'} ${site.file}:${site.line}`);
-    /* Recorded rather than asserted empty: this is a debt list that may only shrink, and the
-       golden makes each removal visible instead of letting the number drift upward unnoticed. */
+      .map((site) => `${site.code ?? '(dynamic)'} ${site.file}`);
+    /*
+     * Recorded rather than asserted empty: this is a debt list that may only shrink, and the golden
+     * makes each removal visible instead of letting the number drift upward unnoticed.
+     *
+     * Without the line number, on the same reasoning as the catalogue above: the first refactor to
+     * delete nine lines from `project-loader.ts` moved both entries and failed this, reporting a
+     * change to a debt list whose content was identical. A fingerprint that fires on code movement
+     * is one people learn to re-record without reading.
+     */
     const { actual, expected } = await golden('diagnostics/messages-without-path.txt', `${offenders.sort().join('\n')}\n`);
     expect(actual).toBe(expected);
   });
