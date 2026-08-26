@@ -3,13 +3,8 @@ import { link, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { Diagnostic, FileChange, NextAction, ProjectContext, TransitionReceipt } from '../types.js';
 import { readChangeAuditEvents, readTransitionAttestations, recordAudit, transitionAttestationDigest, verifyAudit } from '../core/audit.js';
-import {
-  TRANSITION_RECEIPTS_RELATIVE,
-  blockRemedy,
-  readTransitionReceiptFiles,
-  resolveControlPlane,
-  transitionReceiptFileName,
-} from '../core/control-plane.js';
+import { blockRemedy, resolveControlPlane } from '../core/control-plane.js';
+import { TRANSITION_RECEIPTS_RELATIVE, readTransitionReceiptFiles, transitionReceiptFileName } from '../core/control-plane/receipts.js';
 import { XForgeError, diagnostic } from '../core/errors.js';
 import { atomicWrite } from '../core/files.js';
 import { flowEligibilityDiagnostics } from '../core/checker.js';

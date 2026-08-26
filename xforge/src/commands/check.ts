@@ -10,7 +10,8 @@ import { workPackageVerificationGates } from '../core/work-packages.js';
 import { gateInputDigest, runGate } from '../runners/gate.js';
 import { readAuditEvents, recordAudit } from '../core/audit.js';
 import { isStageFlow, resolveChangeState } from '../core/flow-resolver.js';
-import { loadTransitionReceipts, resolveControlPlane } from '../core/control-plane.js';
+import { resolveControlPlane } from '../core/control-plane.js';
+import { loadTransitionReceipts } from '../core/control-plane/receipts.js';
 import { sha256, stableStringify } from '../core/hash.js';
 import { safeResolve } from '../core/path-safety.js';
 

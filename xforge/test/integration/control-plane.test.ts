@@ -3,7 +3,7 @@ import { rm } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { approveCurrentRevision, approvalTestEnv, changeYaml, createCompleteSolidChange, fixture, runCli, updateYaml, write } from '../helpers.js';
-import { approvalsForPolicy } from '../../src/core/control-plane.js';
+import { approvalsForPolicy } from '../../src/core/control-plane/receipts.js';
 import { recordAudit } from '../../src/core/audit.js';
 import { loadProject } from '../../src/core/project-loader.js';
 

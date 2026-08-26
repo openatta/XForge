@@ -8,6 +8,11 @@ import { XForgeError, diagnostic } from './errors.js';
 import { atomicWrite, exists } from './files.js';
 import { sha256, stableStringify } from './hash.js';
 import { safeResolve } from './path-safety.js';
+import { acquireLock } from './audit/locking.js';
+import {
+  attestableEvents, chainSigner, eventHash, eventSignature, sealEvent, signatureDiagnostic, unsignedBody,
+  signBody, verdictFor, type ChainSigner, type SignatureVerdict,
+} from './audit/signing.js';
 
 const AUDIT_DIRECTORY = 'xforge/.audit';
 /** The global chain. Also the legacy single-file log that older projects still carry. */
@@ -55,157 +60,13 @@ function shardRelative(shardKey: string | null): string {
 /* ------------------------------------------------------------------ append lock */
 
 /**
- * Who holds an append lock, written inside the lock directory itself.
- *
- * The lock is a `mkdir` mutex, which is atomic on every filesystem XForge targets but carries no
- * information: a bare directory cannot say whether its creator is still alive. XForge installs no
- * signal handlers (deliberately — a library that traps SIGINT changes the host process's exit
- * semantics), so Node's default disposition terminates without running `appendEvent`'s `finally`.
- * One Ctrl-C, agent-harness SIGTERM or CI container eviction while the lock is held therefore used
- * to poison *every* later command that records an audit event for that Change — `check`,
- * `transition`, `approve`, `archive`, `work-package`, every `xforge hook` call — with no way to
- * recover short of deleting a directory nobody documents.
- *
- * These three fields are what a later process needs to decide the holder is gone: `pid` + `hostname`
- * because a pid is only meaningful on the machine that issued it, and `startedAt` because a pid can
- * be recycled and because a holder on another host can only ever be judged by age.
- */
-interface LockOwner { pid: number; hostname: string; startedAt: string }
-
-/**
- * How long a lock may be held before any other process may take it over. A hold is local file IO
- * only — remote delivery happens outside the lock — so a legitimate hold is milliseconds; a minute
- * is far past any plausible one while staying far short of "the operator gave up and rebooted".
- */
-const LOCK_TTL_MS = 60_000;
-const LOCK_RETRY_MS = 25;
-/**
  * The old budget was 40 × 25ms = 1s, which is genuinely too short: one `xforge hook` runs per agent
  * tool call, and a burst of parallel tool calls contends on the same per-Change lock. A stale lock
  * no longer costs a wait at all (it is reclaimed on the first pass), so the budget only has to cover
  * real contention.
  */
-const LOCK_TIMEOUT_MS = 10_000;
-const LOCK_OWNER_FILE = 'owner.json';
 
 /** Absolute paths of locks this process currently holds, for the best-effort exit sweep. */
-const heldLocks = new Set<string>();
-let exitCleanupRegistered = false;
-
-function registerExitCleanup(): void {
-  if (exitCleanupRegistered) return;
-  exitCleanupRegistered = true;
-  /* Best effort only, and deliberately not a signal handler: 'exit' does not run for SIGKILL or for
-     an unhandled signal, so the reclaim path below stays the load-bearing recovery mechanism and
-     this is just the cheap way to keep an orderly exit from leaving litter behind. */
-  process.on('exit', () => {
-    for (const lock of heldLocks) {
-      try { rmSync(lock, { recursive: true, force: true }); } catch { /* the process is exiting anyway */ }
-    }
-  });
-}
-
-/** Whether a pid exists on this host. EPERM means it exists and belongs to somebody else. */
-function processAlive(pid: number): boolean {
-  if (!Number.isInteger(pid) || pid <= 0) return false;
-  try { process.kill(pid, 0); return true; }
-  catch (error) { return (error as NodeJS.ErrnoException).code === 'EPERM'; }
-}
-
-async function readLockOwner(lock: string): Promise<LockOwner | null> {
-  try {
-    const parsed = JSON.parse(await readFile(path.join(lock, LOCK_OWNER_FILE), 'utf8')) as Partial<LockOwner>;
-    if (typeof parsed?.pid !== 'number' || typeof parsed.hostname !== 'string' || typeof parsed.startedAt !== 'string') return null;
-    return { pid: parsed.pid, hostname: parsed.hostname, startedAt: parsed.startedAt };
-  } catch { return null; }
-}
-
-/**
- * Why an existing lock may be taken over, or null when it must be waited on.
- *
- * Two independent signals, because neither alone covers the failure: a dead pid on this host is
- * proof the holder is gone and is available immediately, while age is the only thing that can be
- * said about a holder on another host, a recycled pid, or a lock written by a version of XForge
- * that recorded no owner at all.
- */
-async function lockReclaimReason(lock: string, now: number): Promise<string | null> {
-  const owner = await readLockOwner(lock);
-  if (owner === null) {
-    /* Either a pre-owner-file lock, or the sub-millisecond window between another process's mkdir
-       and its owner write. Age is the only available signal, so it is the only one used — which
-       also means a lock being created right now is never mistaken for an abandoned one. */
-    const age = await stat(lock).then((info) => now - info.mtimeMs).catch(() => 0);
-    return age > LOCK_TTL_MS ? 'no-owner-expired' : null;
-  }
-  if (owner.hostname === hostname() && !processAlive(owner.pid)) return `process-gone:${owner.pid}`;
-  const startedAt = Date.parse(owner.startedAt);
-  if (Number.isFinite(startedAt) && now - startedAt > LOCK_TTL_MS) return `expired:${owner.pid}`;
-  return null;
-}
-
-interface HeldLock {
-  release: () => Promise<void>;
-  /** Set when this acquisition took a lock over from a holder that is provably gone. */
-  reclaimed: { path: string; reason: string } | null;
-}
-
-async function acquireLock(project: ProjectContext, shardKey: string | null): Promise<HeldLock> {
-  const relative = `${LOCK_DIRECTORY}/${shardKey ?? GLOBAL_SHARD_KEY}.lock`;
-  const lock = await safeResolve(project.root, relative);
-  await mkdir(path.dirname(lock), { recursive: true });
-  const deadline = Date.now() + LOCK_TIMEOUT_MS;
-  let reclaimed: HeldLock['reclaimed'] = null;
-  for (;;) {
-    let acquired = false;
-    try {
-      await mkdir(lock);
-      acquired = true;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-    }
-    if (acquired) {
-      heldLocks.add(lock);
-      registerExitCleanup();
-      const owner: LockOwner = { pid: process.pid, hostname: hostname(), startedAt: new Date().toISOString() };
-      /* A failed owner write must not fail the append: the lock still excludes, it just degrades to
-         age-based reclaim. */
-      await writeFile(path.join(lock, LOCK_OWNER_FILE), `${JSON.stringify(owner)}\n`, 'utf8').catch(() => undefined);
-      return {
-        reclaimed,
-        release: async () => { heldLocks.delete(lock); await rm(lock, { recursive: true, force: true }); },
-      };
-    }
-    const reason = await lockReclaimReason(lock, Date.now());
-    if (reason !== null) {
-      /* Racy by construction, and harmlessly so: if two waiters both decide to reclaim, one wins the
-         following mkdir and the other finds a fresh, live, un-reclaimable lock on its next pass. */
-      await rm(lock, { recursive: true, force: true });
-      reclaimed = { path: relative, reason };
-      continue;
-    }
-    if (Date.now() >= deadline) {
-      /* An XForgeError, not a bare Error: this used to surface as an unstructured crash with no
-         diagnostic and no next action, on a condition whose remedy is a single named path. */
-      throw new XForgeError(
-        diagnostic(
-          'XFORGE_AUDIT_LOCK_TIMEOUT',
-          `Timed out after ${LOCK_TIMEOUT_MS / 1000}s waiting for the audit append lock ${relative}, which is held by a live process.`,
-          relative,
-        ),
-        {
-          nextActions: [{
-            action: `Wait for the other xforge process to finish, or delete ${relative} if none is running`,
-            reason: `The lock is held by a process that is still alive on this host. XForge reclaims a lock automatically once its owner exits or the lock is older than ${LOCK_TTL_MS / 1000}s, so deleting it by hand is only needed when neither has happened.`,
-            type: 'maintenance',
-            command: ['rm', '-rf', relative],
-          }],
-          root: project.root,
-        },
-      );
-    }
-    await new Promise((resolve) => setTimeout(resolve, LOCK_RETRY_MS));
-  }
-}
 
 function parseLines(source: string): AuditEvent[] {
   return source.split('\n').filter((line) => line.trim().length > 0).map((line) => JSON.parse(line) as AuditEvent);
@@ -239,142 +100,6 @@ export async function readChangeLogEvents(project: ProjectContext, changeId: str
   const key = shardKeyFor(changeId);
   return key === null ? legacy : [...legacy, ...await readLog(project, key)];
 }
-
-function eventHash(event: Omit<AuditEvent, 'hash'>): string {
-  return sha256(stableStringify(event));
-}
-
-/* ------------------------------------------------------------------ optional HMAC anchor */
-
-/**
- * An audit event as it is written to disk. `hmac` is present only when the project declares
- * `audit.chain.hmacSecretEnv`; it is not part of `AuditEvent` because the default posture does not
- * have it, and because every reader must keep working on a chain that does not carry it.
- */
-type SignedAuditEvent = AuditEvent & { hmac?: string };
-
-/**
- * Why an *optional* keyed anchor exists at all.
- *
- * `eventHash` is an unkeyed sha256 and `auditIndexDigest` is a self-consistency check, so both are
- * computable by anyone holding the repository — which, for an agent-driven product, is everyone the
- * chain is meant to attest. That makes the default chain corruption-evident (an edit that forgets to
- * recompute a hash is caught) but not tamper-evident (an edit that recomputes it is not). XForge's
- * default posture is honest-agent governance and that trade is deliberate: the chain's job is to
- * make an accidental or careless rewrite impossible to hide, not to defend against the operator.
- *
- * Teams that need the stronger property declare `audit.chain.hmacSecretEnv` in the manifest, naming
- * an environment variable — the same indirection `audit.remote.hmacSecretEnv` already uses for
- * remote delivery, so a secret is never written into a tracked file. When it is set, every appended
- * event and every committed index carries an HMAC over its unsigned body, and forging either
- * requires the secret rather than just the repository.
- *
- * Every failure mode fails *closed*. A chain written with a secret and read without one is reported
- * as unverifiable rather than silently downgraded to the unkeyed check, an unsigned event inside a
- * signed chain is reported as missing its signature, and appending to a chain whose declared secret
- * is absent from the environment refuses rather than writing an event nobody can later verify.
- */
-interface ChainSigner {
-  /** The declared environment variable name, or null when the project declares no chain secret. */
-  env: string | null;
-  /** The secret read from that variable; null when declared but absent from this environment. */
-  secret: string | null;
-  configured: boolean;
-}
-
-/**
- * `audit.chain` is read structurally rather than off the `Manifest` type: the declaration is opt-in
- * and additive, and this file must keep compiling and behaving identically for every project that
- * does not use it.
- */
-function chainSigner(project: ProjectContext): ChainSigner {
-  const env = (project.manifest.audit as { chain?: { hmacSecretEnv?: string } } | undefined)?.chain?.hmacSecretEnv ?? null;
-  const value = env ? process.env[env] : undefined;
-  return { env, secret: value && value.length > 0 ? value : null, configured: env !== null };
-}
-
-function signBody(secret: string, body: unknown): string {
-  return createHmac('sha256', secret).update(stableStringify(body)).digest('hex');
-}
-
-function sameSignature(left: string, right: string): boolean {
-  if (left.length !== right.length) return false;
-  return timingSafeEqual(Buffer.from(left, 'utf8'), Buffer.from(right, 'utf8'));
-}
-
-/**
- * - `ok`: signed and verified, or unsigned in a project that declares no chain secret.
- * - `missing`: the project signs its chain but this record carries no signature.
- * - `invalid`: the signature does not match the record.
- * - `unverifiable`: the record is signed but this environment holds no secret to check it with.
- */
-type SignatureVerdict = 'ok' | 'missing' | 'invalid' | 'unverifiable';
-
-function verdictFor(signer: ChainSigner, hmac: string | undefined, body: unknown): SignatureVerdict {
-  if (!signer.configured) return hmac === undefined ? 'ok' : 'unverifiable';
-  if (signer.secret === null) return 'unverifiable';
-  if (hmac === undefined) return 'missing';
-  return sameSignature(hmac, signBody(signer.secret, body)) ? 'ok' : 'invalid';
-}
-
-/** The signed content of an event: everything except the two fields derived from it. */
-function unsignedBody(event: AuditEvent): Omit<AuditEvent, 'hash'> {
-  const { hash: _hash, hmac: _hmac, ...body } = event as SignedAuditEvent;
-  return body;
-}
-
-function eventSignature(signer: ChainSigner, event: AuditEvent): SignatureVerdict {
-  return verdictFor(signer, (event as SignedAuditEvent).hmac, unsignedBody(event));
-}
-
-function signatureDiagnostic(verdict: SignatureVerdict, signer: ChainSigner, subject: string, eventId?: string): { code: string; message: string; eventId?: string } {
-  const where = eventId ? { eventId } : {};
-  if (verdict === 'invalid') return { code: 'XFORGE_AUDIT_HMAC_INVALID', message: `${subject} HMAC does not match its content.`, ...where };
-  if (verdict === 'missing') return { code: 'XFORGE_AUDIT_HMAC_MISSING', message: `${subject} carries no HMAC, but this project signs its audit chain (audit.chain.hmacSecretEnv: ${signer.env}).`, ...where };
-  return {
-    code: 'XFORGE_AUDIT_HMAC_UNVERIFIABLE',
-    message: signer.env
-      ? `${subject} is signed but ${signer.env} is not set in this environment, so the audit chain cannot be verified.`
-      : `${subject} is signed but this project declares no audit.chain.hmacSecretEnv, so the audit chain cannot be verified.`,
-    ...where,
-  };
-}
-
-/** Adds the chain hash and, when the project signs its chain, the HMAC over the same body. */
-function sealEvent(signer: ChainSigner, unsigned: Omit<AuditEvent, 'hash'>): SignedAuditEvent {
-  const hash = eventHash(unsigned);
-  if (!signer.configured) return { ...unsigned, hash };
-  if (signer.secret === null) {
-    throw new XForgeError(
-      diagnostic('XFORGE_AUDIT_CHAIN_SECRET_MISSING', `This project signs its audit chain, but ${signer.env} is not set in this environment.`, 'xforge/manifest.yaml'),
-      {
-        nextActions: [{
-          action: `Export ${signer.env} before running commands that record audit events`,
-          reason: 'Appending an unsigned event to a signed chain would leave a record that no later verification can accept, so the append refuses instead.',
-          type: 'maintenance',
-        }],
-      },
-    );
-  }
-  return { ...unsigned, hmac: signBody(signer.secret, unsigned), hash };
-}
-
-/**
- * Local chain events an attestation may be read from.
- *
- * With no chain secret declared this is the identity function, which is what keeps the default
- * posture unchanged. With one declared, an event whose HMAC does not verify — or cannot be verified
- * here — is not evidence of anything, so it is dropped rather than believed. Callers deliberately
- * keep the *unfiltered* list for their "is there any audit data at all?" tests: filtering an
- * unverifiable chain down to nothing must never look like a project that never had a chain, because
- * that would turn a fail-closed check into a fail-open one.
- */
-function attestableEvents(signer: ChainSigner, events: AuditEvent[]): AuditEvent[] {
-  if (!signer.configured) return events;
-  return events.filter((event) => eventSignature(signer, event) === 'ok');
-}
-
-/* ------------------------------------------------------------------ anchors */
 
 interface EventTypeSummary { count: number; lastTimestamp: string; lastHash: string }
 
