@@ -12,7 +12,7 @@ import { executeAudit } from './commands/audit.js';
 import { executeBrief, renderBriefText } from './commands/brief.js';
 import { executeCheck } from './commands/check.js';
 import { executeFindingsResolve } from './commands/findings.js';
-import { executeVerificationDeclare, executeVerificationDraftReceipt } from './commands/verification.js';
+import { executeVerificationDeclare, executeVerificationDraftReceipt, executeVerificationRetire } from './commands/verification.js';
 import { executeInstall } from './commands/install.js';
 import { executeState, renderStateText } from './commands/state.js';
 import { executeSync } from './commands/sync.js';
@@ -179,9 +179,9 @@ const HELP: Record<CommandName, { usage: string; description: string; options: s
   uninstall: { usage: 'xforge [--root <path>] uninstall [--target <target>] [--force] [--dry-run] [--text]', description: 'Remove managed target files, refusing on a digest mismatch unless --force.', options: ['--root', '--target', '--force', '--dry-run', '--text'] },
   check: { usage: 'xforge [--root <path>] check [--change <id>] [--gate <id>] [--stage <id> | --all-gates] [--force] [--text]', description: 'Validate project structure, deliveries, and the Gates the current Stage requires. With no Gate selection this also executes the verify commands declared by every work package, which for a large plan is dozens of external commands and minutes of wall time; narrowing with --gate, --stage or --all-gates runs only the selected Gates and skips them.', options: ['--root', '--change', '--gate', '--stage', '--all-gates', '--force', '--text'] },
   verification: {
-    usage: 'xforge [--root <path>] verification declare --gate-name <gate> (--command \'["prog","arg"]\' | --not-applicable <marker> --justification <text>) --by <person> [--module <id>] [--covers \'["marker"]\'] [--working-directory <path>] [--timeout-seconds <n>] [--dry-run] [--text]\n       xforge [--root <path>] verification draft-receipt --change <id> [--text]',
-    description: 'Declare how this project runs a declared-verification Gate, without hand-editing the Manifest; or draft the current Stage\'s verification receipt from what XForge already knows. The draft omits `status` and writes nothing: that field is the Stage\'s assertion that the work was verified, and a CLI filling it in would be deciding the thing the receipt exists to record.',
-    options: ['--root', '--change', '--gate-name', '--command', '--module', '--covers', '--working-directory', '--timeout-seconds', '--not-applicable', '--justification', '--by', '--dry-run', '--text'],
+    usage: 'xforge [--root <path>] verification declare --gate-name <gate> (--command \'["prog","arg"]\' | --not-applicable <marker> --justification <text>) --by <person> [--module <id>] [--covers \'["marker"]\'] [--working-directory <path>] [--timeout-seconds <n>] [--dry-run] [--text]\n       xforge [--root <path>] verification retire --gate-name <gate> (--command \'["prog","arg"]\' | --not-applicable <marker>) --by <person> --reason <text> [--module <id>] [--dry-run] [--text]\n       xforge [--root <path>] verification draft-receipt --change <id> [--text]',
+    description: 'Declare how this project runs a declared-verification Gate, without hand-editing the Manifest; retire a declaration that should stop running, keeping the record of who withdrew it and why; or draft the current Stage\'s verification receipt from what XForge already knows. The draft omits `status` and writes nothing: that field is the Stage\'s assertion that the work was verified, and a CLI filling it in would be deciding the thing the receipt exists to record.',
+    options: ['--root', '--change', '--gate-name', '--command', '--module', '--covers', '--working-directory', '--timeout-seconds', '--not-applicable', '--justification', '--by', '--reason', '--dry-run', '--text'],
   },
   findings: {
     usage: 'xforge [--root <path>] findings resolve --change <id> --id <finding-id> --answer <text> --by <person> [--dry-run] [--text]',
@@ -357,7 +357,13 @@ function parseArguments(argv: string[]): ParsedArguments {
   }
   if (parsed.command === 'archive' && !parsed.change) throw new XForgeError(diagnostic('XFORGE_CHANGE_REQUIRED', 'archive requires --change <id>.'));
   if (parsed.command === 'verification') {
-    if (!['declare', 'draft-receipt'].includes(parsed.subcommand ?? '')) throw new XForgeError(diagnostic('XFORGE_VERIFICATION_ACTION_REQUIRED', 'verification requires the declare or draft-receipt action.'));
+    if (!['declare', 'retire', 'draft-receipt'].includes(parsed.subcommand ?? '')) throw new XForgeError(diagnostic('XFORGE_VERIFICATION_ACTION_REQUIRED', 'verification requires the declare, retire or draft-receipt action.'));
+    if (parsed.subcommand === 'retire' && (!parsed.gateName || !parsed.by || !parsed.reason)) {
+      throw new XForgeError(diagnostic(
+        'XFORGE_VERIFICATION_ARGUMENTS_REQUIRED',
+        'verification retire requires --gate-name <gate>, --by <person> and --reason <text>. The person and the reason are required for the same reason they are on declare: nothing can decide mechanically whether a check is still worth running, so withdrawing one is a judgement that has to carry a name.',
+      ));
+    }
     if (parsed.subcommand === 'declare' && (!parsed.gateName || !parsed.by)) throw new XForgeError(diagnostic('XFORGE_VERIFICATION_ARGUMENTS_REQUIRED', 'verification declare requires --gate-name <gate> and --by <person>. The person is required because nothing can decide mechanically whether a command verifies anything; this records who answered.'));
     if (parsed.subcommand === 'draft-receipt' && !parsed.change) throw new XForgeError(diagnostic('XFORGE_CHANGE_REQUIRED', 'verification draft-receipt requires --change <id>.'));
   }
@@ -679,6 +685,13 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
   if (command === 'verification') {
     if (parsed.subcommand === 'draft-receipt') {
       const result = await executeVerificationDraftReceipt(project, { change: parsed.change! });
+      return envelope({ command, root: project.root, ...result });
+    }
+    if (parsed.subcommand === 'retire') {
+      const result = await executeVerificationRetire(project, {
+        gate: parsed.gateName!, command: parsed.commandArgv, notApplicable: parsed.notApplicable,
+        module: parsed.module, by: parsed.by!, reason: parsed.reason!, dryRun: parsed.dryRun,
+      });
       return envelope({ command, root: project.root, ...result });
     }
     const result = await executeVerificationDeclare(project, {

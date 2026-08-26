@@ -152,6 +152,22 @@ export interface VerificationRun {
    */
   declaredBy: string;
   declaredAt: string;
+  /**
+   * Withdrawn, and by whom, and why.
+   *
+   * A retired entry stays in the Manifest and stops being executed. Deleting it would be the
+   * obvious implementation and the wrong one: `declaredBy` exists because nothing can decide
+   * mechanically whether a command verifies anything, and the same is true in reverse -- a project
+   * that stops running a check has made a judgement somebody should be able to find later. The
+   * record is the point; the execution is what is being withdrawn.
+   *
+   * A live run met the missing half of this: `verification declare` was append-only, so a Gate
+   * command declared for one phase of a project kept running in every later one, and the only way
+   * to stop it was to hand-edit a Manifest that `protected-manifest` governs.
+   */
+  retiredBy?: string;
+  retiredAt?: string;
+  retiredReason?: string;
 }
 
 /** A detected toolchain a Gate deliberately does not cover, recorded so it is asked once. */
@@ -161,6 +177,10 @@ export interface VerificationDismissal {
   justification: string;
   declaredBy: string;
   declaredAt: string;
+  /** Withdrawn, on the same terms as a run's — see `VerificationRun`. */
+  retiredBy?: string;
+  retiredAt?: string;
+  retiredReason?: string;
 }
 
 export type VerificationEntry = VerificationRun | VerificationDismissal;

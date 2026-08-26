@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { Diagnostic, FileChange, ProjectContext, VerificationEntry } from '../types.js';
+import type { Diagnostic, FileChange, ProjectContext, VerificationEntry, VerificationRun } from '../types.js';
+import { isVerificationRun } from '../types.js';
 import { XForgeError, diagnostic } from '../core/errors.js';
 import { atomicWrite } from '../core/files.js';
 import { sha256 } from '../core/hash.js';
@@ -93,6 +94,117 @@ function withVerificationBlock(source: string, verification: Record<string, Veri
   const trimmed = withoutBlock.replace(/\n+$/, '\n');
   if (Object.keys(verification).length === 0) return trimmed;
   return `${trimmed}${dumpYaml({ verification })}`;
+}
+
+interface VerificationRetireOptions {
+  gate: string;
+  /** JSON argv identifying the run to withdraw, or the marker for a dismissal. */
+  command?: string;
+  notApplicable?: string;
+  module?: string;
+  by: string;
+  reason: string;
+  dryRun: boolean;
+}
+
+/**
+ * Withdraws a declaration without removing it.
+ *
+ * `declare` was append-only, so a command declared for one phase of a project kept running in every
+ * later one -- a live run's documentation-grep was still executing on every `unit-tests` Gate long
+ * after the phase that needed it, and the only way to stop it was to hand-edit the Manifest that
+ * `protected-manifest` governs. Gate cost grew with the project's history, and the history was the
+ * only thing that could not be edited.
+ *
+ * Retirement rather than deletion, on the same reasoning that made `declaredBy` required in the
+ * first place: nothing can decide mechanically whether a command verifies anything, so a project
+ * that *stops* running one has made a judgement somebody should be able to find. The entry stays,
+ * carries who withdrew it and why, and `core/verification.ts` skips it at the single point both
+ * kinds of entry are read.
+ */
+export async function executeVerificationRetire(
+  project: ProjectContext,
+  options: VerificationRetireOptions,
+): Promise<{ data: Record<string, unknown>; diagnostics: Diagnostic[]; changes: FileChange[] }> {
+  assertManaged(project, 'verification retire');
+  if (Boolean(options.command) === Boolean(options.notApplicable)) {
+    throw new XForgeError(diagnostic(
+      'XFORGE_VERIFICATION_ARGUMENTS_REQUIRED',
+      'Name exactly one of --command (the run to withdraw) or --not-applicable (the dismissal to withdraw).',
+    ));
+  }
+  const relative = 'xforge/manifest.yaml';
+  const absolute = path.join(project.root, 'xforge', 'manifest.yaml');
+  const source = await readFile(absolute, 'utf8');
+  const current = (parseYaml(source) ?? {}) as { verification?: Record<string, VerificationEntry[]> };
+  const entries = current.verification?.[options.gate] ?? [];
+
+  const wanted = options.command ? parseArgv(options.command, '--command') : null;
+  const matches = entries
+    .map((entry, index) => ({ entry, index }))
+    .filter(({ entry }) => !entry.retiredAt)
+    .filter(({ entry }) => (wanted
+      ? isVerificationRun(entry) && JSON.stringify(entry.command) === JSON.stringify(wanted)
+      : !isVerificationRun(entry) && entry.notApplicable === options.notApplicable))
+    .filter(({ entry }) => options.module === undefined || (entry as VerificationRun).module === options.module);
+
+  if (matches.length === 0) {
+    throw new XForgeError(diagnostic(
+      'XFORGE_VERIFICATION_RETIRE_NOT_FOUND',
+      `Gate ${options.gate} has no active declaration matching that ${wanted ? '--command' : '--not-applicable'}. It declares: ${entries.length === 0 ? '(none)' : entries.map(describeEntry).join('; ')}.`,
+      relative,
+    ));
+  }
+  if (matches.length > 1) {
+    /* Two entries can share a command and differ by module or by what they cover, and picking one
+       here would withdraw a check nobody chose to withdraw. */
+    throw new XForgeError(diagnostic(
+      'XFORGE_VERIFICATION_RETIRE_AMBIGUOUS',
+      `Gate ${options.gate} has ${matches.length} active declarations matching that argument: ${matches.map(({ entry }) => describeEntry(entry)).join('; ')}. Add --module to name which one.`,
+      relative,
+    ));
+  }
+
+  const retiredAt = new Date().toISOString();
+  const verification = { ...(current.verification ?? {}) };
+  verification[options.gate] = entries.map((entry, index) => index === matches[0]!.index
+    ? { ...entry, retiredBy: options.by, retiredAt, retiredReason: options.reason }
+    : entry);
+
+  const next = withVerificationBlock(source, verification);
+  const parsed = parseYaml(next);
+  const schemaDiagnostics = await validateSchema('manifest', parsed, relative);
+  if (schemaDiagnostics.some((item) => item.severity === 'error')) {
+    throw new XForgeError([
+      diagnostic('XFORGE_VERIFICATION_WRITE_REFUSED', 'Retiring this would produce a Manifest that fails validation. Nothing was written.', relative),
+      ...schemaDiagnostics,
+    ], { root: project.root });
+  }
+  if (!options.dryRun) await atomicWrite(project.root, relative, next);
+  return {
+    data: {
+      gate: options.gate,
+      retired: describeEntry(matches[0]!.entry),
+      retiredBy: options.by,
+      reason: options.reason,
+      dryRun: options.dryRun,
+      remainingActive: verification[options.gate]!.filter((entry) => !entry.retiredAt).length,
+    },
+    diagnostics: [diagnostic(
+      'XFORGE_VERIFICATION_RETIRED',
+      `${describeEntry(matches[0]!.entry)} will no longer run for Gate ${options.gate}. It stays in the Manifest, recording that ${options.by} withdrew it: ${options.reason}.`,
+      relative,
+      'info',
+    )],
+    changes: next === source ? [] : [{ action: 'modify', path: relative, digest: sha256(next), source: `verification:retire:${options.gate}` }],
+  };
+}
+
+/** One declaration, named the way a person would name it when asking for it to be withdrawn. */
+function describeEntry(entry: VerificationEntry): string {
+  return isVerificationRun(entry)
+    ? `${JSON.stringify(entry.command)}${entry.module ? ` (module ${entry.module})` : ''}`
+    : `not-applicable ${entry.notApplicable}`;
 }
 
 export async function executeVerificationDeclare(

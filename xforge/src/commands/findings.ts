@@ -223,7 +223,11 @@ export async function executeFindingsResolve(
       path: relative,
     },
     diagnostics,
-    changes: options.dryRun || next === source ? [] : [{ action: 'modify', path: relative, digest: sha256(next), source: `findings:${options.id}` }],
+    /* The plan, whether or not it was applied — `changes` describes what a command would do and
+       `dryRun` says whether it did it. Reporting an empty plan under `--dry-run` reads as "this
+       would change nothing", which is the opposite of true and the one thing a rehearsal must not
+       say. `install --dry-run` and `verification declare --dry-run` have always answered this way. */
+    changes: next === source ? [] : [{ action: 'modify', path: relative, digest: sha256(next), source: `findings:${options.id}` }],
     nextActions,
   };
 }

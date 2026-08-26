@@ -479,7 +479,7 @@
         "declaredBy",
         "declaredAt"
       ],
-      "description": "One command that verifies part of this project. Declared per Gate name, so the same mechanism serves unit-tests, security-scan, or any Gate a project adds.",
+      "description": "One command that verifies part of this project. Declared per Gate name, so the same mechanism serves unit-tests, security-scan, or any Gate a project adds. A retired run stays here and stops being executed: the record of who declared it, and who withdrew it and why, is the point of keeping it.",
       "properties": {
         "command": {
           "type": "array",
@@ -515,6 +515,20 @@
           "minLength": 1,
           "description": "The person who attests that this is how this project runs this check. No algorithm can decide whether a command really verifies anything, so this records who answered."
         },
+        "retiredBy": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The person who withdrew this declaration. Present together with retiredAt and retiredReason; a retired entry is kept and skipped, never deleted."
+        },
+        "retiredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "retiredReason": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Why it was withdrawn. Required, for the same reason declaredBy is: nothing can decide mechanically whether a check is still worth running."
+        },
         "declaredAt": {
           "type": "string",
           "format": "date-time"
@@ -543,6 +557,20 @@
         "declaredBy": {
           "type": "string",
           "minLength": 1
+        },
+        "retiredBy": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The person who withdrew this declaration. Present together with retiredAt and retiredReason; a retired entry is kept and skipped, never deleted."
+        },
+        "retiredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "retiredReason": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Why it was withdrawn. Required, for the same reason declaredBy is: nothing can decide mechanically whether a check is still worth running."
         },
         "declaredAt": {
           "type": "string",

@@ -191,6 +191,15 @@ function isIntegratorPackage(workPackage: Pick<WorkPackage, 'role'>): boolean {
   return workPackage.role === 'integrator';
 }
 
+/**
+ * The governance assets no work package may write, as roots rather than as patterns.
+ *
+ * The same set `protectedWritePaths` reserves, in the form a *changed path* can be tested against:
+ * that function answers "may this plan declare this pattern", and this answers "is this file one of
+ * them". Kept beside it so the two cannot drift into disagreeing about what governance is.
+ */
+const GOVERNANCE_ASSET_ROOTS = ['xforge/manifest.yaml', 'xforge/lock.yaml', 'xforge/constitution.md'];
+
 function protectedWritePaths(project: ProjectContext, changeId: string, config: ChangeConfig, resources: SelectedResources, integratorPaths: string[] = []): string[] {
   const changeRoot = `${project.changesPath}/${changeId}`;
   const paths = new Set([
@@ -432,11 +441,34 @@ async function validateSuccessfulDelivery(
      */
     if (isControlPlaneBookkeeping(changed, changeRoot)) continue;
     if (!workPackage.write_paths.some((pattern) => matchesWritePath(changed, pattern))) {
-      diagnostics.push(diagnostic(
-        'XFORGE_WORK_PACKAGE_WRITE_ESCAPE',
-        `Work package ${workPackage.id} changed a path outside write_paths: ${changed}`,
-        sourcePath,
-      ));
+      /*
+       * A governance asset in the range is a different refusal, and saying so is what breaks a loop
+       * two live runs walked into.
+       *
+       * `governance-assets-are-integrator-only` states that the Constitution, the canonical Specs,
+       * the Manifest and the Lock are written by the Integrator -- so a Change that amends the
+       * Constitution has to write one. Reported as an ordinary write escape, the message invites
+       * exactly one repair: add the path to `write_paths`. That is refused too, by
+       * XFORGE_WORK_PACKAGE_SHARED_WRITE, on the grounds that no package may write it. Neither
+       * message mentioned the other, and the route that does work -- deliver the governance edit
+       * outside every package's range, where `attributablePaths` already accounts for it -- appears
+       * in neither. A live run found it by making both mistakes first.
+       */
+      const governance = GOVERNANCE_ASSET_ROOTS.find((root) => changed === root || changed.startsWith(`${root}/`))
+        ?? (changed.startsWith(`${project.specsPath}/`) ? project.specsPath : null);
+      diagnostics.push(governance
+        ? diagnostic(
+          'XFORGE_WORK_PACKAGE_GOVERNANCE_IN_RANGE',
+          `Work package ${workPackage.id} delivers a range containing ${changed}, which is a governance asset no package may write — adding it to write_paths is refused by XFORGE_WORK_PACKAGE_SHARED_WRITE, so that is not the repair. The Integrator writes these outside every package, in a commit no delivery range covers; XForge already treats them as attributed, so nothing reports them unowned. Move the governance edit to its own commit outside this package's base..head, and keep the package's done_when about the work it does own.`,
+          sourcePath,
+          'error',
+          { packageId: workPackage.id, path: changed, governanceRoot: governance },
+        )
+        : diagnostic(
+          'XFORGE_WORK_PACKAGE_WRITE_ESCAPE',
+          `Work package ${workPackage.id} changed a path outside write_paths: ${changed}`,
+          sourcePath,
+        ));
     }
   }
   /*
@@ -778,7 +810,7 @@ export async function resolveWorkPackages(
             if (patternsPotentiallyOverlap(pattern, normalizedGovernance)) {
               diagnostics.push(diagnostic(
                 'XFORGE_WORK_PACKAGE_SHARED_WRITE',
-                `Integrator package ${workPackage.id} write path overlaps a governance path no package may write: ${governancePath}`,
+                `Integrator package ${workPackage.id} write path overlaps a governance path no package may write: ${governancePath}. The Integrator writes these outside every package, in a commit no delivery range covers; attributablePaths already accounts for them, so nothing reports them unowned. Reserve nothing for it in integrator_paths either: that would require an integrator package whose write_paths fall inside the reservation, and this refusal would fire again on that package.`,
                 planPath,
               ));
             }
@@ -790,7 +822,7 @@ export async function resolveWorkPackages(
           if (patternsPotentiallyOverlap(pattern, normalizedProtected)) {
             diagnostics.push(diagnostic(
               'XFORGE_WORK_PACKAGE_SHARED_WRITE',
-              `Work package ${workPackage.id} write path overlaps an Integrator-only path: ${protectedPath}`,
+              `Work package ${workPackage.id} write path overlaps an Integrator-only path: ${protectedPath}.${governancePaths.includes(protectedPath) ? ' The Integrator writes these outside every package, in a commit no delivery range covers; attributablePaths already accounts for them, so nothing reports them unowned. Reserve nothing for it in integrator_paths either: that would require an integrator package whose write_paths fall inside the reservation, and this refusal would fire again on that package.' : ''}`,
               planPath,
             ));
           }

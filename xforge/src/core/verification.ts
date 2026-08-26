@@ -48,6 +48,9 @@ function entriesFor(project: ProjectContext, gate: string): { runs: Verification
   const runs: VerificationRun[] = [];
   const dismissals: VerificationDismissal[] = [];
   for (const entry of entries) {
+    /* A retired entry is still on the record and no longer executed. Skipped here, at the one place
+       both kinds are read, so nothing downstream has to remember the distinction. */
+    if (entry.retiredAt) continue;
     if (isVerificationRun(entry)) runs.push(entry);
     else dismissals.push(entry);
   }

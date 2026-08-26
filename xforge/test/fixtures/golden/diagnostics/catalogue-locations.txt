@@ -275,6 +275,9 @@ XFORGE_VERIFICATION_COMMAND_INVALID  src/commands/verification.ts
 XFORGE_VERIFICATION_DRAFT_GATE_UNAVAILABLE  src/commands/verification.ts
 XFORGE_VERIFICATION_GATE_MIGRATED  src/commands/update.ts
 XFORGE_VERIFICATION_RECEIPT_NOT_REQUIRED  src/commands/verification.ts
+XFORGE_VERIFICATION_RETIRE_AMBIGUOUS  src/commands/verification.ts
+XFORGE_VERIFICATION_RETIRE_NOT_FOUND  src/commands/verification.ts
+XFORGE_VERIFICATION_RETIRED  src/commands/verification.ts
 XFORGE_VERIFICATION_WRITE_REFUSED  src/commands/verification.ts
 XFORGE_WORK_PACKAGE_ACK_ARGUMENTS_REQUIRED  src/cli.ts
 XFORGE_WORK_PACKAGE_ACK_DELIVERY_MISSING  src/commands/work-package.ts
@@ -322,6 +325,7 @@ XFORGE_WORK_PACKAGE_GIT_DIFF_FAILED  src/core/work-packages.ts
 XFORGE_WORK_PACKAGE_GIT_REQUIRED  src/commands/work-package.ts
 XFORGE_WORK_PACKAGE_GIT_REQUIRED  src/core/work-packages.ts
 XFORGE_WORK_PACKAGE_GLOB_UNSUPPORTED  src/core/work-packages.ts
+XFORGE_WORK_PACKAGE_GOVERNANCE_IN_RANGE  src/core/work-packages.ts
 XFORGE_WORK_PACKAGE_HEAD_NOT_CURRENT  src/core/work-packages.ts
 XFORGE_WORK_PACKAGE_HEAD_REQUIRED  src/core/work-packages.ts
 XFORGE_WORK_PACKAGE_INCOMPLETE  src/core/work-packages.ts

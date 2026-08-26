@@ -140,7 +140,9 @@ describe('xforge findings resolve', () => {
       'findings', 'resolve', '--change', CHANGE, '--id', 'CHK-001', '--answer', 'Answered.', '--by', 'owner@example.test', '--dry-run',
     ]);
     expect(dry.code).toBe(0);
-    expect(dry.json.changes).toEqual([]);
+    /* The plan is reported; only the write is skipped. An empty plan would read as "this would
+       change nothing", which is the one thing a rehearsal must not say. */
+    expect(dry.json.changes.map((item: any) => item.path)).toEqual([`xforge/changes/${CHANGE}/${CHECK_FINDINGS_PATH}`]);
     expect(await readFile(path.join(root, 'xforge', 'changes', CHANGE, 'evidence', 'check-findings.yaml'), 'utf8')).toBe(before);
 
     const missing = await runCli(root, ['findings', 'resolve', '--change', CHANGE, '--id', 'CHK-001']);

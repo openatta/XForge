@@ -397,6 +397,11 @@ xforge [--root <path>] verification declare --gate-name <gate> \
        --by <person> [--module <id>] [--covers '["marker"]'] \
        [--working-directory <path>] [--timeout-seconds <n>] [--dry-run] [--text]
 
+# 退役一条不该再跑的声明（保留记录，停止执行）
+xforge [--root <path>] verification retire --gate-name <gate> \
+       ( --command '["prog","arg"]' | --not-applicable <marker> ) \
+       --by <person> --reason <text> [--module <id>] [--dry-run] [--text]
+
 # 起草当前 Stage 的验证 receipt
 xforge [--root <path>] verification draft-receipt --change <id> [--text]
 ```
@@ -408,6 +413,21 @@ xforge [--root <path>] verification draft-receipt --change <id> [--text]
 > 而一次实测里手写该块时缩进少了一级，此后治理 dispatcher 再也读不了 Manifest，
 > 于是拒绝了每一次工具调用——包括本可以修复它的那些。
 > 这条命令会写好该块、自动填 `declaredAt`，**宁可拒绝也不会产出一份加载不了的 Manifest**。
+
+### 为什么是「退役」而不是「删除」
+
+`declare` 曾经只增不减，而 Gate run **按序执行全部声明**——一条为某个阶段声明的命令，
+会在此后每一次 Gate run 上继续跑，唯一的移除途径是手改受 `protected-manifest` 管辖的 Manifest。
+一次实测里，为文档阶段声明的 grep 在很久之后仍在每次 `unit-tests` 上执行：
+**Gate 成本随项目历史线性增长，而历史恰恰是唯一改不动的东西。**
+
+`retire` **保留条目、停止执行**，并在条目上记下 `retiredBy` / `retiredAt` / `retiredReason`。
+不删除的理由和当初 `declaredBy` 必填的理由是同一条：
+没有任何机械方式能判定一条命令是否真的在验证什么，所以**决定不再跑它同样是一次判断**，
+应当有人能在事后找到它。`--by` 与 `--reason` 都必填。
+
+同一条参数匹配到多条活跃声明时命令**拒绝执行**并要求用 `--module` 指名——
+替你挑一条，等于替你撤掉一个你没打算撤的检查。
 
 `draft-receipt` **刻意不产出 `status`，也不写文件**——那个字段是本 Stage
 对「这项工作已被验证」的断言，由 CLI 填它，就等于让它替你决定这份 receipt 本身要记录的那件事。
