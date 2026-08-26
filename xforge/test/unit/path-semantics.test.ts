@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { matchPathGlob, matchPathGlobFallback, ruleApplies } from '../../src/core/governance.js';
-import { matchesWritePath } from '../../src/core/work-packages.js';
+import { matchesWritePath } from '../../src/core/work-packages/globs.js';
 import { golden } from '../golden.js';
 
 /**

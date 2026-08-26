@@ -1,6 +1,7 @@
 import { access, readFile } from 'node:fs/promises';
 import type { ProjectContext } from '../types.js';
 import { knownIdentities, unknownIdentityReason, unverifiableIdentityWarning, type KnownIdentities } from './ledger-identity.js';
+import { verdict, type LedgerVerdict } from './ledger.js';
 import { safeResolve } from './path-safety.js';
 import { loadYaml, trimmedText } from './yaml.js';
 
@@ -43,12 +44,7 @@ interface CheckFindingsLedger {
   findings?: unknown;
 }
 
-interface CheckFindingsResult {
-  status: 'passed' | 'failed';
-  /** One line per problem, in the order they were found; empty when the ledger is acceptable. */
-  problems: string[];
-  /** Non-blocking quality issues, e.g. a `refs` path that does not exist; never affects `status`. */
-  warnings: string[];
+interface CheckFindingsResult extends LedgerVerdict {
   counts: Record<FindingSeverity, number>;
   openBlockers: string[];
 }
@@ -81,13 +77,7 @@ async function evaluate(
   const resolvedNames: string[] = [];
 
   if (!Array.isArray(document.findings)) {
-    return {
-      status: 'failed',
-      problems: [`${relative}: expected a top-level "findings" list. Record an explicit empty list when the review found nothing.`],
-      warnings,
-      counts,
-      openBlockers,
-    };
+    return { ...verdict([`${relative}: expected a top-level "findings" list. Record an explicit empty list when the review found nothing.`], warnings), counts, openBlockers };
   }
 
   const seen = new Set<string>();
@@ -174,7 +164,7 @@ async function evaluate(
   if (unverifiable) {
     warnings.push(`${relative}: ${resolvedNames.length} resolvedBy name(s) (${resolvedNames.join(', ')}) were accepted without verification — ${unverifiable}.`);
   }
-  return { status: problems.length === 0 ? 'passed' : 'failed', problems, warnings, counts, openBlockers };
+  return { ...verdict(problems, warnings), counts, openBlockers };
 }
 
 export async function evaluateCheckFindings(project: ProjectContext, changeId: string, known?: KnownIdentities): Promise<CheckFindingsResult> {
@@ -182,26 +172,20 @@ export async function evaluateCheckFindings(project: ProjectContext, changeId: s
   const counts: Record<FindingSeverity, number> = { blocker: 0, warning: 0, suggestion: 0 };
   let absolute: string;
   try { absolute = await safeResolve(project.root, relative); }
-  catch { return { status: 'failed', problems: [`${relative}: path is outside the project.`], warnings: [], counts, openBlockers: [] }; }
+  catch { return { ...verdict([`${relative}: path is outside the project.`]), counts, openBlockers: [] }; }
   try { await access(absolute); }
   catch {
-    return {
-      status: 'failed',
-      problems: [`${relative}: the Check Stage must record a machine-decidable findings ledger; narrative in check-report.md does not satisfy this Gate.`],
-      warnings: [],
-      counts,
-      openBlockers: [],
-    };
+    return { ...verdict([`${relative}: the Check Stage must record a machine-decidable findings ledger; narrative in check-report.md does not satisfy this Gate.`], []), counts, openBlockers: [] };
   }
   let document: CheckFindingsLedger;
   try { document = await loadYaml<CheckFindingsLedger>(absolute, relative); }
-  catch (error) { return { status: 'failed', problems: [`${relative}: ${(error as Error).message}`], warnings: [], counts, openBlockers: [] }; }
+  catch (error) { return { ...verdict([`${relative}: ${(error as Error).message}`]), counts, openBlockers: [] }; }
   if (!document || typeof document !== 'object') {
-    return { status: 'failed', problems: [`${relative}: expected a YAML mapping.`], warnings: [], counts, openBlockers: [] };
+    return { ...verdict([`${relative}: expected a YAML mapping.`]), counts, openBlockers: [] };
   }
   /* An empty file parses to null/'' upstream; treat a readable but contentless ledger as unusable. */
   if ((await readFile(absolute, 'utf8')).trim().length === 0) {
-    return { status: 'failed', problems: [`${relative}: the findings ledger is empty.`], warnings: [], counts, openBlockers: [] };
+    return { ...verdict([`${relative}: the findings ledger is empty.`]), counts, openBlockers: [] };
   }
   /* No approval receipts are consulted here deliberately: Check runs ahead of any approval Stage, so
    * the only identities this ledger can hold a `resolvedBy` to are the Change's own Git authors. */

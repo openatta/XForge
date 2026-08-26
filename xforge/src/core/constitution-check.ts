@@ -2,6 +2,7 @@ import { access, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import fg from 'fast-glob';
 import type { ApprovalReceipt, ProjectContext } from '../types.js';
+import { verdict, type LedgerVerdict } from './ledger.js';
 import { safeResolve } from './path-safety.js';
 import { loadYaml, trimmedText } from './yaml.js';
 import { knownIdentities, unknownIdentityReason, unverifiableIdentityWarning, type KnownIdentities } from './ledger-identity.js';
@@ -59,11 +60,7 @@ type ReferenceKind = 'gate' | 'path' | 'requirement';
  */
 const APPROVAL_RECEIPT_REFERENCE = /(?:^|\/)approvals\/[^/]+\/[0-9a-f-]{36}\.json$/i;
 
-interface ConstitutionCheckResult {
-  status: 'passed' | 'failed';
-  problems: string[];
-  /** Non-blocking observations, e.g. a principle the CLI could have cross-checked but had no evidence for. */
-  warnings: string[];
+interface ConstitutionCheckResult extends LedgerVerdict {
   principles: string[];
   covered: string[];
   violations: string[];
@@ -206,7 +203,7 @@ export async function evaluateConstitutionCheck(
 ): Promise<ConstitutionCheckResult> {
   const relative = `${project.changesPath}/${changeId}/${CONSTITUTION_CHECK_PATH}`;
   const principles = constitutionPrinciples(project.constitution.content);
-  const empty = (problems: string[]): ConstitutionCheckResult => ({ status: 'failed', problems, warnings: [], principles, covered: [], violations: [] });
+  const empty = (problems: string[]): ConstitutionCheckResult => ({ ...verdict(problems), principles, covered: [], violations: [] });
 
   if (principles.length === 0) {
     return empty([`${project.constitution.path}: no "## " principle sections found; the Constitution cannot be checked against.`]);
@@ -352,7 +349,7 @@ export async function evaluateConstitutionCheck(
     warnings.push(`${relative}: ${approvedNames.length} approvedBy name(s) (${approvedNames.join(', ')}) were accepted without verification — ${unverifiable}.`);
   }
 
-  return { status: problems.length === 0 ? 'passed' : 'failed', problems, warnings, principles, covered, violations };
+  return { ...verdict(problems, warnings), principles, covered, violations };
 }
 
 /**

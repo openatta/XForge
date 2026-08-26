@@ -1,7 +1,7 @@
 import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { readDiagnosticCatalogue, rawCallCount, renderCatalogue, splitArguments } from '../diagnostics-catalogue.js';
+import { readDiagnosticCatalogue, rawCallCount, renderCatalogue, renderCatalogueLocations, splitArguments } from '../diagnostics-catalogue.js';
 import { golden } from '../golden.js';
 import { repositoryRoot, xforgeRoot } from '../helpers.js';
 
@@ -43,7 +43,14 @@ describe('diagnostic catalogue', () => {
   });
 
   it('matches the recorded fingerprint', async () => {
+    /* Code, severity, locatability — what a reader of the output experiences. Deliberately without
+       the module, so that moving a call site is not a change to this. */
     const { actual, expected } = await golden('diagnostics/catalogue.txt', renderCatalogue(await readDiagnosticCatalogue()));
+    expect(actual).toBe(expected);
+  });
+
+  it('records where each code is raised, as an index that is expected to move', async () => {
+    const { actual, expected } = await golden('diagnostics/catalogue-locations.txt', renderCatalogueLocations(await readDiagnosticCatalogue()));
     expect(actual).toBe(expected);
   });
 

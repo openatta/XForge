@@ -153,15 +153,29 @@ export async function readDiagnosticCatalogue(): Promise<DiagnosticSite[]> {
 }
 
 /**
- * The checked-in form: one line per call site, sorted by code then location.
+ * The behavioural fingerprint: what each code is, not where it lives.
  *
- * Sorted rather than source-ordered so that moving a call site within a file — which a structural
- * refactor does constantly — is not a fingerprint change, while adding, removing, or re-severing
- * one is.
+ * Code, severity, and whether it can be located — the three things a reader of the output actually
+ * experiences. Deduplicated and sorted, so that moving or duplicating a call site is not a change to
+ * this while adding, dropping or re-severing a code is. Where each one is raised is recorded
+ * separately by `renderCatalogueLocations`.
  */
 export function renderCatalogue(sites: DiagnosticSite[]): string {
-  const lines = sites
-    .map((site) => `${site.code ?? '(dynamic)'}  ${site.severity}  ${site.hasPath ? 'path' : 'no-path'}  ${site.file}`)
-    .sort((left, right) => left.localeCompare(right));
-  return `${lines.join('\n')}\n`;
+  const lines = [...new Set(sites.map((site) => `${site.code ?? '(dynamic)'}  ${site.severity}  ${site.hasPath ? 'path' : 'no-path'}`))];
+  return `${lines.sort((left, right) => left.localeCompare(right)).join('\n')}\n`;
+}
+
+/**
+ * Where each code is raised, recorded apart from what it does.
+ *
+ * The two were one file and the file column defeated the fingerprint's own purpose: moving a call
+ * site between modules -- which a structural refactor does constantly -- re-recorded a list whose
+ * every behavioural entry was unchanged, and a signature that fires on movement is one people learn
+ * to re-record without reading. What a reader experiences is the code, its severity and whether it
+ * can be located; that is the fingerprint. Which module raises it is an index, useful and expected
+ * to move.
+ */
+export function renderCatalogueLocations(sites: DiagnosticSite[]): string {
+  const lines = [...new Set(sites.map((site) => `${site.code ?? '(dynamic)'}  ${site.file}`))];
+  return `${lines.sort((left, right) => left.localeCompare(right)).join('\n')}\n`;
 }

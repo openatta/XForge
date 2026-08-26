@@ -2,6 +2,7 @@ import { access, readFile } from 'node:fs/promises';
 import type { GateEvidence, ProjectContext } from '../types.js';
 import { safeResolve } from './path-safety.js';
 import { loadYaml, trimmedText } from './yaml.js';
+import { verdict, type LedgerVerdict } from './ledger.js';
 
 /**
  * The machine-decidable half of the Verify Stage.
@@ -48,10 +49,7 @@ interface VerificationReceiptExpectation {
   gates: readonly GateEvidence[];
 }
 
-interface VerificationReceiptResult {
-  status: 'passed' | 'failed';
-  /** One line per problem, in the order they were found; empty when the receipt is acceptable. */
-  problems: string[];
+interface VerificationReceiptResult extends LedgerVerdict {
   /** A short, stable slug for the first problem, shaped for a `condition:<key>:<reason>` block. */
   reason: string;
   /** Gate ids the receipt cited, whether or not they were accepted. */
@@ -74,7 +72,7 @@ interface VerificationReceiptLedger {
 }
 
 function failed(reason: string, problems: string[], cited: string[] = []): VerificationReceiptResult {
-  return { status: 'failed', problems, reason, cited };
+  return { ...verdict(problems), reason, cited };
 }
 
 function evaluate(
@@ -148,7 +146,7 @@ function evaluate(
     if (!seen.has(evidence.gate)) problems.push(`${relative}: Gate ${evidence.gate} passed for this Stage but the receipt does not cite it.`);
   }
 
-  if (problems.length === 0) return { status: 'passed', problems, reason: 'satisfied', cited };
+  if (problems.length === 0) return { ...verdict(problems), reason: 'satisfied', cited };
   /* The block string carries one slug, so it names the first and most specific failure; the full
      list travels in `problems` for the caller that can print more than a `blockedBy` entry. */
   const uncited = expected.gates.find((evidence) => !seen.has(evidence.gate));

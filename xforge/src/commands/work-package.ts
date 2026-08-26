@@ -9,7 +9,8 @@ import { isStageFlow, resolveChangeState } from '../core/flow-resolver.js';
 import { sha256, stableStringify } from '../core/hash.js';
 import { assertManaged } from '../core/project-loader.js';
 import { loadSelectedResources } from '../core/resource-loader.js';
-import { git, latestDispatchFor, resolveWorkPackages, workPackageVerificationGates } from '../core/work-packages.js';
+import { git, resolveWorkPackages, workPackageVerificationGates } from '../core/work-packages.js';
+import { latestDispatchFor } from '../core/work-packages/records.js';
 import { runVerifyCommand } from '../runners/gate.js';
 import { normalizeRelative, safeResolve } from '../core/path-safety.js';
 
