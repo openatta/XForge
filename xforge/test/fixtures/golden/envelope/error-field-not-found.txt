@@ -1358,6 +1358,7 @@ exit: 1
           "chainHead": "<sha256>",
           "eventCount": 44,
           "remotePending": 22,
+          "remoteRequired": false,
           "coverageGaps": []
         },
         "readyTransitions": [

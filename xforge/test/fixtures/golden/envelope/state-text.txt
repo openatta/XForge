@@ -30,7 +30,7 @@ CHANGE add-feature — flow solid, stage verify
     → ready-to-archive: ready
     → apply: ready
   Approvals pending: (none)
-  Audit: chain valid, 44 events, 22 awaiting remote delivery, coverage gaps: (none)
+  Audit: chain valid, 44 events, remote delivery 22 pending (not required at this assurance level — does not block), coverage gaps: (none)
 
 Not shown here: targets and installation ownership, every Artifact entry, the full transition and approval receipt history, and the Constitution/Rules context block.
 Drop --text for the complete envelope, or address one value with --field (for example --field change.governance.revision.contentRevision).

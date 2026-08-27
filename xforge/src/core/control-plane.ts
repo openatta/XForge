@@ -20,10 +20,12 @@ import { readReviewAcknowledgements, reviewCovers } from './review-acknowledgeme
 import type { SelectedResources } from './resource-loader.js';
 import { changeImplementers, computeGovernanceRevision } from './revision.js';
 import { validateSchema } from './validator.js';
-import { approvalVerifiedInChain, readChangeAuditEvents, type ChangeAuditFacts } from './audit.js';
+import { approvalVerifiedInChain, readChangeAuditEvents, remoteDeliveryRequired, type ChangeAuditFacts } from './audit.js';
 import { verifyApprovalReceipt } from './approval-receipt.js';
 import { knownIdentities, unknownIdentityReason, type KnownIdentities } from './ledger-identity.js';
 import { VERIFICATION_RECEIPT_CONDITION, evaluateVerificationReceipt } from './verification-receipt.js';
+import { flowArchiveOperation } from './flow-resolver.js';
+import { undeclaredRequiredGates } from './verification.js';
 import { resolveWorkPackages, type WorkPackageResolution } from './work-packages.js';
 import { parse as parseYaml } from 'yaml';
 import { exists } from './files.js';
@@ -314,6 +316,33 @@ export async function resolveControlPlane(
     ));
   }
 
+  /*
+   * A required declared Gate nobody has answered, said here rather than only in `doctor`.
+   *
+   * The condition was already detected — `commands/doctor.ts` finds it and names the exact declare
+   * command — but only a reader who thinks to run `doctor` ever sees it, and an agent-driven session
+   * has no reason to. A field report watched a Major Flow's Gate fail on the archive path, after a
+   * human approval had already been spent, for a question answerable before the first Change
+   * existed. `state` is what every Skill polls, so this is where it becomes unmissable.
+   *
+   * `info`, not `warning`. The severity is not what was missing — visibility was — and `check`
+   * counts warnings when deciding whether a Stage may close, so raising this one would make an
+   * unanswered question block Stages it has no business blocking. It is also self-clearing: one
+   * `verification declare` and it is gone for good.
+   */
+  const undeclared = undeclaredRequiredGates(project, resources.gates, [
+    ...flow.stages.flatMap((stage) => [...(stage.gates ?? []), ...(stage.exit?.gates ?? [])]),
+    ...flowArchiveOperation(flow).mandatoryGates,
+  ]);
+  for (const gateId of undeclared) {
+    diagnostics.push(diagnostic(
+      'XFORGE_VERIFICATION_GATE_UNDECLARED',
+      `Flow ${flow.metadata.name} requires Gate ${gateId}, which runs whatever this project declares under manifest.verification.${gateId} — currently nothing. It will refuse the first time a Change reaches the Stage that runs it, which on this Flow is after an approval has been collected. Answer it now with \`xforge verification declare --gate-name ${gateId} --command '["cargo","test"]' --by <person>\`, substituting the command this project actually verifies itself with. Do not answer it with whatever command happens to exist: a test command on a repository with no tests passes this Gate while asserting nothing.`,
+      'xforge/manifest.yaml',
+      'info',
+    ));
+  }
+
   const governance: GovernanceState = {
     currentStage, transitionHead, transitions: transitions.receipts, revision,
     pendingApprovals: pendingApprovals.filter((item, index, all) => index === all.findIndex((candidate) => candidate.policyId === item.policyId && candidate.transition === item.transition)),
@@ -321,7 +350,7 @@ export async function resolveControlPlane(
     rules,
     policies: [...resources.policies.values()].map((item) => ({ id: item.value.metadata.name, capability: item.value.spec.capability, effect: item.value.spec.effect, applicable: policyApplies(item.value, config, currentStage) })),
     hooks: [...resources.hooks.values()].map((item) => ({ id: item.value.metadata.name, plane: item.value.spec.plane ?? 'legacy', event: item.value.spec.event, selected: true, enabled: item.value.spec.enabled })),
-    audit: { chainValid: auditFacts.chain.valid, chainHead: auditFacts.chain.head, eventCount: auditFacts.eventCount, remotePending: auditFacts.delivery.pending, coverageGaps: auditFacts.coverageGaps },
+    audit: { chainValid: auditFacts.chain.valid, chainHead: auditFacts.chain.head, eventCount: auditFacts.eventCount, remotePending: auditFacts.delivery.pending, remoteRequired: remoteDeliveryRequired(project, flow), coverageGaps: auditFacts.coverageGaps },
     readyTransitions,
   };
   return { governance, diagnostics, flow, state, workPackages, transitionRequirements, resources, auditFacts, transitionChainValid: transitions.chainValid };
@@ -574,7 +603,7 @@ export async function terminalGovernanceBlocks(
     if (result.missing > 0) blocks.push(`approval:${policyId}:missing-${result.missing}`);
   }
   const policy = flow.terminal.archive.auditPolicy ?? flow.governance?.audit;
-  const remoteRequired = policy?.remoteDelivery === 'required' || Boolean(project.manifest.audit?.remote?.requiredFor.includes(flow.policy.assuranceLevel));
+  const remoteRequired = remoteDeliveryRequired(project, flow);
   /*
    * Archive is decided from the Change's own committed audit index when the gitignored local chain
    * is missing, so a fresh clone or a CI runner can close a Change the laptop that ran it started.

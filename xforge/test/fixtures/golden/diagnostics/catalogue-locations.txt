@@ -120,6 +120,7 @@ XFORGE_FLOW_TOO_WEAK  src/core/checker.ts
 XFORGE_FLOWS_MISSING  src/core/flow-resolver.ts
 XFORGE_FULL_UPDATE_REQUIRED  src/install/planner.ts
 XFORGE_GATE_COMMAND_UNAVAILABLE  src/runners/gate.ts
+XFORGE_GATE_EVIDENCE_STALE  src/commands/check.ts
 XFORGE_GATE_FAILED  src/runners/gate.ts
 XFORGE_GATE_NOT_FOUND  src/commands/check.ts
 XFORGE_GENERATED_PATH_COLLISION  src/install/planner.ts
@@ -274,6 +275,7 @@ XFORGE_VERIFICATION_ARGUMENTS_REQUIRED  src/commands/verification.ts
 XFORGE_VERIFICATION_COMMAND_INVALID  src/commands/verification.ts
 XFORGE_VERIFICATION_DRAFT_GATE_UNAVAILABLE  src/commands/verification.ts
 XFORGE_VERIFICATION_GATE_MIGRATED  src/commands/update.ts
+XFORGE_VERIFICATION_GATE_UNDECLARED  src/core/control-plane.ts
 XFORGE_VERIFICATION_RECEIPT_NOT_REQUIRED  src/commands/verification.ts
 XFORGE_VERIFICATION_RETIRE_AMBIGUOUS  src/commands/verification.ts
 XFORGE_VERIFICATION_RETIRE_NOT_FOUND  src/commands/verification.ts

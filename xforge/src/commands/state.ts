@@ -54,7 +54,7 @@ interface ChangeLike {
     revision?: { contentRevision?: string | null; gitHead?: string | null };
     readyTransitions?: Array<{ to?: string; ready?: boolean; blockedBy?: string[] }>;
     pendingApprovals?: Array<{ policyId?: string; transition?: string; missing?: number; roles?: string[] }>;
-    audit?: { chainValid?: boolean; eventCount?: number; remotePending?: number; coverageGaps?: string[] };
+    audit?: { chainValid?: boolean; eventCount?: number; remotePending?: number; remoteRequired?: boolean; coverageGaps?: string[] };
     rules?: Array<{ id?: string; severity?: string; coverage?: string[] }>;
   };
 }
@@ -152,7 +152,19 @@ export function renderStateText(data: unknown): string {
       lines.push(`    ${approval.policyId ?? '?'} for ${approval.transition ?? '?'} — ${approval.missing ?? '?'} more approver(s), roles ${list(approval.roles, 'any')}`);
     }
     const audit = governance.audit ?? {};
-    lines.push(`  Audit: chain ${audit.chainValid ? 'valid' : 'INVALID'}, ${audit.eventCount ?? 0} events, ${audit.remotePending ?? 0} awaiting remote delivery, coverage gaps: ${list(audit.coverageGaps)}`);
+    /*
+     * The pending count says what it means, or it says nothing useful.
+     *
+     * A live run read `remotePending: 50` here, stopped, and asked whether it had to be dealt with.
+     * The field name implies unfinished delivery, and whether that matters is decided by a policy
+     * this line does not show — so the reader had to choose between chasing a non-problem and
+     * ignoring a real one. `audit verify` already resolves it; this says the same thing.
+     */
+    const pendingRemote = audit.remotePending ?? 0;
+    const remote = pendingRemote === 0
+      ? 'remote delivery none pending'
+      : `remote delivery ${pendingRemote} pending (${audit.remoteRequired ? 'REQUIRED — blocks archive until delivered' : 'not required at this assurance level — does not block'})`;
+    lines.push(`  Audit: chain ${audit.chainValid ? 'valid' : 'INVALID'}, ${audit.eventCount ?? 0} events, ${remote}, coverage gaps: ${list(audit.coverageGaps)}`);
     /* Only the ones that report a problem with their own enforcement; listing every applicable Rule
        here would restore the wall of text this exists to remove. */
     const unenforced = (governance.rules ?? []).filter((rule) => (rule.coverage ?? []).some((entry) => entry === 'uncovered' || entry === 'unenforceable'));

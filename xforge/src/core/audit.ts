@@ -3,7 +3,7 @@ import { rmSync } from 'node:fs';
 import { access, appendFile, mkdir, open, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { hostname } from 'node:os';
 import path from 'node:path';
-import type { AuditEvent, GovernanceRevision, ProjectContext } from '../types.js';
+import type { AuditEvent, GovernanceRevision, ProjectContext, StageFlow } from '../types.js';
 import { XForgeError, diagnostic } from './errors.js';
 import { atomicWrite, exists } from './files.js';
 import { sha256, stableStringify } from './hash.js';
@@ -88,6 +88,25 @@ async function shardKeys(project: ProjectContext): Promise<string[]> {
  * All audit events known to this working tree: the global/legacy chain first, then every per-Change
  * chain in a stable order. Consumers filter by `change`; cross-shard order is not chronological.
  */
+/**
+ * Whether this Change's pending audit events actually have to reach a remote sink.
+ *
+ * One function because there were three copies of the expression — `commands/audit.ts`,
+ * `core/control-plane.ts`'s terminal block, and the governance facts `state` reads — and a fourth
+ * was about to be written. They agreed today; nothing made them agree tomorrow, and the failure
+ * mode of disagreement is the worst kind this product has: `audit verify` reporting an all-clear
+ * that archive then refuses, or the reverse.
+ *
+ * Resolved against the *terminal* policy in every case, including for a Change nowhere near
+ * archive. That is the policy which will eventually block, so it is the one a reader needs to know
+ * about while there is still time to act on it.
+ */
+export function remoteDeliveryRequired(project: ProjectContext, flow: StageFlow): boolean {
+  const policy = flow.terminal?.archive?.auditPolicy ?? flow.governance?.audit;
+  return policy?.remoteDelivery === 'required'
+    || Boolean(project.manifest.audit?.remote?.requiredFor.includes(flow.policy.assuranceLevel));
+}
+
 export async function readAuditEvents(project: ProjectContext): Promise<AuditEvent[]> {
   const events = await readLog(project, null);
   for (const key of await shardKeys(project)) events.push(...await readLog(project, key));

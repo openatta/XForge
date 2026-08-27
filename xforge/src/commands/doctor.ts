@@ -16,7 +16,7 @@ import { parse as parseYaml } from 'yaml';
 import { loadYaml } from '../core/yaml.js';
 import { getAdapter } from '../adapters/index.js';
 import { capabilityGapDiagnostics } from '../install/planner.js';
-import { verificationEntriesFor } from '../core/verification.js';
+import { undeclaredRequiredGates } from '../core/verification.js';
 import { exists } from '../core/files.js';
 
 type DoctorKind = 'skills' | 'agents' | 'rules' | 'policies' | 'hooks' | 'gates' | 'scripts' | 'flows' | 'approvals' | 'mcp-servers';
@@ -403,19 +403,9 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
    * dismissal does not count as an answer. This stays a suggestion, not a finding — an unanswered
    * question is not a misconfiguration, and the Gate itself still refuses.
    */
-  for (const gateId of project.manifest.scaffold.gates) {
-    const resource = structure.resources.gates.get(gateId);
-    if (resource?.value.spec.builtin !== 'declared' || !resource.value.spec.required) continue;
-    if (!referencedGates.has(gateId)) continue;
-    /*
-     * `runs` alone, matching the runner's own refusal exactly (`runners/gate.ts`: a `declared` Gate
-     * refuses when `plan.runs.length === 0`). A dismissal records a toolchain the Gate deliberately
-     * does not cover; it is not a command, so a Gate holding only dismissals still has nothing to
-     * run and still refuses. Treating a dismissal as an answer here would have gone quiet about a
-     * Gate that was going to block anyway.
-     */
-    const { runs } = verificationEntriesFor(project, gateId);
-    if (runs.length > 0) continue;
+  /* The condition itself lives in `core/verification.ts`, shared with the control plane so the two
+     places that report it cannot come to disagree about what counts as an answer. */
+  for (const gateId of undeclaredRequiredGates(project, structure.resources.gates, [...project.manifest.scaffold.gates].filter((id) => referencedGates.has(id)))) {
     suggestions.push({
       scope: 'gates',
       code: 'XFORGE_DOCTOR_VERIFICATION_UNDECLARED',

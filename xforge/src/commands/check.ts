@@ -10,7 +10,7 @@ import { workPackageVerificationGates } from '../core/work-packages.js';
 import { gateInputDigest, runGate } from '../runners/gate.js';
 import { readAuditEvents, recordAudit } from '../core/audit.js';
 import { isStageFlow, resolveChangeState } from '../core/flow-resolver.js';
-import { resolveControlPlane } from '../core/control-plane.js';
+import { gateBlockReason, readGateEvidence, resolveControlPlane } from '../core/control-plane.js';
 import { loadTransitionReceipts } from '../core/control-plane/receipts.js';
 import { sha256, stableStringify } from '../core/hash.js';
 import { safeResolve } from '../core/path-safety.js';
@@ -461,11 +461,21 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
     }
   }
 
-  if (options.change && structure.change?.workPackages && !diagnostics.some((item) => item.severity === 'error')) {
+  /* Resolved once and shared: the delivery audit loop below and the staleness notice after it both
+     need the governance revision, and resolving the control plane twice in one `check` is the kind
+     of cost this command is already criticised for. */
+  let control: Awaited<ReturnType<typeof resolveControlPlane>> | null = null;
+  if (options.change && structure.change && !diagnostics.some((item) => item.severity === 'error')) {
     const resolved = await resolveChangeState(project, options.change);
     if (isStageFlow(resolved.flow) && resolved.flow.governance) {
-      const control = await resolveControlPlane(project, options.change, resolved.flow, resolved.state, structure.resources, resolved.config, { workPackages: structure.workPackages ?? undefined });
-      const existing = await readAuditEvents(project);
+      control = await resolveControlPlane(project, options.change, resolved.flow, resolved.state, structure.resources, resolved.config, { workPackages: structure.workPackages ?? undefined });
+    }
+  }
+
+  if (options.change && structure.change?.workPackages && control) {
+    const resolved = await resolveChangeState(project, options.change);
+    const existing = await readAuditEvents(project);
+    {
       for (const item of structure.change.workPackages.packages.filter((candidate) => ['succeeded', 'integrated', 'reviewed'].includes(candidate.status) && candidate.delivery)) {
         const delivery = item.delivery!;
         for (const eventType of ['work-package.delivered']) {
@@ -478,6 +488,51 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
           });
         }
       }
+    }
+  }
+
+  /*
+   * Gates that passed, and are already out of date, and nothing said so.
+   *
+   * Gate Evidence binds to the content revision at the moment the Gate runs, so writing any declared
+   * Artifact after a Gate passes silently invalidates it. That makes the verify Stage order load
+   * bearing — assurance first, then `check`, then `draft-receipt`, then the receipt — and that order
+   * existed only in the Skill prose. A live Rust project hit the consequence with no explanation
+   * available to it: `structure` bound to a gitHead 43 source files ago, `unit-tests` null, and the
+   * only trace was a boolean buried in `state.mandatoryGateEvidence`, from which the operator had to
+   * reconstruct the rule for themselves.
+   *
+   * `blockRemedy` says this well, but only once a transition is attempted, which is one Stage too
+   * late to be cheap. Reported at `check` because that is where the Gates are, and only for Gates
+   * this run did not itself refresh: one it just ran is current by construction, and saying
+   * otherwise would make the notice fire on every clean run and be tuned out by the second week.
+   */
+  if (options.change && control) {
+    /* The Gates this Change still has to satisfy, minus the ones this run just refreshed: one that
+       has only now been executed is current by construction, and reporting it would make the notice
+       fire on every clean run and be tuned out by the second week. */
+    const refreshed = new Set(gateResults.filter((result) => result.evidence).map((result) => result.id));
+    const stage = control.flow.stages.find((candidate) => candidate.id === control!.governance.currentStage);
+    const owed = [...new Set([
+      ...(stage?.gates ?? []),
+      ...(stage?.exit?.gates ?? []),
+      ...structure.change?.archive.mandatoryGates ?? [],
+      ...gateIds,
+    ])].filter((id) => !refreshed.has(id));
+    const staleGates: string[] = [];
+    for (const gateId of owed) {
+      if (!structure.resources.gates.has(gateId)) continue;
+      const evidence = await readGateEvidence(project, options.change, gateId, structure.resources);
+      if (gateBlockReason(evidence, control.governance.revision.contentRevision) === 'stale') staleGates.push(gateId);
+    }
+    if (staleGates.length > 0) {
+      diagnostics.push(diagnostic(
+        'XFORGE_GATE_EVIDENCE_STALE',
+        `${staleGates.length} Gate(s) hold Evidence that passed against an earlier content revision and no longer bind the current one: ${staleGates.join(', ')}. Gate Evidence binds to the Change's content at the moment the Gate runs, so writing any declared Artifact after a Gate passes stales it — which is why the Stage order is write the assurance first, then run \`xforge check --change ${options.change}\`, then \`xforge verification draft-receipt\`, then the receipt. Re-run these Gates before attempting the transition; nothing else about them is wrong.`,
+        `${project.changesPath}/${options.change}`,
+        'warning',
+        { gates: staleGates },
+      ));
     }
   }
 

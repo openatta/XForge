@@ -39,8 +39,37 @@ interface VerificationPlan {
  * `resolveVerificationPlan`'s toolchain scan of the working tree — and, more importantly, so it
  * asks the same question this file's own refusal asks, rather than a second one that can drift.
  */
-export function verificationEntriesFor(project: ProjectContext, gate: string): { runs: VerificationRun[]; dismissals: VerificationDismissal[] } {
-  return entriesFor(project, gate);
+/**
+ * The required `declared` Gates this project has never answered.
+ *
+ * A `builtin: declared` Gate runs whatever the project declares under `manifest.verification.<gate>`
+ * and refuses when that list is empty — the right refusal, and the reason `unit-tests` stopped being
+ * a decoration on projects with no npm. But the refusal arrives the first time a Change reaches the
+ * Stage that runs the Gate. A Major Flow declaring `security-scan` therefore fails on the archive
+ * path, after a human approval has already been spent, for a question that was answerable on day one
+ * and depends on no Change existing at all.
+ *
+ * `runs` alone, matching the runner's own refusal exactly: a dismissal records a toolchain the Gate
+ * deliberately does not cover, which is not a command, so a Gate holding only dismissals still has
+ * nothing to run and still refuses. Counting one as an answer would go quiet about a Gate that is
+ * going to block anyway.
+ *
+ * Shared with `commands/doctor.ts` rather than reimplemented there: the two report the same
+ * condition, and a reader who sees them disagree cannot tell which one is lying.
+ */
+export function undeclaredRequiredGates(
+  project: ProjectContext,
+  gates: Map<string, { value: { spec: { builtin?: string; required?: boolean } } }>,
+  referenced: Iterable<string>,
+): string[] {
+  const undeclared: string[] = [];
+  for (const gateId of new Set(referenced)) {
+    const spec = gates.get(gateId)?.value.spec;
+    if (spec?.builtin !== 'declared' || !spec.required) continue;
+    if (entriesFor(project, gateId).runs.length > 0) continue;
+    undeclared.push(gateId);
+  }
+  return undeclared.sort();
 }
 
 function entriesFor(project: ProjectContext, gate: string): { runs: VerificationRun[]; dismissals: VerificationDismissal[] } {

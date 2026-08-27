@@ -146,6 +146,17 @@ export interface GovernanceState {
     chainHead: string | null;
     eventCount: number;
     remotePending: number;
+    /**
+     * Whether anything actually requires those pending events to reach a remote sink.
+     *
+     * `remotePending` alone is a number whose meaning lives in a policy the reader cannot see from
+     * where it is printed. The shipped default is `remoteDelivery: optional` with an empty
+     * `audit.remote.requiredFor`, so the ordinary case is a large pending count that means nothing —
+     * and a reader who cannot tell that from the output has to choose between chasing a non-problem
+     * and ignoring a real one. `audit verify` resolves this already; carrying it here lets every
+     * other reader of governance state say the same thing.
+     */
+    remoteRequired: boolean;
     coverageGaps: string[];
   };
   readyTransitions: Array<{ to: string; ready: boolean; blockedBy: string[] }>;

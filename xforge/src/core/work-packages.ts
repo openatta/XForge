@@ -191,15 +191,6 @@ function isIntegratorPackage(workPackage: Pick<WorkPackage, 'role'>): boolean {
   return workPackage.role === 'integrator';
 }
 
-/**
- * The governance assets no work package may write, as roots rather than as patterns.
- *
- * The same set `protectedWritePaths` reserves, in the form a *changed path* can be tested against:
- * that function answers "may this plan declare this pattern", and this answers "is this file one of
- * them". Kept beside it so the two cannot drift into disagreeing about what governance is.
- */
-const GOVERNANCE_ASSET_ROOTS = ['xforge/manifest.yaml', 'xforge/lock.yaml', 'xforge/constitution.md'];
-
 function protectedWritePaths(project: ProjectContext, changeId: string, config: ChangeConfig, resources: SelectedResources, integratorPaths: string[] = []): string[] {
   const changeRoot = `${project.changesPath}/${changeId}`;
   const paths = new Set([
@@ -251,6 +242,17 @@ interface DeliveryContext {
    * every package's declared `write_paths` plus the Integrator-only surfaces (`protectedWritePaths`).
    */
   attributablePaths: string[];
+  /**
+   * Every Integrator-only surface, as the patterns `protectedWritePaths` produces them.
+   *
+   * Passed in rather than recomputed so the refusal that classifies a changed path and the refusal
+   * that rejects a declared one are reading the same set. They were not: this branch tested three
+   * hardcoded literals while `XFORGE_WORK_PACKAGE_SHARED_WRITE` tested the whole set, so a project
+   * that made `infra/**` Integrator-only through a Rule got the plain write escape, followed its
+   * advice to add the path, and hit the shared-write refusal — the exact loop naming these
+   * separately exists to break.
+   */
+  governancePaths: string[];
   verify: NormalizedVerify[];
 }
 
@@ -454,8 +456,7 @@ async function validateSuccessfulDelivery(
        * outside every package's range, where `attributablePaths` already accounts for it -- appears
        * in neither. A live run found it by making both mistakes first.
        */
-      const governance = GOVERNANCE_ASSET_ROOTS.find((root) => changed === root || changed.startsWith(`${root}/`))
-        ?? (changed.startsWith(`${project.specsPath}/`) ? project.specsPath : null);
+      const governance = context.governancePaths.find((pattern) => matchesWritePath(changed, pattern)) ?? null;
       diagnostics.push(governance
         ? diagnostic(
           'XFORGE_WORK_PACKAGE_GOVERNANCE_IN_RANGE',
@@ -897,6 +898,7 @@ export async function resolveWorkPackages(
     const delivered = await validateSuccessfulDelivery(project, changeId, workPackage, latest, deliveryPath, {
       repositoryHead: baseCommit,
       attributablePaths,
+      governancePaths,
       verify: normalizeVerify(workPackage),
     });
     diagnostics.push(...delivered.diagnostics);

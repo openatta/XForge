@@ -4,6 +4,7 @@ import {
   pruneExpiredAuditEvents,
   readAuditEvents,
   readChangeAuditEvents,
+  remoteDeliveryRequired,
   retryAuditDelivery,
   verifyAudit,
 } from '../core/audit.js';
@@ -57,7 +58,7 @@ export async function executeAudit(project: ProjectContext, options: { action: '
        */
       const policy = resolved.flow.terminal?.archive?.auditPolicy ?? resolved.flow.governance.audit;
       const present = new Set(facts?.eventTypes ?? events.map((event) => event.eventType));
-      const remoteRequired = policy.remoteDelivery === 'required' || Boolean(project.manifest.audit?.remote?.requiredFor.includes(resolved.flow.policy.assuranceLevel));
+      const remoteRequired = remoteDeliveryRequired(project, resolved.flow);
       for (const eventType of policy.requiredEventTypes) {
         if (!present.has(eventType)) diagnostics.push(diagnostic('XFORGE_AUDIT_EVENT_MISSING', `Required audit event is missing: ${eventType}.`, `${project.changesPath}/${options.change}/evidence/audit`));
       }
