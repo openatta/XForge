@@ -93,7 +93,22 @@ function assertNoStaleVersion(previousVersion) {
   const remaining = (search.stdout ?? '')
     .split('\n')
     .map((line) => line.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    /*
+     * Recorded envelopes are re-recorded, not rewritten.
+     *
+     * A golden under `test/fixtures/golden/` is a byte-for-byte capture of what the CLI printed, and
+     * several of them carry the version because the envelope does. Substituting the string into them
+     * would be forging a recording; they are refreshed by running the suite with
+     * `XFORGE_UPDATE_GOLDEN=1` against the built CLI, which is the only way the capture stays a
+     * capture.
+     *
+     * Left to the suite rather than policed here, because the suite already policies it: a golden
+     * still naming the previous version fails the moment anything runs, and `npm run verify` is on
+     * the release path. A guard that duplicated that would add a second thing to keep in step with
+     * the first.
+     */
+    .filter((file) => !file.startsWith('xforge/test/fixtures/golden/'));
   if (remaining.length > 0) {
     fail(`These tracked files still name ${previousVersion} after the rewrite: ${remaining.join(', ')}. Add each to versionedTextFiles, or record here why it keeps the old version.`);
   }
