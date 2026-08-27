@@ -7,7 +7,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash, Task
 # Invariants
 
 - Run `xforge state --change <id>` at the start and after every material change. Consume only the current-revision ready Apply Action; never guess Flow order, paths, Gates, or parallel strategy.
-- Read all Action inputs, Constitution, relevant Rules/Specs, optional Design/Check report, and existing work packages from disk. Chat memory is not a source of truth.
+- Read all Action inputs, Constitution, relevant Rules/Specs, optional Design/Check report, and existing work packages from disk. Chat memory is not a source of truth. Run `xforge stage-bundle --change <id>` first: it lists which of them moved since this Stage was entered and which a digest can stand in for, so a Stage re-reads what changed instead of everything. It refuses to vouch for anything while the Change has uncommitted edits, and always lists the Constitution and this Stage's own outputs to be read in full — a digest of work in progress proves nothing. Reading a vouched file anyway is always allowed; the digest says the text is what the previous Stage read, not that looking is forbidden.
 - Main Agent is always Coordinator and Workers never delegate. XForge does not start model processes; the target runtime activates native sub-Agents.
 - Apply plans are just-in-time execution assets, not a new Stage or second specification source of truth.
 - Obey `currentStage=apply`, current `stateRevision`, `policySnapshotDigest`, and typed `nextActions`; never edit Stage, Transition/Approval receipts, or core Audit directly.
@@ -42,6 +42,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash, Task
 # Stop and rework
 
 - Stop on stale prerequisites/revision, invalid DAG, missing inputs/skills, path conflict/escape, dependency drift, non-isolated shared resources, failed tests, secrets, unauthorized migration, or material ambiguity.
+- When a diagnostic code is the thing blocking you and its one line is not enough, run `xforge explain <XFORGE_CODE>`. It gives that code's severity and **every** message it can carry — one code is raised from more than one place, and the wording you have not met is what tells you it has another cause. Do not guess at a code's meaning from its name.
 - `tree:unattributed-paths` and `XFORGE_WORK_PACKAGE_TREE_UNATTRIBUTED` are not a package's problem, whatever else is blocked at the same time: the tree holds committed work no `write_paths` and no `integrator_paths` entry claims. Do not audit the deliveries — they can each be faultless while this blocks. Fix the plan's declarations, then re-record the deliveries the change affects.
 - Return implementation failure to `apply:rework`; if governing assumptions fail, follow `reworkTo` through `xforge-revise` or the owning Stage Skill. Never archive.
 

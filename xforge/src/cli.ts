@@ -10,6 +10,8 @@ import { executeArchive } from './commands/archive.js';
 import { executeApprove, type ApprovalTerminal } from './commands/approve.js';
 import { executeAudit } from './commands/audit.js';
 import { executeCheck } from './commands/check.js';
+import { executeStageBundle, renderStageBundleText } from './commands/stage-bundle.js';
+import { executeExplain, renderExplainText } from './commands/explain.js';
 import { executeFindingsResolve } from './commands/findings.js';
 import { executeVerificationDeclare, executeVerificationDraftReceipt, executeVerificationFinalize, executeVerificationRetire } from './commands/verification.js';
 import { executeInstall } from './commands/install.js';
@@ -32,7 +34,7 @@ import { detectScaffoldLanguage, parseScaffoldLanguage } from './core/language.j
 import { envelope, present } from './protocol/envelope.js';
 import type { Diagnostic, Envelope, FlowAuthority, NextAction, ScaffoldLanguage } from './types.js';
 
-type CommandName = 'help' | 'version' | 'init' | 'state' | 'install' | 'sync' | 'update' | 'uninstall' | 'check' | 'verification' | 'transition' | 'approve' | 'audit' | 'work-package' | 'hook' | 'archive' | 'doctor' | 'upgrade-scaffold' | 'review' | 'findings';
+type CommandName = 'help' | 'version' | 'init' | 'state' | 'install' | 'sync' | 'update' | 'uninstall' | 'check' | 'stage-bundle' | 'explain' | 'verification' | 'transition' | 'approve' | 'audit' | 'work-package' | 'hook' | 'archive' | 'doctor' | 'upgrade-scaffold' | 'review' | 'findings';
 
 interface ParsedArguments {
   command: string;
@@ -49,6 +51,7 @@ interface ParsedArguments {
   root?: string;
   stage?: string;
   helpCommand?: string;
+  explainCode?: string;
   /** The leaf a group's help was asked for, reported so the answer names what was asked. */
   helpSubcommand?: string;
   subcommand?: string;
@@ -99,7 +102,7 @@ interface ParsedArguments {
  */
 const GROUP_COMMANDS = new Set<string>(['audit', 'hook', 'work-package', 'verification', 'transition', 'review', 'findings']);
 
-const COMMANDS: CommandName[] = ['help', 'version', 'init', 'state', 'install', 'sync', 'update', 'uninstall', 'check', 'verification', 'transition', 'approve', 'audit', 'work-package', 'hook', 'archive', 'doctor', 'upgrade-scaffold', 'review', 'findings'];
+const COMMANDS: CommandName[] = ['help', 'version', 'init', 'state', 'install', 'sync', 'update', 'uninstall', 'check', 'stage-bundle', 'explain', 'verification', 'transition', 'approve', 'audit', 'work-package', 'hook', 'archive', 'doctor', 'upgrade-scaffold', 'review', 'findings'];
 const VALID_KINDS = ['skills', 'agents', 'rules', 'policies', 'hooks', 'gates', 'scripts', 'flows', 'approvals', 'mcp-servers'] as const;
 const VALUE_OPTIONS = ['--root', '--change', '--kind', '--target', '--gate', '--to', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--provider', '--output', '--event', '--package', '--language', '--as', '--evidence', '--stage', '--gate-name', '--command', '--module', '--covers', '--working-directory', '--timeout-seconds', '--not-applicable', '--justification', '--by', '--status', '--receipt', '--field', '--id', '--answer', '--scope'] as const;
 
@@ -189,6 +192,8 @@ const HELP: Record<CommandName, { usage: string; description: string; options: s
   update: { usage: 'xforge [--root <path>] update [--target <target>] [--adopt] [--dry-run] [--text]', description: 'Fully reconcile installed targets, identities, and Adapter output.', options: ['--root', '--target', '--adopt', '--dry-run', '--text'] },
   uninstall: { usage: 'xforge [--root <path>] uninstall [--target <target>] [--force] [--dry-run] [--text]', description: 'Remove managed target files, refusing on a digest mismatch unless --force.', options: ['--root', '--target', '--force', '--dry-run', '--text'] },
   check: { usage: 'xforge [--root <path>] check [--change <id>] [--gate <id>] [--stage <id> | --all-gates] [--force] [--text]', description: 'Validate project structure, deliveries, and the Gates the current Stage requires. With no Gate selection this also executes the verify commands declared by every work package, which for a large plan is dozens of external commands and minutes of wall time; narrowing with --gate, --stage or --all-gates runs only the selected Gates and skips them. Every one of those commands runs in this same working tree, one after another, so a verify command must be safe to re-enter: a suite that writes to a fixed scratch path, or asserts wall-clock throughput, will fail here for reasons that have nothing to do with the code under test.', options: ['--root', '--change', '--gate', '--stage', '--all-gates', '--force', '--text'] },
+  'stage-bundle': { usage: 'xforge [--root <path>] stage-bundle --change <id> [--text]', description: 'List which of this Change\'s Artifacts have moved since the current Stage was entered, and which a digest can stand in for. A Transition receipt records the commit its Stage began at, so the set that changed is computable rather than assumed; the Stage\'s own outputs and the Constitution are always listed to be read, and an uncommitted edit anywhere under the Change voids every digest because git compares commits and cannot see one.', options: ['--root', '--change', '--text'] },
+  explain: { usage: 'xforge explain <XFORGE_CODE> [--text]', description: 'Say what a diagnostic code means: its severity, and every message it can carry, from a catalogue frozen into this build. One code is raised from more than one place and each says something slightly different; which of those a reader has not met is what tells them the code has another cause. No project is required.', options: ['--text'] },
   verification: {
     usage: 'xforge [--root <path>] verification declare --gate-name <gate> (--command \'["prog","arg"]\' | --not-applicable <marker> --justification <text>) --by <person> [--module <id>] [--covers \'["marker"]\'] [--working-directory <path>] [--timeout-seconds <n>] [--dry-run] [--text]\n       xforge [--root <path>] verification retire --gate-name <gate> (--command \'["prog","arg"]\' | --not-applicable <marker>) --by <person> --reason <text> [--module <id>] [--dry-run] [--text]\n       xforge [--root <path>] verification draft-receipt --change <id> [--text]\n       xforge [--root <path>] verification finalize --change <id> --status passed --by <person> [--dry-run] [--text]',
     description: 'Declare how this project runs a declared-verification Gate, without hand-editing the Manifest; retire a declaration that should stop running, keeping the record of who withdrew it and why; or draft the current Stage\'s verification receipt from what XForge already knows. The draft omits `status` and writes nothing: that field is the Stage\'s assertion that the work was verified, and a CLI filling it in would be deciding the thing the receipt exists to record. finalize writes the same facts for you once you supply that assertion yourself, as --status passed signed with --by. It is not a shortcut past the check: before recording that a Gate passed it re-reads that Gate\'s Evidence from disk, and it writes nothing at all if any Gate the Stage cites is stale against the current content revision, failed, or never ran — naming the re-run, the fix, or the first run, because those are three different problems. passed is the only status it writes; a Stage that did not verify does not file a receipt at all.',
@@ -347,6 +352,9 @@ function parseArguments(argv: string[]): ParsedArguments {
       const leafHelp = positionals.length === 3 && GROUP_COMMANDS.has(positionals[1] ?? '');
       if (leafHelp) parsed.helpSubcommand = positionals[2];
       if (positionals.length > 2 && !leafHelp) throw new XForgeError(diagnostic('XFORGE_ARGUMENT_UNEXPECTED', `Unexpected positional argument: ${positionals[2]}`));
+    } else if (parsed.command === 'explain') {
+      parsed.explainCode = positionals[1];
+      if (positionals.length > 2) throw new XForgeError(diagnostic('XFORGE_ARGUMENT_UNEXPECTED', `Unexpected positional argument: ${positionals[2]}`));
     } else if (GROUP_COMMANDS.has(parsed.command)) {
       /* `transition` joined this list without breaking its original form, because that form carries
          no positional: `transition --change X --to Y` leaves positionals[1] undefined, which is
@@ -370,6 +378,7 @@ function parseArguments(argv: string[]): ParsedArguments {
     if (flag === '--help' || flag === '--version') continue;
     if (!allowed.has(flag)) throw new XForgeError(diagnostic('XFORGE_OPTION_NOT_ALLOWED', `${flag} is not valid for ${parsed.command}.`));
   }
+  if (parsed.command === 'stage-bundle' && !parsed.change) throw new XForgeError(diagnostic('XFORGE_CHANGE_REQUIRED', 'stage-bundle requires --change <id>.'));
   if (parsed.command === 'archive' && !parsed.change) throw new XForgeError(diagnostic('XFORGE_CHANGE_REQUIRED', 'archive requires --change <id>.'));
   if (parsed.command === 'verification') {
     if (!['declare', 'retire', 'draft-receipt', 'finalize'].includes(parsed.subcommand ?? '')) throw new XForgeError(diagnostic('XFORGE_VERIFICATION_ACTION_REQUIRED', 'verification requires the declare, retire, draft-receipt or finalize action.'));
@@ -559,6 +568,13 @@ function flowStages(data: Record<string, unknown>, flowId: string | undefined): 
 async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
   if (parsed.command === 'help') return helpEnvelope(parsed.helpCommand, parsed.helpSubcommand);
   if (parsed.command === 'version') return versionEnvelope();
+  if (parsed.command === 'explain') {
+    /* Beside `help` and `version` because it answers about the CLI rather than about a project: a
+       reader who hit a code in a directory that is not an XForge project still needs the answer. */
+    if (!parsed.explainCode) throw new XForgeError(diagnostic('XFORGE_ARGUMENT_REQUIRED', 'explain requires a diagnostic code, for example `xforge explain XFORGE_GATE_EVIDENCE_STALE`.'));
+    const result = await executeExplain({ code: parsed.explainCode });
+    return envelope({ command: 'explain', root: null, ...result });
+  }
 
   if (parsed.command === 'init') {
     const root = path.resolve(process.cwd(), parsed.root ?? '.');
@@ -709,6 +725,10 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
   }
   if (command === 'check') {
     const result = await executeCheck(project, { change: parsed.change, gate: parsed.gate, stage: parsed.stage, allGates: parsed.allGates, force: parsed.force });
+    return envelope({ command, root: project.root, ...result });
+  }
+  if (command === 'stage-bundle') {
+    const result = await executeStageBundle(project, { change: parsed.change! });
     return envelope({ command, root: project.root, ...result });
   }
   if (command === 'verification') {
@@ -901,7 +921,12 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
   /* Only a successful run renders: a failed one has `data: null` and its diagnostics are the
      result, which the standard text form already prints. */
   let render: ((data: unknown) => string) | undefined;
-  if (parsed?.command === 'state' && result.ok) {
+  if (parsed?.command === 'explain' && result.ok) {
+    render = (data: unknown) => renderExplainText(data as Record<string, unknown>);
+  } else if (parsed?.command === 'stage-bundle' && result.ok) {
+    /* The reading plan is the entire output; as JSON it is a list of paths nobody scans. */
+    render = (data: unknown) => renderStageBundleText(data as Parameters<typeof renderStageBundleText>[0]);
+  } else if (parsed?.command === 'state' && result.ok) {
     /* `state`'s `data` is the entire resolved project; printed as JSON it buries the envelope's own
        `Next actions:` block under tens of thousands of characters. See `renderStateText`. */
     render = (data: unknown) => renderStateText(data);

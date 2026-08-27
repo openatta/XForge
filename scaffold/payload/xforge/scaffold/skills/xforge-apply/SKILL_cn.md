@@ -7,7 +7,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash, Task
 # 不变量
 
 - 开始及每次材料性变更后运行 `xforge state --change <id>`；只消费当前 revision 的 ready Apply Action，不猜测 Flow 序列、路径、Gate 或并行策略。
-- 从磁盘读取 Action 的全部 inputs、Constitution、相关 Rules/Specs、可选 Design/Check report 和现有工作包；聊天记忆不是事实源。
+- 从磁盘读取 Action 的全部 inputs、Constitution、相关 Rules/Specs、可选 Design/Check report 和现有工作包；聊天记忆不是事实源。先运行 `xforge stage-bundle --change <id>`：它列出其中哪些自本 Stage 开始以来变过、哪些可用摘要代替重读，于是一个 Stage 只重读变过的部分而不是全部。只要这个 Change 还有未提交的改动，它就拒绝为任何文件出具摘要凭证；Constitution 与本 Stage 自己的产出永远列为全文读取——为进行中的工作出具摘要证明不了任何事。已出具摘要的文件仍可随时打开读：摘要说的是「这份文本与上一个 Stage 读到的相同」，不是「不许读」。
 - Main Agent 永远承担 Coordinator；Worker 不继续委派。XForge 不创建模型进程，子 Agent 由目标 runtime 的原生能力激活。
 - 计划是 Apply 的即时执行资产，不是新 Stage 或第二份规格事实源。
 - 必须以 `state.change.governance.currentStage=apply`、当前 `stateRevision`、`policySnapshotDigest` 和 typed `nextActions` 为准；不得直接改 Stage、Transition/Approval receipt 或核心 Audit。
@@ -42,6 +42,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash, Task
 # 停止与返工
 
 - 在 prerequisite/revision 失效、DAG 非法、inputs/skills 缺失、路径冲突或逃逸、依赖漂移、共享资源不可隔离、测试失败、秘密信息、未授权迁移或材料性歧义时停止。
+- 当卡住你的正是某个诊断码、而它那一行不够用时，运行 `xforge explain <XFORGE_CODE>`。它给出该码的严重度与它能携带的**每一条**消息——同一个码会从多个地方发出，你**没**见过的那条措辞，正是告诉你它还有另一个成因的东西。不要靠码的名字猜它的含义。
 - `tree:unattributed-paths` 与 `XFORGE_WORK_PACKAGE_TREE_UNATTRIBUTED` **不是任何工作包的问题**（无论同时还有什么被阻塞）：它说的是树里有已提交的改动，既不属于任何 `write_paths`，也不被 `integrator_paths` 覆盖。不要去审查那些 delivery——它们可以每一份都完全正确而这一条依然阻塞。要改的是计划的声明，改完再重新记录受影响的 delivery。
 - 实现失败返回 `apply:rework`；Proposal/Specs/Design 假设失效时按 `reworkTo` 交给 `xforge-revise` 或对应 Stage Skill。不得归档。
 

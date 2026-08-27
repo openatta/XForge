@@ -1,7 +1,7 @@
 import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { readDiagnosticCatalogue, rawCallCount, renderCatalogue, renderCatalogueLocations, splitArguments } from '../diagnostics-catalogue.js';
+import { readDiagnosticCatalogue, rawCallCount, renderCatalogue, renderCatalogueLocations, splitArguments } from '../../src/core/diagnostics-catalogue.js';
 import { golden } from '../golden.js';
 import { repositoryRoot, xforgeRoot } from '../helpers.js';
 
@@ -18,8 +18,8 @@ describe('diagnostic catalogue', () => {
     /* The parser is load-bearing for every assertion below, so it is checked against a raw count
        first: one that silently skipped call sites would understate the catalogue and weaken the
        rules built on it without failing anything. */
-    const sites = await readDiagnosticCatalogue();
-    expect(sites.length).toBe(await rawCallCount());
+    const sites = await readDiagnosticCatalogue(xforgeRoot);
+    expect(sites.length).toBe(await rawCallCount(xforgeRoot));
     expect(sites.length).toBeGreaterThan(180);
     expect(sites.every((site) => site.message.length > 0 && site.file.startsWith('src/'))).toBe(true);
     /*
@@ -42,17 +42,42 @@ describe('diagnostic catalogue', () => {
     expect(splitArguments(`'A', 'b, c', undefined, 'warning'`)).toEqual([`'A'`, `'b, c'`, 'undefined', `'warning'`]);
     expect(splitArguments("'A', `x ${f(1, 2)} y`, p, 'info'")).toEqual(["'A'", '`x ${f(1, 2)} y`', 'p', "'info'"]);
     expect(splitArguments("'A', join([1, 2]), undefined")).toEqual(["'A'", 'join([1, 2])', 'undefined']);
+    /*
+     * A template literal nested inside another one's `${}`. Tracking a single open quote read the
+     * backtick that opens the inner one as the one that closes the outer, after which every comma
+     * in the rest of the call separated an argument — so the severity landed in the wrong position
+     * and the code was recorded as `dynamic`. Three messages here were written around it before
+     * anybody noticed, which is what an unparsed argument list costs: nothing visible.
+     */
+    expect(splitArguments("'A', `x ${y ? `inner, comma` : ''} z`, p, 'warning'"))
+      .toEqual(["'A'", "`x ${y ? `inner, comma` : ''} z`", 'p', "'warning'"]);
+    /*
+     * And a `${}` ends at the brace matching its own, not at the first one. The first version of the
+     * fix above popped on the `}` closing a destructured parameter, which ended the template early
+     * and turned a real call site — `XFORGE_VERIFICATION_RETIRE_AMBIGUOUS` — into one the catalogue
+     * recorded as carrying no path.
+     */
+    expect(splitArguments("'A', `x ${list.map(({ entry }) => entry).join(', ')} y`, p, 'error'"))
+      .toEqual(["'A'", "`x ${list.map(({ entry }) => entry).join(', ')} y`", 'p', "'error'"]);
+    /*
+     * And an expression holds regex literals. `${p.replace(/^specs\//, '')}` carries `\/` followed
+     * by `/`, which a comment rule reads as the start of a line comment and skips the rest of the
+     * line for — silently truncating a real call site's argument list. `XFORGE_SPEC_MERGE_CONFLICT`
+     * was the one it happened to.
+     */
+    expect(splitArguments("'A', `x ${p.replace(/^specs\\//, '')} y`, q, 'error'"))
+      .toEqual(["'A'", "`x ${p.replace(/^specs\\//, '')} y`", 'q', "'error'"]);
   });
 
   it('matches the recorded fingerprint', async () => {
     /* Code, severity, locatability — what a reader of the output experiences. Deliberately without
        the module, so that moving a call site is not a change to this. */
-    const { actual, expected } = await golden('diagnostics/catalogue.txt', renderCatalogue(await readDiagnosticCatalogue()));
+    const { actual, expected } = await golden('diagnostics/catalogue.txt', renderCatalogue(await readDiagnosticCatalogue(xforgeRoot)));
     expect(actual).toBe(expected);
   });
 
   it('records where each code is raised, as an index that is expected to move', async () => {
-    const { actual, expected } = await golden('diagnostics/catalogue-locations.txt', renderCatalogueLocations(await readDiagnosticCatalogue()));
+    const { actual, expected } = await golden('diagnostics/catalogue-locations.txt', renderCatalogueLocations(await readDiagnosticCatalogue(xforgeRoot)));
     expect(actual).toBe(expected);
   });
 
@@ -70,7 +95,7 @@ describe('diagnostic catalogue', () => {
      * fix anything. These phrases can only be a claim that the reported subject is fine.
      */
     const reassuring = /\b(is well-formed|nothing is wrong|no problems? (?:were |was )?found|nothing to fix|all (?:checks|gates) passed)\b/i;
-    const offenders = (await readDiagnosticCatalogue())
+    const offenders = (await readDiagnosticCatalogue(xforgeRoot))
       .filter((site) => site.severity === 'error' || site.severity === 'warning')
       .filter((site) => reassuring.test(site.message))
       .map((site) => `${site.code} (${site.severity}) ${site.file}:${site.line}`);
@@ -85,7 +110,7 @@ describe('diagnostic catalogue', () => {
      * fixed in the Spec merger during this work.
      */
     const namesAFile = /`[^`]*\.(?:yaml|yml|json|md|ts)`|\b[a-z0-9_-]+\/[a-z0-9_./-]+\.(?:yaml|yml|json|md)\b/i;
-    const offenders = (await readDiagnosticCatalogue())
+    const offenders = (await readDiagnosticCatalogue(xforgeRoot))
       .filter((site) => !site.hasPath && namesAFile.test(site.message))
       .map((site) => `${site.code ?? '(dynamic)'} ${site.file}`);
     /*
@@ -102,7 +127,7 @@ describe('diagnostic catalogue', () => {
   });
 
   it('records which codes no test asserts, as a list that may only shrink', async () => {
-    const sites = await readDiagnosticCatalogue();
+    const sites = await readDiagnosticCatalogue(xforgeRoot);
     const codes = [...new Set(sites.map((site) => site.code).filter((code): code is string => Boolean(code)))].sort();
 
     const asserted = new Set<string>();

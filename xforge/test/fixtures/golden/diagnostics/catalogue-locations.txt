@@ -40,6 +40,7 @@ XFORGE_ARCHIVE_TARGET_EXISTS  src/core/archiver.ts
 XFORGE_ARCHIVE_TASKS_INCOMPLETE  src/core/archiver.ts
 XFORGE_ARCHIVE_TRANSACTION_FAILED  src/core/archiver.ts
 XFORGE_ARGUMENT_DUPLICATE  src/cli.ts
+XFORGE_ARGUMENT_REQUIRED  src/cli.ts
 XFORGE_ARGUMENT_UNEXPECTED  src/cli.ts
 XFORGE_ARTIFACT_MARKER_SECTION_MISSING  src/core/artifact-markers.ts
 XFORGE_ARTIFACT_MARKER_UNDERPOPULATED  src/core/artifact-markers.ts
@@ -76,6 +77,8 @@ XFORGE_CONSTITUTION_VERSION_INVALID  src/core/constitution.ts
 XFORGE_DECISION_UNKNOWN  src/cli.ts
 XFORGE_DOCTOR_STRICT  src/commands/doctor.ts
 XFORGE_EVIDENCE_CONFLICT  src/runners/gate.ts
+XFORGE_EXPLAIN_CATALOGUE_MISSING  src/commands/explain.ts
+XFORGE_EXPLAIN_CODE_UNKNOWN  src/commands/explain.ts
 XFORGE_FIELD_NOT_FOUND  src/cli.ts
 XFORGE_FILE_MISSING  src/core/yaml.ts
 XFORGE_FINDINGS_ACTION_REQUIRED  src/cli.ts
@@ -125,6 +128,7 @@ XFORGE_GATE_NOT_FOUND  src/commands/check.ts
 XFORGE_GENERATED_PATH_COLLISION  src/install/planner.ts
 XFORGE_GOVERNANCE_FLOW_REQUIRED  src/commands/approve.ts
 XFORGE_GOVERNANCE_FLOW_REQUIRED  src/commands/review.ts
+XFORGE_GOVERNANCE_FLOW_REQUIRED  src/commands/stage-bundle.ts
 XFORGE_GOVERNANCE_FLOW_REQUIRED  src/commands/transition.ts
 XFORGE_GOVERNANCE_FLOW_REQUIRED  src/commands/verification.ts
 XFORGE_GOVERNANCE_FLOW_REQUIRED  src/commands/work-package.ts
@@ -230,6 +234,9 @@ XFORGE_SPEC_DELTA_WHEN_THEN_MISSING  src/core/spec-delta.ts
 XFORGE_SPEC_MAIN_INVALID  src/core/spec-merger.ts
 XFORGE_SPEC_MERGE_CONFLICT  src/core/spec-merger.ts
 XFORGE_SPEC_REQUIREMENT_DUPLICATE  src/core/spec-merger.ts
+XFORGE_STAGE_BUNDLE_GIT_UNAVAILABLE  src/commands/stage-bundle.ts
+XFORGE_STAGE_BUNDLE_NO_BASELINE  src/commands/stage-bundle.ts
+XFORGE_STAGE_BUNDLE_TREE_DIRTY  src/commands/stage-bundle.ts
 XFORGE_STATE_UPGRADE_REQUIRED  src/install/planner.ts
 XFORGE_SYMLINK_ESCAPE  src/core/path-safety.ts
 XFORGE_TARGET_NOT_ENABLED  src/install/planner.ts

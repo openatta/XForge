@@ -26,6 +26,8 @@ check  <- xforge-verify/SKILL.md
 check  <- xforge-verify/SKILL_cn.md
 doctor  <- xforge-upgrade-scaffold/SKILL.md
 doctor  <- xforge-upgrade-scaffold/SKILL_cn.md
+explain  <- xforge-apply/SKILL.md
+explain  <- xforge-apply/SKILL_cn.md
 findings resolve  <- xforge-verify/SKILL.md
 findings resolve  <- xforge-verify/SKILL_cn.md
 install  <- xforge-upgrade-scaffold/SKILL.md
@@ -34,6 +36,8 @@ review acknowledge  <- xforge-apply/SKILL.md
 review acknowledge  <- xforge-apply/SKILL_cn.md
 review acknowledge  <- xforge-verify/SKILL.md
 review acknowledge  <- xforge-verify/SKILL_cn.md
+stage-bundle  <- xforge-apply/SKILL.md
+stage-bundle  <- xforge-apply/SKILL_cn.md
 state  <- xforge-apply/SKILL.md
 state  <- xforge-apply/SKILL_cn.md
 state  <- xforge-architect/SKILL.md

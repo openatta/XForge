@@ -1,6 +1,5 @@
 import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
-import { xforgeRoot } from './helpers.js';
 
 /**
  * Every `diagnostic(...)` this product can emit, read out of the source.
@@ -23,7 +22,7 @@ import { xforgeRoot } from './helpers.js';
  * built on it.
  */
 
-export interface DiagnosticSite {
+interface DiagnosticSite {
   /** The literal code, or null where the first argument is not a string literal. */
   code: string | null;
   /** As passed, defaulting to `error` exactly as `core/errors.ts` does. */
@@ -43,24 +42,72 @@ export function splitArguments(source: string): string[] {
   const args: string[] = [];
   let depth = 0;
   let current = '';
-  let quote: string | null = null;
+  /*
+   * A stack of frames, not one `quote` character.
+   *
+   * A template literal can contain `${...}`, and what is inside that is ordinary code — including
+   * another template literal. Tracking a single open quote made the scanner treat the backtick that
+   * *opens* a nested template as the one that *closes* the outer one, after which every comma in the
+   * rest of the call read as an argument separator. The symptom was a severity silently lost, and
+   * three messages in this codebase were written around it before it was found.
+   *
+   * An interpolation frame carries its own brace depth, which the first version of this fix did not:
+   * `${matches.map(({ entry }) => …)}` closes a destructured parameter before it closes the
+   * interpolation, and popping on that `}` ended the template early — turning a three-argument call
+   * into something that read as having no path. A `${}` ends at the brace that matches its own, not
+   * at the first one.
+   */
+  type Frame = { quote: "'" | '"' | '`' } | { interpolation: true; braces: number };
+  const stack: Frame[] = [];
   let index = 0;
   while (index < source.length) {
     const char = source[index]!;
     const next = source[index + 1];
-    if (quote) {
+    const top = stack[stack.length - 1];
+
+    if (top && 'quote' in top && top.quote !== '`') {
       current += char;
       if (char === '\\') { current += next ?? ''; index += 2; continue; }
-      if (char === quote) quote = null;
+      if (char === top.quote) stack.pop();
       index += 1;
       continue;
     }
-    if (char === '"' || char === "'" || char === '`') { quote = char; current += char; index += 1; continue; }
+    if (top && 'quote' in top) {
+      current += char;
+      if (char === '\\') { current += next ?? ''; index += 2; continue; }
+      if (char === '$' && next === '{') { current += next; stack.push({ interpolation: true, braces: 0 }); index += 2; continue; }
+      if (char === '`') stack.pop();
+      index += 1;
+      continue;
+    }
+
+    /* Outside a string, or inside a `${}` where code rules apply again. */
+    if (char === '"' || char === "'" || char === '`') { stack.push({ quote: char }); current += char; index += 1; continue; }
+    if (top && 'interpolation' in top) {
+      /*
+       * No comment detection in here, and `\` consumes the character after it.
+       *
+       * A `${}` holds an expression, and an expression holds regex literals:
+       * `${relative.replace(/^specs\//, '')}` contains `\/` followed by `/`, which a `//` rule reads
+       * as the start of a line comment and skips the rest of the line for. That silently truncated
+       * one real call site's argument list. A `//` comment inside a template interpolation is legal
+       * and essentially never written, so not looking for one costs nothing and removes the misfire.
+       */
+      if (char === '\\') { current += char + (next ?? ''); index += 2; continue; }
+      if (char === '{') top.braces += 1;
+      else if (char === '}') {
+        if (top.braces === 0) { stack.pop(); current += char; index += 1; continue; }
+        top.braces -= 1;
+      }
+      current += char;
+      index += 1;
+      continue;
+    }
     if (char === '/' && next === '/') { while (index < source.length && source[index] !== '\n') index += 1; continue; }
     if (char === '/' && next === '*') { index = source.indexOf('*/', index) + 2; continue; }
     if ('([{'.includes(char)) depth += 1;
     if (')]}'.includes(char)) depth -= 1;
-    if (char === ',' && depth === 0) { args.push(current.trim()); current = ''; index += 1; continue; }
+    if (char === ',' && depth === 0 && stack.length === 0) { args.push(current.trim()); current = ''; index += 1; continue; }
     current += char;
     index += 1;
   }
@@ -99,7 +146,18 @@ function literal(argument: string | undefined): string | null {
 }
 
 /** Every `.ts` file under `src`, sorted, so the catalogue's order is stable across machines. */
-async function sourceFiles(): Promise<string[]> {
+/**
+ * Files that contain the text `diagnostic(` and no call to it.
+ *
+ * `core/errors.ts` declares the function and the `Diagnostic` type. This module names it in prose
+ * and in the regex it scans with — it began life in `test/` and moved here so one implementation
+ * could serve the build, the command and the suite, and the move made it visible to itself.
+ */
+function notACallSite(file: string): boolean {
+  return file.endsWith(`core${path.sep}errors.ts`) || file.endsWith(`core${path.sep}diagnostics-catalogue.ts`);
+}
+
+async function sourceFiles(xforgeRoot: string): Promise<string[]> {
   const root = path.join(xforgeRoot, 'src');
   const files: string[] = [];
   async function walk(directory: string): Promise<void> {
@@ -114,21 +172,21 @@ async function sourceFiles(): Promise<string[]> {
 }
 
 /** Raw `diagnostic(` occurrences, used to prove the parser above did not skip any. */
-export async function rawCallCount(): Promise<number> {
+export async function rawCallCount(xforgeRoot: string): Promise<number> {
   let total = 0;
-  for (const file of await sourceFiles()) {
+  for (const file of await sourceFiles(xforgeRoot)) {
     const source = await readFile(file, 'utf8');
-    if (file.endsWith(`core${path.sep}errors.ts`)) continue;
+    if (notACallSite(file)) continue;
     total += [...source.matchAll(/(?<![A-Za-z0-9_.])diagnostic\(/g)].length;
   }
   return total;
 }
 
-export async function readDiagnosticCatalogue(): Promise<DiagnosticSite[]> {
+export async function readDiagnosticCatalogue(xforgeRoot: string): Promise<DiagnosticSite[]> {
   const sites: DiagnosticSite[] = [];
-  for (const file of await sourceFiles()) {
+  for (const file of await sourceFiles(xforgeRoot)) {
     /* Its own definition and the `Diagnostic` type live here; neither is a call site. */
-    if (file.endsWith(`core${path.sep}errors.ts`)) continue;
+    if (notACallSite(file)) continue;
     const source = await readFile(file, 'utf8');
     const relative = path.relative(xforgeRoot, file).split(path.sep).join('/');
     for (const match of source.matchAll(/(?<![A-Za-z0-9_.])diagnostic\(/g)) {

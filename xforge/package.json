@@ -40,7 +40,7 @@
   },
   "scripts": {
     "clean": "node scripts/clean.mjs",
-    "build": "npm run clean && tsc -p tsconfig.json && node scripts/copy-license.mjs && node scripts/copy-scaffold.mjs",
+    "build": "npm run clean && tsc -p tsconfig.json && node scripts/build-diagnostics.mjs && node scripts/copy-license.mjs && node scripts/copy-scaffold.mjs",
     "test": "npm run build && npm run check:lock && vitest run test",
     "test:coverage": "npm run build && npm run check:lock && node scripts/run-coverage.mjs",
     "test:product": "npm run build && npm run check:lock && vitest run --root .. tests",
