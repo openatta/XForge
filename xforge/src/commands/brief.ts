@@ -43,6 +43,13 @@ function renderItems(items: BriefItem[], lines: string[]): void {
       lines.push(`  [${group}]`);
     }
     const location = entry.path ? `  (${entry.path}:${entry.line})` : '';
+    /* An item that carries its own readable form wins: see `BriefItem.text` for why the generic
+       fallback was not good enough for the one item that most needed to be read. */
+    if (entry.text) {
+      lines.push(`    ${entry.label}:${location}`);
+      for (const line of entry.text) lines.push(`      ${line}`);
+      continue;
+    }
     const value = renderValue(entry.value);
     if (value.length + entry.label.length < 96 && !value.includes('\n')) {
       lines.push(`    ${entry.label}: ${value}${location}`);
@@ -98,12 +105,18 @@ export function renderBriefText(data: BriefData, options: { compact?: boolean } 
      an approver who will sign without looking it up. */
   for (const item of data.decision.awaitingDecision) {
     lines.push(`  Awaiting your answer: ${item.id} — ${item.summary}`);
+    /* Under the item rather than once at the end, and with this Change and this finding already in
+       it. The end-of-block form named the command but spelled its two ids as placeholders, and a
+       live run with three such entries archived with all three still open: a reader holding a list
+       of ids and one template has to do the matching itself, at the moment it is competing with
+       signing. */
+    lines.push(`    ${item.command}`);
   }
   if (data.decision.awaitingDecision.length > 0) {
     /* Naming the command, not just the outcome. The previous wording described the edit — set
        `status: resolved` — which after the Check Stage no Skill has the authority to make, so the
        instruction had no executor and the edit happened by hand at the worst possible moment. */
-    lines.push('  These name no Stage to return to, so nothing sends them back. Record the answer with `xforge findings resolve --change <id> --id <finding-id> --answer <what you decided> --by <you>`; left open, they are reported at every later Stage. Doing it here is cheap: after the closing transition the same edit stales the receipt and voids the approval.');
+    lines.push('  These name no Stage to return to, so nothing sends them back, and each carries the command that closes it above; left open, they are reported at every later Stage. Doing it here is cheap: after the closing transition the same edit stales the receipt and voids the approval.');
   }
 
   lines.push('');

@@ -11,7 +11,7 @@ import type {
 } from '../types.js';
 import { diagnostic } from './errors.js';
 import { documentSections, markerOccurrences } from './artifact-markers.js';
-import { flowArtifacts, isStageFlow, resolveChangeState } from './flow-resolver.js';
+import { flowArchiveOperation, flowArtifacts, isStageFlow, resolveChangeState } from './flow-resolver.js';
 import { loadSelectedResources } from './resource-loader.js';
 import { gateBlockReason, readGateEvidence, resolveControlPlane } from './control-plane.js';
 import { codeMovedSince } from './revision.js';
@@ -70,6 +70,16 @@ export interface BriefItem {
   line?: number;
   /** Required on `authored` items: ids of the entries the claim rests on. */
   basis?: string[];
+  /**
+   * A readable form for `--text`, when the generic renderer cannot produce one.
+   *
+   * `renderValue` handles a string, a flat list and a shallow record well, and falls back to
+   * `JSON.stringify` for anything else. That fallback is how a change made *for* a human reader
+   * reached them as a wall of JSON: the Gate provenance grouping exists so an approver can see at a
+   * glance which staleness is accounted for, and it printed as one unbroken line of braces in the
+   * only form an approver reads. An item that knows how it should read says so here.
+   */
+  text?: string[];
 }
 
 
@@ -102,8 +112,14 @@ export interface BriefData {
      * Gate; and `openBlockers` above lists blockers alone. A live Major run left two of these open
      * through ten approvals, every one of whose `reason` read "good" — the questions were pointed
      * at the approver by name and never reached them.
+     *
+     * `command` is what clears the entry, with this Change's id and this finding's id already
+     * substituted. Naming the command in the surrounding prose was not enough: a live run read the
+     * placeholders `--change <id> --id <finding-id>`, had three such entries in front of it, and
+     * archived with all three still open. What a reader can run they run; what they have to
+     * assemble first competes with signing and loses.
      */
-    awaitingDecision: Array<{ id: string; summary: string }>;
+    awaitingDecision: Array<{ id: string; summary: string; command: string }>;
   };
   computed: BriefItem[];
   extracted: BriefItem[];
@@ -143,6 +159,81 @@ function item(
   location?: { path: string; line: number },
 ): BriefItem {
   return { id, provenance, group, label, value, ...(location ? { path: location.path, line: location.line } : {}) };
+}
+
+/**
+ * The Stage a Gate's Evidence is read as belonging to, from where the Change now stands.
+ *
+ * A Gate is not owned by one Stage: `solid` declares `structure` at propose, check and verify. The
+ * one that matters is the latest Stage that declares it and that this Change has reached, because
+ * that is the run whose Evidence the Change is currently living off — attributing `structure` to
+ * propose while sitting at check would report it as long settled when the check exit turns on it.
+ * `passed` is the separate question of whether every Stage declaring the Gate is now behind the
+ * Change; `ready-to-archive` is synthetic and absent from `flow.stages`, so it sits past all of them.
+ *
+ * A Gate no Stage declares — a Gate resource the project selects and the Flow never asks for —
+ * attributes to nothing and is never reported as expected: there is no Stage to explain it.
+ */
+function gateStage(flow: StageFlow, gateId: string, currentStage: string): { stage: string | null; passed: boolean } {
+  const declaring = flow.stages
+    .map((entry, index) => ({ id: entry.id, index, gates: [...(entry.gates ?? []), ...(entry.exit?.gates ?? [])] }))
+    .filter((entry) => entry.gates.includes(gateId));
+  if (declaring.length === 0) return { stage: null, passed: false };
+  const currentIndex = flow.stages.findIndex((entry) => entry.id === currentStage);
+  const position = currentIndex >= 0 ? currentIndex : flow.stages.length;
+  const reached = declaring.filter((entry) => entry.index <= position);
+  return {
+    stage: (reached.at(-1) ?? declaring[0]!).id,
+    passed: declaring.every((entry) => entry.index < position),
+  };
+}
+
+/**
+ * Stale Gates gathered under the Stage they belong to, each group saying whether its staleness is
+ * accounted for.
+ *
+ * Expected means both halves: the Stage is behind the Change, *and* nothing at this position still
+ * requires that Gate's Evidence to bind. Dropping the second half would have called the archive's
+ * own mandatory Gates expected at `ready-to-archive`, which is the one place their staleness is the
+ * whole question — the reassuring reading of the very Gates that must not be reassured about.
+ */
+function staleByStage(
+  stale: ReadonlyArray<{ gate: string; stage: string | null; stagePassed: boolean }>,
+  bindingGates: ReadonlySet<string>,
+): Array<{ stage: string | null; gates: string[]; expected: boolean; why: string }> {
+  const groups = new Map<string, { stage: string | null; stagePassed: boolean; gates: string[] }>();
+  for (const entry of stale) {
+    const group = groups.get(entry.stage ?? '') ?? { stage: entry.stage, stagePassed: entry.stagePassed, gates: [] };
+    group.gates.push(entry.gate);
+    groups.set(entry.stage ?? '', group);
+  }
+  return [...groups.values()].map((group) => {
+    const binding = group.gates.filter((gate) => bindingGates.has(gate));
+    if (binding.length > 0) {
+      return {
+        stage: group.stage,
+        gates: group.gates,
+        expected: false,
+        why: `This Change still runs on ${binding.join(', ')}: the Evidence has to speak for the code as it stands, and the code has moved since it was produced.`,
+      };
+    }
+    if (!group.stagePassed || group.stage === null) {
+      return {
+        stage: group.stage,
+        gates: group.gates,
+        expected: false,
+        why: group.stage === null
+          ? 'No Stage of this Flow declares these Gates, so nothing accounts for Evidence older than the code.'
+          : `Stage ${group.stage} is not behind this Change, so its Evidence is not finished with.`,
+      };
+    }
+    return {
+      stage: group.stage,
+      gates: group.gates,
+      expected: true,
+      why: `Stage ${group.stage} is closed and nothing here requires its Evidence to bind the current code; the code moved after it ran, which is what implementing the Change does.`,
+    };
+  });
 }
 
 /* ------------------------------------------------------------------ reconciliation rules */
@@ -276,7 +367,16 @@ export async function readBrief(project: ProjectContext, options: BriefOptions):
    */
   const awaitingDecision = findingsResult.findings
     .filter((finding) => finding.status !== 'resolved' && !finding.reworkTo.trim())
-    .map((finding) => ({ id: finding.id, summary: finding.summary }));
+    .map((finding) => ({
+      id: finding.id,
+      summary: finding.summary,
+      /* The two values a reader would otherwise have to look up are the two this brief already
+         knows. Only the answer and the name are left blank, and deliberately so: they are the
+         person's, and a command carrying a plausible default for either is how an Agent ends up
+         signing somebody else's decision — the same reason `verification declare --by` refuses to
+         guess. Nothing here executes this string; it is printed. */
+      command: `xforge findings resolve --change ${options.change} --id ${finding.id} --answer '<what you decided>' --by '<you>'`,
+    }));
 
   /*
    * A brief is produced where a person has something to decide: an approval this Stage declares,
@@ -419,6 +519,17 @@ export async function readBrief(project: ProjectContext, options: BriefOptions):
   computed.push(item('computed.timeline.gitHeads', 'computed', 'timeline', 'Distinct Git heads across transitions', heads));
 
   /*
+   * What this position still turns on: the current Stage's own Gates, and at the synthetic
+   * `ready-to-archive` the Gates archive requires, which `flowArchiveOperation` reads off the verify
+   * Stage. This deliberately mirrors the control plane's own rule — it evaluates the Gates of the
+   * current Stage and no others — so the brief cannot call a Gate settled that a transition would
+   * still refuse.
+   */
+  const bindingGates = new Set(stage === 'ready-to-archive'
+    ? flowArchiveOperation(flow).mandatoryGates
+    : [...(stageDefinition?.gates ?? []), ...(stageDefinition?.exit?.gates ?? [])]);
+
+  /*
    * What each Gate's Evidence was produced against, next to where the tree stands now.
    *
    * An approver reads this brief to decide whether the verification means anything, and the fact
@@ -431,12 +542,24 @@ export async function readBrief(project: ProjectContext, options: BriefOptions):
    * Reported, not blocked on. Archive accepts Evidence bound to the current content revision and
    * that rule is unchanged here; this puts the difference in front of the person signing rather
    * than deciding for them.
+   *
+   * Grouped by Stage, because the flat list read as an audit defect where it was the ordinary
+   * course of events. A `ready-to-archive` brief on a live run reported `staleAgainstCode:
+   * ["check-findings", "constitution-check"]` against 43 source files moved since they ran, and
+   * stopped the approver: both are Check-Stage Gates, the code moved during Apply — which is what
+   * Apply is — and no rule at this point asks a closed Stage's Evidence to bind the current tree.
+   * Only the Gates in `bindingGates` below are asked that. Listed side by side and undifferentiated,
+   * the expected case and the one worth stopping for looked identical, so the approver either
+   * investigates every archive or learns to wave the list through.
    */
   const gateProvenance = await Promise.all([...control.resources.gates.keys()].map(async (gateId) => {
     const evidence = await readGateEvidence(project, options.change, gateId, control.resources);
     if (!evidence) return null;
+    const attribution = gateStage(flow, gateId, stage);
     return {
       gate: gateId,
+      stage: attribution.stage,
+      stagePassed: attribution.passed,
       status: evidence.status,
       ranAt: evidence.gitHead,
       sourceFilesChanged: await codeMovedSince(project, options.change, evidence.gitHead, governance.revision.gitHead),
@@ -444,11 +567,29 @@ export async function readBrief(project: ProjectContext, options: BriefOptions):
   }));
   const provenance = gateProvenance.filter((entry): entry is NonNullable<typeof entry> => entry !== null);
   if (provenance.length > 0) {
-    computed.push(item('computed.gates.provenance', 'computed', 'governance', 'Gate Evidence provenance', {
+    const stale = provenance.filter((entry) => (entry.sourceFilesChanged ?? 0) > 0);
+    const grouped = staleByStage(stale, bindingGates);
+    const provenanceItem = item('computed.gates.provenance', 'computed', 'governance', 'Gate Evidence provenance', {
       currentGitHead: governance.revision.gitHead,
       gates: provenance,
-      staleAgainstCode: provenance.filter((entry) => (entry.sourceFilesChanged ?? 0) > 0).map((entry) => entry.gate),
-    }));
+      /* Unchanged, and kept whatever the grouping below says: it is the plain answer to "which Gates
+         exercised code that has since moved", and narrowing it to the concerning ones would make a
+         reader who asks that question get a different answer depending on where the Change stands. */
+      staleAgainstCode: stale.map((entry) => entry.gate),
+      staleByStage: grouped,
+    });
+    /*
+     * Spelled out for `--text`, because that is the form an approver reads and the grouping exists
+     * for them. Rendered generically it came out as a single line of JSON — the reassurance and the
+     * warning equally unreadable, which is the state this whole item was meant to end.
+     */
+    provenanceItem.text = [
+      `Current gitHead ${governance.revision.gitHead}.`,
+      ...(stale.length === 0
+        ? ['Every Gate\'s Evidence was produced against the code as it now stands.']
+        : grouped.map((group) => `${group.expected ? 'Expected' : 'Look at this'} — ${group.stage ?? 'no Stage declares these'}: ${group.gates.join(', ')}. ${group.why}`)),
+    ];
+    computed.push(provenanceItem);
   }
 
   computed.push(item('computed.governance.approvals', 'computed', 'governance', 'Approvals required here', approvals));

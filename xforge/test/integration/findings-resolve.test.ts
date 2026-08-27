@@ -189,6 +189,9 @@ describe('xforge findings resolve', () => {
 
     const text = (await runCli(root, ['brief', '--change', CHANGE, '--text'])).stdout;
     expect(text).toContain('Awaiting your answer: CHK-001');
-    expect(text).toContain('xforge findings resolve --change <id> --id <finding-id>');
+    /* With the ids filled in, not as a template. The placeholder form was what this asserted first,
+       and a live run proved it was not enough: three entries, one `--change <id> --id <finding-id>`
+       at the end of the block, and all three archived open. */
+    expect(text).toContain(`xforge findings resolve --change ${CHANGE} --id CHK-001`);
   });
 });
