@@ -29,7 +29,6 @@ describe('reachability matrix', () => {
   const COMMANDS: Array<{ name: string; argv: (change: string) => string[] }> = [
     { name: 'state', argv: (c) => ['state', '--change', c] },
     { name: 'check', argv: (c) => ['check', '--change', c] },
-    { name: 'brief', argv: (c) => ['brief', '--change', c] },
     { name: 'audit verify', argv: (c) => ['audit', 'verify', '--change', c] },
     { name: 'draft-receipt', argv: (c) => ['verification', 'draft-receipt', '--change', c] },
     { name: 'archive --dry-run', argv: (c) => ['archive', '--change', c, '--dry-run'] },

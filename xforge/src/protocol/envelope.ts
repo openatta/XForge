@@ -35,7 +35,7 @@ function disabledHookNames(data: unknown): string[] {
 
 /**
  * `render` replaces the JSON dump of `data` for commands whose whole purpose is to be read by a
- * person — `brief`, whose value disappears if it arrives as a wall of JSON; `upgrade-scaffold`,
+ * person — `state`, whose value disappears if it arrives as a wall of JSON; `upgrade-scaffold`,
  * whose plan is the output; and `state`, whose `data` is the entire resolved project and printed
  * as JSON buries the `Next actions:` block below it. Everything else about the text form is
  * unchanged, so `--text` still alters presentation only: the same Envelope, the same diagnostics,

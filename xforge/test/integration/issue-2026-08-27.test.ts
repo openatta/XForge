@@ -238,14 +238,15 @@ describe('field report 2026-08-27', () => {
        the Evidence that just passed. */
     await write(root, 'xforge/changes/add-feature/check-report.md', '# Check report\n\nWritten after the Gates ran.\n');
 
-    const brief = await runCli(root, ['brief', '--change', 'add-feature']);
-    const observations = brief.json.data.reconciliation as any[];
-    const stale = observations.find((item) => item.code === 'XFORGE_BRIEF_REFERENCE_UNRESOLVABLE' && item.summary.includes('gate:check-findings'));
-    expect(stale, JSON.stringify(observations.map((item) => item.id))).toBeDefined();
-    expect(stale.summary).toContain('passed against an earlier content revision');
-    expect(stale.summary).toContain('xforge check --gate check-findings');
+    /* Reported by `check` since the brief was deleted; the rules themselves are unchanged. */
+    const result = await runCli(root, ['check', '--change', 'add-feature', '--gate', 'structure']);
+    const observations = result.json.diagnostics as any[];
+    const stale = observations.find((item) => item.code === 'XFORGE_RECONCILE_REFERENCE_UNRESOLVABLE' && item.message.includes('gate:check-findings'));
+    expect(stale, JSON.stringify(observations.map((item) => item.code))).toBeDefined();
+    expect(stale.message).toContain('passed against an earlier content revision');
+    expect(stale.message).toContain('xforge check --gate check-findings');
     /* And no longer claims the Gate is owed by a later Stage. */
-    expect(stale.summary).not.toContain('runs at a later Stage');
+    expect(stale.message).not.toContain('runs at a later Stage');
   }, 600_000);
 });
 

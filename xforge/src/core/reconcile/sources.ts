@@ -12,28 +12,19 @@ import { safeResolve } from '../path-safety.js';
 import { loadYaml } from '../yaml.js';
 import { documentSections as sections } from '../artifact-markers.js';
 import { requirementAnchor } from './model.js';
-import type { ArtifactSource, BriefUnavailable, LedgerFinding, LedgerPrinciple, MaterialDecision, SpecRequirement } from './model.js';
+import type { ArtifactSource, SourceUnavailable, LedgerFinding, LedgerPrinciple, MaterialDecision, SpecRequirement } from './model.js';
 
 /**
- * Reading the Artifacts and ledgers a brief quotes, and nothing else.
+ * Reading the Artifacts and ledgers the reconciliation rules compare, and nothing else.
  *
  * Every function here answers "what does the repository say", never "is that acceptable" -- an
- * unreadable source becomes an `unavailable` entry rather than a judgement, because a brief that
+ * unreadable source becomes an `unavailable` entry rather than a judgement, because a report that
  * quietly drops a section it could not read is at its most reassuring exactly where it is least
  * entitled to be.
  */
 
-/** The first non-empty paragraph of a section, which is where its claim is stated. */
-export function leadParagraph(body: string): string {
-  const paragraphs = body.split(/\n\s*\n/);
-  for (const paragraph of paragraphs) {
-    const trimmed = paragraph.trim();
-    if (trimmed) return trimmed;
-  }
-  return '';
-}
 /** Artifact ids a Stage at or before `stage` produces. Everything, once past the last Stage. */
-export function dueArtifactIds(flow: StageFlow, stage: string): Set<string> {
+function dueArtifactIds(flow: StageFlow, stage: string): Set<string> {
   const index = flow.stages.findIndex((entry) => entry.id === stage);
   const reached = index < 0 ? flow.stages : flow.stages.slice(0, index + 1);
   return new Set(reached.flatMap((entry) => entry.produces));
@@ -43,9 +34,9 @@ export async function readArtifactSources(
   changeId: string,
   flow: StageFlow,
   stage: string,
-): Promise<{ sources: ArtifactSource[]; unavailable: BriefUnavailable[] }> {
+): Promise<{ sources: ArtifactSource[]; unavailable: SourceUnavailable[] }> {
   const sources: ArtifactSource[] = [];
-  const unavailable: BriefUnavailable[] = [];
+  const unavailable: SourceUnavailable[] = [];
   const due = dueArtifactIds(flow, stage);
   for (const artifact of flowArtifacts(flow) as StageFlowArtifact[]) {
     // Only single-file Artifacts are sliceable by heading; a glob such as the delta-Spec pattern
@@ -64,7 +55,7 @@ export async function readArtifactSources(
     } catch {
       /* A not-yet-written Artifact is the normal case for a later Stage, not a failure. Only an
          Artifact the current Stage already required would be missing here, and the Gates report
-         that far more precisely than this brief could. */
+         that far more precisely than a summary could. */
     }
   }
   return { sources, unavailable };
@@ -72,9 +63,9 @@ export async function readArtifactSources(
 export async function readSpecRequirements(
   project: ProjectContext,
   changeId: string,
-): Promise<{ requirements: SpecRequirement[]; unavailable: BriefUnavailable[] }> {
+): Promise<{ requirements: SpecRequirement[]; unavailable: SourceUnavailable[] }> {
   const requirements: SpecRequirement[] = [];
-  const unavailable: BriefUnavailable[] = [];
+  const unavailable: SourceUnavailable[] = [];
   const relative = `${project.changesPath}/${changeId}/specs`;
   let directory: string;
   try {
@@ -86,7 +77,7 @@ export async function readSpecRequirements(
   try {
     files = (await fg('**/*.md', { cwd: directory, onlyFiles: true, followSymbolicLinks: false })).sort();
   } catch {
-    unavailable.push({ section: 'scale', code: 'XFORGE_BRIEF_SPECS_UNREADABLE', reason: `Delta Spec directory could not be listed: ${relative}` });
+    unavailable.push({ section: 'scale', code: 'XFORGE_RECONCILE_SPECS_UNREADABLE', reason: `Delta Spec directory could not be listed: ${relative}` });
     return { requirements, unavailable };
   }
   for (const file of files) {
@@ -94,7 +85,7 @@ export async function readSpecRequirements(
     try {
       content = await readFile(path.join(directory, file), 'utf8');
     } catch {
-      unavailable.push({ section: 'scale', code: 'XFORGE_BRIEF_SPEC_UNREADABLE', reason: `Delta Spec could not be read: ${relative}/${file}` });
+      unavailable.push({ section: 'scale', code: 'XFORGE_RECONCILE_SPEC_UNREADABLE', reason: `Delta Spec could not be read: ${relative}/${file}` });
       continue;
     }
     const parsed = parseSpecDelta(content);
@@ -126,9 +117,9 @@ export async function readSpecRequirements(
 export async function readFindings(
   project: ProjectContext,
   changeId: string,
-): Promise<{ findings: LedgerFinding[]; present: boolean; unavailable: BriefUnavailable[] }> {
+): Promise<{ findings: LedgerFinding[]; present: boolean; unavailable: SourceUnavailable[] }> {
   const relative = `${project.changesPath}/${changeId}/${CHECK_FINDINGS_PATH}`;
-  const unavailable: BriefUnavailable[] = [];
+  const unavailable: SourceUnavailable[] = [];
   let document: { findings?: unknown };
   try {
     document = await loadYaml<{ findings?: unknown }>(await safeResolve(project.root, relative), relative);
@@ -136,7 +127,7 @@ export async function readFindings(
     return { findings: [], present: false, unavailable };
   }
   if (!Array.isArray(document.findings)) {
-    unavailable.push({ section: 'findings', code: 'XFORGE_BRIEF_FINDINGS_UNREADABLE', reason: `Findings ledger has no findings list: ${relative}` });
+    unavailable.push({ section: 'findings', code: 'XFORGE_RECONCILE_FINDINGS_UNREADABLE', reason: `Findings ledger has no findings list: ${relative}` });
     return { findings: [], present: true, unavailable };
   }
   const findings = document.findings.map((entry): LedgerFinding => {
@@ -178,9 +169,9 @@ export async function readMaterialDecisions(project: ProjectContext, changeId: s
 export async function readPrinciples(
   project: ProjectContext,
   changeId: string,
-): Promise<{ principles: LedgerPrinciple[]; present: boolean; unavailable: BriefUnavailable[] }> {
+): Promise<{ principles: LedgerPrinciple[]; present: boolean; unavailable: SourceUnavailable[] }> {
   const relative = `${project.changesPath}/${changeId}/${CONSTITUTION_CHECK_PATH}`;
-  const unavailable: BriefUnavailable[] = [];
+  const unavailable: SourceUnavailable[] = [];
   let document: { principles?: unknown };
   try {
     document = await loadYaml<{ principles?: unknown }>(await safeResolve(project.root, relative), relative);
@@ -188,7 +179,7 @@ export async function readPrinciples(
     return { principles: [], present: false, unavailable };
   }
   if (!Array.isArray(document.principles)) {
-    unavailable.push({ section: 'constitution', code: 'XFORGE_BRIEF_CONSTITUTION_UNREADABLE', reason: `Constitution ledger has no principles list: ${relative}` });
+    unavailable.push({ section: 'constitution', code: 'XFORGE_RECONCILE_CONSTITUTION_UNREADABLE', reason: `Constitution ledger has no principles list: ${relative}` });
     return { principles: [], present: true, unavailable };
   }
   const principles = document.principles.map((entry): LedgerPrinciple => {

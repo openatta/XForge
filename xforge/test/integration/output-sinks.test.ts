@@ -48,25 +48,26 @@ describe('output sinks', () => {
     expect(`${evidence.stdout}${evidence.stderr}`).toContain('nowhere.md');
   }, 300_000);
 
-  it('reaches a reader with every section a brief could not produce', async () => {
+  it('reaches a reader with every source reconciliation could not read', async () => {
     const built = await project().flow('solid').atStage('check').build();
     /*
      * A ledger that parses and carries no list. Chosen over deleting a file because a missing
-     * directory is not unreadable — `fg` returns nothing for one, the brief reports zero
-     * Requirements, and no `unavailable` entry is produced at all. The first version of this test
-     * asserted against that and passed its own loop vacuously, which is the failure mode a test
-     * about missing output is most able to have.
+     * directory is not unreadable — `fg` returns nothing for one, zero Requirements are reported,
+     * and no `unavailable` entry is produced at all. The first version of this test asserted against
+     * that and passed its own loop vacuously, which is the failure mode a test about missing output
+     * is most able to have.
      */
     await write(built.root, `xforge/changes/${built.change}/evidence/check-findings.yaml`, 'notfindings: []\n');
 
-    const json = await runCli(built.root, ['brief', '--change', built.change]);
-    const text = await runCli(built.root, ['brief', '--change', built.change, '--text']);
-    const unavailable = json.json.data.unavailable ?? [];
-    expect(unavailable.length).toBeGreaterThan(0);
-    for (const entry of unavailable) {
-      expect(text.stdout, entry.section).toContain(entry.code);
+    const json = await runCli(built.root, ['check', '--change', built.change, '--gate', 'structure']);
+    const text = await runCli(built.root, ['check', '--change', built.change, '--gate', 'structure', '--text']);
+    /* A source the reconciliation rules could not read is a warning naming the section and the code,
+       and it has to reach the readable form as well as the envelope. */
+    const unreadable = (json.json.diagnostics as any[]).filter((item) => item.severity === 'warning' && /UNREADABLE/.test(item.code));
+    expect(unreadable.length, JSON.stringify((json.json.diagnostics as any[]).map((item) => item.code))).toBeGreaterThan(0);
+    for (const entry of unreadable) {
+      expect(text.stdout + text.stderr, entry.code).toContain(entry.code);
     }
-    expect(text.stdout).toContain('UNAVAILABLE');
   }, 300_000);
 
   it('reaches a reader with every diagnostic the envelope carries, in the text form too', async () => {

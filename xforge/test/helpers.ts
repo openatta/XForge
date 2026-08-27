@@ -294,7 +294,7 @@ export async function advanceSolidToApply(root: string, id = 'add-feature'): Pro
    * Solid reviews before it implements, and the planning approval is collected on the way *out* of
    * Check rather than into it: `planning-solid` gates `check -> apply`, so it is requested with
    * `--for apply` after Check's Gates have run. Approving at the design exit put the signature
-   * before `check-findings` and `constitution-check` existed, which left `xforge brief` with
+   * before `check-findings` and `constitution-check` existed, which left reconciliation with
    * nothing to reconcile against.
    */
   await successful(root, ['transition', '--change', id, '--to', 'check']);

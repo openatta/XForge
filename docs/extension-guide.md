@@ -270,7 +270,7 @@ schema 的 `oneOf` 里仍留着裸映射形态，但**所有读取方都会忽�
 ### 2.7 Artifact `markers`
 
 `outline` 规定 Artifact 必须有哪些 `## ` 小节；`markers` 规定其中某个小节**意味着什么**——
-正是这一点让 `xforge brief` 能够算出答案，而不必请人读完散文再为它背书。
+正是这一点让 `check` 的核对规则能够算出答案，而不必请人读完散文再为它背书。
 
 ```yaml
 - id: design

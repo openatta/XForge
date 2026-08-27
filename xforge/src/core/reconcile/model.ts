@@ -19,15 +19,15 @@ export function requirementAnchor(heading: string): string {
 type ReconciliationRule = 'RC-1' | 'RC-2' | 'RC-3' | 'RC-4' | 'RC-5' | 'RC-6';
 
 /**
- * The rows a brief is assembled from, named once so the readers and the reconciliation rules cannot
+ * The rows reconciliation is computed from, named once so the readers and the rules cannot
  * describe the same thing two ways.
  *
- * They are internal: `BriefData` in `core/brief.ts` is what a caller sees, and these are what it was
- * built out of. Keeping them here is what lets the reading layer and the judging layer be separate
- * modules without either importing the other.
+ * They are internal: `ReconciliationObservation` is what a caller sees, and these are what it is
+ * computed out of. Keeping them here is what lets the reading layer and the judging layer be
+ * separate modules without either importing the other.
  */
 
-export interface BriefUnavailable {
+export interface SourceUnavailable {
   section: string;
   code: string;
   reason: string;

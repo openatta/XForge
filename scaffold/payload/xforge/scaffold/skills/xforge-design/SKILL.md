@@ -27,7 +27,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 - Read `xforge/architecture.md` when it exists, and say how this Change stands against each decision it touches — within it, or departing from it with a stated reason. When the design needs a decision *changed*, write the proposal into the Design Artifact you own and stop for a human. Do not write `evidence/conditions/architectureDeltas.yaml` yourself: that entry names a `decidedBy`, and an Agent filling in a human's name records an authorisation nobody gave — the exact thing the ledger exists to catch. A human authorises and invokes `xforge-architect`, which is the only writer of the architecture file and its ledger. When the file does not exist, say so once and proceed: it is a project that has not written its architecture down, not a project in violation.
 - Map each major decision to a Requirement, project constraint, or code fact and state the verifiable result.
 - Report coverage, residual risk, and the next legal Action against Action `doneWhen`.
-- If a project's own Flow does declare an approval at the Design exit (none of the shipped Flows do), run `xforge brief --change <id> --text` and give the user its output **verbatim**. Do not summarize, reorder, or paraphrase it — the brief separates what the CLI computed from what it quoted, and restating it in your own words destroys the only signal the reader has for telling those apart.
+- If a project's own Flow does declare an approval at the Design exit (none of the shipped Flows do), run `xforge check --change <id>` and put its `XFORGE_RECONCILE_*` entries to the user before they sign. Each is one stated difference; do not reword it.
 
 # Stop and rework
 

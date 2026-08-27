@@ -105,6 +105,32 @@ Diagnostics: [
     "path": "xforge/changes/add-feature/design.md"
   },
   {
+    "code": "XFORGE_RECONCILE_REQUIREMENT_UNANCHORED",
+    "severity": "info",
+    "message": "RC-2: Widget works is declared in xforge/changes/add-feature/specs/widget/spec.md and is referenced by none of this Change's other Artifacts.",
+    "path": "xforge/changes/add-feature",
+    "details": {
+      "rule": "RC-2",
+      "refs": [
+        "Widget works",
+        "xforge/changes/add-feature/specs/widget/spec.md"
+      ]
+    }
+  },
+  {
+    "code": "XFORGE_RECONCILE_REQUIREMENT_UNCOVERED",
+    "severity": "info",
+    "message": "RC-3: Widget works is not named in the \"Completeness\" section of xforge/changes/add-feature/assurance.md.",
+    "path": "xforge/changes/add-feature",
+    "details": {
+      "rule": "RC-3",
+      "refs": [
+        "Widget works",
+        "xforge/changes/add-feature/assurance.md"
+      ]
+    }
+  },
+  {
     "code": "XFORGE_CHECK_PASSED_WITH_WARNINGS",
     "severity": "info",
     "message": "No Gate in this run failed, and the same run reported 2 warnings: XFORGE_ARTIFACT_MARKER_SECTION_MISSING. A passing Gate is not a clean check. They are advisory now and cost nothing to fix here; an Artifact problem left unfixed is next reported by archive, after the Stage has transitioned and after anyone has approved it.",
@@ -125,4 +151,26 @@ Changes: [
     "source": "gate:unit-tests"
   }
 ]
-Next actions: []
+Next actions: [
+  {
+    "action": "answer-finding",
+    "type": "governance",
+    "actor": "human",
+    "status": "ready",
+    "id": "CHK-001",
+    "reason": "Finding CHK-001 is awaiting your answer: Should the retry budget be configurable?",
+    "command": [
+      "xforge",
+      "findings",
+      "resolve",
+      "--change",
+      "add-feature",
+      "--id",
+      "CHK-001",
+      "--answer",
+      "<what you decided>",
+      "--by",
+      "<you>"
+    ]
+  }
+]

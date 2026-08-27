@@ -108,36 +108,23 @@ describe('the readable form of a result', () => {
     expect(notice.message).toContain('do not block archive');
   });
 
-  it('folds the brief\'s quoted layer without removing it, and refuses to fold the JSON', async () => {
+  it('carries the reconciliation entries into the readable form', async () => {
+    /*
+     * These used to print as a section of `xforge brief`, which a Skill relayed verbatim. The brief
+     * is gone and the rules run from `check`, so the readable form of `check` is now the only place
+     * a person meets them — a diagnostic that reaches the envelope and not the text would be a
+     * finding that reaches a machine and not a reader.
+     */
     const root = await fixture();
     await createCompleteSolidChange(root);
-    await write(root, `xforge/changes/${CHANGE}/${CHECK_FINDINGS_PATH}`, 'findings: []\n');
-    await runCli(root, ['check', '--change', CHANGE, '--gate', 'structure']);
-    await runCli(root, ['transition', '--change', CHANGE, '--to', 'design']);
-    await runCli(root, ['transition', '--change', CHANGE, '--to', 'check']);
-    await runCli(root, ['check', '--change', CHANGE]);
 
-    const full = await runCli(root, ['brief', '--change', CHANGE, '--text']);
-    const folded = await runCli(root, ['brief', '--change', CHANGE, '--text', '--compact']);
-
-    expect(full.stdout).toContain('EXTRACTED — verbatim from the Artifacts');
-    expect(folded.stdout).toContain('EXTRACTED — folded:');
-    expect(folded.stdout).toContain('without --compact');
-    expect(folded.stdout).toContain('proposal.md');
-    /* The property is that the quoted *bodies* are gone while every heading is still named — not
-       that the output is shorter, which on a Change with one-line sections it need not be. */
-    expect(full.stdout).toContain('Use a deterministic fixture.');
-    expect(folded.stdout).not.toContain('Use a deterministic fixture.');
-    expect(folded.stdout).toContain('Decisions');
-    /* The decision block is never folded: it is what the approval turns on. */
-    expect(folded.stdout).toContain('WHAT IS BEING DECIDED');
-    /* `data` is untouched, which is what keeps triage anchoring deciding on the same set. */
-    const json = await runCli(root, ['brief', '--change', CHANGE]);
-    expect(json.json.data.extracted.length).toBeGreaterThan(0);
-
-    const refused = await runCli(root, ['brief', '--change', CHANGE, '--compact']);
-    expect(refused.code).toBe(1);
-    expect(refused.json.diagnostics[0].code).toBe('XFORGE_OPTION_NOT_ALLOWED');
+    const json = await runCli(root, ['check', '--change', CHANGE, '--gate', 'structure']);
+    const text = await runCli(root, ['check', '--change', CHANGE, '--gate', 'structure', '--text']);
+    const observations = (json.json.diagnostics as any[]).filter((item) => item.code.startsWith('XFORGE_RECONCILE_'));
+    expect(observations.length, JSON.stringify((json.json.diagnostics as any[]).map((item) => item.code))).toBeGreaterThan(0);
+    for (const entry of observations) expect(text.stdout + text.stderr, entry.code).toContain(entry.code);
+    /* Stated as differences and never as verdicts, which is what lets an approver read them. */
+    for (const entry of observations) expect(entry.severity).toBe('info');
   });
 
   it('reports a valid approval rehearsal as information, not as a warning', async () => {

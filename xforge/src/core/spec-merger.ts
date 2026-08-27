@@ -77,7 +77,7 @@ function uniqueRequirements(blocks: RequirementBlock[], label: string, filePath:
  * behaving differently was the only clue available.
  *
  * The candidate is found by the citable id a heading starts with (`MCP-009 ...` cites as `MCP-009`,
- * the same reading `core/brief.ts` and `core/constitution-check.ts` use), so this suggests only
+ * the same reading `core/reconcile/model.ts` and `core/constitution-check.ts` use), so this suggests only
  * where the project actually numbers its requirements. It stays a suggestion: renaming through
  * `## RENAMED Requirements` and correcting a typo are different intentions, and nothing here can
  * tell which one was meant.

@@ -62,7 +62,7 @@ npx --no-install xforge <command>    # 项目本地安装（可执行文件在 n
 加 `--text` 得到人类可读视图，**不改变语义与退出状态**。
 需要程序或 Agent 消费结果时用默认的 JSON。
 
-两个命令有专门的文本渲染：`brief`（分层简报）与 `upgrade-scaffold`（合并计划）。
+两个命令有专门的文本渲染：`state`（项目与 Change 摘要）与 `upgrade-scaffold`（合并计划）。
 唯一不返回信封的是 `hook dispatch`——它要往 stdout 写目标平台要求的 Hook 响应 JSON。
 
 ### 2.3 退出码
@@ -89,7 +89,6 @@ npx --no-install xforge <command>    # 项目本地安装（可执行文件在 n
 | `uninstall` | 写 | 摘要安全地移除受管文件 |
 | `check` | 有条件写 | 结构诊断 + 真实的 Gate Evidence |
 | `verification` | 写 | 声明本项目怎么跑 declared Gate；起草验证 receipt |
-| `brief` | 读 | 人类审批前的分层简报 |
 | `findings` | 写 | 记录某条 Check finding 的答案并置为 resolved |
 | `transition` | 写 | 受保护的 Stage 转换；`repair` 丢弃一张叶子回执 |
 | `approve` | 写 | 交互式本地审批或 mcp provider 审批 |
@@ -334,25 +333,25 @@ XFORGE_APPROVAL_MCP_TOKEN_MISSING      XFORGE_APPROVAL_MCP_CONNECTION_FAILED
 
 **provider 未配置，不是决定仍在等待。**
 
-### `brief`
+### 审批前的核对：`check` 的 `XFORGE_RECONCILE_*`
 
-```bash
-xforge [--root <path>] brief --change <id> [--attach-triage <path>] [--text] [--compact]
-```
+`xforge check --change <id>` 在跑 Gate 的同时，会比对这个 Change 的**记录**与它的**文件**，
+把每一处差异作为一条 `info` 诊断报出来（RC-1 至 RC-5）：
 
-报告「这个 Stage 的一次人类审批到底取决于什么」，把**算出来的事实**与**原文引用**分开呈现。
+- 台账说某条 finding 已解决，而它所引的 Requirement 不在它所引的 Artifact 里
+- 某条 Requirement 没有被这个 Change 的任何其它 Artifact 引用
+- 某条 Requirement 不在 Flow 声明的覆盖段里
+- 某处「留到后面再说」没有任何 finding 承接
+- Constitution 台账引用的 Gate 在当前 revision 下没有通过的证据
 
-三个 Skill（design / check / verify）在人类审批前都要求运行它，并把输出**逐字**交给用户。
+**每一条只陈述差异，从不判断它是不是问题**——这是它能被审批人直接读、
+而不至于被当成噪声或当成阻断的原因。同一次运行的 `nextActions` 里，
+还会为每一条等待人回答的 finding 附上填好 id 的 `xforge findings resolve` 命令。
 
-> **不得转述、重排或概括。** 简报分层呈现的目的就是让读者不必信任措辞——
-> 用自己的话复述会毁掉读者区分二者的唯一依据。
-
-`--compact`（仅对 `--text` 生效）把 EXTRACTED 段**折叠**：不打印引文正文，
-改为逐条列出它的标题与来源 `文件:行号`，并给出取全文的命令。
-**折叠不是删除**——JSON 里每一条 `extracted` 原样都在，
-所以 `--attach-triage` 的锚点校验（`XFORGE_BRIEF_UNANCHORED_CLAIM`）判定的集合完全不变。
-三个 Skill 的指令里**刻意不提这个选项**：引文层正是让审批人不必只看「算出来的结论」的那一层，
-折不折叠应当由读的人决定，而不是由转交的 Agent 决定。
+> 这些规则原本印在 `xforge brief` 里。那份文档长到 36KB、要求逐字转交，
+> 于是必须整篇穿过模型的上下文才能到达一个人手里——既不是它当初的设计目标
+> （一屏、每轮一次），也不是模型该替人搬运的东西。它的其余部分已删除；
+> 这一部分留下来了，因为它本来就只有 1–3KB，而且每一条都可以直接行动。
 
 ### `findings`
 
@@ -363,7 +362,7 @@ xforge [--root <path>] findings resolve --change <id> --id <finding-id> \
 
 记录某个人对**一条** Check finding 的答案，并把该条置为 `status: resolved`。
 
-它补的是一个**授权缺口**，不是便利性缺口：`xforge brief` 在每个收集审批的 Stage 都会打印
+它补的是一个**授权缺口**，不是便利性缺口：`xforge check` 在每个 Stage 都会列出
 「记录答案并把该条设为 `status: resolved`」，而 Check Stage 结束之后，**没有任何被授权的执行者能做这件事**
 ——`xforge-check` 拥有 `evidence/check-findings.yaml` 但只在 Check 运行；
 `xforge-verify` 的权限止于 assurance 与验证 receipt；

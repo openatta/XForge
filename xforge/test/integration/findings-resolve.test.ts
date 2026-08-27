@@ -199,7 +199,7 @@ describe('xforge findings resolve', () => {
     expect(gate.json.data.gates[0].evidence.stdout).toContain('names no resolvedBy');
   });
 
-  it('points the brief at the command instead of at a hand edit', async () => {
+  it('points the reader at the command instead of at a hand edit', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
     await write(root, `xforge/changes/${CHANGE}/${CHECK_FINDINGS_PATH}`, AWAITING);
@@ -207,11 +207,17 @@ describe('xforge findings resolve', () => {
     await runCli(root, ['transition', '--change', CHANGE, '--to', 'design']);
     await runCli(root, ['transition', '--change', CHANGE, '--to', 'check']);
 
-    const text = (await runCli(root, ['brief', '--change', CHANGE, '--text'])).stdout;
-    expect(text).toContain('Awaiting your answer: CHK-001');
+    /* From `check` since the brief was deleted: the document was thirty-six kilobytes that had to be
+       relayed through a model to reach a person, and this line is one of the two parts of it worth
+       keeping. */
+    const result = await runCli(root, ['check', '--change', CHANGE, '--gate', 'structure']);
+    const awaiting = result.json.nextActions.find((item: any) => item.id === 'CHK-001');
+    expect(awaiting, JSON.stringify(result.json.nextActions)).toBeDefined();
+    expect(awaiting.reason).toContain('awaiting your answer');
     /* With the ids filled in, not as a template. The placeholder form was what this asserted first,
        and a live run proved it was not enough: three entries, one `--change <id> --id <finding-id>`
        at the end of the block, and all three archived open. */
-    expect(text).toContain(`xforge findings resolve --change ${CHANGE} --id CHK-001`);
+    expect(awaiting.command.join(' ')).toContain(`xforge findings resolve --change ${CHANGE} --id CHK-001`);
+    expect(awaiting.actor).toBe('human');
   });
 });

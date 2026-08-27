@@ -24,10 +24,10 @@ export { readState as executeState } from '../core/state-reader.js';
  *   nothing else. Machine callers should not be reading this, and `--field` remains the addressed
  *   way to take one value.
  * - **Omissions are named.** A summary that quietly drops a section is at its most reassuring
- *   exactly where it is least entitled to be — the same failure `core/brief.ts` carries an
+ *   exactly where it is least entitled to be — the same failure `core/reconcile.ts` avoids by carrying an
  *   `unavailable` list to avoid. The closing line names what is not here and how to get it.
  * - **No verdicts.** Every line below is a fact already in `data`, reformatted. Nothing here
- *   decides whether a Gate is good enough or a Change is ready; that is what `check`, `brief` and
+ *   decides whether a Gate is good enough or a Change is ready; that is what `check` and
  *   `archive --dry-run` are for.
  */
 

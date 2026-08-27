@@ -15,6 +15,7 @@ import { loadTransitionReceipts } from '../core/control-plane/receipts.js';
 import { sha256, stableStringify } from '../core/hash.js';
 import { safeResolve } from '../core/path-safety.js';
 import { AUDIT_DIRECTORY } from '../constants.js';
+import { reconcileChange } from '../core/reconcile.js';
 
 /** Stages that run before any implementation exists, so no work-package verify can be meaningful. */
 const PRE_APPLY_STAGES = new Set(['propose', 'clarify', 'design', 'check']);
@@ -507,6 +508,27 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
    * this run did not itself refresh: one it just ran is current by construction, and saying
    * otherwise would make the notice fire on every clean run and be tuned out by the second week.
    */
+  /*
+   * What this Change's records say against what its files contain.
+   *
+   * Six rules, one to three kilobytes of differences, and the section a field report called the
+   * most valuable mechanism in the release — RC-5 forced a Gate to be re-run, which is how an
+   * unattributable `resolvedBy` was caught instead of archived. They used to print inside
+   * `xforge brief`, whose other thirty-four kilobytes had to travel through a model's context to
+   * reach a person; the document is gone and this is not part of what made it expensive.
+   *
+   * Here because `check` runs at every Stage, already reads most of these files, and is where a
+   * reader is looking when they ask whether the Change is in order. `info` throughout: every rule
+   * states a difference and none of them decides whether it is a problem.
+   */
+  if (options.change && control && isStageFlow(control.flow)) {
+    const reconciliation = await reconcileChange(project, options.change, control.flow, control);
+    diagnostics.push(...reconciliation.diagnostics);
+    /* The findings waiting on a person, each with the command that closes it. See `reconcile.ts` for
+       why this travels with the reconciliation rules without being one. */
+    nextActions.push(...reconciliation.nextActions);
+  }
+
   if (options.change && control) {
     /* The Gates this Change still has to satisfy, minus the ones this run just refreshed: one that
        has only now been executed is current by construction, and reporting it would make the notice

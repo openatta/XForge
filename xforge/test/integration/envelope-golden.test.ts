@@ -58,7 +58,6 @@ describe('envelope golden', () => {
     { name: 'state-kind-gates', argv: ['state', '--kind', 'gates'] },
     { name: 'check-change', argv: ['check', '--change', CHANGE] },
     { name: 'check-stage-verify', argv: ['check', '--change', CHANGE, '--stage', 'verify'] },
-    { name: 'brief', argv: ['brief', '--change', CHANGE] },
     { name: 'doctor', argv: ['doctor'] },
     { name: 'audit-status', argv: ['audit', 'status', '--change', CHANGE] },
     { name: 'audit-verify', argv: ['audit', 'verify', '--change', CHANGE] },
@@ -71,13 +70,17 @@ describe('envelope golden', () => {
     { name: 'install-dry-run', argv: ['install', '--dry-run'] },
     { name: 'upgrade-scaffold-dry-run', argv: ['upgrade-scaffold', '--dry-run'] },
     /* Refusals, which are the half the suite covers least: 165 of 320 codes are asserted nowhere. */
+    /* `archive` inherits the case `brief` used to carry: a command that cannot act without a Change,
+       refusing before it does anything. */
+    { name: 'error-change-required', argv: ['archive'] },
+    /* And an option refused for the command it was not written for, which `--compact` used to
+       demonstrate before it left with the brief. */
+    { name: 'error-option-not-allowed', argv: ['audit', 'verify', '--output', 'somewhere.json'] },
     { name: 'error-unknown-command', argv: ['frobnicate'] },
     { name: 'error-unknown-option', argv: ['state', '--frobnicate', 'x'] },
-    { name: 'error-change-required', argv: ['brief'] },
     { name: 'error-unknown-change', argv: ['state', '--change', 'no-such-change'] },
     { name: 'error-unknown-gate', argv: ['check', '--change', CHANGE, '--gate', 'no-such-gate'] },
     { name: 'error-findings-arguments', argv: ['findings', 'resolve', '--change', CHANGE] },
-    { name: 'error-compact-without-text', argv: ['brief', '--change', CHANGE, '--compact'] },
     { name: 'error-field-not-found', argv: ['state', '--change', CHANGE, '--field', 'nope.nope'] },
   ];
 
@@ -98,8 +101,6 @@ describe('envelope golden', () => {
     const root = await atVerify();
     for (const [name, argv] of [
       ['state-text', ['state', '--change', CHANGE, '--text']],
-      ['brief-text', ['brief', '--change', CHANGE, '--text']],
-      ['brief-text-compact', ['brief', '--change', CHANGE, '--text', '--compact']],
       ['check-text', ['check', '--change', CHANGE, '--text']],
     ] as Array<[string, string[]]>) {
       const result = await runCli(root, argv);
@@ -114,7 +115,7 @@ describe('envelope golden', () => {
        somebody who did not add it. */
     const first = await atVerify();
     const second = await atVerify();
-    for (const argv of [['state', '--change', CHANGE], ['check', '--change', CHANGE], ['brief', '--change', CHANGE], ['audit', 'verify', '--change', CHANGE]]) {
+    for (const argv of [['state', '--change', CHANGE], ['check', '--change', CHANGE], ['audit', 'verify', '--change', CHANGE]]) {
       const a = renderEnvelope((await runCli(first, argv)).stdout, { root: first });
       const b = renderEnvelope((await runCli(second, argv)).stdout, { root: second });
       expect(a, argv.join(' ')).toBe(b);

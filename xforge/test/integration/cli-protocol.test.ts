@@ -28,6 +28,22 @@ describe('CLI protocol', () => {
     expect(text.stderr).toBe('');
   });
 
+  it('does not carry a command it no longer implements', async () => {
+    /*
+     * `brief` was deleted: a thirty-six-kilobyte document that had to be relayed verbatim through a
+     * model's context to reach a person. A command table that still advertises it would send a
+     * reader — or an Agent reading `xforge help` — after something that answers with
+     * `XFORGE_COMMAND_UNKNOWN`, which reads as a broken install rather than a removed feature.
+     */
+    const root = await fixture();
+    const help = await runCli(root, ['help']);
+    expect(Object.keys(help.json.data.commands)).not.toContain('brief');
+
+    const gone = await runCli(root, ['brief', '--change', 'add-feature']);
+    expect(gone.code).toBe(1);
+    expect(gone.json.diagnostics[0].code).toBe('XFORGE_COMMAND_UNKNOWN');
+  });
+
   it('exposes help/version without a project and rejects unknown commands', async () => {
     const root = await fixture();
     const help = await runCli(root, ['help', 'sync']);
@@ -316,7 +332,7 @@ describe('a next action states where it writes', () => {
    * one given only a feature request, with nothing said about outlines -- wrote every required
    * section of its proposal and design, then on its check-report decorated two headings it wanted
    * to qualify: `## Completeness` became `## Completeness (at the current revision)`. The content
-   * was right and the heading no longer resolved, which is what markers and brief's EXTRACTED
+   * was right and the heading no longer resolved, which is what markers and the coverage rules
    * passages are keyed to.
    */
   it('states the headings the next Artifact must carry, verbatim', async () => {

@@ -112,7 +112,7 @@ export async function readReviewAcknowledgements(
   if (names.length === 0) return { receipts: [], diagnostics };
 
   /* Read once, and only once there is something to attest. This runs on every control-plane
-     resolve of every plan-less Change — every `state`, `check`, `brief` and `transition` — and the
+     resolve of every plan-less Change — every `state`, `check` and `transition` — and the
      overwhelmingly common case has no receipts at all, where the chain read is pure cost. */
   const attestations = await readAcknowledgementAttestations(project, changeId);
   const evidenceRoot = `${project.changesPath}/${changeId}/${REVIEW_ACK_DIRECTORY}/`;

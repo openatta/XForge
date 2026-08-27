@@ -26,7 +26,7 @@ allowed-tools: Read, Grep, Glob, Bash(xforge:*)
 # 证据
 
 - 所有进度结论引用同一次 State revision 与具体诊断/Evidence 路径。
-- 当用户问的是某个 Change 该不该通过当前审批、而不是它进行到哪一步时，运行 `xforge brief --change <id> --text` 并逐字返回其输出。它回答的是另一个问题，而且回答得更好。
+- 当用户问的是某个 Change 该不该通过当前审批、而不是它进行到哪一步时，运行 `xforge check --change <id>`，返回其 `XFORGE_RECONCILE_*` 条目与 `nextActions`。那些回答的是这个问题；本 Skill 的 `state` 摘要回答的是它进行到哪一步。
 
 # 停止与返工
 

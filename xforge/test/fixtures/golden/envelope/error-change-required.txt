@@ -1,17 +1,17 @@
-$ xforge brief
+$ xforge archive
 exit: 1
 
 {
   "protocolVersion": "2",
   "ok": false,
-  "command": "brief",
+  "command": "archive",
   "root": null,
   "data": null,
   "diagnostics": [
     {
       "code": "XFORGE_CHANGE_REQUIRED",
       "severity": "error",
-      "message": "brief requires --change <id>."
+      "message": "archive requires --change <id>."
     }
   ],
   "changes": [],

@@ -33,7 +33,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 - Report cross-Artifact mappings, CLI results, uncovered Requirements/risks, and feasibility.
 - Claim Check satisfied only when blockers are zero and Action `doneWhen` is met.
-- Before the approval that lets implementation start, run `xforge brief --change <id> --text` and give the user its output **verbatim**. Do not summarize, reorder, or paraphrase it — the brief separates what the CLI computed from what it quoted, and restating it in your own words destroys the only signal the reader has for telling those apart. Its reconciliation entries state differences between this Stage's own ledgers and the files; answer them, do not argue with them.
+- Before the approval that lets implementation start, run `xforge check --change <id>` and put its `XFORGE_RECONCILE_*` entries to the user. Each states a difference between this Stage's own ledgers and the files — answer them, do not argue with them. Do not restate them in your own words: they are already one line each, and rewording a stated difference is how it becomes an opinion.
 
 # Stop and rework
 

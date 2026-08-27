@@ -2,6 +2,7 @@
 (dynamic)  src/commands/doctor.ts
 (dynamic)  src/commands/transition.ts
 (dynamic)  src/core/archiver.ts
+(dynamic)  src/core/reconcile.ts
 (dynamic)  src/runners/gate.ts
 XFORGE_ADAPTER_PROJECTION_MISSING  src/install/planner.ts
 XFORGE_AGENT_CALLER_UNKNOWN  src/core/checker.ts
@@ -54,8 +55,6 @@ XFORGE_AUDIT_REMOTE_PENDING  src/commands/audit.ts
 XFORGE_AUDIT_REMOTE_PENDING_OPTIONAL  src/commands/audit.ts
 XFORGE_AUDIT_RETENTION_NOT_CONFIGURED  src/commands/audit.ts
 XFORGE_AUDIT_RUNTIME_COVERAGE_GAP  src/commands/audit.ts
-XFORGE_BRIEF_TRIAGE_MALFORMED  src/core/brief.ts
-XFORGE_BRIEF_UNANCHORED_CLAIM  src/core/brief.ts
 XFORGE_BUNDLED_SCAFFOLD_INVALID  src/commands/init.ts
 XFORGE_BUNDLED_SCAFFOLD_INVALID  src/core/bundled-scaffold.ts
 XFORGE_CAPABILITY_CONTENT_UNSUPPORTED  src/install/planner.ts

@@ -5,7 +5,7 @@ import type { ArtifactSource, LedgerFinding, LedgerPrinciple, MaterialDecision, 
  * Differences between what a record claims and what the files contain.
  *
  * Every rule here is a pure function over rows the reading layer already produced, and every one of
- * them states a difference without calling it a defect -- the distinction the brief prints in its
+ * them states a difference without calling it a defect -- the distinction `check` keeps by reporting
  * own header, and the reason an approver can read this section without either dismissing it as
  * noise or treating it as a failure.
  *
@@ -45,7 +45,7 @@ export function reconcileResolvedFindings(
         observations.push({
           id: `RC-1:${finding.id}:${source.id}:section-missing`,
           rule: 'RC-1',
-          code: 'XFORGE_BRIEF_COVERAGE_SECTION_MISSING',
+          code: 'XFORGE_RECONCILE_COVERAGE_SECTION_MISSING',
           provenance: 'computed',
           summary: `${source.path} does not contain the "${coverage.section}" section its Flow declares as the Requirement-coverage section.`,
           refs: [source.path],
@@ -58,7 +58,7 @@ export function reconcileResolvedFindings(
         observations.push({
           id: `RC-1:${finding.id}:${requirement}`,
           rule: 'RC-1',
-          code: 'XFORGE_BRIEF_RESOLUTION_UNVERIFIED',
+          code: 'XFORGE_RECONCILE_RESOLUTION_UNVERIFIED',
           provenance: 'computed',
           summary: scope
             ? `Finding ${finding.id} is recorded as resolved and cites ${requirement} together with ${source.path}, but ${requirement} does not appear in that file's "${coverage!.section}" section.`
@@ -83,7 +83,7 @@ export function reconcileRequirementAnchors(
     observations.push({
       id: `RC-2:${requirement.anchor}`,
       rule: 'RC-2',
-      code: 'XFORGE_BRIEF_REQUIREMENT_UNANCHORED',
+      code: 'XFORGE_RECONCILE_REQUIREMENT_UNANCHORED',
       provenance: 'computed',
       summary: `${requirement.anchor} is declared in ${requirement.file} and is referenced by none of this Change's other Artifacts.`,
       refs: [requirement.anchor, requirement.file],
@@ -109,7 +109,7 @@ export function reconcileCoverageSections(
       observations.push({
         id: `RC-3:${source.id}:${requirement.anchor}`,
         rule: 'RC-3',
-        code: 'XFORGE_BRIEF_REQUIREMENT_UNCOVERED',
+        code: 'XFORGE_RECONCILE_REQUIREMENT_UNCOVERED',
         provenance: 'computed',
         summary: `${requirement.anchor} is not named in the "${coverage.section}" section of ${source.path}.`,
         refs: [requirement.anchor, source.path],
@@ -139,7 +139,7 @@ export function reconcileDeclaredGaps(
         observations.push({
           id: `RC-4:${source.id}:${occurrence.line}`,
           rule: 'RC-4',
-          code: 'XFORGE_BRIEF_DECLARED_GAP_UNRESOLVED',
+          code: 'XFORGE_RECONCILE_DECLARED_GAP_UNRESOLVED',
           provenance: 'computed',
           summary: subjects.length > 0
             ? `${source.path}:${occurrence.line} defers ${subjects.join(', ')} to a later Stage, and no finding cites ${subjects.length > 1 ? 'any of them' : 'it'}.`
@@ -188,7 +188,7 @@ export function reconcileMaterialDecisions(
       observations.push({
         id: `RC-6:${decision.id}:${source.id}`,
         rule: 'RC-6',
-        code: 'XFORGE_BRIEF_DECISION_NOT_WRITTEN_BACK',
+        code: 'XFORGE_RECONCILE_DECISION_NOT_WRITTEN_BACK',
         provenance: 'computed',
         summary: `Material question ${decision.id} was decided on ${decidedOn(decision.decidedAt)} and names ${source.path} as an Artifact it revises, but none of the decision's own terms appears in that file.`,
         refs: [decision.id, source.path],
@@ -288,7 +288,7 @@ export function reconcileConstitutionReferences(
         observations.push({
           id: `RC-5:${principle.principle}:${reference}`,
           rule: 'RC-5',
-          code: 'XFORGE_BRIEF_REFERENCE_UNRESOLVABLE',
+          code: 'XFORGE_RECONCILE_REFERENCE_UNRESOLVABLE',
           provenance: 'computed',
           summary: gateSummary(principle.principle, reference, name, declaredGates, gateRecorded),
           refs: [reference],
@@ -301,7 +301,7 @@ export function reconcileConstitutionReferences(
       observations.push({
         id: `RC-5:${principle.principle}:${reference}`,
         rule: 'RC-5',
-        code: 'XFORGE_BRIEF_REFERENCE_UNRESOLVABLE',
+        code: 'XFORGE_RECONCILE_REFERENCE_UNRESOLVABLE',
         provenance: 'computed',
         summary: `Principle "${principle.principle}" cites ${reference}, which is neither a Requirement in this Change nor a file that exists in the Change directory or the repository.`,
         refs: [reference],
@@ -311,4 +311,3 @@ export function reconcileConstitutionReferences(
   return observations;
 }
 
-/* ------------------------------------------------------------------ the brief itself */

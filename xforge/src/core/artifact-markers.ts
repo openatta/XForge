@@ -13,7 +13,7 @@ import { safeResolve } from './path-safety.js';
  * answer instead of asking somebody to read the prose and vouch for it.
  *
  * The `structure` Gate enforces `minOccurrences` so a declared shape is a shape the Artifact
- * actually has; `core/brief.ts` reads the same declarations to locate what it quotes. Both refuse
+ * actually has; `core/reconcile/sources.ts` reads the same declarations to locate what RC compares. Both refuse
  * to guess: a marker naming a section the Artifact does not contain is reported, never widened to
  * the whole document.
  */
@@ -159,7 +159,7 @@ export async function validateArtifactMarkers(
      * Risks` in a design is usually more information rather than a defect, and requiring exact
      * equality pushes an author to bury content under a heading that does not fit it. What breaks
      * when a declared section goes missing is concrete -- markers keyed to it resolve to nothing,
-     * `core/brief.ts` quotes an empty EXTRACTED section, and a reader who was promised it finds
+     * a reconciliation rule keyed to that section finds nothing, and a reader promised coverage finds
      * nothing there.
      */
     if (enforcesOutline) {
@@ -167,7 +167,7 @@ export async function validateArtifactMarkers(
       if (missing.length > 0) {
         diagnostics.push(diagnostic(
           'XFORGE_ARTIFACT_OUTLINE_SECTION_MISSING',
-          `Artifact ${artifact.id} is missing ${missing.length} section(s) its Flow outline declares: ${missing.map((heading) => `"${heading}"`).join(', ')}. Anything keyed to those sections -- a marker, a brief quotation -- will find nothing there. Sections the outline does not list are not reported.`,
+          `Artifact ${artifact.id} is missing ${missing.length} section(s) its Flow outline declares: ${missing.map((heading) => `"${heading}"`).join(', ')}. Anything keyed to those sections -- a marker, a reconciliation rule -- will find nothing there. Sections the outline does not list are not reported.`,
           relative,
           'warning',
         ));

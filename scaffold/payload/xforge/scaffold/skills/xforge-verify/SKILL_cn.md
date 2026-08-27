@@ -27,7 +27,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 3. 若存在工作包，要求每个包有有效完成 delivery，核对依赖 commit、实际写入边界、验证命令，并确认每项 `done_when` 都有精确一次的非空证据映射；高风险或跨系统结果使用独立 Reviewer。Reviewer 只读，无法自行写证据文件——必须由你逐字转录它的结论后再确认（见 `xforge-apply` 第 8 步）。
 4. 运行 `xforge check --change <id>`，重新执行工作包验证和所有 mandatory Gates；重开 Evidence，核对 Change、命令、时间、退出状态、digest 与当前 revision。
 
-   随后读 `evidence/check-findings.yaml`，找出 `status` 不是 `resolved` 且没有 `reworkTo` 的条目。这些是更早的 Stage 指向收尾审批人的提问，没有任何机制会把它们送回去——它们不是 blocker，没有 Gate 会报告；而 `xforge brief` 只在收集审批的 Stage 才列出它们，Verify 不是这样的 Stage。把每一条交给用户，并用 `xforge findings resolve --change <id> --id <finding-id> --answer <用户的回答> --by <回答的人>` 记录他们的答案；绝不要自己编答案或署名，理由与 `verification declare --by` 相同。必须在**这里**做，在 receipt 之前：这次写入会改变 `contentRevision`，此刻的代价只是重跑一次 `xforge check`；而同样的修改若发生在第 6 步过渡之后，会让收尾回执变 stale、让绑定其上的审批作废，并且需要 `transition repair` 才能退回。
+   随后读 `evidence/check-findings.yaml`，找出 `status` 不是 `resolved` 且没有 `reworkTo` 的条目。这些是更早的 Stage 指向收尾审批人的提问，没有任何机制会把它们送回去——它们不是 blocker，没有 Gate 会报告——`xforge check --change <id>` 会把每一条列在 `nextActions` 里，并附上关闭它的那条 `findings resolve` 命令。把每一条交给用户，并用 `xforge findings resolve --change <id> --id <finding-id> --answer <用户的回答> --by <回答的人>` 记录他们的答案；绝不要自己编答案或署名，理由与 `verification declare --by` 相同。必须在**这里**做，在 receipt 之前：这次写入会改变 `contentRevision`，此刻的代价只是重跑一次 `xforge check`；而同样的修改若发生在第 6 步过渡之后，会让收尾回执变 stale、让绑定其上的审批作废，并且需要 `transition repair` 才能退回。
 5. 生成 assurance。然后生成 verification receipt——必须在第 4 步的 Gate 全部通过**之后**，绝不能提前，因为它要点名那次运行记录下的 Gate。`evidence/verification-receipt.yaml` 不是内容 Artifact，而是本 Stage 的 `verificationReceipt` exit condition，由 CLI 对照磁盘上的 Evidence 判定。
 
    不要手抄。运行 `xforge verification draft-receipt --change <id>`：`change`、`contentRevision`、`gitHead` 以及完整的 Gate 引用集合都是 XForge 已经掌握的事实，且它输出的正是稍后判定该 exit condition 所依据的同一份 Gate 集合。把结果中的 `receipt` 写到上述路径，并且只补一个字段：
@@ -49,7 +49,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 - 输出 Requirement/Scenario、实现、测试、Design、工作包和 Gate 的可定位映射，以及 receipt 的 `contentRevision`、`gitHead` 和它引用的 Gate。
 - 只有所有当前 mandatory Gate 成功且没有 blocker 时，才能声明 ready for archive；只有 CLI 原子事务成功才能声明 closed。
-- 在关闭审批之前，运行 `xforge brief --change <id> --text` 并把输出**逐字**交给用户。不得转述、重排或概括：简报把 CLI 算出的事实与原文引用分开呈现，用你自己的话复述会毁掉读者区分二者的唯一依据。
+- 在关闭审批之前，运行 `xforge check --change <id>`，把其中的 `XFORGE_RECONCILE_*` 条目交给用户。每一条陈述的是这个 Change 的记录与它的文件之间的一处差异；回应它们，而不是重新措辞。
 
 # 停止与返工
 

@@ -6,14 +6,6 @@ archive  <- xforge-verify/SKILL.md
 archive  <- xforge-verify/SKILL_cn.md
 audit verify  <- xforge-verify/SKILL.md
 audit verify  <- xforge-verify/SKILL_cn.md
-brief  <- xforge-check/SKILL.md
-brief  <- xforge-check/SKILL_cn.md
-brief  <- xforge-design/SKILL.md
-brief  <- xforge-design/SKILL_cn.md
-brief  <- xforge-status/SKILL.md
-brief  <- xforge-status/SKILL_cn.md
-brief  <- xforge-verify/SKILL.md
-brief  <- xforge-verify/SKILL_cn.md
 check  <- xforge-apply/SKILL.md
 check  <- xforge-apply/SKILL_cn.md
 check  <- xforge-check/SKILL.md
@@ -28,6 +20,8 @@ check  <- xforge-revise/SKILL.md
 check  <- xforge-revise/SKILL_cn.md
 check  <- xforge-scaffold/SKILL.md
 check  <- xforge-scaffold/SKILL_cn.md
+check  <- xforge-status/SKILL.md
+check  <- xforge-status/SKILL_cn.md
 check  <- xforge-verify/SKILL.md
 check  <- xforge-verify/SKILL_cn.md
 doctor  <- xforge-upgrade-scaffold/SKILL.md

@@ -27,7 +27,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 - 存在 `xforge/architecture.md` 时读取它，并说明本 Change 对它触及的每条决策的立场——在其之内，或给出理由地偏离。当设计需要*修改*某条决策时，把提议写进你自己拥有的 Design Artifact，然后停下来等人。不要自己写 `evidence/conditions/architectureDeltas.yaml`：那条记录要填具名的 `decidedBy`，Agent 去填一个人的名字，就是在记录一份没人给过的授权——正是该账本存在要拦的东西。由人授权并调用 `xforge-architect`，它是架构文件及其账本的唯一写者。文件不存在时说明一次并继续：那是一个尚未写下架构的项目，不是一个违规的项目。
 - 每项关键决策映射到 Requirement、项目约束或代码事实，并给出可验证结果。
 - 按 Action 的 `doneWhen` 报告覆盖范围、残余风险和下一合法 Action。
-- 若某个项目自有的 Flow 确实在 Design 出口声明了审批（随附的三个 Flow 都没有），运行 `xforge brief --change <id> --text` 并把输出**逐字**交给用户。不得转述、重排或概括：简报把 CLI 算出的事实与原文引用分开呈现，用你自己的话复述会毁掉读者区分二者的唯一依据。
+- 若某个项目自有的 Flow 确实在 Design 出口声明了审批（随附的三个 Flow 都没有），在用户签字前运行 `xforge check --change <id>`，把其中的 `XFORGE_RECONCILE_*` 条目交给他们。每一条都是一处已陈述的差异，不要重新措辞。
 
 # 停止与返工
 

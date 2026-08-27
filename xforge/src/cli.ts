@@ -9,7 +9,6 @@ import { CLI_NAME, CLI_VERSION, PROTOCOL_VERSION, TARGETS, type TargetId } from 
 import { executeArchive } from './commands/archive.js';
 import { executeApprove, type ApprovalTerminal } from './commands/approve.js';
 import { executeAudit } from './commands/audit.js';
-import { executeBrief, renderBriefText } from './commands/brief.js';
 import { executeCheck } from './commands/check.js';
 import { executeFindingsResolve } from './commands/findings.js';
 import { executeVerificationDeclare, executeVerificationDraftReceipt, executeVerificationFinalize, executeVerificationRetire } from './commands/verification.js';
@@ -33,7 +32,7 @@ import { detectScaffoldLanguage, parseScaffoldLanguage } from './core/language.j
 import { envelope, present } from './protocol/envelope.js';
 import type { Diagnostic, Envelope, FlowAuthority, NextAction, ScaffoldLanguage } from './types.js';
 
-type CommandName = 'help' | 'version' | 'init' | 'state' | 'install' | 'sync' | 'update' | 'uninstall' | 'check' | 'brief' | 'verification' | 'transition' | 'approve' | 'audit' | 'work-package' | 'hook' | 'archive' | 'doctor' | 'upgrade-scaffold' | 'review' | 'findings';
+type CommandName = 'help' | 'version' | 'init' | 'state' | 'install' | 'sync' | 'update' | 'uninstall' | 'check' | 'verification' | 'transition' | 'approve' | 'audit' | 'work-package' | 'hook' | 'archive' | 'doctor' | 'upgrade-scaffold' | 'review' | 'findings';
 
 interface ParsedArguments {
   command: string;
@@ -47,7 +46,6 @@ interface ParsedArguments {
   complete: boolean;
   rollback: boolean;
   withActiveChanges: boolean;
-  compact: boolean;
   root?: string;
   stage?: string;
   helpCommand?: string;
@@ -73,7 +71,6 @@ interface ParsedArguments {
   language?: ScaffoldLanguage;
   acknowledgeAs?: 'integrator' | 'reviewer';
   evidence?: string;
-  attachTriage?: string;
   gateName?: string;
   commandArgv?: string;
   module?: string;
@@ -102,9 +99,9 @@ interface ParsedArguments {
  */
 const GROUP_COMMANDS = new Set<string>(['audit', 'hook', 'work-package', 'verification', 'transition', 'review', 'findings']);
 
-const COMMANDS: CommandName[] = ['help', 'version', 'init', 'state', 'install', 'sync', 'update', 'uninstall', 'check', 'brief', 'verification', 'transition', 'approve', 'audit', 'work-package', 'hook', 'archive', 'doctor', 'upgrade-scaffold', 'review', 'findings'];
+const COMMANDS: CommandName[] = ['help', 'version', 'init', 'state', 'install', 'sync', 'update', 'uninstall', 'check', 'verification', 'transition', 'approve', 'audit', 'work-package', 'hook', 'archive', 'doctor', 'upgrade-scaffold', 'review', 'findings'];
 const VALID_KINDS = ['skills', 'agents', 'rules', 'policies', 'hooks', 'gates', 'scripts', 'flows', 'approvals', 'mcp-servers'] as const;
-const VALUE_OPTIONS = ['--root', '--change', '--kind', '--target', '--gate', '--to', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--provider', '--output', '--event', '--package', '--language', '--as', '--evidence', '--stage', '--attach-triage', '--gate-name', '--command', '--module', '--covers', '--working-directory', '--timeout-seconds', '--not-applicable', '--justification', '--by', '--status', '--receipt', '--field', '--id', '--answer', '--scope'] as const;
+const VALUE_OPTIONS = ['--root', '--change', '--kind', '--target', '--gate', '--to', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--provider', '--output', '--event', '--package', '--language', '--as', '--evidence', '--stage', '--gate-name', '--command', '--module', '--covers', '--working-directory', '--timeout-seconds', '--not-applicable', '--justification', '--by', '--status', '--receipt', '--field', '--id', '--answer', '--scope'] as const;
 
 function isValueOption(token: string): boolean {
   return VALUE_OPTIONS.includes(token as (typeof VALUE_OPTIONS)[number]);
@@ -202,7 +199,6 @@ const HELP: Record<CommandName, { usage: string; description: string; options: s
     description: 'Record a person\'s answer to one Check finding and mark it resolved. Only this one transition: findings are written by the Check Stage, and this closes an entry that already exists. --by is checked against the approvers and Git authors this Change records, so a decision-maker can be cited but not invented.',
     options: ['--root', '--change', '--id', '--answer', '--by', '--dry-run', '--text'],
   },
-  brief: { usage: 'xforge [--root <path>] brief --change <id> [--attach-triage <path>] [--text] [--compact]', description: 'Report what a human approval at this Stage turns on, separating computed facts from quoted Artifact text. --compact folds the EXTRACTED block in the text form, listing each quote\'s heading and source line instead of its text; the JSON is unchanged either way.', options: ['--root', '--change', '--attach-triage', '--text', '--compact'] },
   transition: { usage: 'xforge [--root <path>] transition --change <id> --to <stage> [--dry-run] [--text]\n       xforge [--root <path>] transition repair --change <id> --receipt <receiptId> [--dry-run] [--text]', description: 'Evaluate and record a governed Stage transition, or repair the receipt chain by dropping one leaf receipt. Repair is not a --force: it discards a recorded transition, reverting the Change to the Stage that transition left, and records what it discarded in the audit chain. Only a leaf may go — a receipt some later receipt chains to is load-bearing and is refused.', options: ['--root', '--change', '--to', '--receipt', '--dry-run', '--text'] },
   approve: { usage: 'xforge [--root <path>] approve --change <id> --for <transition-id|archive> [--policy <id>] [--provider <mcp-provider-id> | local fields] [--dry-run] [--text]', description: 'Record an interactive human approval at the terminal, or submit/poll an mcp provider. There is no other approval mechanism. --for takes the id of the transition the approval unlocks (the value xforge state reports in nextActions[].command), not a literal word.', options: ['--root', '--change', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--provider', '--dry-run', '--text'] },
   audit: { usage: 'xforge [--root <path>] audit <status|verify|export|retry|prune> [--change <id>] [--output <path>] [--text]', description: 'Inspect, verify, export, redeliver, or prune the append-only audit chain.', options: ['--root', '--change', '--output', '--text'] },
@@ -223,7 +219,7 @@ const HELP: Record<CommandName, { usage: string; description: string; options: s
 };
 
 function parseArguments(argv: string[]): ParsedArguments {
-  const parsed: ParsedArguments = { command: '', text: false, dryRun: false, verifyDigests: false, strict: false, allGates: false, force: false, adopt: false, complete: false, rollback: false, withActiveChanges: false, compact: false };
+  const parsed: ParsedArguments = { command: '', text: false, dryRun: false, verifyDigests: false, strict: false, allGates: false, force: false, adopt: false, complete: false, rollback: false, withActiveChanges: false };
   const seen = new Set<string>();
   const positionals: string[] = [];
   let helpShortcut = false;
@@ -247,7 +243,6 @@ function parseArguments(argv: string[]): ParsedArguments {
     if (token === '--rollback') { parsed.rollback = true; continue; }
     if (token === '--with-active-changes') { parsed.withActiveChanges = true; continue; }
     if (token === '--all-gates') { parsed.allGates = true; continue; }
-    if (token === '--compact') { parsed.compact = true; continue; }
     if (token === '--force') { parsed.force = true; continue; }
     if (token === '--adopt') { parsed.adopt = true; continue; }
     if (!isValueOption(token)) {
@@ -287,7 +282,6 @@ function parseArguments(argv: string[]): ParsedArguments {
     if (token === '--scope') parsed.scope = value;
     if (token === '--by') parsed.by = value;
     if (token === '--status') parsed.status = value;
-    if (token === '--attach-triage') parsed.attachTriage = value;
     if (token === '--as') {
       if (!['integrator', 'reviewer'].includes(value)) throw new XForgeError(diagnostic('XFORGE_WORK_PACKAGE_ROLE_UNKNOWN', `Unknown acknowledgement role: ${value}`));
       parsed.acknowledgeAs = value as ParsedArguments['acknowledgeAs'];
@@ -415,10 +409,6 @@ function parseArguments(argv: string[]): ParsedArguments {
     if (parsed.subcommand !== 'acknowledge') throw new XForgeError(diagnostic('XFORGE_REVIEW_ACTION_REQUIRED', 'review requires the acknowledge action.'));
     if (!parsed.change || !parsed.evidence) throw new XForgeError(diagnostic('XFORGE_REVIEW_ARGUMENTS_REQUIRED', 'review acknowledge requires --change <id> and --evidence <path>.'));
   }
-  if (parsed.command === 'brief' && !parsed.change) throw new XForgeError(diagnostic('XFORGE_CHANGE_REQUIRED', 'brief requires --change <id>.'));
-  /* Refused rather than ignored: --compact folds a block of the *text* form, so on its own it looks
-     like it did something to a JSON envelope that is byte for byte what it always was. */
-  if (parsed.compact && !parsed.text) throw new XForgeError(diagnostic('XFORGE_OPTION_NOT_ALLOWED', '--compact only affects the --text form; the JSON envelope always carries every entry. Add --text, or drop --compact.'));
   if (parsed.command === 'transition') {
     if (parsed.subcommand !== undefined && parsed.subcommand !== 'repair') {
       throw new XForgeError(diagnostic('XFORGE_TRANSITION_ACTION_UNKNOWN', `transition takes no action word, or the repair action; got ${parsed.subcommand}.`));
@@ -765,10 +755,6 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
     });
     return envelope({ command, root: project.root, ...result });
   }
-  if (command === 'brief') {
-    const result = await executeBrief(project, { change: parsed.change!, attachTriage: parsed.attachTriage });
-    return envelope({ command, root: project.root, ...result });
-  }
   if (command === 'review') {
     const result = await executeReviewAcknowledge(project, { change: parsed.change!, evidence: parsed.evidence!, scope: parsed.scope, dryRun: parsed.dryRun });
     return envelope({ command, root: project.root, ...result });
@@ -903,20 +889,6 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
     return event.includes('after') ? 0 : 2;
   }
   const textMode = parsed?.text ?? argv.some((item) => ['--text', '--help', '--version'].includes(item));
-  /* Only a successful brief renders: a failed one has `data: null` and its diagnostics are the
-     result, which the standard text form already prints. */
-  let render: ((data: unknown) => string) | undefined;
-  if (parsed?.command === 'brief' && result.ok) {
-    render = (data: unknown) => renderBriefText(data as Parameters<typeof renderBriefText>[0], { compact: parsed.compact });
-  } else if (parsed?.command === 'state' && result.ok) {
-    /* `state`'s `data` is the entire resolved project; printed as JSON it buries the envelope's own
-       `Next actions:` block under tens of thousands of characters. See `renderStateText`. */
-    render = (data: unknown) => renderStateText(data);
-  } else if (parsed?.command === 'upgrade-scaffold' && result.ok) {
-    /* The plan is the whole output of a staged upgrade, and a wall of JSON is not a thing anyone
-       reads before deciding what to merge. */
-    render = (data: unknown) => renderUpgradeText({ data: data as Record<string, unknown>, diagnostics: [], changes: [] });
-  }
   /*
    * `--field` prints one value and nothing else, so `$(xforge state --field ...)` is safe.
    *
@@ -926,6 +898,19 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
    * against it. A miss therefore fails loudly rather than printing an empty line — an empty
    * capture that looks like a value is the failure mode this exists to remove.
    */
+  /* Only a successful run renders: a failed one has `data: null` and its diagnostics are the
+     result, which the standard text form already prints. */
+  let render: ((data: unknown) => string) | undefined;
+  if (parsed?.command === 'state' && result.ok) {
+    /* `state`'s `data` is the entire resolved project; printed as JSON it buries the envelope's own
+       `Next actions:` block under tens of thousands of characters. See `renderStateText`. */
+    render = (data: unknown) => renderStateText(data);
+  } else if (parsed?.command === 'upgrade-scaffold' && result.ok) {
+    /* The plan is the whole output of a staged upgrade, and a wall of JSON is not a thing anyone
+       reads before deciding what to merge. */
+    render = (data: unknown) => renderUpgradeText({ data: data as Record<string, unknown>, diagnostics: [], changes: [] });
+  }
+
   if (parsed?.field && result.ok) {
     const resolved = resolveField(result.data, parsed.field);
     if (!resolved.found) {

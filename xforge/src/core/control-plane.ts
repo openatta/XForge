@@ -54,9 +54,9 @@ function structuredExit(stage: StageFlow['stages'][number]): { conditions?: Reco
 /**
  * One Gate's Evidence, or null when it is absent, unparseable, or not the Evidence it claims to be.
  *
- * Exported because `brief` has to answer "did this Gate pass" from the same bytes the control plane
+ * Exported because reconciliation has to answer "did this Gate pass" from the same bytes the control plane
  * does. It used to answer from `transitionRequirements`, which is a different question -- see the
- * note on `gatePassed` in `core/brief.ts`.
+ * note on `gatePassed` in `core/reconcile.ts`.
  */
 export async function readGateEvidence(project: ProjectContext, changeId: string, gateId: string, resources: SelectedResources): Promise<GateEvidence | null> {
   const gate = resources.gates.get(gateId)?.value;

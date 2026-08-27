@@ -1,17 +1,17 @@
-$ xforge brief --change add-feature --compact
+$ xforge audit verify --output somewhere.json
 exit: 1
 
 {
   "protocolVersion": "2",
   "ok": false,
-  "command": "brief",
+  "command": "audit",
   "root": null,
   "data": null,
   "diagnostics": [
     {
       "code": "XFORGE_OPTION_NOT_ALLOWED",
       "severity": "error",
-      "message": "--compact only affects the --text form; the JSON envelope always carries every entry. Add --text, or drop --compact."
+      "message": "--output is only valid for audit export."
     }
   ],
   "changes": [],

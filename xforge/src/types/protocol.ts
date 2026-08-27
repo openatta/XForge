@@ -47,7 +47,7 @@ export interface NextAction {
    * of two Artifacts and then, on the third, decorated two headings it wanted to qualify --
    * `## Completeness` became `## Completeness (at the current revision)`. The content was right and
    * the heading no longer resolved, which breaks anything keyed to it: markers, and the passages
-   * `core/brief.ts` quotes into EXTRACTED.
+   * `core/reconcile/sources.ts` reads to locate what RC-1 and RC-3 compare.
    *
    * Stated here for the same reason `writes` is: the CLI knows the answer at the moment the author
    * needs it, and a fact the product can state is one no Skill has to carry.

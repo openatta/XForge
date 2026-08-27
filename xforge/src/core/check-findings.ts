@@ -118,7 +118,7 @@ async function evaluate(
        * Only a blocker's `resolvedBy` decides this Gate, and that stays true: promoting a warning's
        * attribution to a failure would refuse ledgers that were valid before this rule existed. But
        * "only blockers are checked" was invisible, and it is exactly the entries an approver is
-       * asked to answer that are usually warnings — `core/brief.ts`'s `awaitingDecision` set is
+       * asked to answer that are usually warnings — an approver's open questions are
        * built from findings with no `reworkTo`, at any severity. So an unattributed close on one of
        * those used to read the same as a checked one. `xforge findings resolve` writes an
        * attribution this can name; a hand edit may not, and now says so.

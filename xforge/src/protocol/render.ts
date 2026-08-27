@@ -3,7 +3,7 @@
  *
  * `present()` in `envelope.ts` decides *whether* a command renders; this holds the pieces the
  * renderers themselves share. Two copies of `wrap` existed before it, and they were not identical:
- * the brief's collapsed runs of whitespace before wrapping and `state`'s did not, which is a
+ * one collapsed runs of whitespace before wrapping and `state`'s did not, which is a
  * difference nobody chose — the second was written by copying the first and dropping a line. The
  * collapsing version is kept, because the text being wrapped is quoted from Artifacts and ledgers
  * where a newline inside a paragraph is an authoring accident rather than a layout instruction.

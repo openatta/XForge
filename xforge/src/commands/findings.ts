@@ -18,7 +18,7 @@ import { VERIFICATION_RECEIPT_PATH } from '../core/verification-receipt.js';
 /**
  * Records a person's answer to a Check finding, and marks it resolved.
  *
- * The gap this closes is an authority gap, not a convenience one. `xforge brief` prints, at every
+ * The gap this closes is an authority gap, not a convenience one. `xforge check` reports, at every
  * Stage that collects an approval, that an open finding naming no `reworkTo` is cleared by
  * "recording the answer and setting the entry to `status: resolved`" — and after the Check Stage
  * ends, no governed actor can do that. `xforge-check` owns `evidence/check-findings.yaml` and only

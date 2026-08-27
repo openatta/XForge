@@ -33,7 +33,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 - 报告跨 Artifact 映射、CLI 检查结果、未覆盖 Requirement/风险和可实施性结论。
 - 只有 blocker 为零且 Action `doneWhen` 满足时才能声明 Check satisfied。
-- 在放行实现的那次审批之前，运行 `xforge brief --change <id> --text` 并把输出**逐字**交给用户。不得转述、重排或概括：简报把 CLI 算出的事实与原文引用分开呈现，用你自己的话复述会毁掉读者区分二者的唯一依据。其 reconciliation 条目陈述的是本 Stage 自己的账本与文件之间的差异——回应它们，不要与它们争辩。
+- 在放行实现的那次审批之前，运行 `xforge check --change <id>`，把其中的 `XFORGE_RECONCILE_*` 条目交给用户。每一条陈述的是本 Stage 自己的账本与文件之间的一处差异——回应它们，不要与它们争辩。不要用自己的话复述：它们本来就只有一行，把一处已陈述的差异重新措辞，就是把它变成一个观点。
 
 # 停止与返工
 

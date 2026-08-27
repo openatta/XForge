@@ -238,7 +238,7 @@ requiredWhen: { risk: [high], anyImpact: [security, privacy, publicApi, dataMigr
 - **两个 Flow 的实现前审批都收在 check 出口**，也就是实现开始前的最后一刻，
   且是两个台账（`check-findings`、`constitution-check`）都已写完之后。
   收得更早意味着审批人在决定「规划是否成立」的证据存在之前就签了字，
-  `xforge brief` 的 reconciliation 段落会因为无可比对而渲染成 "(no differences found)"
+  `check` 的 `XFORGE_RECONCILE_*` 会因为无可比对而一条不报
   ——那读起来和一次干净的评审一模一样。
 - **`separationOfDuties` 不比较角色。** 它要求审批人**不是本 Change 的 implementer**
   （implementer 取自 Change 目录与各 work-package delivery 区间的 Git author）。
@@ -408,7 +408,7 @@ Gate 重跑后**重新 plan**，再执行原子事务。任何中间错误都保
 | marker 指向 Artifact 不存在的小节 | **warning** | outline 一向是指导；升级为错误会让 markers 出现之前就已合法的 Change 失败 |
 | `minOccurrences` 未达标 | **error** | 这是 Flow 明确要求某小节至少承载 N 个条目，只有主动声明的项目才会走到 |
 
-`markers` 的作用是告诉工具「某个小节**意味着什么**」，正是这一点让 `xforge brief`
+`markers` 的作用是告诉工具「某个小节**意味着什么**」，正是这一点让核对规则
 能够算出答案，而不必请人读完散文再为它背书：
 
 - `role: requirement-coverage` —— 该小节是记录 Requirement 覆盖的地方
@@ -422,38 +422,26 @@ Gate 重跑后**重新 plan**，再执行原子事务。任何中间错误都保
 
 ---
 
-## 6. `xforge brief`：给签字的人看的东西
+## 6. 核对：`check` 报出的 `XFORGE_RECONCILE_*`
 
-三个 Skill（design / check / verify）在**人类审批之前**都要求运行它，并把输出**逐字**交给用户。
+`xforge check --change <id>` 在跑 Gate 的同时，比对这个 Change 的**记录**与它的**文件**，
+把每一处差异作为一条 `info` 诊断报出来。六条规则（RC-1 至 RC-5）各自回答一个具体问题，
+每一条**只陈述差异，从不判断它是不是问题**——这是它能被审批人直接读、
+而不至于被当成噪声或当成阻断的原因。
 
-它的设计目标是：**让读者不必信任措辞，就能分辨一行字是被校验过的还是被断言的。**
-六个分层永远分块打印、绝不交错：
+同一次运行的 `nextActions` 里，还会为每一条等待人回答的 finding 附上填好 id 的
+`xforge findings resolve` 命令：一个读者能直接跑的命令会被跑，
+一个需要他先拼装的命令要和「签字」竞争，然后输掉。
 
-```text
-WHAT IS BEING DECIDED   这次签的是什么：策略、还差几人、角色、职责分离开关
-                        + 未解决的 blocking finding
-                        + 等你回答的条目（连原文一起印，不只印 id）
-
-COMPUTED                从结构化数据算出来的。同一 revision 重跑结果完全一致。
-
-RECONCILIATION          某份记录声称的 与 文件里实际的 之间的差异。
-                        「这些陈述一处差异。它们没有说那是缺陷。」
-
-EXTRACTED               逐字取自 Artifact，靠 Flow 声明的 markers 定位小节。
-
-TRIAGE                  人或模型写的。不是事实。方括号里标注依据。
-
-UNAVAILABLE             这份简报做不出来的部分，以及原因码。
-
-NOT COVERED             签了这份简报，不代表你审查过什么。
-```
-
-> **不得转述、重排或概括。** 简报把「CLI 算出的事实」与「原文引用」分开呈现，
-> 用自己的话复述会毁掉读者区分二者的唯一依据。
-
-这也是 `markers` 存在的真正理由。
-
----
+> **它原本是 `xforge brief` 的一节。** 那份文档最终长到 36KB，而且要求逐字转交，
+> 于是必须整篇穿过模型的上下文才能到达一个人手里——既不是它当初的设计目标
+> （一屏、每轮一次），也不是模型该替人搬运的东西。它体积的大头是 EXTRACTED：
+> 把整篇 Artifact 原样引回来。
+>
+> 那部分已经删除。这六条规则留了下来，因为它们不是让它变贵的原因：
+> 输出 1–3KB，每一条都可以直接行动，而且一份现场报告把它称为那个版本里
+> 最有价值的机制——RC-5 逼着重跑了一条 Gate，因而抓出了一处
+> 本会被原样归档的、无法归属的 `resolvedBy`。
 
 ## 7. 架构分层
 
@@ -582,7 +570,7 @@ Adapter 报告 `guidance`、`permissionPolicy`、`runtimeHook.*`、`auditDeliver
 一次冷启动实跑（只给功能需求、完全不提 outline）把 proposal 和 design 的每一节都写全了，
 到 check-report 却把两个想加限定语的标题改了写法：`## Completeness` 写成了
 `## Completeness (at the current revision)`。内容是对的，标题解析不到了，
-而 marker 与 brief 的 EXTRACTED 段正是挂在标题上的。
+而 marker 与核对规则的覆盖段判定正是挂在标题上的。
 
 **理由和 `writes` 一样**：CLI 在作者动笔的那一刻就知道答案，
 产品能自己说出来的事实，就不必让任何 Skill 去背。

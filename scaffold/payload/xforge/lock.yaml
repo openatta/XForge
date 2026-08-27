@@ -96,7 +96,7 @@ resources:
     kind: skill
     license: project
     version: "1"
-  - digest: 58d092b58d15cca919747c3044f68f014f1e6415ea1785b1f1b8c2e6789ea1d8
+  - digest: bde38e9fa1db39e3ea1cefa0b88abba612133f63a5c72d55f3b236b642fc104d
     id: xforge-check
     kind: skill
     license: project
@@ -106,7 +106,7 @@ resources:
     kind: skill
     license: project
     version: "1"
-  - digest: 1728bf7c34214c7eb0f79fb740ca020c5f979fd02216354c1a0b31321687f68f
+  - digest: 3d5ec4a762384c9601a2dbb5e4efe753e2b46002ff04db45e6f05eb8266fcbf8
     id: xforge-design
     kind: skill
     license: project
@@ -131,7 +131,7 @@ resources:
     kind: skill
     license: project
     version: "1"
-  - digest: a1508827dd485db47b5344e2cb1934d895a2511beeaacb8d491f6fffed1dd7d9
+  - digest: b5d87f277bb38b9e3c79a618037200a049203455544415e1e982a907b9fd755d
     id: xforge-status
     kind: skill
     license: project
@@ -141,7 +141,7 @@ resources:
     kind: skill
     license: project
     version: "1"
-  - digest: d0e8063d2428f3e4ec2b0910815dfb76e6c16d730d560497a2cfc9a245a6ec5a
+  - digest: 396c40d174dcca0380974560958c8c2b8ef3613e3e9d6fd919e9320b6bd827c2
     id: xforge-verify
     kind: skill
     license: project
@@ -160,7 +160,7 @@ targets:
   - opencode
   - github-copilot
 xforge:
-  integrity: sha256:7ce63ef16a980c66da27e6e08ef34cbade0ec257c1b2a2e735652bd83ced1a1f
+  integrity: sha256:85e6d033971fe6437fb14c177ebdf0a1863208beecbaa1387253cd5715c94eb7
   package: "@xforge/cli"
   protocol: "2"
   source: npm
