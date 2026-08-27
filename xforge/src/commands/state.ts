@@ -34,7 +34,7 @@ export { readState as executeState } from '../core/state-reader.js';
 interface StateLike {
   project?: { name?: string; layout?: string; paths?: { specs?: { value?: string }; changes?: { value?: string } }; compatibility?: { mode?: string } };
   scaffold?: { version?: string; language?: string };
-  activeChanges?: string[];
+  activeChanges?: Array<{ id?: string; flow?: string | null; stage?: string | null; risk?: string | null }>;
   changes?: string[];
   resources?: Record<string, unknown>;
   change?: ChangeLike | null;
@@ -63,13 +63,32 @@ function list(values: readonly string[] | undefined, empty = '(none)'): string {
   return values && values.length > 0 ? values.join(', ') : empty;
 }
 
+/**
+ * One entry per un-archived Change: `id — flow/stage (risk)`.
+ *
+ * `activeChanges` carries objects, not ids — `core/state-reader.ts`'s `ActiveChangeSummary`. An
+ * earlier version of this summary declared the field `string[]` and joined it, so every project
+ * with anything in flight printed `Active Changes: [object Object]`. That is the common case, and
+ * the line a reader most often came here for.
+ *
+ * A Change whose config or Flow would not resolve arrives with nulls and is printed with `?` rather
+ * than dropped, for the reason `activeChangeSummaries` lists it at all: it is the one most likely
+ * to need attention.
+ */
+function activeChanges(entries: StateLike['activeChanges']): string {
+  if (!entries || entries.length === 0) return '(none)';
+  return entries
+    .map((entry) => `${entry.id ?? '?'} — ${entry.flow ?? '?'}/${entry.stage ?? '?'}${entry.risk ? ` (${entry.risk})` : ''}`)
+    .join('; ');
+}
+
 export function renderStateText(data: unknown): string {
   const state = (data ?? {}) as StateLike;
   const lines: string[] = [];
   const project = state.project ?? {};
   lines.push(`Project: ${project.name ?? '(unnamed)'} (${project.layout ?? 'unknown layout'}) — scaffold ${state.scaffold?.version ?? '?'} ${state.scaffold?.language ?? ''}`.trimEnd());
   lines.push(`  Specs: ${project.paths?.specs?.value ?? '?'}    Changes: ${project.paths?.changes?.value ?? '?'}    Compatibility: ${project.compatibility?.mode ?? '?'}`);
-  lines.push(`  Active Changes: ${list(state.activeChanges)}`);
+  lines.push(...wrap(`Active Changes: ${activeChanges(state.activeChanges)}`, 92, '  '));
 
   /*
    * The selected resources, by kind. Printed rather than folded into the omissions line because

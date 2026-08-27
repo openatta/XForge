@@ -3,7 +3,7 @@ Protocol: 2
 Root: <ROOT>
 Project: xforge-project (single) — scaffold 0.7.20 en
   Specs: xforge/specs    Changes: xforge/changes    Compatibility: managed
-  Active Changes: [object Object]
+  Active Changes: add-feature — solid/verify (medium)
   Selected resources:
     skills (12): xforge-propose, xforge-clarify, xforge-design, xforge-check, xforge-apply,
     xforge-verify, xforge-status, xforge-revise, xforge-scaffold, xforge-kanban,

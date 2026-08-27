@@ -108,6 +108,77 @@ describe('verification retire', () => {
     const again = await runCli(root, ['verification', 'retire', '--gate-name', 'unit-tests', '--command', '["node","-e","process.exit(0)"]', '--by', 'owner@example.test', '--reason', 'second']);
     expect(again.code).toBe(1);
     expect(again.json.diagnostics[0].code).toBe('XFORGE_VERIFICATION_RETIRE_NOT_FOUND');
+
+    /*
+     * And it does not list the entry it just refused as something the Gate declares. The message
+     * printed every entry unmarked, so this refusal read "no active declaration matching that
+     * --command. It declares: [...process.exit(0)...]" — naming the very entry it had said did not
+     * match, which sends the reader looking for a typo instead of telling them it is already gone.
+     */
+    const [active, withdrawn] = again.json.diagnostics[0].message.split('Already retired');
+    expect(active).not.toContain('process.exit(0)');
+    expect(withdrawn).toContain('process.exit(0)');
+  });
+
+  it('says so when the withdrawal leaves a required Gate with nothing to run', async () => {
+    const root = await fixture();
+    await updateYaml(root, 'xforge/manifest.yaml', (manifest) => {
+      manifest.verification = {
+        'unit-tests': [
+          { command: ['node', '-e', 'process.exit(0)'], declaredBy: 'owner@example.test', declaredAt: '2026-01-01T00:00:00Z' },
+          {
+            notApplicable: 'web/package.json', justification: 'The web app is verified in its own pipeline.',
+            declaredBy: 'owner@example.test', declaredAt: '2026-01-02T00:00:00Z',
+          },
+        ],
+      };
+    });
+
+    const result = await runCli(root, [
+      'verification', 'retire', '--gate-name', 'unit-tests', '--command', '["node","-e","process.exit(0)"]',
+      '--by', 'owner@example.test', '--reason', 'Replaced by the runner the next phase will declare.',
+    ]);
+    expect(result.code, JSON.stringify(result.json?.diagnostics)).toBe(0);
+
+    /*
+     * The counts, kept apart. One number over both kinds reported `remainingActive: 1` here — a
+     * dismissal — and the next `check --gate unit-tests` refused with
+     * `XFORGE_VERIFICATION_NOT_DECLARED`, so the command's own output was the thing telling the
+     * reader a check remained.
+     */
+    expect(result.json.data.remainingRuns).toBe(0);
+    expect(result.json.data.remainingDismissals).toBe(1);
+
+    const notice = result.json.diagnostics.find((item: any) => item.code === 'XFORGE_VERIFICATION_GATE_LEFT_UNDECLARED');
+    expect(notice.severity).toBe('warning');
+    expect(notice.message).toContain('XFORGE_VERIFICATION_NOT_DECLARED');
+    expect(notice.message).toContain('a dismissal is not a check');
+  });
+
+  it('refuses a retirement that names a time and nobody', async () => {
+    const root = await twoDeclarations();
+    await updateYaml(root, 'xforge/manifest.yaml', (manifest) => {
+      manifest.verification['unit-tests'][1].retiredAt = '2026-02-01T00:00:00Z';
+    });
+
+    /*
+     * `retiredAt` alone used to be a valid Manifest, and `core/verification.ts` skipped on that
+     * field alone — so three keystrokes could stop a declared check from running with nobody named
+     * and no reason given, which is the one state retirement exists to make impossible. Both halves
+     * are closed: the schema will not hold the shape, and `isRetired` will not read it as a
+     * retirement.
+     */
+    const declared = await runCli(root, [
+      'verification', 'declare', '--gate-name', 'unit-tests', '--command', '["npm","test"]',
+      '--by', 'owner@example.test', '--dry-run',
+    ]);
+    expect(declared.code).toBe(1);
+    /* Refused where every other malformed Manifest is refused — at load, before any command acts on
+       it — and the message names the fields that have to accompany the timestamp. */
+    expect(declared.json.diagnostics[0].code).toBe('XFORGE_SCHEMA_INVALID');
+    const reported = JSON.stringify(declared.json.diagnostics);
+    expect(reported).toContain('retiredBy');
+    expect(reported).toContain('retiredReason');
   });
 
   it('refuses to choose between two declarations that match the same argument', async () => {

@@ -480,6 +480,11 @@
         "declaredAt"
       ],
       "description": "One command that verifies part of this project. Declared per Gate name, so the same mechanism serves unit-tests, security-scan, or any Gate a project adds. A retired run stays here and stops being executed: the record of who declared it, and who withdrew it and why, is the point of keeping it.",
+      "dependentRequired": {
+        "retiredAt": ["retiredBy", "retiredReason"],
+        "retiredBy": ["retiredAt", "retiredReason"],
+        "retiredReason": ["retiredAt", "retiredBy"]
+      },
       "properties": {
         "command": {
           "type": "array",
@@ -545,6 +550,11 @@
         "declaredAt"
       ],
       "description": "A detected toolchain this Gate deliberately does not cover. Recorded so the question is asked once and never again, and so the answer is attributable.",
+      "dependentRequired": {
+        "retiredAt": ["retiredBy", "retiredReason"],
+        "retiredBy": ["retiredAt", "retiredReason"],
+        "retiredReason": ["retiredAt", "retiredBy"]
+      },
       "properties": {
         "notApplicable": {
           "$ref": "#/$defs/path",

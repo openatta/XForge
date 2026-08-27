@@ -588,9 +588,19 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
     ));
   }
 
-  const changeRoot = options.change ? `${project.changesPath}/${options.change}/` : null;
+  /*
+   * Change-scoped warnings, including the ones scoped to the Change itself rather than to a file
+   * inside it.
+   *
+   * This required a trailing slash, so a diagnostic pointed at `changes/<id>` — the convention this
+   * file's own notices use, `XFORGE_GATE_EVIDENCE_STALE` among them — was classified project-level
+   * and never counted. The most Change-specific warning in the run was the one the notice could not
+   * see, which is the failure the notice exists to prevent.
+   */
+  const changeRoot = options.change ? `${project.changesPath}/${options.change}` : null;
   const advisories = diagnostics.filter((item) => item.severity === 'warning'
-    && changeRoot !== null && item.path !== undefined && item.path.startsWith(changeRoot));
+    && changeRoot !== null && item.path !== undefined
+    && (item.path === changeRoot || item.path.startsWith(`${changeRoot}/`)));
   /*
    * Only when the run is otherwise green, and only for a Change.
    *

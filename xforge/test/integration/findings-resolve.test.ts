@@ -145,6 +145,26 @@ describe('xforge findings resolve', () => {
     expect(dry.json.changes.map((item: any) => item.path)).toEqual([`xforge/changes/${CHANGE}/${CHECK_FINDINGS_PATH}`]);
     expect(await readFile(path.join(root, 'xforge', 'changes', CHANGE, 'evidence', 'check-findings.yaml'), 'utf8')).toBe(before);
 
+    /*
+     * And it reports the consequence in the tense it is in. The rehearsal used to state that Gate
+     * Evidence "is now stale" and hand the Agent a `ready` instruction to re-run the Gates, when
+     * nothing had been written and nothing had moved — the plan told the truth and the sentence
+     * next to it did not.
+     */
+    const rehearsed = dry.json.diagnostics.find((item: any) => item.code === 'XFORGE_FINDINGS_REVISION_MOVED');
+    expect(rehearsed.message).toContain('would move');
+    expect(rehearsed.message).toContain('Nothing was written');
+    expect(rehearsed.message).not.toContain('is now stale');
+    expect(dry.json.nextActions[0].action).toBe('run-gates');
+    expect(dry.json.nextActions[0].status).toBe('pending');
+
+    const applied = await runCli(root, [
+      'findings', 'resolve', '--change', CHANGE, '--id', 'CHK-001', '--answer', 'Answered.', '--by', 'owner@example.test',
+    ]);
+    const real = applied.json.diagnostics.find((item: any) => item.code === 'XFORGE_FINDINGS_REVISION_MOVED');
+    expect(real.message).toContain('is now stale');
+    expect(applied.json.nextActions[0].status).toBe('ready');
+
     const missing = await runCli(root, ['findings', 'resolve', '--change', CHANGE, '--id', 'CHK-001']);
     expect(missing.code).toBe(1);
     expect(missing.json.diagnostics[0].code).toBe('XFORGE_FINDINGS_ARGUMENTS_REQUIRED');

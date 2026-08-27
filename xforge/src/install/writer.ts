@@ -1,5 +1,5 @@
-import { readFile, rm } from 'node:fs/promises';
-import type { FileChange, ProjectContext } from '../types.js';
+import { rm } from 'node:fs/promises';
+import type { ProjectContext } from '../types.js';
 import { atomicWrite, backup, type Backup } from '../core/files.js';
 import { safeResolve } from '../core/path-safety.js';
 import type { InstallPlan } from './planner.js';

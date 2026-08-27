@@ -1,11 +1,11 @@
 import { spawn } from 'node:child_process';
-import { access, mkdir, readFile, rename, rm } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import type { Diagnostic, FileChange, ProjectContext } from '../types.js';
 import { executeCheck } from '../commands/check.js';
 import { checkStructure } from './checker.js';
 import { XForgeError, diagnostic } from './errors.js';
-import { atomicWrite, backup, exists, type Backup } from './files.js';
+import { atomicWrite, backup, exists } from './files.js';
 import { assertManaged } from './project-loader.js';
 import { safeResolve } from './path-safety.js';
 import { planSpecMutations, type SpecMutation } from './spec-merger.js';

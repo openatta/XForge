@@ -79,6 +79,7 @@ executeWorkPackageDispatch  <- ./commands/work-package.js
 expiredAuditEvents  <- ./core/audit.js
 findProjectRoot  <- ./core/project-loader.js
 getAdapter  <- ./adapters/index.js
+isRetired  <- ./types/manifest.js
 isVerificationRun  <- ./types/manifest.js
 loadFlows  <- ./core/flow-resolver.js
 loadProject  <- ./core/project-loader.js

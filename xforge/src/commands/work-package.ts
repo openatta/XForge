@@ -374,12 +374,15 @@ export async function executeWorkPackageAcknowledge(project: ProjectContext, opt
      * The bytes this call is about to replace, if any. A supersede writes to the path an earlier
      * receipt already occupies — same execution, same role, because the delivery record was
      * corrected rather than re-executed — so `create` is only true the first time.
+     *
+     * Read before the write and on every run, `--dry-run` included: the rehearsal's whole job is to
+     * report the plan the real run would carry out, and reading only when about to write made
+     * `--dry-run` announce `create` for a path an existing receipt occupies. It doubles as the
+     * rollback copy below, which is why it is a Buffer rather than a boolean.
      */
     let priorReceipt: Buffer | null = null;
-    if (!options.dryRun) {
-      try { priorReceipt = await readFile(await safeResolve(project.root, target)); }
-      catch { priorReceipt = null; }
-    }
+    try { priorReceipt = await readFile(await safeResolve(project.root, target)); }
+    catch { priorReceipt = null; }
     changes.push({ action: priorReceipt ? 'modify' : 'create', path: target, digest: sha256(content), source: `work-package:acknowledge:${options.role}` });
     if (!options.dryRun) {
       await atomicWrite(project.root, target, content);

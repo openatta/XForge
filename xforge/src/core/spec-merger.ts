@@ -85,10 +85,13 @@ function uniqueRequirements(blocks: RequirementBlock[], label: string, filePath:
 function mergeConflict(message: string, relative: string, active: Map<string, RequirementBlock>, name: string): Diagnostic {
   const id = /^([A-Za-z][A-Za-z0-9]*-\d+)\b/.exec(name)?.[1];
   const candidate = id ? [...active.keys()].find((existing) => existing.startsWith(`${id} `) || existing === id) : undefined;
+  /* Leading space and a terminator on `message`, because the two are separate sentences: joined
+     bare they read as one run-on — "…missing requirement: WID-001 Widget greets politely The main
+     Spec has…" — and the reader has to find the seam before they can find the answer. */
   const hint = candidate
     ? ` The main Spec has "${candidate}", which cites the same id. A heading is the merge key, so a retitled MODIFIED block no longer finds it: either restore the heading and put the new wording in the body, or use "## RENAMED Requirements" to change the title deliberately.`
     : '';
-  return diagnostic('XFORGE_SPEC_MERGE_CONFLICT', `${message}${hint}`, relative);
+  return diagnostic('XFORGE_SPEC_MERGE_CONFLICT', `${message}${hint ? `${message.endsWith('.') ? '' : '.'}${hint}` : ''}`, relative);
 }
 
 function mainParts(source: string): { before: string; after: string; blocks: RequirementBlock[] } {

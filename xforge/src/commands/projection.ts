@@ -1,4 +1,4 @@
-import { access, readFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { TargetId } from '../constants.js';
 import type { Diagnostic, FileChange, ProjectContext } from '../types.js';

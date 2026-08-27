@@ -10,7 +10,7 @@
  * usually a sign it is describing two subjects at once.
  */
 /* The one value in this surface: a narrowing guard that belongs with the union it narrows. */
-export { isVerificationRun } from './types/manifest.js';
+export { isRetired, isVerificationRun } from './types/manifest.js';
 
 export type * from './types/protocol.js';
 export type * from './types/manifest.js';

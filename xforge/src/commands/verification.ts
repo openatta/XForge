@@ -1,7 +1,7 @@
 import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { Diagnostic, FileChange, ProjectContext, VerificationEntry, VerificationRun } from '../types.js';
-import { isVerificationRun } from '../types.js';
+import { isRetired, isVerificationRun } from '../types.js';
 import { XForgeError, diagnostic } from '../core/errors.js';
 import { atomicWrite } from '../core/files.js';
 import { sha256 } from '../core/hash.js';
@@ -15,7 +15,7 @@ import { resolveWorkPackages } from '../core/work-packages.js';
 import { gateBlockReason, legalTransitionTargets, readGateEvidence, resolveControlPlane, type ResolvedControlPlane } from '../core/control-plane.js';
 import { safeResolve } from '../core/path-safety.js';
 import { VERIFICATION_RECEIPT_CONDITION, VERIFICATION_RECEIPT_PATH } from '../core/verification-receipt.js';
-import { resolveVerificationPlan } from '../core/verification.js';
+import { VERIFICATION_NOT_DECLARED, resolveVerificationPlan } from '../core/verification.js';
 
 /**
  * Writes `manifest.verification` on the project's behalf, instead of asking an Agent to hand-edit
@@ -144,16 +144,33 @@ export async function executeVerificationRetire(
   const wanted = options.command ? parseArgv(options.command, '--command') : null;
   const matches = entries
     .map((entry, index) => ({ entry, index }))
-    .filter(({ entry }) => !entry.retiredAt)
+    .filter(({ entry }) => !isRetired(entry))
     .filter(({ entry }) => (wanted
       ? isVerificationRun(entry) && JSON.stringify(entry.command) === JSON.stringify(wanted)
       : !isVerificationRun(entry) && entry.notApplicable === options.notApplicable))
     .filter(({ entry }) => options.module === undefined || (entry as VerificationRun).module === options.module);
 
   if (matches.length === 0) {
+    /*
+     * What is still eligible, and separately what is not.
+     *
+     * This listed every entry, retired ones included and unmarked, so retiring the same command
+     * twice answered "no active declaration matching that --command. It declares: [\"node\",...]"
+     * — naming the entry it had just said did not exist, which reads as the command having failed
+     * to match rather than as the entry having already been withdrawn.
+     */
+    const active = entries.filter((entry) => !isRetired(entry));
+    const retired = entries.filter(isRetired);
+    const argument = wanted ? '--command' : '--not-applicable';
+    const declares = active.length === 0 ? '(none)' : active.map(describeEntry).join('; ');
+    /* Built above the call rather than inline: `test/diagnostics-catalogue.ts` reads these call
+       sites by splitting the argument list, and a template literal nested inside a `${}` ends the
+       outer one as far as that parser is concerned — which drops the severity and records the code
+       as `dynamic` in the catalogue fingerprint. */
+    const alsoRetired = retired.length === 0 ? '' : ` Already retired, and not eligible again: ${retired.map(describeEntry).join('; ')}.`;
     throw new XForgeError(diagnostic(
       'XFORGE_VERIFICATION_RETIRE_NOT_FOUND',
-      `Gate ${options.gate} has no active declaration matching that ${wanted ? '--command' : '--not-applicable'}. It declares: ${entries.length === 0 ? '(none)' : entries.map(describeEntry).join('; ')}.`,
+      `Gate ${options.gate} has no active declaration matching that ${argument}. It actively declares: ${declares}.${alsoRetired}`,
       relative,
     ));
   }
@@ -174,7 +191,13 @@ export async function executeVerificationRetire(
     : entry);
 
   const next = withVerificationBlock(source, verification);
-  const parsed = parseYaml(next);
+  /* Wrapped for the reason `declare` wraps the identical call: this command exists because a
+     malformed Manifest locks an Agent out of repairing it, and an unhandled YAML error here would
+     hand back a stack trace where the other path hands back a diagnostic. */
+  const parsed = (() => {
+    try { return parseYaml(next); }
+    catch (error) { throw new XForgeError(diagnostic('XFORGE_VERIFICATION_WRITE_REFUSED', `Retiring this would produce a Manifest that no longer parses (${(error as Error).message}); nothing was written.`, relative)); }
+  })();
   const schemaDiagnostics = await validateSchema('manifest', parsed, relative);
   if (schemaDiagnostics.some((item) => item.severity === 'error')) {
     throw new XForgeError([
@@ -182,6 +205,55 @@ export async function executeVerificationRetire(
       ...schemaDiagnostics,
     ], { root: project.root });
   }
+
+  /*
+   * What is left, counted the way the Gate runner counts it.
+   *
+   * `remainingActive` was one number over both kinds of entry, so withdrawing the last runnable
+   * command from a Gate holding one dismissal reported `remainingActive: 1` and the next `check`
+   * refused with `XFORGE_VERIFICATION_NOT_DECLARED`. A dismissal records a toolchain the Gate
+   * deliberately does not cover; it is not a check and never closes a Gate — `core/verification.ts`
+   * says so in as many words, and this command's own output was the thing contradicting it. The two
+   * counts are reported separately because they answer different questions and nothing should have
+   * to guess which one it is reading.
+   */
+  const remaining = verification[options.gate]!.filter((entry) => !isRetired(entry));
+  const remainingRuns = remaining.filter(isVerificationRun);
+  const remainingDismissals = remaining.length - remainingRuns.length;
+
+  const diagnostics = [diagnostic(
+    'XFORGE_VERIFICATION_RETIRED',
+    `${describeEntry(matches[0]!.entry)} will no longer run for Gate ${options.gate}. It stays in the Manifest, recording that ${options.by} withdrew it: ${options.reason}.`,
+    relative,
+    'info',
+  )];
+
+  /*
+   * And said out loud when the withdrawal closes the Gate.
+   *
+   * A required `builtin: declared` Gate with no command left refuses at every Stage that runs it,
+   * which means it is no longer passable and no Change needing it can be archived. Silently is the
+   * wrong way to learn that: the refusal arrives later, from a different command, about a Manifest
+   * this one wrote. A warning rather than a refusal, because withdrawing the last command is a
+   * legitimate thing to do on the way to declaring a replacement.
+   */
+  const spec = (await loadSelectedResources(project)).gates.get(options.gate)?.value.spec;
+  if (remainingRuns.length === 0 && spec?.builtin === 'declared' && spec.required) {
+    const leaves = options.dryRun ? 'Retiring this would leave' : 'This leaves';
+    const refuses = options.dryRun ? 'would refuse' : 'will refuse';
+    const declare = `xforge verification declare --gate-name ${options.gate} --command <argv> --by <person>`;
+    /* Composed above the call, for the reason the refusal above is — see it. */
+    const counted = remainingDismissals === 1 ? 'one entry' : `${remainingDismissals} entries`;
+    const kind = remainingDismissals === 1 ? 'is a dismissal, which records' : 'are dismissals, which record';
+    const dismissals = remainingDismissals === 0 ? '' : ` The ${counted} still active ${kind} a toolchain this Gate deliberately does not cover; a dismissal is not a check and never closes a Gate.`;
+    diagnostics.push(diagnostic(
+      'XFORGE_VERIFICATION_GATE_LEFT_UNDECLARED',
+      `${leaves} Gate ${options.gate} with no command to run, and it is a required declared Gate: it ${refuses} with ${VERIFICATION_NOT_DECLARED} at every Stage that runs it, and no Change needing it can be archived until \`${declare}\` gives it one.${dismissals}`,
+      relative,
+      'warning',
+    ));
+  }
+
   if (!options.dryRun) await atomicWrite(project.root, relative, next);
   return {
     data: {
@@ -190,14 +262,10 @@ export async function executeVerificationRetire(
       retiredBy: options.by,
       reason: options.reason,
       dryRun: options.dryRun,
-      remainingActive: verification[options.gate]!.filter((entry) => !entry.retiredAt).length,
+      remainingRuns: remainingRuns.length,
+      remainingDismissals,
     },
-    diagnostics: [diagnostic(
-      'XFORGE_VERIFICATION_RETIRED',
-      `${describeEntry(matches[0]!.entry)} will no longer run for Gate ${options.gate}. It stays in the Manifest, recording that ${options.by} withdrew it: ${options.reason}.`,
-      relative,
-      'info',
-    )],
+    diagnostics,
     changes: next === source ? [] : [{ action: 'modify', path: relative, digest: sha256(next), source: `verification:retire:${options.gate}` }],
   };
 }

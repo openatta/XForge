@@ -38,6 +38,23 @@ describe('the readable form of a result', () => {
     expect(text.stdout.length).toBeLessThan(json.stdout.length / 4);
   });
 
+  it('names each active Change by id, Flow and Stage rather than joining objects', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await advanceSolidToApply(root, CHANGE);
+
+    const text = await runCli(root, ['state', '--text']);
+
+    /*
+     * `activeChanges` carries `ActiveChangeSummary` objects, and this line declared them `string[]`
+     * and joined them — so every project with anything in flight, which is the common case, printed
+     * `Active Changes: [object Object]`. The portfolio line is the reason `--text` without
+     * `--change` is worth running at all.
+     */
+    expect(text.stdout).not.toContain('[object Object]');
+    expect(text.stdout).toContain(`Active Changes: ${CHANGE} — solid/apply`);
+  });
+
   it('keeps the approval command visible at ready-to-archive rather than below a JSON dump', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);

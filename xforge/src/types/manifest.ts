@@ -195,6 +195,22 @@ export function isVerificationRun(entry: VerificationEntry): entry is Verificati
   return Array.isArray((entry as VerificationRun).command);
 }
 
+/**
+ * Whether this declaration has been withdrawn.
+ *
+ * All three fields, not `retiredAt` alone. A retirement is a judgement somebody made, and the record
+ * of who made it and why is the entire reason a retired entry is kept rather than deleted -- so an
+ * entry carrying a timestamp and nobody's name is not a retirement, it is a damaged entry. Reading
+ * one as a retirement would stop running a check with nothing on the record naming who stopped it,
+ * which is the state this feature exists to make impossible.
+ *
+ * `manifest.schema.json` refuses to write that shape (`dependentRequired` on all three); this is the
+ * reader's half of the same rule, and it fails the safe way -- an incomplete entry keeps running.
+ */
+export function isRetired(entry: VerificationEntry): boolean {
+  return Boolean(entry.retiredAt && entry.retiredBy && entry.retiredReason);
+}
+
 export interface Lockfile {
   apiVersion?: string;
   kind?: string;

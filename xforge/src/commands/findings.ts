@@ -184,10 +184,18 @@ export async function executeFindingsResolve(
   const next = document.toString();
 
   /*
-   * The consequence, stated. `evidence/check-findings.yaml` is an Artifact in every Flow that
-   * declares it, so it is an input to the content revision: this write stales every Gate's Evidence
-   * and any verification receipt citing it. The Agent's next step is not "continue", it is "re-run
-   * the Gates", and that is what the next action says.
+   * The consequence, stated — in the tense the run is actually in.
+   *
+   * `evidence/check-findings.yaml` is an Artifact in every Flow that declares it, so it is an input
+   * to the content revision: this write stales every Gate's Evidence and any verification receipt
+   * citing it. The Agent's next step is not "continue", it is "re-run the Gates", and that is what
+   * the next action says.
+   *
+   * Under `--dry-run` nothing is written, so the past tense is a false statement about the project:
+   * a rehearsal reported that Evidence "is now stale" and told the Agent to re-run the Gates when
+   * nothing had moved. Dropping the notice under `--dry-run` would be the opposite error — the one
+   * `changes` documents below, where silence reads as "this would change nothing". So it is
+   * reported either way, and the conditional is what changes.
    */
   const receiptExists = await (async () => {
     try { await access(await safeResolve(project.root, `${project.changesPath}/${options.change}/${VERIFICATION_RECEIPT_PATH}`)); return true; }
@@ -195,7 +203,9 @@ export async function executeFindingsResolve(
   })();
   diagnostics.push(diagnostic(
     'XFORGE_FINDINGS_REVISION_MOVED',
-    `Resolving ${options.id} rewrites an Artifact, which moves this Change's content revision${contentRevision ? ` (was ${contentRevision})` : ''}. Gate Evidence bound to the old revision is now stale${receiptExists ? ', and so is evidence/verification-receipt.yaml, which must be drafted again after the Gates re-run' : ''}.`,
+    options.dryRun
+      ? `Resolving ${options.id} would rewrite an Artifact, which would move this Change's content revision${contentRevision ? ` (currently ${contentRevision})` : ''}. Gate Evidence bound to it would be stale${receiptExists ? ', and so would evidence/verification-receipt.yaml, which would have to be drafted again after the Gates re-run' : ''}. Nothing was written: this was a rehearsal.`
+      : `Resolving ${options.id} rewrites an Artifact, which moves this Change's content revision${contentRevision ? ` (was ${contentRevision})` : ''}. Gate Evidence bound to the old revision is now stale${receiptExists ? ', and so is evidence/verification-receipt.yaml, which must be drafted again after the Gates re-run' : ''}.`,
     relative,
     'info',
   ));
@@ -203,13 +213,17 @@ export async function executeFindingsResolve(
   if (!options.dryRun) await atomicWrite(project.root, relative, next);
 
   const nextActions: NextAction[] = [{
-    action: 'run-gates', type: 'gate', actor: 'main', status: 'ready',
-    reason: 'The findings ledger moved the content revision; Gate Evidence must be re-run before it can be cited.',
+    action: 'run-gates', type: 'gate', actor: 'main', status: options.dryRun ? 'pending' : 'ready',
+    reason: options.dryRun
+      ? 'Resolving this finding would move the content revision, and the Gates would then have to be re-run before their Evidence could be cited. Nothing is stale yet.'
+      : 'The findings ledger moved the content revision; Gate Evidence must be re-run before it can be cited.',
     command: ['xforge', 'check', '--change', options.change],
   }];
   if (receiptExists) nextActions.push({
-    action: 'draft-verification-receipt', type: 'governance', actor: 'main', status: 'blocked',
-    reason: 'The existing verification receipt cites a superseded content revision.',
+    action: 'draft-verification-receipt', type: 'governance', actor: 'main', status: options.dryRun ? 'pending' : 'blocked',
+    reason: options.dryRun
+      ? 'Resolving this finding would leave the existing verification receipt citing a superseded content revision.'
+      : 'The existing verification receipt cites a superseded content revision.',
     command: ['xforge', 'verification', 'draft-receipt', '--change', options.change],
   });
 

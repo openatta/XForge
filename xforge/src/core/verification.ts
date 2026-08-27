@@ -1,5 +1,5 @@
 import type { NextAction, ProjectContext, VerificationDismissal, VerificationRun } from '../types.js';
-import { isVerificationRun } from '../types.js';
+import { isRetired, isVerificationRun } from '../types.js';
 import { detectToolchains, suggestedWorkingDirectory, suggestionFor, type DetectedToolchain } from './toolchain.js';
 
 /**
@@ -33,13 +33,6 @@ interface VerificationPlan {
 }
 
 /**
- * What the Manifest declares for one Gate, split by kind.
- *
- * Exported so a caller that only needs "has this been answered" can ask without paying for
- * `resolveVerificationPlan`'s toolchain scan of the working tree — and, more importantly, so it
- * asks the same question this file's own refusal asks, rather than a second one that can drift.
- */
-/**
  * The required `declared` Gates this project has never answered.
  *
  * A `builtin: declared` Gate runs whatever the project declares under `manifest.verification.<gate>`
@@ -72,14 +65,24 @@ export function undeclaredRequiredGates(
   return undeclared.sort();
 }
 
+/**
+ * What the Manifest declares for one Gate, split by kind.
+ *
+ * The single point both kinds of entry are read, so a caller that only needs "has this been
+ * answered" asks the same question this file's own refusal asks rather than a second one that can
+ * drift — and asks it without paying for `resolveVerificationPlan`'s toolchain scan of the working
+ * tree.
+ */
 function entriesFor(project: ProjectContext, gate: string): { runs: VerificationRun[]; dismissals: VerificationDismissal[] } {
   const entries = project.manifest.verification?.[gate] ?? [];
   const runs: VerificationRun[] = [];
   const dismissals: VerificationDismissal[] = [];
   for (const entry of entries) {
     /* A retired entry is still on the record and no longer executed. Skipped here, at the one place
-       both kinds are read, so nothing downstream has to remember the distinction. */
-    if (entry.retiredAt) continue;
+       both kinds are read, so nothing downstream has to remember the distinction. `isRetired` wants
+       all three retirement fields, not just the timestamp — see it for why a half-written one has to
+       keep running. */
+    if (isRetired(entry)) continue;
     if (isVerificationRun(entry)) runs.push(entry);
     else dismissals.push(entry);
   }

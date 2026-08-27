@@ -84,6 +84,35 @@ describe('acknowledge supersede', () => {
     expect(both.acknowledgements.integratedBy).not.toBeNull();
   }, 600_000);
 
+  it('rehearses the supersede as a modify, because that is what the real run would do', async () => {
+    const built = await project().flow('solid').packages(1).atStage('apply').build();
+    await seedAcknowledged(built.root, built.change);
+    await amendDelivery(built.root, built.change);
+
+    const evidence = `xforge/changes/${built.change}/evidence/agents/${PACKAGE}/review/rehearsed.md`;
+    await write(built.root, evidence, '# Review\n\nRehearsed after the correction.\n');
+    const rehearsal = await runCli(built.root, [
+      'work-package', 'acknowledge', '--change', built.change, '--package', PACKAGE,
+      '--as', 'reviewer', '--evidence', evidence, '--dry-run',
+    ]);
+
+    expect(rehearsal.code, JSON.stringify(rehearsal.json?.diagnostics)).toBe(0);
+    /*
+     * The receipt path is keyed by the delivery's execution id and the role, so a supersede writes
+     * where one already is. The bytes it would replace were read only when the command was about to
+     * write them, which made the rehearsal answer `create` for a path that is occupied — the one
+     * question a rehearsal exists to answer.
+     */
+    const planned = rehearsal.json.changes.find((item: any) => item.path.includes(`/ack/`));
+    expect(planned.action).toBe('modify');
+
+    const real = await runCli(built.root, [
+      'work-package', 'acknowledge', '--change', built.change, '--package', PACKAGE,
+      '--as', 'reviewer', '--evidence', evidence,
+    ]);
+    expect(real.json.changes.find((item: any) => item.path.includes(`/ack/`)).action).toBe('modify');
+  }, 600_000);
+
   it('says it recorded nothing when the acknowledgement already covers the delivery', async () => {
     const built = await project().flow('solid').packages(1).atStage('apply').build();
     await seedAcknowledged(built.root, built.change);

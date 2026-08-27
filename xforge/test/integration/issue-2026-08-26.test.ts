@@ -69,6 +69,9 @@ describe('field report 2026-08-26', () => {
     /* The near miss, which is the whole difference between a diagnosis and a symptom. */
     expect(conflict.message).toContain('MCP-009 capability discovery is scoped per project');
     expect(conflict.message).toContain('RENAMED');
+    /* Two sentences, joined as two. Concatenated bare they ran together — "…scoped per project and
+       role The main Spec has…" — and the seam is exactly where the diagnosis starts. */
+    expect(conflict.message).toContain('and role. The main Spec has');
   });
 
   it('collects every merge conflict in one pass instead of one per round trip', async () => {

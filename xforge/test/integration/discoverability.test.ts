@@ -90,5 +90,16 @@ describe('constraints the CLI now states', () => {
     /* The ordering rule itself, which is the part that was only ever in the Skill. */
     expect(stale.message).toContain('draft-receipt');
     expect(stale.message).toContain('stales it');
+
+    /*
+     * And it is counted as the Change-scoped warning it is. The advisory filter required a trailing
+     * slash on the Change path, so a diagnostic pointed at `changes/<id>` — the convention this very
+     * notice uses — was classified project-level and never reached
+     * `XFORGE_CHECK_PASSED_WITH_WARNINGS`. The one notice whose job is to stop a warning being
+     * walked past could not see the most Change-specific warning in the run.
+     */
+    const counted = after.json.diagnostics.find((item: any) => item.code === 'XFORGE_CHECK_PASSED_WITH_WARNINGS');
+    expect(counted, JSON.stringify(after.json.diagnostics.map((item: any) => item.code))).toBeDefined();
+    expect(counted.message).toContain('XFORGE_GATE_EVIDENCE_STALE');
   }, 600_000);
 });
