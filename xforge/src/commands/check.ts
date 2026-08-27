@@ -528,7 +528,7 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
     if (staleGates.length > 0) {
       diagnostics.push(diagnostic(
         'XFORGE_GATE_EVIDENCE_STALE',
-        `${staleGates.length} Gate(s) hold Evidence that passed against an earlier content revision and no longer bind the current one: ${staleGates.join(', ')}. Gate Evidence binds to the Change's content at the moment the Gate runs, so writing any declared Artifact after a Gate passes stales it — which is why the Stage order is write the assurance first, then run \`xforge check --change ${options.change}\`, then \`xforge verification draft-receipt\`, then the receipt. Re-run these Gates before attempting the transition; nothing else about them is wrong.`,
+        `${staleGates.length} Gate(s) hold Evidence that passed against an earlier content revision and no longer bind the current one: ${staleGates.join(', ')}. Gate Evidence binds to the Change's content at the moment the Gate runs, so writing any declared Artifact after a Gate passes stales it — which is why the Stage order is write the assurance first, then run \`xforge check --change ${options.change}\`, then finish the verification receipt — \`xforge verification finalize\` writes it from the Evidence in one step, or \`draft-receipt\` computes the facts for you to record by hand. Re-run these Gates before attempting the transition; nothing else about them is wrong.`,
         `${project.changesPath}/${options.change}`,
         'warning',
         { gates: staleGates },

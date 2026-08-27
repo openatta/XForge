@@ -65,6 +65,9 @@ describe('envelope golden', () => {
     { name: 'transition-dry-run', argv: ['transition', '--change', CHANGE, '--to', 'ready-to-archive', '--dry-run'] },
     { name: 'archive-dry-run', argv: ['archive', '--change', CHANGE, '--dry-run'] },
     { name: 'verification-draft-receipt', argv: ['verification', 'draft-receipt', '--change', CHANGE] },
+    /* `finalize` is the command that writes the receipt, so its `changes` entry is the part of its
+       envelope worth pinning — under `--dry-run`, where recording it costs the fixture nothing. */
+    { name: 'verification-finalize-dry-run', argv: ['verification', 'finalize', '--change', CHANGE, '--status', 'passed', '--by', 'owner@example.test', '--dry-run'] },
     { name: 'install-dry-run', argv: ['install', '--dry-run'] },
     { name: 'upgrade-scaffold-dry-run', argv: ['upgrade-scaffold', '--dry-run'] },
     /* Refusals, which are the half the suite covers least: 165 of 320 codes are asserted nowhere. */

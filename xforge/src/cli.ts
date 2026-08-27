@@ -12,7 +12,7 @@ import { executeAudit } from './commands/audit.js';
 import { executeBrief, renderBriefText } from './commands/brief.js';
 import { executeCheck } from './commands/check.js';
 import { executeFindingsResolve } from './commands/findings.js';
-import { executeVerificationDeclare, executeVerificationDraftReceipt, executeVerificationRetire } from './commands/verification.js';
+import { executeVerificationDeclare, executeVerificationDraftReceipt, executeVerificationFinalize, executeVerificationRetire } from './commands/verification.js';
 import { executeInstall } from './commands/install.js';
 import { executeState, renderStateText } from './commands/state.js';
 import { executeSync } from './commands/sync.js';
@@ -84,13 +84,14 @@ interface ParsedArguments {
   answer?: string;
   scope?: string;
   by?: string;
+  status?: string;
   receiptId?: string;
   field?: string;
 }
 
 const COMMANDS: CommandName[] = ['help', 'version', 'init', 'state', 'install', 'sync', 'update', 'uninstall', 'check', 'brief', 'verification', 'transition', 'approve', 'audit', 'work-package', 'hook', 'archive', 'doctor', 'upgrade-scaffold', 'review', 'findings'];
 const VALID_KINDS = ['skills', 'agents', 'rules', 'policies', 'hooks', 'gates', 'scripts', 'flows', 'approvals', 'mcp-servers'] as const;
-const VALUE_OPTIONS = ['--root', '--change', '--kind', '--target', '--gate', '--to', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--provider', '--output', '--event', '--package', '--language', '--as', '--evidence', '--stage', '--attach-triage', '--gate-name', '--command', '--module', '--covers', '--working-directory', '--timeout-seconds', '--not-applicable', '--justification', '--by', '--receipt', '--field', '--id', '--answer', '--scope'] as const;
+const VALUE_OPTIONS = ['--root', '--change', '--kind', '--target', '--gate', '--to', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--provider', '--output', '--event', '--package', '--language', '--as', '--evidence', '--stage', '--attach-triage', '--gate-name', '--command', '--module', '--covers', '--working-directory', '--timeout-seconds', '--not-applicable', '--justification', '--by', '--status', '--receipt', '--field', '--id', '--answer', '--scope'] as const;
 
 function isValueOption(token: string): boolean {
   return VALUE_OPTIONS.includes(token as (typeof VALUE_OPTIONS)[number]);
@@ -179,9 +180,9 @@ const HELP: Record<CommandName, { usage: string; description: string; options: s
   uninstall: { usage: 'xforge [--root <path>] uninstall [--target <target>] [--force] [--dry-run] [--text]', description: 'Remove managed target files, refusing on a digest mismatch unless --force.', options: ['--root', '--target', '--force', '--dry-run', '--text'] },
   check: { usage: 'xforge [--root <path>] check [--change <id>] [--gate <id>] [--stage <id> | --all-gates] [--force] [--text]', description: 'Validate project structure, deliveries, and the Gates the current Stage requires. With no Gate selection this also executes the verify commands declared by every work package, which for a large plan is dozens of external commands and minutes of wall time; narrowing with --gate, --stage or --all-gates runs only the selected Gates and skips them.', options: ['--root', '--change', '--gate', '--stage', '--all-gates', '--force', '--text'] },
   verification: {
-    usage: 'xforge [--root <path>] verification declare --gate-name <gate> (--command \'["prog","arg"]\' | --not-applicable <marker> --justification <text>) --by <person> [--module <id>] [--covers \'["marker"]\'] [--working-directory <path>] [--timeout-seconds <n>] [--dry-run] [--text]\n       xforge [--root <path>] verification retire --gate-name <gate> (--command \'["prog","arg"]\' | --not-applicable <marker>) --by <person> --reason <text> [--module <id>] [--dry-run] [--text]\n       xforge [--root <path>] verification draft-receipt --change <id> [--text]',
-    description: 'Declare how this project runs a declared-verification Gate, without hand-editing the Manifest; retire a declaration that should stop running, keeping the record of who withdrew it and why; or draft the current Stage\'s verification receipt from what XForge already knows. The draft omits `status` and writes nothing: that field is the Stage\'s assertion that the work was verified, and a CLI filling it in would be deciding the thing the receipt exists to record.',
-    options: ['--root', '--change', '--gate-name', '--command', '--module', '--covers', '--working-directory', '--timeout-seconds', '--not-applicable', '--justification', '--by', '--reason', '--dry-run', '--text'],
+    usage: 'xforge [--root <path>] verification declare --gate-name <gate> (--command \'["prog","arg"]\' | --not-applicable <marker> --justification <text>) --by <person> [--module <id>] [--covers \'["marker"]\'] [--working-directory <path>] [--timeout-seconds <n>] [--dry-run] [--text]\n       xforge [--root <path>] verification retire --gate-name <gate> (--command \'["prog","arg"]\' | --not-applicable <marker>) --by <person> --reason <text> [--module <id>] [--dry-run] [--text]\n       xforge [--root <path>] verification draft-receipt --change <id> [--text]\n       xforge [--root <path>] verification finalize --change <id> --status passed --by <person> [--dry-run] [--text]',
+    description: 'Declare how this project runs a declared-verification Gate, without hand-editing the Manifest; retire a declaration that should stop running, keeping the record of who withdrew it and why; or draft the current Stage\'s verification receipt from what XForge already knows. The draft omits `status` and writes nothing: that field is the Stage\'s assertion that the work was verified, and a CLI filling it in would be deciding the thing the receipt exists to record. finalize writes the same facts for you once you supply that assertion yourself, as --status passed signed with --by. It is not a shortcut past the check: before recording that a Gate passed it re-reads that Gate\'s Evidence from disk, and it writes nothing at all if any Gate the Stage cites is stale against the current content revision, failed, or never ran — naming the re-run, the fix, or the first run, because those are three different problems. passed is the only status it writes; a Stage that did not verify does not file a receipt at all.',
+    options: ['--root', '--change', '--gate-name', '--command', '--module', '--covers', '--working-directory', '--timeout-seconds', '--not-applicable', '--justification', '--by', '--status', '--reason', '--dry-run', '--text'],
   },
   findings: {
     usage: 'xforge [--root <path>] findings resolve --change <id> --id <finding-id> --answer <text> --by <person> [--dry-run] [--text]',
@@ -272,6 +273,7 @@ function parseArguments(argv: string[]): ParsedArguments {
     if (token === '--answer') parsed.answer = value;
     if (token === '--scope') parsed.scope = value;
     if (token === '--by') parsed.by = value;
+    if (token === '--status') parsed.status = value;
     if (token === '--attach-triage') parsed.attachTriage = value;
     if (token === '--as') {
       if (!['integrator', 'reviewer'].includes(value)) throw new XForgeError(diagnostic('XFORGE_WORK_PACKAGE_ROLE_UNKNOWN', `Unknown acknowledgement role: ${value}`));
@@ -357,7 +359,7 @@ function parseArguments(argv: string[]): ParsedArguments {
   }
   if (parsed.command === 'archive' && !parsed.change) throw new XForgeError(diagnostic('XFORGE_CHANGE_REQUIRED', 'archive requires --change <id>.'));
   if (parsed.command === 'verification') {
-    if (!['declare', 'retire', 'draft-receipt'].includes(parsed.subcommand ?? '')) throw new XForgeError(diagnostic('XFORGE_VERIFICATION_ACTION_REQUIRED', 'verification requires the declare, retire or draft-receipt action.'));
+    if (!['declare', 'retire', 'draft-receipt', 'finalize'].includes(parsed.subcommand ?? '')) throw new XForgeError(diagnostic('XFORGE_VERIFICATION_ACTION_REQUIRED', 'verification requires the declare, retire, draft-receipt or finalize action.'));
     if (parsed.subcommand === 'retire' && (!parsed.gateName || !parsed.by || !parsed.reason)) {
       throw new XForgeError(diagnostic(
         'XFORGE_VERIFICATION_ARGUMENTS_REQUIRED',
@@ -366,6 +368,20 @@ function parseArguments(argv: string[]): ParsedArguments {
     }
     if (parsed.subcommand === 'declare' && (!parsed.gateName || !parsed.by)) throw new XForgeError(diagnostic('XFORGE_VERIFICATION_ARGUMENTS_REQUIRED', 'verification declare requires --gate-name <gate> and --by <person>. The person is required because nothing can decide mechanically whether a command verifies anything; this records who answered.'));
     if (parsed.subcommand === 'draft-receipt' && !parsed.change) throw new XForgeError(diagnostic('XFORGE_CHANGE_REQUIRED', 'verification draft-receipt requires --change <id>.'));
+    if (parsed.subcommand === 'finalize') {
+      if (!parsed.change) throw new XForgeError(diagnostic('XFORGE_CHANGE_REQUIRED', 'verification finalize requires --change <id>.'));
+      /* The same refusal declare and retire make, for the same reason: the Gates are machine-decided
+         but that the Stage verified the work is not, so an unsigned receipt would record an
+         assertion nobody made. --status is required alongside it rather than defaulted, because a
+         default would let the command supply the claim as well as file it. */
+      if (!parsed.status || !parsed.by) {
+        throw new XForgeError(diagnostic(
+          'XFORGE_VERIFICATION_ARGUMENTS_REQUIRED',
+          'verification finalize requires --status passed and --by <person>. Nothing can decide mechanically that this Stage verified the work, so the receipt has to carry a name, and the assertion has to be stated rather than assumed.',
+        ));
+      }
+    }
+    if (parsed.status !== undefined && parsed.subcommand !== 'finalize') throw new XForgeError(diagnostic('XFORGE_OPTION_NOT_ALLOWED', '--status is only valid for verification finalize.'));
   }
   if (parsed.command === 'findings') {
     if (parsed.subcommand !== 'resolve') throw new XForgeError(diagnostic('XFORGE_FINDINGS_ACTION_REQUIRED', 'findings requires the resolve action. It closes one existing entry; writing findings stays the Check Stage\'s job.'));
@@ -685,6 +701,12 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
   if (command === 'verification') {
     if (parsed.subcommand === 'draft-receipt') {
       const result = await executeVerificationDraftReceipt(project, { change: parsed.change! });
+      return envelope({ command, root: project.root, ...result });
+    }
+    if (parsed.subcommand === 'finalize') {
+      const result = await executeVerificationFinalize(project, {
+        change: parsed.change!, status: parsed.status!, by: parsed.by!, dryRun: parsed.dryRun,
+      });
       return envelope({ command, root: project.root, ...result });
     }
     if (parsed.subcommand === 'retire') {
