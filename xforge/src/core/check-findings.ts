@@ -187,8 +187,15 @@ export async function evaluateCheckFindings(project: ProjectContext, changeId: s
   if ((await readFile(absolute, 'utf8')).trim().length === 0) {
     return { ...verdict([`${relative}: the findings ledger is empty.`]), counts, openBlockers: [] };
   }
-  /* No approval receipts are consulted here deliberately: Check runs ahead of any approval Stage, so
-   * the only identities this ledger can hold a `resolvedBy` to are the Change's own Git authors. */
+  /*
+   * The caller's identity set when it has one, and Git authors alone when it does not.
+   *
+   * The fallback used to be the only path, justified as "Check runs ahead of any approval Stage, so
+   * the only identities this ledger can hold are Git authors". True of the Check Stage and false of
+   * the other time this Gate runs: it is mandatory on the archive path, where the Change's approval
+   * receipts exist and name real people. A `resolvedBy` citing the person who signed the planning
+   * approval was refused there by a message promising that approvers count.
+   */
   const identities = known ?? (await knownIdentities(project, changeId, []));
   return evaluate(project, changeId, document, relative, identities);
 }

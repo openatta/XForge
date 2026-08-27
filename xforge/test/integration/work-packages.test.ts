@@ -1089,7 +1089,7 @@ describe('work-package protocol', () => {
       ]);
     });
 
-    it('refuses two integrator packages, because two writers of one assembly is not an assembly', async () => {
+    it('refuses two integrator packages that could run at the same time', async () => {
       const root = await fixture();
       await createCompleteSolidChange(root);
       await write(root, 'xforge/changes/add-feature/work-packages.yaml', stringify({
@@ -1105,9 +1105,41 @@ describe('work-package protocol', () => {
 
       const result = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
       expect(result.code).toBe(1);
-      const finding = result.json.diagnostics.find((item: any) => item.code === 'XFORGE_WORK_PACKAGE_INTEGRATOR_DUPLICATE');
+      const finding = result.json.diagnostics.find((item: any) => item.code === 'XFORGE_WORK_PACKAGE_INTEGRATOR_CONCURRENT');
       expect(finding.message).toContain('T900');
       expect(finding.message).toContain('T901');
+      /* Both depend on T001 and neither on the other, so nothing orders them against each other. */
+      expect(finding.message).toContain('neither depends on the other');
+    });
+
+    it('accepts a bootstrap integrator ahead of the workers and an assembly behind them', async () => {
+      /*
+       * The shape the rule used to make unwritable. A field report had a batch of work that must
+       * exist before any worker can build — a root tsconfig, a package manifest, a migration — all
+       * of it on integrator-only paths. With one integrator package allowed, and that one owed to
+       * the assembly at the end, the only route left was to deliver the bootstrap outside every
+       * package, where it earns no delivery record: a thousand governed lines reduced to a commit
+       * message. Ordered integrator packages never write the reserved surface at the same time, so
+       * the invariant the old count approximated is intact.
+       */
+      const root = await fixture();
+      await createCompleteSolidChange(root);
+      await initializeGit(root);
+      await write(root, 'xforge/changes/add-feature/work-packages.yaml', stringify({
+        apiVersion: 'xforge.dev/v1alpha1',
+        kind: 'WorkPackagePlan',
+        integrator_paths: ['src/lib.rs', 'src/main.rs'],
+        packages: [
+          workPackage('T000', { role: 'integrator', depends_on: [], write_paths: ['src/lib.rs'] }),
+          workPackage('T001', { depends_on: ['T000'] }),
+          workPackage('T900', { role: 'integrator', depends_on: ['T001'], write_paths: ['src/main.rs'] }),
+        ],
+      }, { lineWidth: 120 }));
+
+      const result = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
+      const codes = result.json.diagnostics.map((item: any) => item.code);
+      expect(codes, JSON.stringify(codes)).not.toContain('XFORGE_WORK_PACKAGE_INTEGRATOR_CONCURRENT');
+      expect(codes, JSON.stringify(codes)).not.toContain('XFORGE_WORK_PACKAGE_INTEGRATOR_DUPLICATE');
     });
 
     it('leaves a plan that reserves nothing exactly as it was', async () => {

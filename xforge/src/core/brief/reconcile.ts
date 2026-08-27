@@ -232,9 +232,24 @@ function gateSummary(
   if (recorded !== undefined && recorded !== 'passed') {
     return `Principle "${principle}" cites ${reference}, and that Gate ran and recorded ${recorded}, not passed. The citation names real Evidence; the Evidence does not support the claim. Fix what the Gate is reporting rather than the citation.`;
   }
-  /* Either no Evidence at all, or Evidence that passed at an older revision — both resolve by
-     running it, which is what makes the single sentence honest for the pair. */
-  return `Principle "${principle}" cites ${reference}. That Gate is selected by this project and has produced no passing Evidence at this revision — it runs at a later Stage than the one this ledger was written at, and the citation resolves once it has run. This states a timing difference, not a wrong citation.`;
+  /*
+   * Passed, and then the revision moved out from under it — the case this ledger creates for itself.
+   *
+   * A Constitution principle citing `gate:check-findings` is citing a Check Stage Gate, and nothing
+   * after the Check Stage re-runs it. Every later Artifact write — the assurance, the verification
+   * receipt — advances the content revision, so by the archive path that citation is guaranteed to
+   * name Evidence bound to an older one. It is the ordinary outcome of following the Flow, not a
+   * mistake, and it has exactly one repair: run that Gate again after the last write.
+   *
+   * These two were one sentence, which said the Gate "runs at a later Stage than the one this ledger
+   * was written at". That is true of a Gate that has never run and false of this one, which ran at an
+   * *earlier* Stage — a field report read it, could not reconcile it with what it was seeing, and
+   * worked the remedy out from the mechanism instead. The command is stated here now.
+   */
+  if (recorded === 'passed') {
+    return `Principle "${principle}" cites ${reference}, and that Gate passed against an earlier content revision than the one being archived. Every Artifact written after a Gate runs moves the revision, so a Gate from an earlier Stage — nothing re-runs the Check Stage's Gates — is stale by the time the ledger is read here. The citation is right and its Evidence is out of date: re-run \`xforge check --gate ${name}\` after the last Artifact write, and this resolves.`;
+  }
+  return `Principle "${principle}" cites ${reference}. That Gate is selected by this project and has never run, so there is no Evidence to resolve the citation against — it runs at a later Stage than the one this ledger was written at, and the citation resolves once it has. This states a timing difference, not a wrong citation.`;
 }
 
 export function reconcileConstitutionReferences(

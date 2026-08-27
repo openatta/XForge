@@ -9,13 +9,18 @@
 export interface WorkPackage {
   id: string;
   /**
-   * `worker` (the default) or the plan's single `integrator`.
+   * `worker` (the default) or `integrator`.
    *
    * The distinction exists because integration was the one piece of real work the DAG could not see.
    * `integrator_paths` gave the assembly surface a unique writer, which fixed attribution, but a set
    * of paths is not a node: with every worker package `succeeded` the control plane reported the
    * Apply transition ready while nothing had been assembled yet, and every Gate agreed, because
    * nothing in the plan claimed the assembly was owed. An integrator package is that claim.
+   *
+   * A plan may carry more than one, provided they are ordered with respect to each other — the
+   * bootstrap a Change needs before any worker can build is integration too, and it happens first.
+   * What is refused is two that could run at the same time; see
+   * `XFORGE_WORK_PACKAGE_INTEGRATOR_CONCURRENT`.
    */
   role?: 'worker' | 'integrator';
   goal: string;

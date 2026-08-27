@@ -1,5 +1,8 @@
-import type { ApprovalReceipt, ProjectContext } from '../types.js';
+import { readFile, readdir } from 'node:fs/promises';
+import type { ApprovalReceipt, ProjectContext, TransitionReceipt } from '../types.js';
+import { safeResolve } from './path-safety.js';
 import { commitAuthors } from './revision.js';
+import { TRANSITION_RECEIPTS_RELATIVE } from './control-plane/receipts.js';
 
 /**
  * Whether a name written into a governance ledger refers to somebody this project has actually seen.
@@ -20,6 +23,18 @@ export interface KnownIdentities {
   values: Set<string>;
   /** True when the project has no recorded identities at all (fresh Change, no commits, no receipts). */
   empty: boolean;
+  /**
+   * Lower-cased actor ids from this Change's transition receipts. **Never** accepted as an identity.
+   *
+   * A transition receipt's actor is whoever ran `xforge transition` — in an agent-driven session
+   * that is the Agent, under the OS username it happens to run as, and admitting it would let an
+   * Agent name itself as the decider of anything. That is the one thing `resolvedBy`, `decidedBy`
+   * and `approvedBy` exist to prevent, so this set is collected for one purpose only: when a refused
+   * name matches it, the refusal can say *why* a name that plainly appears in the Change's own
+   * records is not one of the identities this checks against. It widens the explanation and never
+   * the acceptance.
+   */
+  actors: Set<string>;
 }
 
 function add(target: Set<string>, value: string | undefined | null): void {
@@ -41,7 +56,32 @@ export async function knownIdentities(
     const match = /^(.*?)\s*<(.+)>$/.exec(author);
     if (match) { add(values, match[1]); add(values, match[2]); }
   }
-  return { values, empty: values.size === 0 };
+  return { values, empty: values.size === 0, actors: await transitionActors(project, changeId) };
+}
+
+/**
+ * The actor ids on this Change's transition receipts, read leniently and used only to explain.
+ *
+ * Deliberately not `readTransitionReceiptFiles`: that validates schema, digest and subject, and
+ * needs a resolved Flow to do it. None of that rigour is owed here, because nothing this returns can
+ * make a name acceptable — a forged, malformed or foreign receipt can at most cause a refusal to
+ * offer one more sentence about a name that is being refused either way. A failure to read is
+ * silence, for the same reason.
+ */
+async function transitionActors(project: ProjectContext, changeId: string): Promise<Set<string>> {
+  const actors = new Set<string>();
+  const relative = `${project.changesPath}/${changeId}/${TRANSITION_RECEIPTS_RELATIVE}`;
+  try {
+    const directory = await safeResolve(project.root, relative);
+    for (const name of await readdir(directory)) {
+      if (!name.endsWith('.json')) continue;
+      try {
+        const receipt = JSON.parse(await readFile(await safeResolve(project.root, `${relative}/${name}`), 'utf8')) as TransitionReceipt;
+        add(actors, receipt.actor?.id);
+      } catch { continue; }
+    }
+  } catch { return actors; }
+  return actors;
 }
 
 /**
@@ -80,5 +120,17 @@ export function unknownIdentityReason(name: string, known: KnownIdentities): str
   /* Tolerate "Name <email>" written where only one form is recorded. */
   const match = /^(.*?)\s*<(.+)>$/.exec(normalized);
   if (match && (known.values.has(match[1]!.trim()) || known.values.has(match[2]!.trim()))) return null;
-  return `does not match any approver or Git author this Change records (${[...known.values].slice(0, 4).join(', ')}${known.values.size > 4 ? ', …' : ''})`;
+  /*
+   * The name appears in the Change's records, as the actor who ran a transition — said out loud.
+   *
+   * Without this the refusal reads as "that name is not here", which is false and unactionable: it
+   * is here, thirteen times, on every transition receipt. What it is not is an *attested* identity.
+   * A transition receipt records which process moved the Stage; an approval receipt and a Git commit
+   * record a person taking responsibility, and those are the two this checks against.
+   */
+  const asActor = known.actors.has(normalized)
+    ? ' It is the actor on this Change\'s transition receipts, which record which process ran the command rather than who decided; only an approver on an approval receipt or a Git author of this Change counts here.'
+    : '';
+  const listed = `${[...known.values].slice(0, 4).join(', ')}${known.values.size > 4 ? ', …' : ''}`;
+  return `does not match any approver or Git author this Change records (${listed})${asActor}`;
 }

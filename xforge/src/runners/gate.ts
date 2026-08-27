@@ -291,7 +291,12 @@ export async function runGate(
     };
   } else if (gate.spec.builtin === 'check-findings') {
     /* Turns the Check Stage from "the Agent says it reviewed things" into a decidable result. */
-    const findings = await evaluateCheckFindings(project, changeId);
+    /* The approvals this Change has, on the same terms as `constitution-check` below. This Gate is
+       re-run after the Check Stage — it is one of the archive path's mandatory Gates — and by then
+       a `resolvedBy` naming the person who signed the planning approval is naming somebody the
+       Change records. Omitting them here meant the ledger was held to Git authors alone whatever
+       Stage it ran at, while the refusal it produced said "approver or Git author". */
+    const findings = await evaluateCheckFindings(project, changeId, await knownIdentities(project, changeId, approvals));
     result = {
       command: ['builtin:check-findings'],
       shell: false,

@@ -191,6 +191,41 @@ function isIntegratorPackage(workPackage: Pick<WorkPackage, 'role'>): boolean {
   return workPackage.role === 'integrator';
 }
 
+/**
+ * Every dependency `id` reaches, directly or through other packages.
+ *
+ * Breadth-first with a `seen` set rather than recursion with a cache: a plan whose `depends_on`
+ * forms a cycle is reported as its own error elsewhere, and this must terminate on one rather than
+ * decide anything about it.
+ */
+function transitiveDependencies(packages: WorkPackage[], id: string): Set<string> {
+  const byId = new Map(packages.map((item) => [item.id, item]));
+  const seen = new Set<string>();
+  const queue = [...(byId.get(id)?.depends_on ?? [])];
+  while (queue.length > 0) {
+    const next = queue.shift()!;
+    if (seen.has(next)) continue;
+    seen.add(next);
+    queue.push(...(byId.get(next)?.depends_on ?? []));
+  }
+  return seen;
+}
+
+/** Integrator packages with no dependency path between them, in declaration order, each pair once. */
+function unorderedIntegratorPairs(packages: WorkPackage[], integrators: WorkPackage[]): Array<[string, string]> {
+  const pairs: Array<[string, string]> = [];
+  const reaches = new Map(integrators.map((item) => [item.id, transitiveDependencies(packages, item.id)]));
+  for (let outer = 0; outer < integrators.length; outer += 1) {
+    for (let inner = outer + 1; inner < integrators.length; inner += 1) {
+      const left = integrators[outer]!.id;
+      const right = integrators[inner]!.id;
+      if (reaches.get(left)?.has(right) || reaches.get(right)?.has(left)) continue;
+      pairs.push([left, right]);
+    }
+  }
+  return pairs;
+}
+
 function protectedWritePaths(project: ProjectContext, changeId: string, config: ChangeConfig, resources: SelectedResources, integratorPaths: string[] = []): string[] {
   const changeRoot = `${project.changesPath}/${changeId}`;
   const paths = new Set([
@@ -486,6 +521,29 @@ async function validateSuccessfulDelivery(
      * exempted from write_paths here too, on the same reasoning.
      */
     if (isControlPlaneBookkeeping(changed, changeRoot)) continue;
+    /*
+     * The Change's own directory is never a work package's output.
+     *
+     * A plan is not finished when the first package is dispatched, and cannot be: three of the four
+     * `write_paths` gaps in the reporting delivery were found while writing the code they covered.
+     * The correct response is to fix the plan and then write — and fixing the plan put
+     * `work-packages.yaml` inside the in-flight package's `base..head`, where it was reported as a
+     * path that package "changed". It did not change it. The Change directory is Integrator and
+     * control-plane territory (`protectedWritePaths` reserves all of it, and the permission policy
+     * refuses a Worker who tries), so a governance file landing in a package's range is a fact about
+     * commit ordering, not about what the package wrote.
+     *
+     * `validateDeliveryHead` already reads it that way — `attributablePaths` contains the whole
+     * Change root, so the same file beyond this head is accounted for and silent. One path was
+     * "already attributed" in one window and "escaped" in the other. The report paid for the
+     * difference three times, each repair a `git reset --mixed` back past the dispatch.
+     *
+     * Narrower than `isControlPlaneBookkeeping` on purpose: that predicate also decides what may be
+     * cited as `done_when_evidence` and what counts as work delivered, and a package legitimately
+     * cites its own review evidence under `evidence/agents/<id>/`. This one answers only "could this
+     * package have authored it", which for anything under the Change root is no.
+     */
+    if (changed.startsWith(`${changeRoot}/`)) continue;
     if (!workPackage.write_paths.some((pattern) => matchesWritePath(changed, pattern))) {
       /*
        * A governance asset in the range is a different refusal, and saying so is what breaks a loop
@@ -695,14 +753,35 @@ export async function resolveWorkPackages(
    * the assembly, not the Constitution, the Specs, the lock, or the Change's own Evidence.
    */
   const governancePaths = protectedWritePaths(project, changeId, config, resources, []);
+  /*
+   * Integrator packages must be ordered with respect to each other, not limited to one.
+   *
+   * The rule was "at most one", on the reasoning that two of them are two writers of the same
+   * assembly. The invariant that reasoning is reaching for is *concurrency*, and a count is a blunt
+   * proxy for it: two integrator packages joined by a dependency path never run at the same time,
+   * so the reserved surface still has one writer at any moment.
+   *
+   * The difference is not academic. A field report had a batch of work that must exist *before* every
+   * worker — a frontend toolchain, a root tsconfig, a migration, a package manifest — all of it on
+   * integrator-only paths, because a worker cannot run `typecheck` on its own tree until it is there.
+   * With one integrator package allowed and that one owed to the assembly at the end, the only route
+   * left was to deliver the bootstrap outside every package, where it has no delivery record: a
+   * thousand lines including a migration entered the governed record as a commit message, with no
+   * `done_when` mapping and no verify exit code. The plan could not describe the shape of the work.
+   *
+   * So: declare `wp-bootstrap` with `depends_on: []` and `wp-integrate` depending on the workers, and
+   * both earn a dispatch, a delivery and a verify run. What is refused is the pair that could
+   * interleave.
+   */
   const integratorPackages = plan.packages.filter(isIntegratorPackage);
-  if (integratorPackages.length > 1) {
+  const unordered = unorderedIntegratorPairs(plan.packages, integratorPackages);
+  for (const [left, right] of unordered) {
     diagnostics.push(diagnostic(
-      'XFORGE_WORK_PACKAGE_INTEGRATOR_DUPLICATE',
-      `A plan may declare at most one role: integrator package; this one declares ${integratorPackages.length}: ${integratorPackages.map((item) => item.id).join(', ')}. Integration is the point where the packages become one thing, so two of them are two writers of the same assembly.`,
+      'XFORGE_WORK_PACKAGE_INTEGRATOR_CONCURRENT',
+      `Work packages ${left} and ${right} both have role: integrator and neither depends on the other, so both may run while the other is running — two writers of the same reserved surface, which is the one thing this role exists to prevent. More than one is allowed when they are ordered: a bootstrap package with depends_on: [] that the workers depend on, and an assembly package that depends on the workers, never overlap. Give one of these two a dependency path to the other, or fold them into a single package.`,
       planPath,
       'error',
-      { packageIds: integratorPackages.map((item) => item.id) },
+      { packageIds: [left, right] },
     ));
   }
   /*

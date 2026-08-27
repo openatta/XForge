@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CHECK_FINDINGS_PATH, evaluateCheckFindings } from '../../src/core/check-findings.js';
 import { CONSTITUTION_CHECK_PATH, constitutionPrinciples, evaluateConstitutionCheck } from '../../src/core/constitution-check.js';
+import { unknownIdentityReason } from '../../src/core/ledger-identity.js';
 import { loadProject } from '../../src/core/project-loader.js';
 import { approvalTestEnv, createCompleteSolidChange, fixture, runCli, write } from '../helpers.js';
 
@@ -90,7 +91,7 @@ describe('Check findings ledger', () => {
     expect(unattributed.problems.join(' ')).toContain('names no resolvedBy');
 
     /* A project with recorded identities must not accept a resolvedBy that is not one of them. */
-    const known = { values: new Set(['owner@example.test']), empty: false };
+    const known = { values: new Set(['owner@example.test']), empty: false, actors: new Set<string>() };
     await write(root, ledgerPath, ledger('    resolvedBy: the team'));
     const unknown = await evaluateCheckFindings(project, CHANGE, known);
     expect(unknown.status).toBe('failed');
@@ -267,7 +268,7 @@ describe('Ledger identity', () => {
     const path2 = `xforge/changes/${CHANGE}/${CONSTITUTION_CHECK_PATH}`;
 
     /* A project with recorded identities must not accept a name that is not one of them. */
-    const known = { values: new Set(['owner@example.test']), empty: false };
+    const known = { values: new Set(['owner@example.test']), empty: false, actors: new Set<string>() };
     await write(root, path2, ledger('the team'));
     const invented = await evaluateConstitutionCheck(project, CHANGE, known);
     expect(invented.status).toBe('failed');
@@ -278,7 +279,28 @@ describe('Ledger identity', () => {
 
     /* A repository with no recorded identities yet cannot check, and must not block on that. */
     await write(root, path2, ledger('the team'));
-    const fresh = await evaluateConstitutionCheck(project, CHANGE, { values: new Set(), empty: true });
+    const fresh = await evaluateConstitutionCheck(project, CHANGE, { values: new Set(), empty: true, actors: new Set() });
     expect(fresh.status).toBe('passed');
+  });
+
+  it('says why the name on every transition receipt is still not an identity', async () => {
+    /*
+     * The name a field report reached for. It is in the Change's own records — on all thirteen of
+     * its transition receipts — so "does not match any approver or Git author this Change records"
+     * read as a mistake rather than as a distinction, and the report spent a human signature
+     * recovering from the reading. It stays refused: a transition receipt names the process that
+     * moved the Stage, which in an agent-driven session is the Agent, and admitting it would let an
+     * Agent attest to its own decisions. What changed is that the refusal now says which of those
+     * two things it is refusing.
+     */
+    const known = { values: new Set(['owner@example.test']), empty: false, actors: new Set(['ci-runner']) };
+    const asActor = unknownIdentityReason('ci-runner', known);
+    expect(asActor).toContain('transition receipts');
+    expect(asActor).toContain('which process ran the command rather than who decided');
+
+    /* A name that is nowhere gets the plain refusal, with no explanation it cannot support. */
+    expect(unknownIdentityReason('the team', known)).not.toContain('transition receipts');
+    /* And an identity that is recorded is still simply accepted. */
+    expect(unknownIdentityReason('owner@example.test', known)).toBeNull();
   });
 });
