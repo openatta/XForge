@@ -1047,6 +1047,15 @@ interface WorkPackageVerificationGate {
  * `requireDeliveries` already refuses a Change where one has not — so every package whose verify
  * gated an archive before still does. What stops is verifying work nobody has asked for yet.
  *
+ * That argument holds only where dispatch exists, which is why `dispatches` is a parameter rather
+ * than an assumption. `work-package dispatch` refuses any Flow that is not Protocol 2 governed,
+ * while `core/checker.ts` resolves plans for *every* Flow and leaves `requireDeliveries` false
+ * outside Protocol 2. A pre-Protocol-2 Flow with a plan and hand-written deliveries can therefore
+ * never hold an `executionId`, and skipping on its absence would silently stop running that
+ * project's verify commands altogether — the same silence this change exists to remove, pointed the
+ * other way. Such a project has no executions to file under and no undispatched state to protect
+ * against, so its Evidence keeps the unkeyed name and every command still runs.
+ *
  * `shell: false` and a real argv are the whole point: the synthesized Gate is built in code, so it
  * never passes through schema validation, and until now it was built with `command: [theWholeString]`
  * and `shell: true` — which `runners/gate.ts` hands to `spawn(command[0], [], { shell: true })`,
@@ -1058,12 +1067,17 @@ interface WorkPackageVerificationGate {
  * structural errors exist, so skipping is unreachable in practice — it exists so that this function
  * is safe read on its own, without depending on a caller's ordering to stay that way.
  */
-export function workPackageVerificationGates(state: WorkPackagePlanState): WorkPackageVerificationGate[] {
+export function workPackageVerificationGates(state: WorkPackagePlanState, dispatches: boolean): WorkPackageVerificationGate[] {
   const result: WorkPackageVerificationGate[] = [];
   for (const workPackage of state.packages) {
-    /* No execution, nothing to attest. See the note above: this is the whole of the fix, and the
-       skipped packages are reported by `commands/check.ts` rather than passed over in silence. */
-    if (!workPackage.executionId) continue;
+    /* No execution, nothing to attest — where executions are a thing at all. See the note above:
+       this is the whole of the fix, and the skipped packages are reported by `commands/check.ts`
+       rather than passed over in silence. */
+    if (dispatches && !workPackage.executionId) continue;
+    /* `executionId` is the dispatch's; the delivery's is the same value wherever both exist, since
+       a package can only be dispatched from `ready` and never returns to it. The fallback is for a
+       Flow that does not dispatch, where a hand-written delivery is the only execution there is. */
+    const execution = workPackage.executionId ?? workPackage.delivery?.execution_id ?? null;
     const entries = normalizeVerify(workPackage);
     for (let index = 0; index < entries.length; index += 1) {
       const entry = entries[index]!;
@@ -1083,7 +1097,10 @@ export function workPackageVerificationGates(state: WorkPackagePlanState): WorkP
             workingDirectory: '.',
             timeoutSeconds: WORK_PACKAGE_VERIFY_TIMEOUT_SECONDS,
             maxOutputBytes: MAX_GATE_OUTPUT_BYTES,
-            evidence: `agents/${workPackage.id}/verify/${workPackage.executionId}-${index + 1}.json`,
+            /* Unkeyed only where there is no execution to key by; see the note on `dispatches`. */
+            evidence: execution
+              ? `agents/${workPackage.id}/verify/${execution}-${index + 1}.json`
+              : `agents/${workPackage.id}/verify-${index + 1}.json`,
           },
         },
       });

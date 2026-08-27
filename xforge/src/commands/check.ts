@@ -356,7 +356,17 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
   const workPackagesInScope = selectedStage === null || !PRE_APPLY_STAGES.has(selectedStage);
   const workPackagesSelected = !narrowed && workPackagesInScope;
   if (!hasStructureErrors && workPackagesSelected && options.change && structure.change?.workPackages) {
-    const verifications = workPackageVerificationGates(structure.change.workPackages);
+    /*
+     * Whether this Change's Flow dispatches at all. `work-package dispatch` refuses a Flow that is
+     * not Protocol 2 governed, so on an older Flow no package can ever hold an execution and
+     * skipping on its absence would silently stop verifying that project entirely.
+     */
+    let dispatches = false;
+    try {
+      const state = await resolveChangeState(project, options.change);
+      dispatches = isStageFlow(state.flow) && Boolean(state.flow.governance);
+    } catch { /* An unresolvable Flow is reported by the structural pass; treat it as undispatched. */ }
+    const verifications = workPackageVerificationGates(structure.change.workPackages, dispatches);
     /*
      * Which packages this run did not verify, and why. `workPackageVerificationGates` skips a
      * package with no dispatch, and a check that silently runs fewer commands than the plan
@@ -364,9 +374,9 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
      * has not been dispatched is the correct outcome here, and the Change cannot leave Apply with a
      * package undelivered in any case.
      */
-    const undispatched = structure.change.workPackages.packages
-      .filter((item) => !item.executionId && item.verify.length > 0)
-      .map((item) => item.id);
+    const undispatched = dispatches
+      ? structure.change.workPackages.packages.filter((item) => !item.executionId && item.verify.length > 0).map((item) => item.id)
+      : [];
     if (undispatched.length > 0) {
       diagnostics.push(diagnostic(
         'XFORGE_WORK_PACKAGE_VERIFY_NOT_DISPATCHED',

@@ -215,6 +215,28 @@ function decidedOn(value: string): string {
  * spellings the Gate tries. Keep the two in step; a divergence here reads to everyone as a defect in
  * whichever component they happen to be looking at.
  */
+/**
+ * The three states a `gate:` citation can be in, kept in step with `core/constitution-check.ts`'s
+ * `describeDangling`. The two report the same citation, and a reader who sees them disagree reads
+ * it as a defect in whichever component they happen to be looking at.
+ */
+function gateSummary(
+  principle: string,
+  reference: string,
+  name: string,
+  declaredGates: Set<string>,
+  gateRecorded: Map<string, string>,
+): string {
+  if (!declaredGates.has(name)) return `Principle "${principle}" cites ${reference}, and this project selects no Gate by that name.`;
+  const recorded = gateRecorded.get(name);
+  if (recorded !== undefined && recorded !== 'passed') {
+    return `Principle "${principle}" cites ${reference}, and that Gate ran and recorded ${recorded}, not passed. The citation names real Evidence; the Evidence does not support the claim. Fix what the Gate is reporting rather than the citation.`;
+  }
+  /* Either no Evidence at all, or Evidence that passed at an older revision — both resolve by
+     running it, which is what makes the single sentence honest for the pair. */
+  return `Principle "${principle}" cites ${reference}. That Gate is selected by this project and has produced no passing Evidence at this revision — it runs at a later Stage than the one this ledger was written at, and the citation resolves once it has run. This states a timing difference, not a wrong citation.`;
+}
+
 export function reconcileConstitutionReferences(
   principles: LedgerPrinciple[],
   requirements: SpecRequirement[],
@@ -230,6 +252,14 @@ export function reconcileConstitutionReferences(
    * happen to be looking at. That has already happened once with this rule.
    */
   declaredGates: Set<string> = new Set(),
+  /**
+   * What each Gate's Evidence recorded, for the Gates that produced any.
+   *
+   * The third of `describeDangling`'s three branches. Without it this rule cannot tell "has not run
+   * yet" from "ran and failed", and told the author of a *failing* Gate to wait for it — suppressing
+   * the one signal that mattered while claiming the citation was fine.
+   */
+  gateRecorded: Map<string, string> = new Map(),
 ): ReconciliationObservation[] {
   const observations: ReconciliationObservation[] = [];
   const anchors = new Set(requirements.map((entry) => entry.anchor));
@@ -245,9 +275,7 @@ export function reconcileConstitutionReferences(
           rule: 'RC-5',
           code: 'XFORGE_BRIEF_REFERENCE_UNRESOLVABLE',
           provenance: 'computed',
-          summary: declaredGates.has(name)
-            ? `Principle "${principle.principle}" cites ${reference}. That Gate is selected by this project and has produced no Evidence at this revision — it runs at a later Stage than the one this ledger was written at, and the citation resolves once it has run. This states a timing difference, not a wrong citation.`
-            : `Principle "${principle.principle}" cites ${reference}, and this project selects no Gate by that name.`,
+          summary: gateSummary(principle.principle, reference, name, declaredGates, gateRecorded),
           refs: [reference],
         });
         continue;

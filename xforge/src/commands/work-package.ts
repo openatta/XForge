@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { rm, stat } from 'node:fs/promises';
+import { readFile, rm, stat } from 'node:fs/promises';
 import type { Diagnostic, FileChange, ProjectContext, WorkPackageAckReceipt, WorkPackageDispatchReceipt } from '../types.js';
 import { acknowledgementAttestationDigest, recordAudit } from '../core/audit.js';
 import { resolveControlPlane } from '../core/control-plane.js';
@@ -195,7 +195,8 @@ export async function executeWorkPackageDraft(project: ProjectContext, options: 
    * declared `verify` entries one for one and in order. Producing them here is what makes that
    * requirement mechanical instead of a transcription exercise.
    */
-  const gates = workPackageVerificationGates(workPackages.state).filter((entry) => entry.packageId === options.packageId);
+  /* `true`: a draft exists only for a dispatched execution, which this command has already read. */
+  const gates = workPackageVerificationGates(workPackages.state, true).filter((entry) => entry.packageId === options.packageId);
   const validation: Array<{ command: string; exit_code: number | null }> = [];
   for (const entry of gates) {
     const run = await runVerifyCommand(project, entry.gate);
@@ -369,7 +370,17 @@ export async function executeWorkPackageAcknowledge(project: ProjectContext, opt
     const receipt: WorkPackageAckReceipt = { ...unsigned, digest: sha256(stableStringify(unsigned)) };
     const target = `${project.changesPath}/${options.change}/evidence/agents/${options.packageId}/ack/${executionId}-${options.role}.json`;
     const content = `${JSON.stringify(receipt, null, 2)}\n`;
-    changes.push({ action: 'create', path: target, digest: sha256(content), source: `work-package:acknowledge:${options.role}` });
+    /*
+     * The bytes this call is about to replace, if any. A supersede writes to the path an earlier
+     * receipt already occupies — same execution, same role, because the delivery record was
+     * corrected rather than re-executed — so `create` is only true the first time.
+     */
+    let priorReceipt: Buffer | null = null;
+    if (!options.dryRun) {
+      try { priorReceipt = await readFile(await safeResolve(project.root, target)); }
+      catch { priorReceipt = null; }
+    }
+    changes.push({ action: priorReceipt ? 'modify' : 'create', path: target, digest: sha256(content), source: `work-package:acknowledge:${options.role}` });
     if (!options.dryRun) {
       await atomicWrite(project.root, target, content);
       try {
@@ -402,9 +413,16 @@ export async function executeWorkPackageAcknowledge(project: ProjectContext, opt
         /*
          * Without a matching audit event a retry would otherwise see the receipt file already on
          * disk and skip re-recording (the digest/executionId/as filename would collide), leaving the
-         * acknowledgement half-recorded. Remove it so a retry starts clean, same as dispatch/transition/approve.
+         * acknowledgement half-recorded. Undo the write so a retry starts clean, same as
+         * dispatch/transition/approve.
+         *
+         * Restore rather than remove when something was already there. On a supersede the target is
+         * an earlier receipt that is committed and attested, and deleting it would answer a failure
+         * to *record* an acknowledgement by destroying a different one — turning a retryable error
+         * into lost evidence. `runners/gate.ts` keeps its prior Evidence for the same reason.
          */
-        await rm(await safeResolve(project.root, target), { force: true }).catch(() => undefined);
+        if (priorReceipt) await atomicWrite(project.root, target, priorReceipt.toString('utf8')).catch(() => undefined);
+        else await rm(await safeResolve(project.root, target), { force: true }).catch(() => undefined);
         throw error;
       }
     }

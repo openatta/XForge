@@ -523,8 +523,17 @@ export async function readBrief(project: ProjectContext, options: BriefOptions):
    * Evidence for the Gates it cites would invalidate them by the act of writing its own ledger.
    */
   const gatePassed = new Set<string>();
+  /*
+   * What each Gate's Evidence recorded, separately from whether it counts as passed.
+   *
+   * `gatePassed` excludes a Gate for three different reasons — never ran, ran and failed, ran at an
+   * older revision — and RC-5 has to tell them apart: "wait for it to run" is the wrong instruction
+   * for a Gate that ran and failed, and it hides the failure while it is at it.
+   */
+  const gateRecorded = new Map<string, string>();
   for (const gateId of control.resources.gates.keys()) {
     const evidence = await readGateEvidence(project, options.change, gateId, control.resources);
+    if (evidence) gateRecorded.set(gateId, evidence.status);
     if (!gateBlockReason(evidence, control.governance.revision.contentRevision)) gatePassed.add(gateId);
   }
 
@@ -562,7 +571,7 @@ export async function readBrief(project: ProjectContext, options: BriefOptions):
     ...reconcileRequirementAnchors(requirements, sources),
     ...reconcileCoverageSections(requirements, sources),
     ...reconcileDeclaredGaps(sources, findingsResult.findings),
-    ...reconcileConstitutionReferences(principlesResult.principles, requirements, sources, gatePassed, existingPaths, resolvesOnDisk, new Set(project.manifest.scaffold.gates ?? [])),
+    ...reconcileConstitutionReferences(principlesResult.principles, requirements, sources, gatePassed, existingPaths, resolvesOnDisk, new Set(project.manifest.scaffold.gates ?? []), gateRecorded),
     ...reconcileMaterialDecisions(await readMaterialDecisions(project, options.change), sources),
   ];
 

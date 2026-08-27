@@ -107,4 +107,34 @@ describe('verify evidence is keyed by execution', () => {
     const record = JSON.parse(await readFile(evidence, 'utf8'));
     expect(record).toMatchObject({ status: 'passed', change: built.change });
   }, 600_000);
+  /*
+   * The other side of the guard, and the reason it is a parameter rather than an assumption.
+   *
+   * `work-package dispatch` refuses any Flow that is not Protocol 2 governed, while `checker.ts`
+   * resolves plans for every Flow. On an older Flow no package can ever hold an execution, so
+   * skipping on its absence would stop running that project's verify commands altogether — the same
+   * silence this change removes, pointed the other way.
+   */
+  it('still runs every verify on a Flow that cannot dispatch at all', async () => {
+    const { workPackageVerificationGates } = await import('../../src/core/work-packages.js');
+    const plan = {
+      path: 'xforge/changes/add-feature/work-packages.yaml',
+      baseCommit: null, ready: [], waves: [], parallelCandidates: [],
+      protectedWritePaths: [], unattributedPaths: [],
+      packages: [{
+        id: 'wp-001', goal: 'g', depends_on: [], inputs: [], write_paths: ['src/**'], skills: [],
+        verify: [[process.execPath, '-e', 'process.exit(0)']], done_when: ['done'],
+        status: 'ready' as const, missingDependencies: [], delivery: null,
+        acknowledgements: { reviewedBy: null, integratedBy: null }, executionId: null,
+      }],
+    };
+
+    /* Dispatching Flow: no execution, no Gate — the fix. */
+    expect(workPackageVerificationGates(plan, true)).toEqual([]);
+
+    /* Non-dispatching Flow: the command still runs, under the only name available to it. */
+    const gates = workPackageVerificationGates(plan, false);
+    expect(gates).toHaveLength(1);
+    expect(gates[0]!.gate.spec.evidence).toBe('agents/wp-001/verify-1.json');
+  });
 });
