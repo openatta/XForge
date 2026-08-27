@@ -357,6 +357,25 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
   const workPackagesSelected = !narrowed && workPackagesInScope;
   if (!hasStructureErrors && workPackagesSelected && options.change && structure.change?.workPackages) {
     const verifications = workPackageVerificationGates(structure.change.workPackages);
+    /*
+     * Which packages this run did not verify, and why. `workPackageVerificationGates` skips a
+     * package with no dispatch, and a check that silently runs fewer commands than the plan
+     * declares reads as a check that found nothing to say. Informational: not verifying work that
+     * has not been dispatched is the correct outcome here, and the Change cannot leave Apply with a
+     * package undelivered in any case.
+     */
+    const undispatched = structure.change.workPackages.packages
+      .filter((item) => !item.executionId && item.verify.length > 0)
+      .map((item) => item.id);
+    if (undispatched.length > 0) {
+      diagnostics.push(diagnostic(
+        'XFORGE_WORK_PACKAGE_VERIFY_NOT_DISPATCHED',
+        `${undispatched.length} work package(s) declare verify commands and have not been dispatched, so their verify did not run and no Evidence was filed for them: ${undispatched.join(', ')}. Evidence is filed under the execution it attests; dispatch a package before expecting its verification on the record.`,
+        structure.change.workPackages.path,
+        'info',
+        { packages: undispatched },
+      ));
+    }
     /* One working-tree read for the whole run: the verify commands dominate `check`, and a verify
        that mutates the tree only costs itself the next run's reuse, which is the safe direction. */
     const worktreeDigest = verifications.length > 0 ? await workingTreeDigest(project, options.change) : null;

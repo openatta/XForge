@@ -991,7 +991,7 @@ export async function resolveWorkPackages(
     else if (delivery?.status === 'blocked') status = 'blocked';
     else if (dispatch) status = 'running';
     else status = missingDependencies.length === 0 ? 'ready' : 'blocked';
-    return { ...workPackage, status, missingDependencies, delivery, acknowledgements };
+    return { ...workPackage, status, missingDependencies, delivery, acknowledgements, executionId: dispatch?.executionId ?? null };
   });
 
   if (options.requireDeliveries) {
@@ -1029,7 +1029,23 @@ interface WorkPackageVerificationGate {
 }
 
 /**
- * Turns each package's `verify` entries into Gates `check` can run.
+ * Turns each dispatched package's `verify` entries into Gates `check` can run.
+ *
+ * Only dispatched packages, and the Evidence is filed under the execution that was dispatched.
+ * Both halves of that are one correction. A live run watched `check` execute the `verify` commands
+ * of all ten packages in its plan — over two minutes of external commands — and, more seriously,
+ * leave a passing Evidence file under a package it had not dispatched. A Gate Evidence file is an
+ * attestation the control plane reads on its own, so one filed there says a package's declared
+ * verification passed on work that had not been started.
+ *
+ * The Evidence path was `agents/<package>/verify-<n>.json`: a package and a position in a list. The
+ * dispatch receipt, the delivery record and the acknowledgement receipt are all keyed by
+ * `execution_id`; this was the one artifact of an execution that could not name which execution it
+ * described, and the one that could therefore be produced without an execution at all.
+ *
+ * Nothing is verified less. A package reaches Verify only through a dispatch and a delivery, and
+ * `requireDeliveries` already refuses a Change where one has not — so every package whose verify
+ * gated an archive before still does. What stops is verifying work nobody has asked for yet.
  *
  * `shell: false` and a real argv are the whole point: the synthesized Gate is built in code, so it
  * never passes through schema validation, and until now it was built with `command: [theWholeString]`
@@ -1045,6 +1061,9 @@ interface WorkPackageVerificationGate {
 export function workPackageVerificationGates(state: WorkPackagePlanState): WorkPackageVerificationGate[] {
   const result: WorkPackageVerificationGate[] = [];
   for (const workPackage of state.packages) {
+    /* No execution, nothing to attest. See the note above: this is the whole of the fix, and the
+       skipped packages are reported by `commands/check.ts` rather than passed over in silence. */
+    if (!workPackage.executionId) continue;
     const entries = normalizeVerify(workPackage);
     for (let index = 0; index < entries.length; index += 1) {
       const entry = entries[index]!;
@@ -1064,7 +1083,7 @@ export function workPackageVerificationGates(state: WorkPackagePlanState): WorkP
             workingDirectory: '.',
             timeoutSeconds: WORK_PACKAGE_VERIFY_TIMEOUT_SECONDS,
             maxOutputBytes: MAX_GATE_OUTPUT_BYTES,
-            evidence: `agents/${workPackage.id}/verify-${index + 1}.json`,
+            evidence: `agents/${workPackage.id}/verify/${workPackage.executionId}-${index + 1}.json`,
           },
         },
       });

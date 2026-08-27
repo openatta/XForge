@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, readdir, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { stringify } from 'yaml';
@@ -56,9 +56,26 @@ async function applyStageWithVerify(root: string, verify: string | string[], sou
   await write(root, 'xforge/changes/add-feature/work-packages.yaml', planWithVerify(verify));
   await initializeGit(root);
   await advanceSolidToApply(root);
+  /* A verify Gate exists for an execution, so the fixture dispatches one. Before this, `check` ran
+     the verify commands of packages nobody had started and filed passing Evidence under them --
+     see `verify-evidence-execution.test.ts`, which is about that and not about the mechanics here. */
+  const dispatched = await runCli(root, ['work-package', 'dispatch', '--change', 'add-feature', '--package', 'T001']);
+  expect(dispatched.code, JSON.stringify(dispatched.json?.diagnostics)).toBe(0);
 }
 
-const VERIFY_EVIDENCE = ['xforge', 'changes', 'add-feature', 'evidence', 'agents', 'T001', 'verify-1.json'];
+/**
+ * Where T001's first verify Evidence lands, which is now under the execution that was dispatched.
+ *
+ * Read from the dispatch receipt rather than restated: the path is `<execution>-<n>.json` and the
+ * execution is a UUID minted at dispatch, so a fixture that spelled it out could only be spelling
+ * out a guess.
+ */
+async function verifyEvidence(root: string): Promise<string[]> {
+  const dispatch = ['xforge', 'changes', 'add-feature', 'evidence', 'agents', 'T001', 'dispatch'];
+  const [receipt] = await readdir(path.join(root, ...dispatch));
+  const execution = JSON.parse(await readFile(path.join(root, ...dispatch, receipt!), 'utf8')).executionId as string;
+  return ['xforge', 'changes', 'add-feature', 'evidence', 'agents', 'T001', 'verify', `${execution}-1.json`];
+}
 
 /** Mirrors `shellLabel` in core/work-packages.ts: how an argv verify entry is named back. */
 function verifyLabel(argv: string[]): string {
@@ -336,7 +353,7 @@ describe('check and Gate evidence', () => {
     expect(second.json.data.workPackages[0]).toMatchObject({ packageId: 'T001', status: 'failed', cached: false });
     expect(second.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_WORK_PACKAGE_VERIFY_FAILED');
     /* And the Evidence on disk says failed, so a later transition cannot read the stale pass. */
-    expect(JSON.parse(await readFile(path.join(root, ...VERIFY_EVIDENCE), 'utf8'))).toMatchObject({ status: 'failed', exitCode: 1 });
+    expect(JSON.parse(await readFile(path.join(root, ...await verifyEvidence(root)), 'utf8'))).toMatchObject({ status: 'failed', exitCode: 1 });
   });
 
   /*
@@ -362,7 +379,7 @@ describe('check and Gate evidence', () => {
     expect(result.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_WORK_PACKAGE_VERIFY_UNSAFE');
     expect(existsSync(marker)).toBe(false);
     /* And it never ran at all: refusing at the structural pass means no Gate, no Evidence. */
-    expect(existsSync(path.join(root, ...VERIFY_EVIDENCE))).toBe(false);
+    expect(existsSync(path.join(root, ...await verifyEvidence(root)))).toBe(false);
   });
 
   it('runs an argv verify entry directly, passing shell metacharacters through as literal arguments', async () => {
@@ -378,7 +395,7 @@ describe('check and Gate evidence', () => {
     expect(result.code, JSON.stringify(result.json.diagnostics, null, 2)).toBe(0);
     expect(result.json.data.workPackages[0]).toMatchObject({ packageId: 'T001', command: verifyLabel(verify), status: 'passed' });
     expect(existsSync(marker)).toBe(false);
-    const evidence = JSON.parse(await readFile(path.join(root, ...VERIFY_EVIDENCE), 'utf8'));
+    const evidence = JSON.parse(await readFile(path.join(root, ...await verifyEvidence(root)), 'utf8'));
     /* Evidence records the argv it spawned, not a command line, and says it used no shell. */
     expect(evidence).toMatchObject({ status: 'passed', shell: false, command: verify });
   });
@@ -433,7 +450,7 @@ describe('check and Gate evidence', () => {
     const root = await fixture();
     const verify = [process.execPath, '-e', 'process.exit(0)'];
     await applyStageWithVerify(root, verify);
-    const evidencePath = path.join(root, ...VERIFY_EVIDENCE);
+    const evidencePath = path.join(root, ...await verifyEvidence(root));
 
     const first = await runCli(root, ['check', '--change', 'add-feature']);
     expect(first.code, JSON.stringify(first.json?.diagnostics, null, 2)).toBe(0);
@@ -446,14 +463,14 @@ describe('check and Gate evidence', () => {
     /* Byte-identical Evidence is the proof the command did not run again: a real run rewrites
        startedAt, finishedAt, and durationMs. A reused Gate also reports no file change. */
     expect(await readFile(evidencePath, 'utf8')).toBe(evidence);
-    expect(second.json.changes.map((item: any) => item.path)).not.toContain(VERIFY_EVIDENCE.join('/'));
+    expect(second.json.changes.map((item: any) => item.path)).not.toContain((await verifyEvidence(root)).join('/'));
   });
 
   it('re-runs a reusable work-package verify when --force is given', async () => {
     const root = await fixture();
     const verify = [process.execPath, '-e', 'process.exit(0)'];
     await applyStageWithVerify(root, verify);
-    const evidencePath = path.join(root, ...VERIFY_EVIDENCE);
+    const evidencePath = path.join(root, ...await verifyEvidence(root));
 
     expect((await runCli(root, ['check', '--change', 'add-feature'])).code).toBe(0);
     const evidence = await readFile(evidencePath, 'utf8');
@@ -462,7 +479,7 @@ describe('check and Gate evidence', () => {
     expect(forced.code).toBe(0);
     expect(forced.json.data.workPackages[0]).toMatchObject({ packageId: 'T001', status: 'passed', cached: false });
     expect(await readFile(evidencePath, 'utf8')).not.toBe(evidence);
-    expect(forced.json.changes.map((item: any) => item.path)).toContain(VERIFY_EVIDENCE.join('/'));
+    expect(forced.json.changes.map((item: any) => item.path)).toContain((await verifyEvidence(root)).join('/'));
   });
 
   /*

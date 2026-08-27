@@ -82,6 +82,16 @@ export interface WorkPackageDispatchReceipt {
 export interface WorkPackageState extends WorkPackage {
   status: 'ready' | 'blocked' | 'running' | 'succeeded' | 'failed' | 'integrated' | 'reviewed';
   missingDependencies: string[];
+  /**
+   * The execution this package is currently on, from its latest dispatch receipt; `null` before it
+   * has ever been dispatched.
+   *
+   * Carried because the dispatch receipt, the delivery record and the acknowledgement receipt are
+   * all filed under `execution_id`, and the fourth artifact of an execution — the Evidence its
+   * declared `verify` produces — had no way to reach it. `status: 'running'` already told callers
+   * that *a* dispatch exists; it could not say which.
+   */
+  executionId: string | null;
   delivery: WorkPackageDelivery | null;
   /**
    * Who acknowledged this delivery, in each role. Reported so an approver can see whether the

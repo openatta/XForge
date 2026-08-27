@@ -335,7 +335,10 @@ describe('work-package protocol', () => {
     expect(result.json.data.workPackages).toEqual([
       expect.objectContaining({ packageId: 'T001', command: verifyLabel(verify), status: 'passed' }),
     ]);
-    const evidencePath = path.join(root, 'xforge', 'changes', 'add-feature', 'evidence', 'agents', 'T001', 'verify-1.json');
+    /* Filed under the execution that was dispatched, alongside `dispatch/<execution>.json` and the
+       delivery record, rather than under a package and a position in the plan's verify list. */
+    const evidenceRelative = `xforge/changes/add-feature/evidence/agents/T001/verify/${binding.executionId}-1.json`;
+    const evidencePath = path.join(root, ...evidenceRelative.split('/'));
     expect(await exists(evidencePath)).toBe(true);
     const evidence = JSON.parse(await readFile(evidencePath, 'utf8'));
     expect(evidence).toMatchObject({ status: 'passed', change: 'add-feature', shell: false, command: verify });
@@ -348,7 +351,7 @@ describe('work-package protocol', () => {
      * the ladder, and a live Major read it as "review is recorded against the integrator package",
      * carried that into a report to its user, and was corrected only later by an unrelated block.
      */
-    const early = await runCli(root, ['work-package', 'acknowledge', '--change', 'add-feature', '--package', 'T001', '--as', 'reviewer', '--evidence', 'xforge/changes/add-feature/evidence/agents/T001/verify-1.json'], approvalTestEnv);
+    const early = await runCli(root, ['work-package', 'acknowledge', '--change', 'add-feature', '--package', 'T001', '--as', 'reviewer', '--evidence', evidenceRelative], approvalTestEnv);
     expect(early.code).toBe(1);
     const refusal = (early.json.diagnostics as any[]).find((item) => item.code === 'XFORGE_WORK_PACKAGE_ACK_NOT_READY');
     expect(refusal).toBeDefined();
