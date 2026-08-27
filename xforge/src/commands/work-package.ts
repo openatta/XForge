@@ -253,7 +253,15 @@ export async function executeWorkPackageAcknowledge(project: ProjectContext, opt
   scope?: string;
   dryRun: boolean;
 }): Promise<{
-  data: { change: string; packageId: string; role: 'integrator' | 'reviewer'; evidence: string; status: 'integrated' | 'reviewed'; dryRun: boolean };
+  data: {
+    change: string; packageId: string; role: 'integrator' | 'reviewer'; evidence: string;
+    status: 'integrated' | 'reviewed';
+    /** Whether a receipt was written. False means the acknowledgement already covered this delivery. */
+    recorded: boolean;
+    /** Whether the receipt replaced one whose delivery digest had moved. */
+    superseded: boolean;
+    dryRun: boolean;
+  };
   diagnostics: Diagnostic[];
   changes: FileChange[];
 }> {
@@ -314,11 +322,29 @@ export async function executeWorkPackageAcknowledge(project: ProjectContext, opt
   }
   const status: 'integrated' | 'reviewed' = options.role === 'integrator' ? 'integrated' : 'reviewed';
   /*
-   * A re-acknowledgement that would not advance the package's lifecycle (already at `status`, or
-   * already at the terminal `reviewed`) records nothing new: no audit event and no receipt, so a
-   * redundant call stays a true no-op rather than accumulating duplicate ack receipts.
+   * Two different questions, and conflating them cost a live run its record.
+   *
+   * The first is "would this advance the lifecycle": a redundant call must not accumulate duplicate
+   * receipts, and that is what the status comparison answers.
+   *
+   * The second is "does an acknowledgement still cover the delivery that exists". It usually does,
+   * and after a review that asks for the delivery record to be corrected it does not: the delivery's
+   * digest moves, `loadAckReceipts` drops the receipts that cite the old one, and every one of them
+   * is reported as XFORGE_WORK_PACKAGE_ACK_RECEIPT_DELIVERY_MISMATCH. Re-acknowledging then did
+   * nothing at all and still returned ok, because the lifecycle had already reached `reviewed` --
+   * and it stays there whatever happens to the receipt files, since the status is driven by an
+   * append-only chain (`work-package.reviewed`) and not by the files. Deleting the receipts did not
+   * help either. The two ways out were "keep permanent mismatch warnings" or "lose the record that
+   * the acknowledgement happened", and a live run had to choose one.
+   *
+   * `acknowledgements` is what tells them apart. It is populated only from receipts that match the
+   * *current* delivery, so `status: 'reviewed'` with `reviewedBy: null` is precisely the state where
+   * the lifecycle says the work was acknowledged and no surviving receipt says so.
    */
-  const shouldRecord = selected.status !== status && selected.status !== 'reviewed';
+  const attributed = options.role === 'integrator' ? selected.acknowledgements.integratedBy : selected.acknowledgements.reviewedBy;
+  const advances = selected.status !== status && selected.status !== 'reviewed';
+  const supersedes = attributed === null;
+  const shouldRecord = advances || supersedes;
   const changes: FileChange[] = [];
   if (shouldRecord) {
     if (!selected.delivery) throw new XForgeError(diagnostic('XFORGE_WORK_PACKAGE_ACK_DELIVERY_MISSING', `Acknowledgement requires a delivery for ${options.packageId}.`));
@@ -357,6 +383,10 @@ export async function executeWorkPackageAcknowledge(project: ProjectContext, opt
           revision: control.governance.revision,
           actor: { id: process.env.USER ?? 'unknown', provider: 'local-os', role: options.role, type: 'agent' },
           outcome: 'succeeded',
+          /* Why a second one exists for the same execution, on the chain that keeps both. */
+          ...(supersedes && !advances
+            ? { reason: `Supersedes an earlier ${options.role} acknowledgement of ${options.packageId} whose delivery digest no longer matches; the delivery record was corrected after it was signed.` }
+            : {}),
           /*
            * This event *is* the attestation that makes the committed receipt believable, so its
            * `inputDigest` has to be something the read side can recompute from the receipt alone on
@@ -379,5 +409,28 @@ export async function executeWorkPackageAcknowledge(project: ProjectContext, opt
       }
     }
   }
-  return { data: { change: options.change, packageId: options.packageId, role: options.role, evidence, status, dryRun: options.dryRun }, diagnostics, changes };
+  /*
+   * Say which of the three happened. Silence was the defect: a call that recorded nothing returned
+   * `ok: true` and left the operator to discover from `xforge state` that two real acknowledgements
+   * had no surviving record.
+   */
+  if (shouldRecord && supersedes && !advances) {
+    diagnostics.push(diagnostic(
+      'XFORGE_WORK_PACKAGE_ACK_SUPERSEDED',
+      `${options.packageId} was already ${status}, and no surviving ${options.role} receipt covered the delivery as it now stands — the delivery record changed after it was signed. A new receipt was recorded for the current delivery; the earlier acknowledgement stays on the audit chain, which is where the history lives.`,
+      `${project.changesPath}/${options.change}/evidence/agents/${options.packageId}`,
+      'info',
+      { packageId: options.packageId, as: options.role },
+    ));
+  }
+  if (!shouldRecord) {
+    diagnostics.push(diagnostic(
+      'XFORGE_WORK_PACKAGE_ACK_UNCHANGED',
+      `${options.packageId} is already ${selected.status} and its ${options.role} acknowledgement covers the current delivery, so nothing was recorded. This is not a failure and not a second signature: re-running the command changes nothing while the delivery stays as it is.`,
+      `${project.changesPath}/${options.change}/evidence/agents/${options.packageId}`,
+      'info',
+      { packageId: options.packageId, as: options.role, status: selected.status },
+    ));
+  }
+  return { data: { change: options.change, packageId: options.packageId, role: options.role, evidence, status, recorded: shouldRecord, superseded: shouldRecord && supersedes && !advances, dryRun: options.dryRun }, diagnostics, changes };
 }

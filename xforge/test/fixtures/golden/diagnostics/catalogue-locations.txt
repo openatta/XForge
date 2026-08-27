@@ -290,7 +290,9 @@ XFORGE_WORK_PACKAGE_ACK_RECEIPT_INVALID  src/core/work-packages/records.ts
 XFORGE_WORK_PACKAGE_ACK_RECEIPT_PATH_MISMATCH  src/core/work-packages/records.ts
 XFORGE_WORK_PACKAGE_ACK_RECEIPT_ROLE_MISMATCH  src/core/work-packages/records.ts
 XFORGE_WORK_PACKAGE_ACK_RECEIPT_UNKNOWN  src/core/work-packages/records.ts
+XFORGE_WORK_PACKAGE_ACK_SUPERSEDED  src/commands/work-package.ts
 XFORGE_WORK_PACKAGE_ACK_UNATTESTED  src/core/work-packages/records.ts
+XFORGE_WORK_PACKAGE_ACK_UNCHANGED  src/commands/work-package.ts
 XFORGE_WORK_PACKAGE_ARGUMENTS_REQUIRED  src/cli.ts
 XFORGE_WORK_PACKAGE_BASE_PRECEDES_DISPATCH  src/core/work-packages.ts
 XFORGE_WORK_PACKAGE_CHANGED_PATHS_MISMATCH  src/core/work-packages.ts

@@ -106,7 +106,14 @@ describe('diagnostic catalogue', () => {
     const asserted = new Set<string>();
     for (const directory of [path.join(xforgeRoot, 'test'), path.join(repositoryRoot, 'tests')]) {
       for await (const source of readTestSources(directory)) {
-        for (const match of source.matchAll(/XFORGE_[A-Z0-9_]+/g)) asserted.add(match[0]);
+        /*
+         * Comments stripped first. The scan counted any occurrence of a code, so naming one in a
+         * comment -- which good test prose does constantly, to say what a case is about -- marked it
+         * as covered. The list then reported coverage nobody had written, which is the one thing a
+         * debt list must not do. Removing them lengthens the list once, and every entry it adds was
+         * always untested.
+         */
+        for (const match of withoutComments(source).matchAll(/XFORGE_[A-Z0-9_]+/g)) asserted.add(match[0]);
       }
     }
     const untested = codes.filter((code) => !asserted.has(code));
@@ -120,6 +127,11 @@ describe('diagnostic catalogue', () => {
     expect(actual).toBe(expected);
   });
 });
+
+/** Block and line comments removed, leaving string literals intact — those are the assertions. */
+function withoutComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:'"`])\/\/[^\n]*/g, '$1');
+}
 
 /** Test sources only — `.tmp` holds a full copy of an installed CLI from live-engine runs. */
 async function* readTestSources(directory: string): AsyncGenerator<string> {
