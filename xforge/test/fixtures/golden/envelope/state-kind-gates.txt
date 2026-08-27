@@ -30,8 +30,8 @@ exit: 0
       "compatibility": {
         "mode": "managed",
         "cli": {
-          "declared": "npm:@xforge/cli@0.7.20",
-          "actual": "npm:@xforge/cli@0.7.20",
+          "declared": "npm:@xforge/cli@0.7.21",
+          "actual": "npm:@xforge/cli@0.7.21",
           "matches": true
         },
         "protocol": {
@@ -40,18 +40,18 @@ exit: 0
           "matches": true
         },
         "scaffold": {
-          "declared": "0.7.20",
-          "locked": "0.7.20",
+          "declared": "0.7.21",
+          "locked": "0.7.21",
           "matches": true
         }
       }
     },
     "scaffold": {
-      "version": "0.7.20",
+      "version": "0.7.21",
       "source": {
         "type": "npm",
         "package": "@xforge/cli",
-        "version": "0.7.20"
+        "version": "0.7.21"
       },
       "language": "en",
       "lockedResources": [
@@ -257,7 +257,7 @@ exit: 0
       "declaration": {
         "source": "npm",
         "package": "@xforge/cli",
-        "version": "0.7.20",
+        "version": "0.7.21",
         "protocol": "2"
       },
       "integrity": "sha256:<sha256>"
