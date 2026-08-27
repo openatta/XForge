@@ -1,0 +1,11 @@
+audit export
+audit prune
+audit retry
+audit status
+help
+hook
+init
+uninstall
+verification finalize
+verification retire
+version

@@ -161,7 +161,29 @@ export async function executeTransition(project: ProjectContext, options: { chan
   }
 
   const ready = !diagnostics.some((item) => item.severity === 'error');
-  if (options.dryRun || !ready) return { data: { change: options.change, from: control.governance.currentStage, to: options.to, ready, receipt: null, dryRun: options.dryRun }, diagnostics, changes: [], nextActions };
+  if (options.dryRun || !ready) {
+    /*
+     * A rehearsal of a transition that would happen says which receipt it would write.
+     *
+     * This returned an empty plan for both cases at once, and they are not the same answer. A
+     * blocked transition writes nothing, so nothing is the truth. A ready one writes a receipt, and
+     * reporting no changes reads as "this would change nothing" — the one thing a rehearsal must not
+     * say, and the rule `findings.ts` states in as many words two commands away.
+     *
+     * The path is knowable here: the filename comes from the sequence, which is derived from the
+     * receipts already on disk. The digest is not — the receipt carries a fresh `receiptId` and the
+     * moment it was written — so it is left off rather than guessed. A plan naming a path without
+     * claiming bytes it cannot know is honest; one claiming a digest that will not match is not.
+     */
+    const planned: FileChange[] = ready
+      ? [{
+        action: 'create',
+        path: `${receiptsPath}/${transitionReceiptFileName(Math.max(0, ...control.governance.transitions.map((receipt) => receipt.sequence)) + 1)}`,
+        source: `transition:${control.governance.currentStage}:${options.to}`,
+      }]
+      : [];
+    return { data: { change: options.change, from: control.governance.currentStage, to: options.to, ready, receipt: null, dryRun: options.dryRun }, diagnostics, changes: planned, nextActions };
+  }
 
   await recordAudit(project, { eventType: 'stage.entering', change: options.change, flow: resolved.flow.metadata.name, stage: control.governance.currentStage, revision: control.governance.revision, decision: options.to, outcome: 'succeeded' });
   /*

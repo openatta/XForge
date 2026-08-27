@@ -22,6 +22,12 @@ exit: 0
       "path": "xforge/changes/add-feature/change.yaml"
     }
   ],
-  "changes": [],
+  "changes": [
+    {
+      "action": "create",
+      "path": "xforge/changes/add-feature/evidence/receipts/transitions/0005.json",
+      "source": "transition:verify:ready-to-archive"
+    }
+  ],
   "nextActions": []
 }

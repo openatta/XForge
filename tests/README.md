@@ -21,6 +21,11 @@ before anything will build, which live-engine scenario a given change owes, and
 how to tell an external provider failure from a scenario that is asserting
 something it cannot hold.
 
+**[TEST-ARCHITECTURE.md](TEST-ARCHITECTURE.md) answers the other question**: a new
+test is being written — which layer does it belong to, and on what grounds. Five
+layers, four of them offline; the contract layer in particular is the one that
+keeps moving questions off the paid live-engine and onto every commit.
+
 `npm run verify` also collects V8 coverage from the compiled CLI subprocesses
 used by the implementation suite and enforces global thresholds. The separate
 live-engine directory remains excluded; its runner has its own suite-level
