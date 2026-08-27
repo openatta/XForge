@@ -226,15 +226,31 @@ async function resolveGateContext(project: ProjectContext, changeId: string): Pr
  * never-a-shell rule are properties this needs exactly as much as a Gate does, and a work package's
  * `verify` is the one command list in XForge that arrives from a file the Change itself can write.
  */
+/**
+ * Runs one work package's declared verify command, and hands back what it said.
+ *
+ * The output used to be dropped here and only the exit code kept, so `work-package draft` could
+ * report that a package's suite failed without reporting a single line of why — a field report ran
+ * the suite a second time by hand to find out which case was red. The bytes were already captured;
+ * nothing was being protected by discarding them.
+ *
+ * `outputTruncated` travels with them because of which end survives: `appendBounded` keeps the head
+ * of each stream, and a test runner usually prints its failures last. A caller quoting the tail of a
+ * truncated capture is quoting the tail of the *kept* part, which may be setup noise rather than the
+ * failure, and it has to be able to say so.
+ */
 export async function runVerifyCommand(
   project: ProjectContext,
   gate: GateResource,
-): Promise<{ exitCode: number | null; timedOut: boolean; unavailable: string | null }> {
+): Promise<{ exitCode: number | null; timedOut: boolean; unavailable: string | null; stdout: string; stderr: string; outputTruncated: boolean }> {
   const execution = await runCommand(project, gate);
   return {
     exitCode: execution.result.exitCode,
     timedOut: execution.result.timedOut,
     unavailable: execution.unavailable ? `${execution.unavailable.executable}: ${execution.unavailable.detail}` : null,
+    stdout: execution.result.stdout,
+    stderr: execution.result.stderr,
+    outputTruncated: execution.result.outputTruncated,
   };
 }
 

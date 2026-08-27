@@ -75,9 +75,18 @@ function policyById(flow: StageFlow, id: string): ApprovalPolicy | null {
   return flow.governance?.approvalPolicies.find((policy) => policy.id === id) ?? null;
 }
 
-function providerKinds(project: ProjectContext, policy: ApprovalPolicy): Array<{ id: string; type: 'local' | 'mcp' }> {
+/**
+ * The ways this policy can be satisfied, as `state` reports them.
+ *
+ * Local approval carries no `id`, and the omission is the point. `--provider` names an MCP provider
+ * declared under `manifest.approvals.providers`; terminal approval is what happens when the flag is
+ * absent, and there is no id to pass. Reporting `{"id": "local", "type": "local"}` put a plausible
+ * argument in front of a reader who then ran `xforge approve --provider local` and was told the
+ * provider "is not authorized" — an accurate sentence about a name this command had handed them.
+ */
+function providerKinds(project: ProjectContext, policy: ApprovalPolicy): Array<{ id?: string; type: 'local' | 'mcp' }> {
   return policy.providers.map((id) => {
-    if (id === 'local') return { id, type: 'local' as const };
+    if (id === 'local') return { type: 'local' as const };
     return { id, type: project.manifest.approvals?.providers.find((item) => item.id === id)?.type ?? 'mcp' };
   });
 }

@@ -236,6 +236,26 @@ export async function executeApprove(project: ProjectContext, options: ApproveOp
   if (!options.dryRun) await recordAudit(project, { eventType: 'approval.requested', change: options.change, flow: resolved.flow.metadata.name, stage: control.governance.currentStage, revision, decision: policy.id, outcome: 'succeeded' });
 
   if (options.provider) {
+    /*
+     * `--provider local` is the one wrong argument this command can be sure it understands.
+     *
+     * `local` is a provider in a policy's `providers` list, so it is a real name and it appears in
+     * the policy — but it is not an entry in `manifest.approvals.providers`, because terminal
+     * approval has no server to declare. Resolved through the lookup below it came back "not
+     * authorized", pointed at `doctor`, and sent a reader looking for a configuration gap that does
+     * not exist. The route they wanted is one flag shorter than the one they typed.
+     */
+    if (options.provider === 'local') throw new XForgeError(diagnostic(
+      'XFORGE_APPROVAL_PROVIDER_FORBIDDEN',
+      'Terminal approval takes no --provider. Run the same command without it: --provider names an MCP provider declared under manifest.yaml\'s approvals.providers, and local approval is what happens in its absence.',
+    ), {
+      nextActions: [{
+        action: 'approve-at-the-terminal',
+        reason: 'The policy allows local approval, which is the interactive terminal dialogue this command runs when no --provider is given.',
+        actor: 'human',
+        command: ['xforge', 'approve', '--change', options.change, '--for', options.transition],
+      }],
+    });
     const provider = project.manifest.approvals?.providers.find((item) => item.id === options.provider);
     if (!provider) throw new XForgeError(diagnostic('XFORGE_APPROVAL_PROVIDER_FORBIDDEN', `Approval provider is not authorized: ${options.provider}.`), {
       nextActions: [{ action: 'resolve-approval-provider', reason: `"${options.provider}" is not declared under manifest.yaml's approvals.providers. Check the provider id, or run xforge doctor to list approval-provider configuration gaps.`, actor: 'human', command: ['xforge', 'doctor'] }],

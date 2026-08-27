@@ -136,7 +136,7 @@ export interface GovernanceState {
   transitionHead: string | null;
   transitions: TransitionReceipt[];
   revision: GovernanceRevision;
-  pendingApprovals: Array<{ policyId: string; transition: string; missing: number; roles: string[]; providers: Array<{ id: string; type: 'local' | 'mcp' }> }>;
+  pendingApprovals: Array<{ policyId: string; transition: string; missing: number; roles: string[]; providers: Array<{ id?: string; type: 'local' | 'mcp' }> }>;
   approvals: ApprovalReceipt[];
   rules: RuleCoverage[];
   policies: Array<{ id: string; capability: string; effect: string; applicable: boolean }>;

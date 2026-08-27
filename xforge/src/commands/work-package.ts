@@ -207,6 +207,28 @@ export async function executeWorkPackageDraft(project: ProjectContext, options: 
     if (run.timedOut) {
       diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_VERIFY_TIMEOUT', `verify command "${entry.command}" timed out.`, workPackages.state.path, 'warning'));
     }
+    /*
+     * A non-zero exit, with what the command said about it.
+     *
+     * The draft recorded the number and nothing else, so a red suite produced `exit_code: 1` in a
+     * YAML file and no clue which case failed; the only way to find out was to run the suite again
+     * by hand, which a field report did. The output was already captured and thrown away one
+     * function up. Nothing here decides whether the failure is real — that is the Worker's to read
+     * — this only stops the command from knowing and not saying.
+     *
+     * A distinct code from `check`'s `XFORGE_WORK_PACKAGE_VERIFY_FAILED`, which is an error that
+     * blocks: there the run is the verdict, here it is an observation being recorded. One code at
+     * two severities would make the catalogue unable to say which of those a reader is holding.
+     */
+    if (run.exitCode !== 0 && !run.unavailable && !run.timedOut) {
+      diagnostics.push(diagnostic(
+        'XFORGE_WORK_PACKAGE_VERIFY_NONZERO',
+        `verify command "${entry.command}" exited ${run.exitCode}. The draft records it as observed. ${verifyTail(run)}`,
+        workPackages.state.path,
+        'warning',
+        { command: entry.command, exitCode: run.exitCode },
+      ));
+    }
   }
 
   const delivery: Record<string, unknown> = {
@@ -243,6 +265,26 @@ export async function executeWorkPackageDraft(project: ProjectContext, options: 
     diagnostics,
     changes: [],
   };
+}
+
+/**
+ * The end of what a failed verify command printed.
+ *
+ * The tail rather than the head, because a test runner prints its failures last — but the capture
+ * keeps the *head* of each stream (`appendBounded`), so when it hit the cap the tail of what
+ * survived is not the tail of what was written. That case is stated rather than papered over: a
+ * quoted fragment that silently is not the failure is worse than an admission that it might not be.
+ *
+ * stderr first when there is any, since a runner that separates the streams puts the failure there.
+ */
+function verifyTail(run: { stdout: string; stderr: string; outputTruncated: boolean }, lines = 20): string {
+  const stream = run.stderr.trim().length > 0 ? run.stderr : run.stdout;
+  const tail = stream.split('\n').filter((line) => line.trim().length > 0).slice(-lines).join('\n').trim();
+  if (tail.length === 0) return 'It printed nothing.';
+  const caveat = run.outputTruncated
+    ? ' Its output hit the capture limit, and the capture keeps the beginning of the stream — so this is the end of what was kept, which may not be the end of what ran.'
+    : '';
+  return `Last ${Math.min(lines, tail.split('\n').length)} line(s) of its output:${caveat}\n${tail}`;
 }
 
 export async function executeWorkPackageAcknowledge(project: ProjectContext, options: {

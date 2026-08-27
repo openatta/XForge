@@ -321,13 +321,57 @@ async function validateDeliveryHead(
     };
   }
   const changeRoot = `${project.changesPath}/${changeId}`;
+  const diagnostics: Diagnostic[] = [];
   const unattributed: string[] = [];
+  /*
+   * Paths this package's *own* next draft would judge differently.
+   *
+   * Two kinds, and only two: the plan, because `write_paths` is read from it and a correction there
+   * is the ordinary reason this matters; and paths this package itself declared, because those mean
+   * it kept working after the record was written. Nothing else qualifies, and the exclusions are
+   * what keep this from firing constantly — another package's work beyond this head is deliveries
+   * accumulating, which this function's header explains at length, and the delivery record's own
+   * commit moves HEAD past `head_commit` every single time by construction.
+   */
+  const planFile = `${changeRoot}/work-packages.yaml`;
+  const sinceRecorded: string[] = [];
   for (const item of beyond.stdout.split('\0').filter(Boolean)) {
     let changed: string;
     try { changed = normalizeRelative(item, 'Git changed path'); } catch { unattributed.push(item); continue; }
     if (isControlPlaneBookkeeping(changed, changeRoot)) continue;
+    if (changed === planFile || workPackage.write_paths.some((pattern) => matchesWritePath(changed, pattern))) {
+      sinceRecorded.push(changed);
+    }
     if (context.attributablePaths.some((pattern) => matchesWritePath(changed, pattern))) continue;
     unattributed.push(changed);
+  }
+
+  /*
+   * A pass here is about the range the record declares, and says so when that is no longer the tree.
+   *
+   * The confinement check below diffs `base_commit...head_commit`, both read off the delivery YAML.
+   * That is correct — a delivery is judged on what it delivered — and it is not what a reader asks
+   * it. A field report hit a write escape, corrected the plan, re-ran `xforge check --gate
+   * structure`, and read `ok: true` as "the correction worked". It was not: the record still
+   * declared the pre-correction range, the corrected plan file sat beyond its head, and the next
+   * `work-package draft` moved the range forward and produced the escape again. Two commands
+   * disagreed about the same package and both were right about different ranges, with nothing on
+   * screen naming the difference.
+   *
+   * `info`, not a failure: nothing is wrong with the recorded delivery, and the ranges being
+   * different is the ordinary consequence of continuing to work. What was missing was anyone saying
+   * that the green answer had a scope.
+   */
+  if (sinceRecorded.length > 0) {
+    const shown = sinceRecorded.slice(0, 5).join(', ');
+    const more = sinceRecorded.length > 5 ? `, and ${sinceRecorded.length - 5} more` : '';
+    diagnostics.push(diagnostic(
+      'XFORGE_WORK_PACKAGE_DELIVERY_RECORD_STALE',
+      `Work package ${workPackage.id} is judged here against the range its delivery record declares, which ends at ${headCommit.slice(0, 8)}. ${sinceRecorded.length} path(s) this package is concerned with have changed between there and HEAD ${repositoryHead.slice(0, 8)}: ${shown}${more}. That verdict is about the delivery that was recorded, not about the current tree — re-running \`xforge work-package draft --change ${changeId} --package ${workPackage.id}\` will judge a range that includes those paths and can reach a different answer. If you have just corrected write_paths or the plan, re-draft before reading this result as confirmation.`,
+      sourcePath,
+      'info',
+      { packageId: workPackage.id, headCommit, repositoryHead, sinceRecorded },
+    ));
   }
   /*
    * Returned rather than reported here, because the finding is not about this package.
@@ -340,7 +384,7 @@ async function validateDeliveryHead(
    * needs fixing; the plan's declarations do. `resolveWorkPackages` aggregates these into one
    * finding, and the control plane blocks the transition on `tree:unattributed-paths`.
    */
-  return { diagnostics: [], unattributed };
+  return { diagnostics, unattributed };
 }
 
 async function validateSuccessfulDelivery(
