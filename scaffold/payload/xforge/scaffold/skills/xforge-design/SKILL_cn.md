@@ -6,7 +6,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # 不变量
 
-- 先运行 `xforge state --change <id>`，只消费当前 revision 的 ready Design Action，并重读全部 Action inputs。
+- 先运行 `xforge state --change <id>`，只消费当前 revision 的 ready Design Action，并重读全部 Action inputs。在此之前先运行 `xforge stage-bundle --change <id>`：它指出哪些输入自本 Stage 开始以来变过、哪些没变，于是重读覆盖的是变化的部分而不是全部。只要这个 Change 还有未提交的改动，它就不为任何文件出具凭证。
 - Design 解释 HOW、决策与边界，不重复 Proposal，不退化为逐文件任务列表或长期 Plan。
 - Constitution、Rules、现有架构和 Specs 是约束；不把约束原文机械复制进设计。
 

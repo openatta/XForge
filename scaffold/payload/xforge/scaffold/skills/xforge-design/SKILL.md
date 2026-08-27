@@ -6,7 +6,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # Invariants
 
-- Run `xforge state --change <id>`, consume only the current-revision ready Design Action, and reread every Action input.
+- Run `xforge state --change <id>`, consume only the current-revision ready Design Action, and reread every Action input. Before doing so run `xforge stage-bundle --change <id>`: it names which inputs moved since this Stage was entered and which are unchanged, so a re-read covers what changed rather than everything. It vouches for nothing while the Change has uncommitted edits.
 - Design explains HOW, decisions, and boundaries. It does not repeat Proposal or become a file-by-file task list or persistent plan.
 - Constitution, Rules, current architecture, and Specs constrain the design; summarize their implications instead of copying them mechanically.
 

@@ -136,9 +136,25 @@ const reservation = reserveLiveEngineAttempt(policy, {
 });
 await atomicJson(policyPath, policy);
 
+/*
+ * `stream-json`, not `json`, and the reason is what a live run is for.
+ *
+ * `--output-format json` returns one result envelope: the final text, the token counts, the cost.
+ * What it does not return is what the Agent *did* — which commands it ran, in what order, and
+ * whether it followed the instruction under test at all. A run of the `solid` scenario recorded
+ * `num_turns: 23` and not one of those turns, so the question "did the Agent use the command this
+ * Skill now tells it to use" was unanswerable from a run that had just cost ten dollars to produce.
+ *
+ * That is the one class of question only a live run can answer, so a harness that discards it is
+ * paying for a model call and keeping the receipt. `stream-json` emits one JSON object per message;
+ * the last is the same result envelope `json` would have returned, written to the same path in the
+ * same shape, so nothing downstream changes. The transcript lands beside it.
+ */
 const args = [
   '-p',
-  '--output-format', 'json',
+  '--output-format', 'stream-json',
+  /* `stream-json` under `--print` requires it; the CLI refuses the combination otherwise. */
+  '--verbose',
   '--no-session-persistence',
   '--dangerously-skip-permissions',
   '--max-budget-usd', String(reservation.effectiveBudgetUsd),
@@ -212,13 +228,35 @@ if (child) {
 
 const output = redact(Buffer.concat(stdout).toString('utf8'));
 const errorOutput = redact(Buffer.concat(stderr).toString('utf8'));
+/*
+ * The stream, split into the transcript and the verdict.
+ *
+ * Every line is one message. The last `type: 'result'` is what `--output-format json` would have
+ * returned on its own, and it goes to `outputPath` unchanged so every existing reader — the matrix
+ * assertions, `summarize.mjs`, the acceptance check — sees exactly what it saw before. The rest is
+ * the evidence that used to be thrown away, written beside it as JSONL.
+ *
+ * A line that does not parse is kept verbatim rather than dropped: a truncated stream is itself the
+ * finding when a provider drops mid-response, and a transcript that silently omits the moment it
+ * broke is worse than none.
+ */
+const lines = output.split('\n').map((line) => line.trim()).filter(Boolean);
+const messages = [];
 let engineResult = null;
-try { engineResult = JSON.parse(output); } catch {}
+for (const line of lines) {
+  let parsed = null;
+  try { parsed = JSON.parse(line); } catch { messages.push({ type: 'unparsed', line }); continue; }
+  messages.push(parsed);
+  if (parsed?.type === 'result') engineResult = parsed;
+}
+const transcriptPath = outputPath.replace(/\.json$/, '') + '-transcript.jsonl';
+await writeFile(transcriptPath, messages.length > 0 ? `${messages.map((entry) => JSON.stringify(entry)).join('\n')}\n` : '');
+
 const fallback = {
   type: 'result', subtype: 'runner_error', is_error: true, exitCode: code, timedOut,
   error: redact((spawnError?.message ?? errorOutput) || 'Engine returned no JSON output.'),
 };
-await writeFile(outputPath, output || `${JSON.stringify(fallback, null, 2)}\n`);
+await writeFile(outputPath, `${JSON.stringify(engineResult ?? fallback, null, 2)}\n`);
 
 const costUsd = typeof engineResult?.total_cost_usd === 'number' ? engineResult.total_cost_usd : null;
 /*
@@ -261,6 +299,9 @@ process.stdout.write(`${JSON.stringify({
   ok,
   exitCode: code,
   output: outputPath,
+  /* Named in the result line so a reader who wants to know what the Agent *did* has the path,
+     rather than having to know that this file exists. */
+  transcript: transcriptPath,
   policy: policyPath,
   stage,
   attempt: reservation.attempt,
