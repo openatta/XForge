@@ -48,9 +48,25 @@ export async function gitRevisions(root: string): Promise<{ base: string; head: 
  * followed by committing the Evidence it produced and the audit index it appended to, and treating
  * that commit as a change to the tree under test would mark every Gate stale the instant it passed.
  */
+/**
+ * Paths whose movement is this governance run's own bookkeeping rather than the code moving.
+ *
+ * The Change's own directory and the audit log were here from the start. The governed project files
+ * outside it were not, and their absence had a visible cost: `verification declare` writes
+ * `xforge/manifest.yaml`, so committing an ordinary governance answer counted as source movement and
+ * a live Major saw all five of its Gates reported `staleAgainstCode` — while `contentRevision` had
+ * not moved at all and archive accepted the Change without complaint. The reader is left deciding
+ * whether the evidence chain is broken, and the honest answer was that nothing had happened.
+ *
+ * These are the files a Change advances by being governed. Product code is what this measure is
+ * about, and it is untouched: a real source commit still counts, which is the whole reason the
+ * measure exists.
+ */
 const selfWrittenPrefixes = (changesPath: string, changeId: string): string[] => [
   `${changesPath}/${changeId}/`,
   'xforge/.audit/',
+  'xforge/manifest.yaml',
+  'xforge/lock.yaml',
 ];
 
 /**

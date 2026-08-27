@@ -15,6 +15,7 @@ import { resolveWorkPackages } from '../core/work-packages.js';
 import { gateBlockReason, legalTransitionTargets, readGateEvidence, resolveControlPlane, type ResolvedControlPlane } from '../core/control-plane.js';
 import { safeResolve } from '../core/path-safety.js';
 import { VERIFICATION_RECEIPT_CONDITION, VERIFICATION_RECEIPT_PATH } from '../core/verification-receipt.js';
+import { resolveVerificationPlan } from '../core/verification.js';
 
 /**
  * Writes `manifest.verification` on the project's behalf, instead of asking an Agent to hand-edit
@@ -265,10 +266,37 @@ export async function executeVerificationDeclare(
     ], { root: project.root });
   }
 
+  /*
+   * A dismissal that names a marker nothing detected here, said out loud.
+   *
+   * `--not-applicable` takes a marker path from the detection report — `package.json`, `Cargo.toml`
+   * — and a live run supplied `no-scan-toolchain`, a name it invented for the decision it was
+   * recording. The declaration was accepted, returned `ok: true`, and could never match anything:
+   * a real human decision recorded in a form that does nothing.
+   *
+   * A warning and never a refusal, and worded as what it is. A repository whose build system this
+   * CLI does not recognise has legitimate dismissals for markers that will never appear in a
+   * detection report, and refusing those would build exactly the dead end that the declared-Gate
+   * refusal is being reworded to remove. This says the marker is not among what was detected; it
+   * does not say the marker is wrong.
+   */
+  const diagnostics: Diagnostic[] = [];
+  if (options.notApplicable) {
+    const { detected } = await resolveVerificationPlan(project, options.gate);
+    if (!detected.some((marker) => marker.marker === options.notApplicable)) {
+      diagnostics.push(diagnostic(
+        'XFORGE_VERIFICATION_DISMISSAL_UNMATCHED',
+        `Recorded, and nothing here matches the marker ${options.notApplicable}. A dismissal answers a marker this CLI detected, by the path the detection reports${detected.length > 0 ? ` — found here: ${detected.map((marker) => marker.marker).join(', ')}` : ', and none was found in this project root or any declared module root'}. The decision stays on the record and is worth keeping; it will not close any marker while the path does not match one. If this project's build system is not one this CLI recognises, that is expected and no action is needed. To replace it, use \`xforge verification retire --gate-name ${options.gate} --not-applicable ${options.notApplicable} --by <person> --reason <why>\` and declare it again with the reported path.`,
+        relative,
+        'warning',
+      ));
+    }
+  }
+
   if (!options.dryRun) await atomicWrite(project.root, relative, next);
   return {
     data: { gate: options.gate, entry, dryRun: options.dryRun, declarations: verification[options.gate]!.length },
-    diagnostics: [],
+    diagnostics,
     changes: next === source ? [] : [{ action: 'modify', path: relative, digest: sha256(next), source: `verification:${options.gate}` }],
   };
 }

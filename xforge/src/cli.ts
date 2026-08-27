@@ -51,6 +51,8 @@ interface ParsedArguments {
   root?: string;
   stage?: string;
   helpCommand?: string;
+  /** The leaf a group's help was asked for, reported so the answer names what was asked. */
+  helpSubcommand?: string;
   subcommand?: string;
   change?: string;
   kind?: 'skills' | 'agents' | 'rules' | 'policies' | 'hooks' | 'gates' | 'scripts' | 'flows' | 'approvals' | 'mcp-servers';
@@ -88,6 +90,17 @@ interface ParsedArguments {
   receiptId?: string;
   field?: string;
 }
+
+/**
+ * Commands whose first positional names a subcommand rather than an option.
+ *
+ * Named once because three places ask the same question, and one of them used to ask it wrongly:
+ * `--help` accepted exactly one positional, so `xforge work-package acknowledge --help` — the
+ * spelling anybody reaches for — died on `Unexpected positional argument: acknowledge` and sent the
+ * reader up a level to find the usage by hand. A group's help already covers every subcommand it
+ * has, so the leaf resolves to it rather than being refused.
+ */
+const GROUP_COMMANDS = new Set<string>(['audit', 'hook', 'work-package', 'verification', 'transition', 'review', 'findings']);
 
 const COMMANDS: CommandName[] = ['help', 'version', 'init', 'state', 'install', 'sync', 'update', 'uninstall', 'check', 'brief', 'verification', 'transition', 'approve', 'audit', 'work-package', 'hook', 'archive', 'doctor', 'upgrade-scaffold', 'review', 'findings'];
 const VALID_KINDS = ['skills', 'agents', 'rules', 'policies', 'hooks', 'gates', 'scripts', 'flows', 'approvals', 'mcp-servers'] as const;
@@ -308,9 +321,13 @@ function parseArguments(argv: string[]): ParsedArguments {
 
   if (helpShortcut && versionShortcut) throw new XForgeError(diagnostic('XFORGE_OPTION_NOT_ALLOWED', '--help and --version cannot be combined.'));
   if (helpShortcut) {
-    if (positionals.length > 1) throw new XForgeError(diagnostic('XFORGE_ARGUMENT_UNEXPECTED', `Unexpected positional argument: ${positionals[1]}`));
+    /* A second positional is the subcommand, and only where the first names a group: `xforge state
+       garbage --help` is still a typo worth reporting, while `verification declare --help` is not. */
+    const leafHelp = positionals.length === 2 && GROUP_COMMANDS.has(positionals[0] ?? '');
+    if (positionals.length > 1 && !leafHelp) throw new XForgeError(diagnostic('XFORGE_ARGUMENT_UNEXPECTED', `Unexpected positional argument: ${positionals[1]}`));
     parsed.command = 'help';
     parsed.helpCommand = positionals[0];
+    if (leafHelp) parsed.helpSubcommand = positionals[1];
     parsed.text = true;
   } else if (versionShortcut) {
     if (positionals.length > 0) throw new XForgeError(diagnostic('XFORGE_ARGUMENT_UNEXPECTED', `Unexpected positional argument: ${positionals[0]}`));
@@ -333,8 +350,10 @@ function parseArguments(argv: string[]): ParsedArguments {
     parsed.command = positionals[0] ?? '';
     if (parsed.command === 'help') {
       parsed.helpCommand = positionals[1];
-      if (positionals.length > 2) throw new XForgeError(diagnostic('XFORGE_ARGUMENT_UNEXPECTED', `Unexpected positional argument: ${positionals[2]}`));
-    } else if (parsed.command === 'audit' || parsed.command === 'hook' || parsed.command === 'work-package' || parsed.command === 'verification' || parsed.command === 'transition' || parsed.command === 'review' || parsed.command === 'findings') {
+      const leafHelp = positionals.length === 3 && GROUP_COMMANDS.has(positionals[1] ?? '');
+      if (leafHelp) parsed.helpSubcommand = positionals[2];
+      if (positionals.length > 2 && !leafHelp) throw new XForgeError(diagnostic('XFORGE_ARGUMENT_UNEXPECTED', `Unexpected positional argument: ${positionals[2]}`));
+    } else if (GROUP_COMMANDS.has(parsed.command)) {
       /* `transition` joined this list without breaking its original form, because that form carries
          no positional: `transition --change X --to Y` leaves positionals[1] undefined, which is
          exactly what the plain-transition branch below tests for. */
@@ -479,7 +498,7 @@ async function selectInitLanguage(root: string, explicit?: ScaffoldLanguage): Pr
   }
 }
 
-function helpEnvelope(subject?: string): Envelope {
+function helpEnvelope(subject?: string, subcommand?: string): Envelope {
   if (subject && !COMMANDS.includes(subject as CommandName)) {
     throw new XForgeError(diagnostic('XFORGE_HELP_COMMAND_UNKNOWN', `Unknown help command: ${subject}`));
   }
@@ -492,6 +511,10 @@ function helpEnvelope(subject?: string): Envelope {
       commands: Object.fromEntries(COMMANDS.map((command) => [command, HELP[command].description])),
       globalOptions: { '--root <path>': 'Use an exact project root.', '--text': 'Present the same result as readable text.' },
       commandHelp,
+      /* Reported rather than dropped: a reader who asked about one subcommand and is handed the
+         group's usage should be able to see that is what happened, not wonder whether the leaf was
+         understood. The group's usage covers every subcommand it has, so the answer is complete. */
+      ...(subcommand ? { subcommand, subcommandNote: `Usage is documented per command group; the block above covers every ${subject} subcommand, including ${subcommand}.` } : {}),
     },
   });
 }
@@ -544,7 +567,7 @@ function flowStages(data: Record<string, unknown>, flowId: string | undefined): 
 }
 
 async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
-  if (parsed.command === 'help') return helpEnvelope(parsed.helpCommand);
+  if (parsed.command === 'help') return helpEnvelope(parsed.helpCommand, parsed.helpSubcommand);
   if (parsed.command === 'version') return versionEnvelope();
 
   if (parsed.command === 'init') {

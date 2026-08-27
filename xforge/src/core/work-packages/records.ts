@@ -89,10 +89,10 @@ export async function loadDeliveries(
     const directoryId = parts[2]!;
     const fileExecutionId = path.posix.basename(name, '.yaml');
     if (delivery.package_id !== directoryId) {
-      diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_DELIVERY_PATH_MISMATCH', 'Delivery package_id must match its evidence directory.', projectPath));
+      diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_DELIVERY_PATH_MISMATCH', `Delivery package_id must match its evidence directory. ${NOT_A_DELIVERY}`, projectPath));
     }
     if (delivery.execution_id !== fileExecutionId) {
-      diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_DELIVERY_PATH_MISMATCH', 'Delivery execution_id must match its evidence filename.', projectPath));
+      diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_DELIVERY_PATH_MISMATCH', `Delivery execution_id must match its evidence filename. ${NOT_A_DELIVERY}`, projectPath));
     }
     if (!knownPackages.has(delivery.package_id)) {
       diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_DELIVERY_UNKNOWN', `Delivery references unknown work package ${delivery.package_id}.`, projectPath));
@@ -174,6 +174,19 @@ export async function loadDispatches(
  * validates it. Used by `work-package draft` to read back the bindings XForge itself issued, rather
  * than asking an Agent to copy four opaque digests out of a receipt by hand.
  */
+/**
+ * The other reading of this refusal, which the message never offered.
+ *
+ * Everything with a `.yaml` extension directly under `evidence/agents/<package>/` is read as a
+ * delivery record, so a file that is *not* one arrives here as a malformed delivery rather than as
+ * a file in the wrong place. A live Major put a Reviewer's verbatim transcript at
+ * `review-<execution>.yaml`, got this refusal plus EXECUTION_DUPLICATE, and spent six rounds
+ * locating the cause — including a bisect by moving files out of the directory and back. The Skills
+ * name the subdirectory route now, so the common path no longer reaches this; anyone arriving from
+ * another direction still deserves to be told which of the two problems they have.
+ */
+const NOT_A_DELIVERY = 'If this file is not a delivery record — a review or integration transcript, say — it is in the wrong place rather than malformed: everything ending .yaml directly under evidence/agents/<package>/ is parsed as a delivery. Put it in a subdirectory such as evidence/agents/<package>/review/, which nothing parses as one.';
+
 export async function latestDispatchFor(
   project: ProjectContext,
   changeId: string,

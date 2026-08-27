@@ -154,13 +154,15 @@ function suggestionLines(gate: string, detected: DetectedToolchain[]): string {
  * Manifest that will not load. The YAML stays below as the shape the command produces, so a reader
  * of the resulting diff still knows what to expect — it is no longer the instruction.
  */
-function shapeFor(gate: string): string {
+function shapeFor(gate: string, dismissalCanClose: boolean): string {
   return [
     'Record the answer with the CLI. It writes the Manifest block, fills declaredAt, and refuses rather than producing a Manifest that would not load:',
     '',
     `  xforge verification declare --gate-name ${gate} --command '["<program>","<arg>"]' --by "<the person who answered>"`,
     '',
-    'A toolchain this Gate deliberately does not cover is recorded instead of left unanswered:',
+    dismissalCanClose
+      ? 'A toolchain this Gate deliberately does not cover is recorded instead of left unanswered:'
+      : 'A dismissal records who decided a marker is out of this Gate\'s scope. It answers marker ownership and never the Gate itself, so while no command is declared every dismissal here is inert and this Gate keeps refusing. Record one anyway if the decision is real — it is worth keeping — but it is not what unblocks you:',
     '',
     `  xforge verification declare --gate-name ${gate} --not-applicable <marker path> --justification "<why this Gate does not cover it>" --by "<the person who answered>"`,
     '',
@@ -182,7 +184,7 @@ export function notDeclaredNextAction(gate: string, detected: DetectedToolchain[
     type: 'maintenance',
     actor: 'human',
     status: 'blocked',
-    reason: `Gate ${gate} has no command declared under manifest.verification.${gate}, so there is nothing for it to run and it refuses rather than passing. ${suggestionLines(gate, detected)}\n\n${shapeFor(gate)}`,
+    reason: `Gate ${gate} has no command declared under manifest.verification.${gate}, so there is nothing for it to run and it refuses rather than passing. A pass on this Gate always means a declared command ran and exited 0; no number of dismissals produces one. ${suggestionLines(gate, detected)}\n\n${shapeFor(gate, false)}`,
   };
 }
 
@@ -192,7 +194,7 @@ export function uncoveredNextAction(gate: string, uncovered: DetectedToolchain[]
     type: 'maintenance',
     actor: 'human',
     status: 'blocked',
-    reason: `Gate ${gate} declares commands, but ${uncovered.length === 1 ? 'a build-system marker was found that none of them accounts for' : 'build-system markers were found that none of them accounts for'}. ${suggestionLines(gate, uncovered)}\n\nEither declare a command for it, or record it as not applicable with a justification — both answers are accepted, and once recorded the question is not asked again.\n\n${shapeFor(gate)}`,
+    reason: `Gate ${gate} declares commands, but ${uncovered.length === 1 ? 'a build-system marker was found that none of them accounts for' : 'build-system markers were found that none of them accounts for'}. ${suggestionLines(gate, uncovered)}\n\nEither declare a command for it, or record it as not applicable with a justification — both answers are accepted, and once recorded the question is not asked again.\n\n${shapeFor(gate, true)}`,
   };
 }
 
@@ -201,6 +203,10 @@ export function notDeclaredReason(gate: string, detected: DetectedToolchain[]): 
   return [
     `${gate}: no command is declared under manifest.verification.${gate}.`,
     `${gate}: refusing rather than passing. A Gate that reports success without running anything is worse than one that fails, because everything downstream — the Rules it enforces, the verification receipt citing it, the archive requiring it — reads as satisfied.`,
+    /* Said here as well as in the nextAction because this is the text that lands in Gate Evidence,
+       and Evidence is what a reader consults after the fact — including the reader who is trying to
+       work out why two recorded dismissals did not help. */
+    `${gate}: a dismissal cannot close this. notApplicable records who decided a marker is out of scope; it never stands in for a command, so a pass here always means a declared command ran and exited 0.`,
     suggestionLines(gate, detected),
   ].join('\n');
 }
