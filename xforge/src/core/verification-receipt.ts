@@ -2,7 +2,7 @@ import { access, readFile } from 'node:fs/promises';
 import type { GateEvidence, ProjectContext } from '../types.js';
 import { safeResolve } from './path-safety.js';
 import { loadYaml, trimmedText } from './yaml.js';
-import { verdict, type LedgerVerdict } from './ledger.js';
+import { unknownKeyWarnings, verdict, type LedgerVerdict } from './ledger.js';
 
 /**
  * The machine-decidable half of the Verify Stage.
@@ -63,6 +63,10 @@ interface ReceiptGateCitation {
   status?: unknown;
 }
 
+/** Every key these evaluators read: the receipt itself, then one gate citation. */
+const RECEIPT_KEYS = ['change', 'status', 'contentRevision', 'gitHead', 'gates'] as const;
+const CITATION_KEYS = ['gate', 'status', 'evidence', 'inputDigest'] as const;
+
 interface VerificationReceiptLedger {
   change?: unknown;
   status?: unknown;
@@ -111,11 +115,15 @@ function evaluate(
   const cited: string[] = [];
   const byGate = new Map(expected.gates.map((evidence) => [evidence.gate, evidence]));
   const seen = new Set<string>();
+  /* `verification finalize` writes this file from the Evidence, but `draft-receipt` hands the facts
+     back for an author to record by hand, and a key nothing reads is silently dropped either way. */
+  const warnings = unknownKeyWarnings(document, RECEIPT_KEYS, relative);
 
   for (const [index, raw] of citations.entries()) {
     const citation = (raw ?? {}) as ReceiptGateCitation;
     const gate = trimmedText(citation.gate);
     const label = gate || `#${index + 1}`;
+    warnings.push(...unknownKeyWarnings(raw, CITATION_KEYS, `${relative}: gate citation ${label}`));
     if (!gate) { problems.push(`${relative}: gate citation ${label} does not name a Gate.`); continue; }
     cited.push(gate);
     if (seen.has(gate)) { problems.push(`${relative}: Gate ${gate} is cited twice.`); continue; }
@@ -146,7 +154,7 @@ function evaluate(
     if (!seen.has(evidence.gate)) problems.push(`${relative}: Gate ${evidence.gate} passed for this Stage but the receipt does not cite it.`);
   }
 
-  if (problems.length === 0) return { ...verdict(problems), reason: 'satisfied', cited };
+  if (problems.length === 0) return { ...verdict(problems, warnings), reason: 'satisfied', cited };
   /* The block string carries one slug, so it names the first and most specific failure; the full
      list travels in `problems` for the caller that can print more than a `blockedBy` entry. */
   const uncited = expected.gates.find((evidence) => !seen.has(evidence.gate));

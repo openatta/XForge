@@ -1,0 +1,3 @@
+evidence/check-findings.yaml  const=CHECK_FINDINGS_PATH  parsed-by=src/core/check-findings.ts  schema=NONE (hand-written validation)
+evidence/constitution-check.yaml  const=CONSTITUTION_CHECK_PATH  parsed-by=src/core/constitution-check.ts  schema=NONE (hand-written validation)
+evidence/verification-receipt.yaml  const=VERIFICATION_RECEIPT_PATH  parsed-by=src/core/verification-receipt.ts  schema=NONE (hand-written validation)

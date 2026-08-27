@@ -1,0 +1,21 @@
+agent  schema=yes  enforced-by=src/core/resource-loader.ts
+approval-receipt  schema=yes  enforced-by=src/core/control-plane/receipts.ts
+audit-event  schema=yes  enforced-by=NOTHING
+change  schema=yes  enforced-by=src/core/flow-resolver.ts
+constitution  schema=yes  enforced-by=NOTHING (not in SCHEMA_NAMES)
+flow  schema=yes  enforced-by=src/core/flow-resolver.ts
+gate  schema=yes  enforced-by=src/core/resource-loader.ts
+hook  schema=yes  enforced-by=src/core/resource-loader.ts
+lock  schema=yes  enforced-by=src/core/project-loader.ts
+manifest  schema=yes  enforced-by=src/commands/verification.ts,src/core/project-loader.ts
+mcp-server  schema=yes  enforced-by=src/core/resource-loader.ts
+permission-policy  schema=yes  enforced-by=src/core/resource-loader.ts
+review-ack-receipt  schema=yes  enforced-by=src/commands/review.ts,src/core/review-acknowledgement.ts
+rule  schema=yes  enforced-by=src/core/resource-loader.ts
+scaffold  schema=yes  enforced-by=src/core/bundled-scaffold.ts
+script  schema=yes  enforced-by=src/core/resource-loader.ts
+transition-receipt  schema=yes  enforced-by=src/core/control-plane/receipts.ts
+work-package  schema=yes  enforced-by=src/core/work-packages.ts
+work-package-ack-receipt  schema=yes  enforced-by=src/core/work-packages/records.ts
+work-package-delivery  schema=yes  enforced-by=src/core/work-packages/records.ts
+work-package-dispatch  schema=yes  enforced-by=src/core/work-packages.ts,src/core/work-packages/records.ts

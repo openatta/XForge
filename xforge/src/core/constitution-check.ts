@@ -2,7 +2,7 @@ import { access, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import fg from 'fast-glob';
 import type { ApprovalReceipt, ProjectContext } from '../types.js';
-import { verdict, type LedgerVerdict } from './ledger.js';
+import { unknownKeyWarnings, verdict, type LedgerVerdict } from './ledger.js';
 import { safeResolve } from './path-safety.js';
 import { loadYaml, trimmedText } from './yaml.js';
 import { knownIdentities, unknownIdentityReason, unverifiableIdentityWarning, type KnownIdentities } from './ledger-identity.js';
@@ -42,6 +42,9 @@ export const CONSTITUTION_CHECK_PATH = 'evidence/constitution-check.yaml';
 type PrincipleStatus = 'compliant' | 'violation' | 'not-applicable';
 
 const STATUSES: PrincipleStatus[] = ['compliant', 'violation', 'not-applicable'];
+
+/** Every key this evaluator reads off one principle entry. */
+const PRINCIPLE_KEYS = ['principle', 'status', 'justification', 'references', 'approvedBy'] as const;
 
 /** How a `references` entry resolved, for diagnostics. `null` means it resolved to nothing. */
 type ReferenceKind = 'gate' | 'path' | 'requirement';
@@ -265,6 +268,9 @@ export async function evaluateConstitutionCheck(
   for (const [index, raw] of document.principles.entries()) {
     const entry = (raw ?? {}) as Record<string, unknown>;
     const name = trimmedText(entry.principle);
+    /* A key nothing reads is a key silently dropped — see `unknownKeyWarnings`. Reported against the
+       principle's own name where there is one, because "#3" is not what the author is looking at. */
+    warnings.push(...unknownKeyWarnings(raw, PRINCIPLE_KEYS, `${relative}: entry ${name || `#${index + 1}`}`));
     if (!name) { problems.push(`${relative}: entry #${index + 1} does not name a principle.`); continue; }
     const match = principles.find((candidate) => normalize(candidate) === normalize(name));
     if (!match) {

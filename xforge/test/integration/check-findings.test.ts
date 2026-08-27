@@ -283,6 +283,46 @@ describe('Ledger identity', () => {
     expect(fresh.status).toBe('passed');
   });
 
+  it('names a misspelled key instead of silently dropping it', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    /*
+     * Six characters, and the ledger reads as resolved while the Gate counts the blocker open. The
+     * evaluator pulls named fields off the parsed object and ignores the rest, so `resolveBy` is not
+     * an error — it is silence, and the message the author gets is about a missing attribution with
+     * nothing pointing at the typo that caused it. The third field report spent a human signature on
+     * this class of confusion.
+     */
+    await write(root, ledgerPath, `findings:
+  - id: F-1
+    severity: blocker
+    summary: The retry budget is not configurable.
+    refs: [proposal.md]
+    status: resolved
+    resolveBy: owner@example.test
+`);
+    const result = await evaluate(root);
+    const warning = result.warnings.find((item) => item.includes('resolveBy'));
+    expect(warning, JSON.stringify(result.warnings)).toBeDefined();
+    expect(warning).toContain('did you mean "resolvedBy"');
+    expect(warning).toContain('Nothing reads it');
+
+    /* A warning, never the verdict: the blocker is open because it has no attribution, which is what
+       it was before anybody thought to check for stray keys. Promoting this would refuse ledgers
+       that were valid until today. */
+    expect(result.status).toBe('failed');
+    expect(result.problems.join(' ')).toContain('names no resolvedBy');
+
+    /* And a ledger with no stray keys says nothing about them. */
+    await write(root, ledgerPath, `findings:
+  - id: F-1
+    severity: suggestion
+    summary: Consider a shorter retry budget.
+    refs: [proposal.md]
+`);
+    expect((await evaluate(root)).warnings.filter((item) => item.includes('unknown key'))).toEqual([]);
+  });
+
   it('says why the name on every transition receipt is still not an identity', async () => {
     /*
      * The name a field report reached for. It is in the Change's own records — on all thirteen of

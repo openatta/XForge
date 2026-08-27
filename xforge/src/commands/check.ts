@@ -14,6 +14,7 @@ import { gateBlockReason, readGateEvidence, resolveControlPlane } from '../core/
 import { loadTransitionReceipts } from '../core/control-plane/receipts.js';
 import { sha256, stableStringify } from '../core/hash.js';
 import { safeResolve } from '../core/path-safety.js';
+import { AUDIT_DIRECTORY } from '../constants.js';
 
 /** Stages that run before any implementation exists, so no work-package verify can be meaningful. */
 const PRE_APPLY_STAGES = new Set(['propose', 'clarify', 'design', 'check']);
@@ -78,7 +79,6 @@ function stageGateIds(flow: StageFlow, stageId: string): string[] | null {
  * governance artifact, so it must not be committed, reviewed, or trusted from another clone — a
  * missing key simply means the Gate runs again.
  */
-const AUDIT_DIRECTORY = 'xforge/.audit';
 const GATE_REUSE_DIRECTORY = `${AUDIT_DIRECTORY}/gate-reuse`;
 /** Bounds on the uncommitted state a reuse key will hash; beyond them the Gate re-runs instead. */
 const MAX_DIRTY_ENTRIES = 5_000;

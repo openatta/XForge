@@ -49,6 +49,72 @@ export function verdict(problems: string[], warnings: string[] = []): LedgerVerd
 }
 
 /**
+ * Keys an entry carries that nothing reads.
+ *
+ * Every one of these evaluators pulls named fields off a parsed YAML object and ignores the rest, so
+ * a misspelled key is not an error — it is silence. `resolveBy` instead of `resolvedBy` produces a
+ * finding that looks resolved in the file and is counted open by the Gate, with a message about a
+ * missing attribution and nothing pointing at the six characters that caused it. The third field
+ * report spent a human signature on that class of confusion.
+ *
+ * A warning, never a verdict: an entry with a stray key is not unusable, and promoting it would
+ * refuse ledgers that were valid before anybody thought to check. The value is the sentence, not the
+ * refusal.
+ */
+function unknownKeys(entry: unknown, known: readonly string[]): string[] {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return [];
+  return Object.keys(entry as Record<string, unknown>).filter((key) => !known.includes(key)).sort();
+}
+
+/** Edit distance, capped: anything past `limit` is "not a near miss" and the exact number is unused. */
+function distance(left: string, right: string, limit: number): number {
+  if (Math.abs(left.length - right.length) > limit) return limit + 1;
+  let previous = Array.from({ length: right.length + 1 }, (_unused, index) => index);
+  for (let row = 1; row <= left.length; row += 1) {
+    const current = [row];
+    for (let column = 1; column <= right.length; column += 1) {
+      current[column] = left[row - 1] === right[column - 1]
+        ? previous[column - 1]!
+        : 1 + Math.min(previous[column]!, current[column - 1]!, previous[column - 1]!);
+    }
+    previous = current;
+  }
+  return previous[right.length]!;
+}
+
+/**
+ * The known key an unknown one was probably meant to be, or `null`.
+ *
+ * Case-insensitive equality first, then one or two edits — enough for `resolveBy`, `resolved_by` and
+ * `References`, and short of guessing. A suggestion that is wrong is worse than none here, because
+ * the reader is being told what to type.
+ */
+function nearestKey(key: string, known: readonly string[]): string | null {
+  const lowered = key.toLowerCase();
+  const exact = known.find((candidate) => candidate.toLowerCase() === lowered);
+  if (exact) return exact;
+  const limit = key.length <= 4 ? 1 : 2;
+  let best: { key: string; score: number } | null = null;
+  for (const candidate of known) {
+    const score = distance(lowered, candidate.toLowerCase(), limit);
+    if (score > limit) continue;
+    if (!best || score < best.score) best = { key: candidate, score };
+  }
+  return best?.key ?? null;
+}
+
+/**
+ * The warning an entry with stray keys earns, phrased so the reader can act without re-reading the
+ * schema. Returns an empty list when there is nothing to say, so callers can spread it.
+ */
+export function unknownKeyWarnings(entry: unknown, known: readonly string[], where: string): string[] {
+  return unknownKeys(entry, known).map((key) => {
+    const suggestion = nearestKey(key, known);
+    return `${where} carries an unknown key "${key}"${suggestion ? `; did you mean "${suggestion}"?` : '.'} Nothing reads it, so whatever it says has no effect. Known keys: ${[...known].join(', ')}.`;
+  });
+}
+
+/**
  * What a Gate prints for a ledger it evaluated.
  *
  * `stdout` on a pass, `stderr` on a failure, and the warnings attached to the pass — because a

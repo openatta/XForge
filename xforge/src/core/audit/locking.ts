@@ -7,10 +7,13 @@ import { XForgeError, diagnostic } from '../errors.js';
 import { rmSync } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { safeResolve } from '../path-safety.js';
+import { AUDIT_DIRECTORY } from '../../constants.js';
 
-/* The audit tree's own paths, duplicated here rather than imported: the lock is what makes the
-   append safe, so it must not depend on the module whose appends it protects. */
-const AUDIT_DIRECTORY = 'xforge/.audit';
+/* From `constants.ts`, not from `core/audit.ts`: the lock is what makes the append safe, so it must
+   not depend on the module whose appends it protects. That constraint is about the *appending*
+   module, and it is why this string used to be copied here — but a constants module has no
+   dependencies to invert, and three private copies of one governed path is how a rename moves two
+   of them and leaves a lock nobody contends for. */
 const LOCK_DIRECTORY = `${AUDIT_DIRECTORY}/.locks`;
 const GLOBAL_SHARD_KEY = '_global';
 const LOCK_RETRY_MS = 25;

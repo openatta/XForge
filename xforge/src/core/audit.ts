@@ -9,17 +9,16 @@ import { atomicWrite, exists } from './files.js';
 import { sha256, stableStringify } from './hash.js';
 import { safeResolve } from './path-safety.js';
 import { acquireLock } from './audit/locking.js';
+import { AUDIT_DIRECTORY } from '../constants.js';
 import {
   attestableEvents, chainSigner, eventHash, eventSignature, sealEvent, signatureDiagnostic, unsignedBody,
   signBody, verdictFor, type ChainSigner, type SignatureVerdict,
 } from './audit/signing.js';
 
-const AUDIT_DIRECTORY = 'xforge/.audit';
 /** The global chain. Also the legacy single-file log that older projects still carry. */
 const GLOBAL_LOG = `${AUDIT_DIRECTORY}/events.jsonl`;
 /** One append-only chain per Change so concurrent Changes/worktrees cannot fork a shared chain. */
 const SHARD_DIRECTORY = `${AUDIT_DIRECTORY}/changes`;
-const LOCK_DIRECTORY = `${AUDIT_DIRECTORY}/.locks`;
 const ANCHORS_FILE = `${AUDIT_DIRECTORY}/anchors.json`;
 const GLOBAL_SHARD_KEY = '_global';
 const CHANGE_ID_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;

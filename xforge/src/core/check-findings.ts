@@ -1,7 +1,7 @@
 import { access, readFile } from 'node:fs/promises';
 import type { ProjectContext } from '../types.js';
 import { knownIdentities, unknownIdentityReason, unverifiableIdentityWarning, type KnownIdentities } from './ledger-identity.js';
-import { verdict, type LedgerVerdict } from './ledger.js';
+import { unknownKeyWarnings, verdict, type LedgerVerdict } from './ledger.js';
 import { safeResolve } from './path-safety.js';
 import { loadYaml, trimmedText } from './yaml.js';
 
@@ -51,6 +51,9 @@ interface CheckFindingsResult extends LedgerVerdict {
 
 const SEVERITIES: FindingSeverity[] = ['blocker', 'warning', 'suggestion'];
 
+/** Every key this evaluator reads, and the ones `xforge findings resolve` writes. */
+const FINDING_KEYS = ['id', 'severity', 'summary', 'refs', 'status', 'reworkTo', 'resolvedBy', 'resolvedAt', 'answer'] as const;
+
 /** Resolves a `refs` entry the same way other Change-relative Artifact paths are resolved. */
 async function refExists(project: ProjectContext, changeId: string, ref: string): Promise<boolean> {
   try {
@@ -84,6 +87,9 @@ async function evaluate(
   for (const [index, raw] of document.findings.entries()) {
     const finding = (raw ?? {}) as CheckFinding;
     const label = trimmedText(finding.id) || `#${index + 1}`;
+    /* Before anything is read off it: a key this evaluator does not know is a key it silently drops,
+       and `resolveBy` for `resolvedBy` produces a finding that reads as resolved and counts as open. */
+    warnings.push(...unknownKeyWarnings(raw, FINDING_KEYS, `${relative}: finding ${label}`));
     const id = trimmedText(finding.id);
     if (!id) problems.push(`${relative}: finding ${label} has no id.`);
     else if (seen.has(id)) problems.push(`${relative}: duplicate finding id ${id}.`);
