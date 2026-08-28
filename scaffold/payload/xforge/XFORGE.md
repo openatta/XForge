@@ -1,17 +1,8 @@
 # XForge project bootstrap
 
 Before project work, read `xforge/manifest.yaml` and `xforge/constitution.md`.
-
-For the active Change under the resolved `project.paths.changes` path, run
-`xforge stage-bundle --change <id>` first. It names which of that Change's files
-moved since the current Stage began and which did not, so the reading that
-follows covers what changed rather than everything — six Stages re-reading the
-same sixty kilobytes is most of what fills a session. Read in full every file it
-lists under `READ IN FULL`, and open a file it vouched for whenever you need to
-check its wording: the digest says the text is the one the previous Stage read,
-not that reading it is forbidden. It vouches for nothing while the Change has
-uncommitted edits, and always lists the Constitution and this Stage's own outputs
-to be read whole.
+Before reading an active Change's files, run `xforge stage-bundle --change <id>`
+and read in full everything it lists under `READ IN FULL`.
 
 Use the installed XForge workflow Skills. Treat CLI JSON/Gate evidence as
 deterministic facts and prompt guidance as guidance only.
