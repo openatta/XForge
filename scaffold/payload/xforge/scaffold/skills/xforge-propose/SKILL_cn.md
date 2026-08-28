@@ -6,8 +6,9 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # 不变量
 
+- **在读这个 Change 的任何文件之前**，运行 `xforge stage-bundle --change <id>`。它指出哪些输入自本 Stage 开始以来变过、哪些没变，于是下面的阅读覆盖的是变化的部分而不是全部。只要这个 Change 还有未提交的改动，它就不为任何文件出具凭证；Constitution 与本 Stage 自己的产出永远列为全文读取。
 - 先运行 `xforge state`，从 State 读取 Changes 路径、Flows、policy、Constitution、Rules、Specs 和项目模块。
-- 只消费 `xforge-propose` 对应的 ready Action；每次写入前重读 Action inputs，写入后刷新 State。在此之前先运行 `xforge stage-bundle --change <id>`：它指出哪些输入自本 Stage 开始以来变过、哪些没变，于是重读覆盖的是变化的部分而不是全部。只要这个 Change 还有未提交的改动，它就不为任何文件出具凭证。
+- 只消费 `xforge-propose` 对应的 ready Action；每次写入前重读 Action inputs，写入后刷新 State。
 - Flow 表达交付侧重点与治理量级：Quick 强调快速，限低风险、单模块、易回滚且无关键影响；Solid 强调稳定，适合常规产品与工程变更；Major 强调重大影响治理，用于高风险、跨系统或关键影响变更。不确定时升级或请求决定。
 - Constitution 台账在 Check（实现之前）回答，而只有 Solid 与 Major 有 Check Stage。Quick 不带台账：它面向的是琐碎、单模块、低风险的工作，对一个「其全部意义就在于不承载原则级风险」的 Change 要求逐条原则认证并无所得。这不是绕开 Constitution 的路径——它照样约束着工作，而且 Quick 的 eligibility（`risk: low`、单模块、禁止 critical impact）由 CLI 强制，因此把一个真正需要台账的 Change 塞进 Quick，等于声明一份与事实不符的 classification。
 - Specs 使用机器约定的 `ADDED|MODIFIED|REMOVED|RENAMED Requirements`、`Requirement`、`Scenario`、`WHEN`、`THEN` 标题。

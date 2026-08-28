@@ -1,3 +1,9 @@
+/*
+ * @red-first coverage-only: the plan-level refusals added here — a duplicate id, a dependency on a
+ * package that is not in the plan, and a cycle — close three entries in the untested-code list. All
+ * three shipped correct and none had ever been asserted, so there is no fix for them to fail
+ * without. Every other case in this file predates the declaration and is unaffected by it.
+ */
 import { access, readFile, readdir, rm } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
@@ -1087,6 +1093,68 @@ describe('work-package protocol', () => {
         { index: 1, packages: ['T001'] },
         { index: 2, packages: ['T900'] },
       ]);
+    });
+
+    it('refuses a plan whose own declarations do not hold together', async () => {
+      /*
+       * The three refusals a hand-written plan meets first, and the three the suite had never
+       * exercised: every existing case builds a plan that is already well formed and then tests what
+       * the DAG does with it. A duplicate id, a dependency on a package that is not there, and a
+       * cycle are all decided before any of that, from the plan alone.
+       */
+      const root = await fixture();
+      await createCompleteSolidChange(root);
+      await initializeGit(root);
+      await write(root, 'xforge/changes/add-feature/work-packages.yaml', stringify({
+        apiVersion: 'xforge.dev/v1alpha1',
+        kind: 'WorkPackagePlan',
+        /* A duplicate id and a dependency on a package that is not there. The two-package cycle
+           lives in its own case below: `byId` keeps one entry per id, so a duplicate erases the very
+           edge a cycle needs, and asserting both from one plan tested neither. */
+        packages: [
+          workPackage('T001', { depends_on: ['T404'] }),
+          workPackage('T002'),
+          workPackage('T002'),
+        ],
+      }, { lineWidth: 120 }));
+
+      const result = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
+      const codes = (result.json.diagnostics as any[]).map((item) => item.code);
+      expect(codes, JSON.stringify(codes)).toContain('XFORGE_WORK_PACKAGE_DUPLICATE');
+      expect(codes, JSON.stringify(codes)).toContain('XFORGE_WORK_PACKAGE_DEPENDENCY_UNKNOWN');
+      /* Both at once, not the first one: a plan with two problems that reports one costs two round
+         trips to fix. */
+      expect(result.code).toBe(1);
+    });
+
+    it('refuses a cycle, whether a package points at itself or at a package that points back', async () => {
+      const root = await fixture();
+      await createCompleteSolidChange(root);
+      await initializeGit(root);
+      await write(root, 'xforge/changes/add-feature/work-packages.yaml', stringify({
+        apiVersion: 'xforge.dev/v1alpha1',
+        kind: 'WorkPackagePlan',
+        packages: [workPackage('T001', { depends_on: ['T001'] })],
+      }, { lineWidth: 120 }));
+
+      const direct = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
+      const self = (direct.json.diagnostics as any[]).find((item) => item.code === 'XFORGE_WORK_PACKAGE_DEPENDENCY_CYCLE');
+      expect(self, JSON.stringify((direct.json.diagnostics as any[]).map((item) => item.code))).toBeDefined();
+      expect(self.message).toContain('depends on itself');
+
+      /* And the one a reader cannot see by looking at a single package. */
+      await write(root, 'xforge/changes/add-feature/work-packages.yaml', stringify({
+        apiVersion: 'xforge.dev/v1alpha1',
+        kind: 'WorkPackagePlan',
+        packages: [
+          workPackage('T001', { depends_on: ['T002'] }),
+          workPackage('T002', { depends_on: ['T001'] }),
+        ],
+      }, { lineWidth: 120 }));
+      const mutual = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
+      const cycle = (mutual.json.diagnostics as any[]).find((item) => item.code === 'XFORGE_WORK_PACKAGE_DEPENDENCY_CYCLE');
+      expect(cycle, JSON.stringify((mutual.json.diagnostics as any[]).map((item) => item.code))).toBeDefined();
+      expect(cycle.message).toContain('cycle at');
     });
 
     it('refuses two integrator packages that could run at the same time', async () => {

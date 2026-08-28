@@ -94,6 +94,8 @@ verification declare  <- xforge-verify/SKILL.md
 verification declare  <- xforge-verify/SKILL_cn.md
 verification draft-receipt  <- xforge-verify/SKILL.md
 verification draft-receipt  <- xforge-verify/SKILL_cn.md
+verification finalize  <- xforge-verify/SKILL.md
+verification finalize  <- xforge-verify/SKILL_cn.md
 work-package acknowledge  <- xforge-apply/SKILL.md
 work-package acknowledge  <- xforge-apply/SKILL_cn.md
 work-package dispatch  <- xforge-apply/SKILL.md

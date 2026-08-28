@@ -198,7 +198,23 @@ describe('Skill and CLI command contract', () => {
      * place at review or names work.
      */
     const surface = await cliSurface();
-    const named = new Set((await invocations()).flatMap((item) => item.flags));
+    /*
+     * Flags a Skill names anywhere, not only inside an `xforge …` span.
+     *
+     * The first version counted only flags spelled inside a full invocation, and so reported
+     * `--all-gates` and `--field` as untaught while `xforge-check` and `xforge-verify` each spend a
+     * sentence explaining them in prose. A contract that invents drift is as costly as one that
+     * misses it: somebody goes and "fixes" a Skill that was already right.
+     */
+    const prose = new Set<string>();
+    for (const skill of (await readdir(skillsRoot)).sort()) {
+      for (const file of (await readdir(path.join(skillsRoot, skill))).filter((name) => name.endsWith('.md'))) {
+        for (const match of (await readFile(path.join(skillsRoot, skill, file), 'utf8')).matchAll(/`(--[a-z][a-z-]*)`/g)) {
+          prose.add(match[1]!);
+        }
+      }
+    }
+    const named = new Set([...(await invocations()).flatMap((item) => item.flags), ...prose]);
     const rows: string[] = [];
     for (const command of surface.commands) {
       for (const flag of (surface.options.get(command) ?? []).sort()) {

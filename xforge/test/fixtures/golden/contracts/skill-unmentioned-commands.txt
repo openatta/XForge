@@ -6,6 +6,5 @@ help
 hook
 init
 uninstall
-verification finalize
 verification retire
 version

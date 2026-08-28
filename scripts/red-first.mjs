@@ -29,7 +29,7 @@
  * gate — anything tolerant enough to pass the first would have swallowed the second.
  * `--allow-nothing-to-prove` turns 3 into 0 for exactly that reason, and leaves 2 failing.
  */
-import { cpSync, existsSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -184,9 +184,32 @@ function main() {
     }
 
     console.log('\n');
-    const green = results.filter((result) => !result.failed);
+    /*
+     * A file that says, in its own words, that it adds coverage rather than proves a fix.
+     *
+     * This gate asks "does the test fail without the fix", and a test written to close a gap in the
+     * untested-code list has no fix to fail without: the behaviour was already right and nobody had
+     * ever asserted it. Both of those are work worth doing, and only one of them can satisfy a
+     * red-first proof — so a suite told to reduce its untested surface and gated on red-first is a
+     * suite told to do two things it cannot do at once.
+     *
+     * The declaration has to be explicit, has to give a reason, and is printed on every run. It is a
+     * way to say "this proves nothing and here is why", not a way to be quiet: a file that carries
+     * it is reported in its own block where a reader decides whether the reason holds. Exit code 3
+     * already means "nothing to prove" for a whole change; this is the same statement per file.
+     */
+    const coverageOnly = new Map();
+    for (const result of results) {
+      const source = readFileSync(path.join(repoRoot, result.relative), 'utf8');
+      const declared = /@red-first coverage-only:\s*(.+)/.exec(source);
+      if (declared && !result.failed) coverageOnly.set(result.relative, declared[1].trim());
+    }
+    const green = results.filter((result) => !result.failed && !coverageOnly.has(result.relative));
     for (const result of results.filter((item) => item.failed)) {
       console.log(`PROVED      ${result.relative}${result.unloadable ? '  (does not load against the base — the API is new)' : ''}`);
+    }
+    for (const [relative, reason] of coverageOnly) {
+      console.log(`COVERAGE    ${relative}\n            ${reason}`);
     }
     for (const result of green) {
       console.log(`NOT PROVED  ${result.relative}`);
@@ -195,7 +218,9 @@ function main() {
       console.log(`\nThe ${green.length === 1 ? 'file' : 'files'} marked NOT PROVED ${green.length === 1 ? 'passes' : 'pass'} without the fix, so nothing in ${green.length === 1 ? 'it' : 'them'} describes`);
       console.log('defect that was fixed. Either the test asserts behaviour that already worked, or it was');
       console.log('written around the bug.');
-      console.log('Add an assertion that fails on the base, or drop the file from the change.');
+      console.log('Add an assertion that fails on the base, drop the file from the change, or — when the');
+      console.log('file genuinely adds coverage for behaviour that already worked — declare it with a');
+      console.log('`@red-first coverage-only: <why>` line, which is printed on every run for review.');
     }
     return green.length === 0 ? 0 : 1;
   } finally {

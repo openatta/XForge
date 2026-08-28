@@ -30,13 +30,17 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
    Then read `evidence/check-findings.yaml` for entries that are not `status: resolved` and name no `reworkTo`. Those are questions an earlier Stage pointed at whoever signs the closing approval, and nothing routes them — they are not blockers, so no Gate reports them — `xforge check --change <id>` lists each one under `nextActions` with the exact `findings resolve` command that closes it. Put each one to the user and record their answer with `xforge findings resolve --change <id> --id <finding-id> --answer <their answer> --by <the person who answered>`; never supply an answer or a name of your own, on the same reading as `verification declare --by`. Do it **here**, before the receipt: the write moves `contentRevision`, so now it costs one `xforge check` re-run, while the same edit after step 6's transition stales the closing receipt, voids the approval bound to it, and needs `transition repair` to undo.
 5. Generate assurance. Then produce the verification receipt — **after** step 4's Gates have passed, never before, because it names the Gates that run recorded. `evidence/verification-receipt.yaml` is not a content Artifact; it is the Stage's `verificationReceipt` exit condition, and the CLI decides it against the Evidence on disk.
 
-   Do not transcribe it. Run `xforge verification draft-receipt --change <id>`: `change`, `contentRevision`, `gitHead` and the full cited Gate set are facts XForge is already holding, and it emits them from the same resolved Gate set the exit condition is later decided against. Write its `receipt` to the path above and add exactly one field:
+   Do not transcribe it, and do not hand-assemble it either. Run:
 
-   ```yaml
-   status: passed   # the only field you supply: your assertion that this Stage verified the work
+   ```
+   xforge verification finalize --change <id> --status passed --by <the person asserting it>
    ```
 
-   The command deliberately omits `status` and writes no file — computing that field would be XForge deciding the thing the receipt exists to record.
+   `change`, `contentRevision`, `gitHead` and the full cited Gate set are facts XForge already holds, and it writes them from the same resolved Gate set the exit condition is later decided against. `--status passed` is the one thing it will not compute: that field is the assertion that this Stage verified the work, and a CLI filling it in would be deciding the thing the receipt exists to record.
+
+   It is not a shortcut past the check. Before recording that a Gate passed it re-reads that Gate's Evidence from disk, and it writes nothing at all when any Gate this Stage cites is stale against the current content revision, failed, or never ran — naming the re-run, the fix, or the first run, because those are three different problems. `passed` is the only status it writes; a Stage that did not verify files no receipt.
+
+   `xforge verification draft-receipt --change <id>` emits the same facts without writing, for the case where the receipt has to be assembled by hand.
 
    Two things it protects you from, both of which have cost live runs. `contentRevision` appears once per historical receipt in `xforge state`, so reading it by eye or by `grep` returns a superseded revision; use `--field change.governance.revision.contentRevision` (with `--change <id>`) if you ever need it alone. And a citation names its Gate, never a digest — every per-run digest moves under ordinary progress, so a transcribed one is stale by the time it is read. Do not add an `evidence:` line; nothing reads it.
 

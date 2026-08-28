@@ -30,13 +30,17 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
    随后读 `evidence/check-findings.yaml`，找出 `status` 不是 `resolved` 且没有 `reworkTo` 的条目。这些是更早的 Stage 指向收尾审批人的提问，没有任何机制会把它们送回去——它们不是 blocker，没有 Gate 会报告——`xforge check --change <id>` 会把每一条列在 `nextActions` 里，并附上关闭它的那条 `findings resolve` 命令。把每一条交给用户，并用 `xforge findings resolve --change <id> --id <finding-id> --answer <用户的回答> --by <回答的人>` 记录他们的答案；绝不要自己编答案或署名，理由与 `verification declare --by` 相同。必须在**这里**做，在 receipt 之前：这次写入会改变 `contentRevision`，此刻的代价只是重跑一次 `xforge check`；而同样的修改若发生在第 6 步过渡之后，会让收尾回执变 stale、让绑定其上的审批作废，并且需要 `transition repair` 才能退回。
 5. 生成 assurance。然后生成 verification receipt——必须在第 4 步的 Gate 全部通过**之后**，绝不能提前，因为它要点名那次运行记录下的 Gate。`evidence/verification-receipt.yaml` 不是内容 Artifact，而是本 Stage 的 `verificationReceipt` exit condition，由 CLI 对照磁盘上的 Evidence 判定。
 
-   不要手抄。运行 `xforge verification draft-receipt --change <id>`：`change`、`contentRevision`、`gitHead` 以及完整的 Gate 引用集合都是 XForge 已经掌握的事实，且它输出的正是稍后判定该 exit condition 所依据的同一份 Gate 集合。把结果中的 `receipt` 写到上述路径，并且只补一个字段：
+   不要手抄，也不要手工拼装。运行：
 
-   ```yaml
-   status: passed   # 唯一由你填写的字段：你对"本 Stage 已验证这项工作"的断言
+   ```
+   xforge verification finalize --change <id> --status passed --by <做出该断言的人>
    ```
 
-   该命令刻意不产出 `status`，也不写文件——由 XForge 计算这个字段，就等于让它替你决定这份 receipt 本身要记录的那件事。
+   `change`、`contentRevision`、`gitHead` 以及完整的 Gate 引用集合都是 XForge 已经掌握的事实，它写下的正是稍后判定该 exit condition 所依据的同一份 Gate 集合。`--status passed` 是它唯一不肯替你计算的东西：那个字段是"本 Stage 已验证这项工作"的断言，由 CLI 填写就等于让它替你决定这份 receipt 本身要记录的那件事。
+
+   它不是绕过检查的捷径。在记录某个 Gate 通过之前，它会从磁盘重读该 Gate 的 Evidence；只要本 Stage 引用的任何一个 Gate 相对当前 content revision 已过期、失败过、或从未运行，它就**什么都不写**，并分别指出该重跑、该修、还是该首次运行——那是三个不同的问题。它只写 `passed` 这一种状态；没有验证通过的 Stage 不产出回执。
+
+   需要手工拼装回执时，`xforge verification draft-receipt --change <id>` 输出同样的事实而不写文件。
 
    它替你避开两个真实运行中付过代价的坑。其一，`xforge state` 里每份历史回执各带一个 `contentRevision`，靠肉眼或 `grep` 取值会拿到已被取代的那个；确需单独取值时用 `--field change.governance.revision.contentRevision`（并带上 `--change <id>`）。其二，引用只写 Gate 名，绝不写 digest——每个 per-run digest 都会随正常推进而变化，抄下来的那一刻起就在失效。不要加 `evidence:` 这一行，没有任何代码会读它。
 

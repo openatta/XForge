@@ -154,6 +154,8 @@ describe('diagnostic catalogue', () => {
     const codes = [...new Set(sites.map((site) => site.code).filter((code): code is string => Boolean(code)))].sort();
 
     const asserted = new Set<string>();
+    /** Patterns a test applies to `.code`, which cover every code they match. */
+    const patterns: string[] = [];
     for (const directory of [path.join(xforgeRoot, 'test'), path.join(repositoryRoot, 'tests')]) {
       for await (const source of readTestSources(directory)) {
         /*
@@ -163,16 +165,51 @@ describe('diagnostic catalogue', () => {
          * debt list must not do. Removing them lengthens the list once, and every entry it adds was
          * always untested.
          */
-        for (const match of withoutComments(source).matchAll(/XFORGE_[A-Z0-9_]+/g)) asserted.add(match[0]);
+        const code = withoutComments(source);
+        for (const match of code.matchAll(/XFORGE_[A-Z0-9_]+/g)) asserted.add(match[0]);
+        /*
+         * A test may hold a whole family of codes to one rule rather than naming each member.
+         * `text-form-readability` asserts that *every* `XFORGE_RECONCILE_*` diagnostic reaches the
+         * readable form; `output-sinks` does the same for every `*UNREADABLE*`. Those are stronger
+         * assertions than a list of literals — a code added to the family is covered the day it is
+         * written, where a literal list would have to be remembered — and the scan counted them as
+         * covering nothing, so twelve codes sat in the debt list that the suite already checked.
+         *
+         * Only patterns applied to `.code` count. A regex used for anything else says nothing about
+         * which diagnostics a test verifies.
+         */
+        for (const match of code.matchAll(/\/([^/\n]{3,}?)\/\s*\.test\(\s*(?:[A-Za-z_][A-Za-z0-9_]*)\.code/g)) {
+          patterns.push(match[1]!);
+        }
+        for (const match of code.matchAll(/\.code\s*\.\s*(?:startsWith|includes)\(\s*'([^']+)'/g)) {
+          patterns.push(match[1]!);
+        }
       }
     }
-    const untested = codes.filter((code) => !asserted.has(code));
+    const untested = codes.filter((code) => !asserted.has(code)
+      && !patterns.some((pattern) => { try { return new RegExp(pattern).test(code); } catch { return false; } }));
 
     /*
      * A golden rather than a threshold. A number would let one code be covered while another goes
      * dark and the total stay flat; the list makes both directions visible, and a pull request that
      * lengthens it has to say why in its diff.
      */
+    /*
+     * A hundred and seventy-nine entries nobody can act on is a number, not a debt list. Grouped by
+     * the prefix a code carries, it becomes a reading: which *area* of the product the suite has
+     * never exercised, and therefore where a bug would arrive unannounced. `WORK` at forty-odd says
+     * something a flat list cannot.
+     */
+    const byArea = new Map<string, number>();
+    for (const code of untested) {
+      const area = code.replace(/^XFORGE_/, '').split('_')[0] ?? 'OTHER';
+      byArea.set(area, (byArea.get(area) ?? 0) + 1);
+    }
+    const summary = [...byArea].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+      .map(([area, count]) => `${String(count).padStart(4)}  ${area}`);
+    const { actual: areas, expected: areasExpected } = await golden('diagnostics/untested-by-area.txt', `${summary.join('\n')}\n`);
+    expect(areas).toBe(areasExpected);
+
     const { actual, expected } = await golden('diagnostics/untested-codes.txt', `${untested.join('\n')}\n`);
     expect(actual).toBe(expected);
   });

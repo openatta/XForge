@@ -6,8 +6,9 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash, Task
 
 # Invariants
 
+- **Before reading any of this Change's files**, run `xforge stage-bundle --change <id>`. It names which inputs moved since this Stage was entered and which are unchanged, so the reading below covers what changed instead of everything. It vouches for nothing while the Change has uncommitted edits, and always lists the Constitution and this Stage's own outputs to be read in full.
 - Run `xforge state --change <id>` at the start and after every material change. Consume only the current-revision ready Apply Action; never guess Flow order, paths, Gates, or parallel strategy.
-- Read all Action inputs, Constitution, relevant Rules/Specs, optional Design/Check report, and existing work packages from disk. Chat memory is not a source of truth. Before doing so run `xforge stage-bundle --change <id>`: it names which inputs moved since this Stage was entered and which are unchanged, so a re-read covers what changed rather than everything. It vouches for nothing while the Change has uncommitted edits.
+- Read all Action inputs, Constitution, relevant Rules/Specs, optional Design/Check report, and existing work packages from disk. Chat memory is not a source of truth.
 - Main Agent is always Coordinator and Workers never delegate. XForge does not start model processes; the target runtime activates native sub-Agents.
 - Apply plans are just-in-time execution assets, not a new Stage or second specification source of truth.
 - Obey `currentStage=apply`, current `stateRevision`, `policySnapshotDigest`, and typed `nextActions`; never edit Stage, Transition/Approval receipts, or core Audit directly.

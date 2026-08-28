@@ -17,6 +17,10 @@ const CHANGE = 'add-feature';
  * The receipt that entered the Stage records the commit it began at, so the set that moved is
  * computable. These tests are about the three rules that keep that from becoming a way to skip
  * evidence, and the third one is the reason this is a test file and not a one-line feature.
+ *
+ * @red-first coverage-only: the git-unavailable case closes XFORGE_STAGE_BUNDLE_GIT_UNAVAILABLE in
+ * the untested-code list. The behaviour shipped correct; nobody had ever asserted it, so there is no
+ * fix for it to fail without.
  */
 describe('xforge stage-bundle', () => {
   async function commit(root: string, message: string): Promise<void> {
@@ -110,6 +114,23 @@ describe('xforge stage-bundle', () => {
     const notice = (result.json.diagnostics as any[]).find((item) => item.code === 'XFORGE_STAGE_BUNDLE_TREE_DIRTY');
     expect(notice, JSON.stringify(result.json.diagnostics)).toBeDefined();
     expect(notice.message).toContain('compares commits');
+  }, 600_000);
+
+  it('vouches for nothing when git cannot answer at all', async () => {
+    /*
+     * A project that is not a repository. Every voucher rests on `git diff` between two commits, so
+     * a tree git will not speak about is a tree this cannot speak about either — and saying that is
+     * the whole difference between "nothing changed" and "nothing is known".
+     */
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+
+    const result = await runCli(root, ['stage-bundle', '--change', CHANGE]);
+    expect(result.code).toBe(0);
+    const notice = (result.json.diagnostics as any[]).find((item) => item.code === 'XFORGE_STAGE_BUNDLE_GIT_UNAVAILABLE');
+    expect(notice, JSON.stringify((result.json.diagnostics as any[]).map((item) => item.code))).toBeDefined();
+    expect(notice.severity).toBe('warning');
+    expect(result.json.data.vouched).toEqual([]);
   }, 600_000);
 
   it('says so rather than guessing when the Change has no earlier Stage', async () => {
