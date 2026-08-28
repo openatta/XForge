@@ -233,6 +233,65 @@ describe('state --field', () => {
     /* And says what is actually there, so the next attempt is informed rather than another guess. */
     expect(found.message).toContain('currentStage');
   });
+
+  /* A mistyped field name used to answer with the whole resolved project: `--field nope.nope`
+     returned `ok: false` and 47 KB of `data` the caller had explicitly narrowed away from. An
+     Agent pays for that in context on every typo, and the diagnostic it carries already says the
+     shape is not here -- "Run the command without --field ... to see the shape of data". */
+  it('does not carry data when the field does not resolve', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const missing = await runCli(root, ['state', '--change', CHANGE, '--field', 'nope.nope']);
+    expect(missing.code).toBe(1);
+    expect(missing.json.data).toBeNull();
+    /* The envelope is still a complete envelope -- only `data` is withheld. */
+    expect(missing.json.ok).toBe(false);
+    expect(missing.json.command).toBe('state');
+    expect((missing.json.diagnostics as any[]).map((item) => item.code)).toContain('XFORGE_FIELD_NOT_FOUND');
+  });
+
+  /* One `--field` per value meant an Agent needing four governance values spent four processes and
+     four round trips on them. Repeating the option answers them together. */
+  it('answers several --field paths in one call, keyed by path', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const result = await runCli(root, [
+      'state', '--change', CHANGE,
+      '--field', 'change.governance.currentStage',
+      '--field', 'change.id',
+    ]);
+    expect(result.code).toBe(0);
+    const value = JSON.parse(result.stdout);
+    expect(Object.keys(value).sort()).toEqual(['change.governance.currentStage', 'change.id']);
+    expect(value['change.id']).toBe(CHANGE);
+  });
+
+  /* A single --field keeps printing the bare value, because `$(xforge state --field ...)` in a
+     shell depends on it and wrapping it in JSON would break every existing caller. */
+  it('still prints one bare value when only one --field is given', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const result = await runCli(root, ['state', '--change', CHANGE, '--field', 'change.id']);
+    expect(result.code).toBe(0);
+    expect(result.stdout.trim()).toBe(CHANGE);
+  });
+
+  /* And one bad path among several fails the whole call rather than answering partially: a caller
+     that got three of four values would carry on believing it had all four. */
+  it('fails the call when any one of several --field paths does not resolve', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const result = await runCli(root, [
+      'state', '--change', CHANGE,
+      '--field', 'change.id',
+      '--field', 'nope.nope',
+    ]);
+    expect(result.code).toBe(1);
+    expect(result.json.data).toBeNull();
+    const found = (result.json.diagnostics as any[]).find((item) => item.code === 'XFORGE_FIELD_NOT_FOUND');
+    expect(found, JSON.stringify(result.json.diagnostics)).toBeTruthy();
+    expect(found.message).toContain('nope.nope');
+  });
 });
 
 /*

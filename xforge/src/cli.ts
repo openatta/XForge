@@ -89,6 +89,9 @@ interface ParsedArguments {
   status?: string;
   receiptId?: string;
   field?: string;
+  /* Every `--field` on the line, in order. `field` stays the last one so the single-value path is
+     untouched; `fields` is what the multi-value path reads. */
+  fields?: string[];
 }
 
 /**
@@ -104,6 +107,10 @@ const GROUP_COMMANDS = new Set<string>(['audit', 'hook', 'work-package', 'verifi
 
 const COMMANDS: CommandName[] = ['help', 'version', 'init', 'state', 'install', 'sync', 'update', 'uninstall', 'check', 'stage-bundle', 'explain', 'verification', 'transition', 'approve', 'audit', 'work-package', 'hook', 'archive', 'doctor', 'upgrade-scaffold', 'review', 'findings'];
 const VALID_KINDS = ['skills', 'agents', 'rules', 'policies', 'hooks', 'gates', 'scripts', 'flows', 'approvals', 'mcp-servers'] as const;
+/* The only option that may appear more than once. Every other repeat is a mistake -- see the
+   duplicate guard in the parse loop. */
+const REPEATABLE_OPTIONS = new Set(['--field']);
+
 const VALUE_OPTIONS = ['--root', '--change', '--kind', '--target', '--gate', '--to', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--provider', '--output', '--event', '--package', '--language', '--as', '--evidence', '--stage', '--gate-name', '--command', '--module', '--covers', '--working-directory', '--timeout-seconds', '--not-applicable', '--justification', '--by', '--status', '--receipt', '--field', '--id', '--answer', '--scope'] as const;
 
 function isValueOption(token: string): boolean {
@@ -186,7 +193,7 @@ const HELP: Record<CommandName, { usage: string; description: string; options: s
   help: { usage: 'xforge help [command] [--text]', description: 'Show general or command-specific help.', options: ['--text'] },
   version: { usage: 'xforge version [--text]', description: 'Show CLI, protocol, runtime, and build identity.', options: ['--text'] },
   init: { usage: 'xforge [--root <path>] init [--language <en|zh-CN>] [--target <target>] [--dry-run] [--text]', description: 'Initialize the bundled npm Scaffold and optionally project it into one Agent tool.', options: ['--root', '--language', '--target', '--dry-run', '--text'] },
-  state: { usage: 'xforge [--root <path>] state [--change <id>] [--kind <kind>] [--target <target>] [--text] [--field <path>]', description: 'Read resolved project and Change state. --field prints one value and nothing else, addressed as a dotted path through data (for example change.governance.revision.contentRevision, or change.governance.readyTransitions.0.to — both need --change). Use it instead of grepping the JSON: several governance fields repeat under every historical receipt, so a line-oriented match returns whichever came first rather than the current one.', options: ['--root', '--change', '--kind', '--target', '--text', '--field'] },
+  state: { usage: 'xforge [--root <path>] state [--change <id>] [--kind <kind>] [--target <target>] [--text] [--field <path>]...', description: 'Read resolved project and Change state. --field prints one value and nothing else, addressed as a dotted path through data (for example change.governance.revision.contentRevision, or change.governance.readyTransitions.0.to — both need --change). Use it instead of grepping the JSON: several governance fields repeat under every historical receipt, so a line-oriented match returns whichever came first rather than the current one. Repeat --field to read several values in one call: the answer is then a JSON object keyed by the paths you asked for, and a path that does not resolve fails the whole call rather than answering partially.', options: ['--root', '--change', '--kind', '--target', '--text', '--field'] },
   install: { usage: 'xforge [--root <path>] install [--target <target>] [--adopt] [--dry-run] [--text]', description: 'Install or idempotently reconcile selected project assets.', options: ['--root', '--target', '--adopt', '--dry-run', '--text'] },
   sync: { usage: 'xforge [--root <path>] sync [--target <target>] [--adopt] [--dry-run] [--verify-digests] [--text]', description: 'Incrementally sync localized Scaffold changes to installed targets.', options: ['--root', '--target', '--adopt', '--dry-run', '--verify-digests', '--text'] },
   update: { usage: 'xforge [--root <path>] update [--target <target>] [--adopt] [--dry-run] [--text]', description: 'Fully reconcile installed targets, identities, and Adapter output.', options: ['--root', '--target', '--adopt', '--dry-run', '--text'] },
@@ -236,7 +243,10 @@ function parseArguments(argv: string[]): ParsedArguments {
       positionals.push(token);
       continue;
     }
-    if (seen.has(token)) throw new XForgeError(diagnostic('XFORGE_ARGUMENT_DUPLICATE', `Duplicate option: ${token}`));
+    /* Duplicates are an error everywhere else because the outcome would be a silent last-wins: the
+       caller wrote two values and one vanished. `--field` is the exception by design -- repeating
+       it asks for several values in one call, so nothing is discarded. */
+    if (seen.has(token) && !REPEATABLE_OPTIONS.has(token)) throw new XForgeError(diagnostic('XFORGE_ARGUMENT_DUPLICATE', `Duplicate option: ${token}`));
     seen.add(token);
     if (token === '--help') { helpShortcut = true; continue; }
     if (token === '--version') { versionShortcut = true; continue; }
@@ -277,7 +287,7 @@ function parseArguments(argv: string[]): ParsedArguments {
     if (token === '--module') parsed.module = value;
     if (token === '--covers') parsed.covers = value;
     if (token === '--receipt') parsed.receiptId = value;
-    if (token === '--field') parsed.field = value;
+    if (token === '--field') { parsed.field = value; (parsed.fields ??= []).push(value); }
     if (token === '--working-directory') parsed.workingDirectory = value;
     if (token === '--timeout-seconds') parsed.timeoutSeconds = value;
     if (token === '--not-applicable') parsed.notApplicable = value;
@@ -937,20 +947,35 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
   }
 
   if (parsed?.field && result.ok) {
-    const resolved = resolveField(result.data, parsed.field);
-    if (!resolved.found) {
+    const paths = parsed.fields ?? [parsed.field];
+    /* Resolve them all before printing anything: a caller that received three of four values and a
+       zero exit would carry on believing it had four. */
+    const resolutions = paths.map((path) => ({ path, resolved: resolveField(result.data, path) }));
+    const failed = resolutions.filter((item) => !item.resolved.found);
+    if (failed.length > 0) {
       process.stdout.write(present({
         ...result, ok: false,
-        diagnostics: [...result.diagnostics, diagnostic(
+        /* Not `data`: the caller narrowed to these values and named one wrongly, and answering with
+           the entire resolved project costs an Agent ~12K tokens of context for a typo. The
+           diagnostics below already say the shape is not here and how to ask for it. */
+        data: null,
+        diagnostics: [...result.diagnostics, ...failed.map((item) => diagnostic(
           'XFORGE_FIELD_NOT_FOUND',
           /* `--text` no longer prints `data` verbatim for every command, so the advice names both
              flags: the shape lives in the JSON envelope, which is what dropping them returns. */
-          `No value at --field ${parsed.field}. ${resolved.reason} Run the command without --field and without --text to see the shape of data.`,
-        )],
+          `No value at --field ${item.path}. ${(item.resolved as { reason: string }).reason} Run the command without --field and without --text to see the shape of data.`,
+        ))],
       }, textMode, render));
       return 1;
     }
-    const value = resolved.value;
+    if (paths.length > 1) {
+      /* Keyed by the path the caller wrote, not by the leaf name: two paths can end in the same
+         segment, and a caller matching on what it asked for cannot be wrong about which is which. */
+      const values = Object.fromEntries(resolutions.map((item) => [item.path, (item.resolved as { value: unknown }).value]));
+      process.stdout.write(`${JSON.stringify(values)}\n`);
+      return 0;
+    }
+    const value = (resolutions[0]!.resolved as { value: unknown }).value;
     process.stdout.write(`${value === null || typeof value === 'object' ? JSON.stringify(value) : String(value)}\n`);
     return 0;
   }
