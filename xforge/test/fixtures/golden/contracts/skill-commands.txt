@@ -36,14 +36,6 @@ review acknowledge  <- xforge-apply/SKILL.md
 review acknowledge  <- xforge-apply/SKILL_cn.md
 review acknowledge  <- xforge-verify/SKILL.md
 review acknowledge  <- xforge-verify/SKILL_cn.md
-stage-bundle  <- xforge-apply/SKILL.md
-stage-bundle  <- xforge-apply/SKILL_cn.md
-stage-bundle  <- xforge-check/SKILL.md
-stage-bundle  <- xforge-check/SKILL_cn.md
-stage-bundle  <- xforge-design/SKILL.md
-stage-bundle  <- xforge-design/SKILL_cn.md
-stage-bundle  <- xforge-propose/SKILL.md
-stage-bundle  <- xforge-propose/SKILL_cn.md
 state  <- xforge-apply/SKILL.md
 state  <- xforge-apply/SKILL_cn.md
 state  <- xforge-architect/SKILL.md

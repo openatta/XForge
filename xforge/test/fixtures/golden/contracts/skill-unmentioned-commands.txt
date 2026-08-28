@@ -5,6 +5,7 @@ audit status
 help
 hook
 init
+stage-bundle
 uninstall
 verification retire
 version

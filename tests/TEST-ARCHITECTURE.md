@@ -72,8 +72,43 @@
 2. **债务清单，只能缩短**：`untested-codes.txt`。**新增条目必须被质疑**。
 3. **可 review 的产物**：`projection/`、`envelope/`。它记录的是产品真实产出的字节。
 
-重录用同一次运行加一个环境变量：`XFORGE_UPDATE_GOLDEN=1 npx vitest run <file>`。
+重录用同一次运行加一个环境变量：`XFORGE_UPDATE_GOLDEN=1 npm test`。
 **故意不做成独立脚本**——单独重录一份 golden 正是「把回归记录成新的真相」的做法。
+
+### 重录只能在一次**干净**的运行上做
+
+这一条是踩出来的。在一次有 20 个超时失败的运行上加了 `XFORGE_UPDATE_GOLDEN=1`，
+超时 case 产出的错误内容被录成了新真相：`envelope/audit-status.txt` 的 `command`
+字段从 `audit` 变成 `transition`，44 条审计事件消失。回滚之后原 golden 直接通过——
+被污染的是新录的那份，产品一直是对的。
+
+**先跑一次确认全绿，再单独重录。** 把「跑测试」和「重录」合成一条命令，
+就没有机会看一眼那次运行是不是干净的，而 golden 的全部价值建立在「它记录的是真相」上。
+
+---
+
+## 4a. 跑套件只用仓库自己的入口
+
+```sh
+npm test              # = npm --prefix xforge test，由 npm script 带上正确的 cwd
+npm run test:product
+npm run verify
+```
+
+**不要手搓 `npx vitest run test`。** 从仓库根执行时它会同时匹配根级 `tests/` 并发跑，
+争用之下几十个集成测试超时——一次实测 319 个失败，没有一个是真的。
+后台任务的 cwd 会重置回仓库根，所以命令里写相对 `cd xforge` 也不可靠（`cd` 失败
+→ 测试根本没跑 → 日志只有一行退出码 1，看起来像失败其实是没跑）。
+
+同一个 cwd 问题在一轮里出现过四次，每次都被误读成别的问题。**认准入口，不要试探参数。**
+
+---
+
+## 4b. verify 运行期间不要碰任何被它读取的文件
+
+`scaffold/payload/**`、`xforge/src/**`、测试文件都算。改 scaffold 并重算摘要会让
+正在跑的那一轮整体作废——不是失败，是结果无效，而它长得和真失败一模一样。
+red-first 尤其敏感：它按 `git diff` 挑候选文件，运行中新增的测试文件会被卷进去。
 
 ---
 

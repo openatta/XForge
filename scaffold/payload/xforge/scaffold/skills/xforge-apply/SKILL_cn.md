@@ -6,7 +6,6 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash, Task
 
 # 不变量
 
-- **在读这个 Change 的任何文件之前**，运行 `xforge stage-bundle --change <id>`。它指出哪些输入自本 Stage 开始以来变过、哪些没变，于是下面的阅读覆盖的是变化的部分而不是全部。只要这个 Change 还有未提交的改动，它就不为任何文件出具凭证；Constitution 与本 Stage 自己的产出永远列为全文读取。
 - 开始及每次材料性变更后运行 `xforge state --change <id>`；只消费当前 revision 的 ready Apply Action，不猜测 Flow 序列、路径、Gate 或并行策略。
 - 从磁盘读取 Action 的全部 inputs、Constitution、相关 Rules/Specs、可选 Design/Check report 和现有工作包；聊天记忆不是事实源。
 - Main Agent 永远承担 Coordinator；Worker 不继续委派。XForge 不创建模型进程，子 Agent 由目标 runtime 的原生能力激活。

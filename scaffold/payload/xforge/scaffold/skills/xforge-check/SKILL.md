@@ -6,7 +6,6 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # Invariants
 
-- **Before reading any of this Change's files**, run `xforge stage-bundle --change <id>`. It names which inputs moved since this Stage was entered and which are unchanged, so the reading below covers what changed instead of everything. It vouches for nothing while the Change has uncommitted edits, and always lists the Constitution and this Stage's own outputs to be read in full.
 - Run `xforge state --change <id>`, consume only the current-revision ready Check Action, and reread Proposal, Specs, Clarifications, Design, Constitution, Rules, and code facts.
 - `xforge-check` performs semantic review; `xforge check` supplies deterministic schema, path, Gate, and Evidence input. Neither replaces the other.
 - Governing Artifacts are read-only by default. Report rework instead of silently rewriting upstream content.

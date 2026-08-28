@@ -6,7 +6,6 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # 不变量
 
-- **在读这个 Change 的任何文件之前**，运行 `xforge stage-bundle --change <id>`。它指出哪些输入自本 Stage 开始以来变过、哪些没变，于是下面的阅读覆盖的是变化的部分而不是全部。只要这个 Change 还有未提交的改动，它就不为任何文件出具凭证；Constitution 与本 Stage 自己的产出永远列为全文读取。
 - 先运行 `xforge state`，从 State 读取 Changes 路径、Flows、policy、Constitution、Rules、Specs 和项目模块。
 - 只消费 `xforge-propose` 对应的 ready Action；每次写入前重读 Action inputs，写入后刷新 State。
 - Flow 表达交付侧重点与治理量级：Quick 强调快速，限低风险、单模块、易回滚且无关键影响；Solid 强调稳定，适合常规产品与工程变更；Major 强调重大影响治理，用于高风险、跨系统或关键影响变更。不确定时升级或请求决定。

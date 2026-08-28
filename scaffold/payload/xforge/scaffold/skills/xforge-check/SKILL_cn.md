@@ -6,7 +6,6 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # 不变量
 
-- **在读这个 Change 的任何文件之前**，运行 `xforge stage-bundle --change <id>`。它指出哪些输入自本 Stage 开始以来变过、哪些没变，于是下面的阅读覆盖的是变化的部分而不是全部。只要这个 Change 还有未提交的改动，它就不为任何文件出具凭证；Constitution 与本 Stage 自己的产出永远列为全文读取。
 - 先运行 `xforge state --change <id>`，只消费当前 revision 的 ready Check Action，重读 Proposal、Specs、Clarifications、Design、Constitution、Rules 与代码事实。
 - `xforge-check` 做语义审查；`xforge check` 提供 schema、路径、Gate 和 Evidence 的确定性输入，二者不能互相替代。
 - 默认只读 governing artifacts；发现问题时报告 rework，不在审查中悄悄改写上游。

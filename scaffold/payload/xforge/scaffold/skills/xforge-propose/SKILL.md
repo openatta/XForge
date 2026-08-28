@@ -6,7 +6,6 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # Invariants
 
-- **Before reading any of this Change's files**, run `xforge stage-bundle --change <id>`. It names which inputs moved since this Stage was entered and which are unchanged, so the reading below covers what changed instead of everything. It vouches for nothing while the Change has uncommitted edits, and always lists the Constitution and this Stage's own outputs to be read in full.
 - Run `xforge state` and read the Changes path, Flows, policy, Constitution, Rules, Specs, and modules from State.
 - Consume only the ready Action for `xforge-propose`; reread Action inputs before every write and refresh State afterward.
 - Quick is limited to low-risk, single-module, reversible changes with no critical impact; Solid serves ordinary product and engineering work; Major governs high-risk, cross-system, or critical-impact changes. Escalate or request a decision when uncertain.

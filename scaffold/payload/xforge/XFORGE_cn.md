@@ -1,9 +1,18 @@
 # XForge 项目引导
 
-开始项目工作前，先读 `xforge/manifest.yaml`、`xforge/constitution.md`，以及
-`project.paths.changes` 解析出的路径下的活跃 Change。使用已安装的 XForge
-工作流 Skills。把 CLI 的 JSON 输出与 Gate 证据当作确定性事实，把提示词里的
-指导仅当作指导。
+开始项目工作前，先读 `xforge/manifest.yaml` 与 `xforge/constitution.md`。
+
+对 `project.paths.changes` 解析出的路径下的活跃 Change，先运行
+`xforge stage-bundle --change <id>`。它指出该 Change 的哪些文件自当前 Stage
+开始以来变过、哪些没变，于是随后的阅读覆盖的是变化的部分而不是全部——六个
+Stage 反复重读同样的六十千字节，是把一个会话填满的主要原因。它列在
+`READ IN FULL` 下的文件全部读全文；已出具凭证的文件在你需要核对措辞时随时可以
+打开：凭证说的是「这份文本与上一个 Stage 读到的相同」，不是「不许读」。只要这个
+Change 还有未提交的改动，它就不为任何文件出具凭证；Constitution 与本 Stage
+自己的产出永远列为全文读取。
+
+使用已安装的 XForge 工作流 Skills。把 CLI 的 JSON 输出与 Gate 证据当作确定性
+事实，把提示词里的指导仅当作指导。
 
 ## 调用 CLI
 
