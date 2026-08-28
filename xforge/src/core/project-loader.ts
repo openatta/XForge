@@ -1,4 +1,4 @@
-import { access, readFile, realpath, stat } from 'node:fs/promises';
+import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import {
   CLI_NAME,

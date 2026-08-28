@@ -73,7 +73,7 @@ describe('Skill and CLI command contract', () => {
   }
 
   /** The command table and per-command options, as the CLI itself reports them. */
-  async function cliSurface(): Promise<{ commands: string[]; options: Map<string, string[]>; usage: Map<string, string> }> {
+  async function cliSurface(): Promise<{ commands: string[]; options: Map<string, string[]>; usage: Map<string, string>; globalOptions: Set<string> }> {
     const root = await fixture();
     const general = await runCli(root, ['help']);
     expect(general.code).toBe(0);
@@ -86,7 +86,7 @@ describe('Skill and CLI command contract', () => {
       options.set(command, (help.json.data.commandHelp?.options ?? []) as string[]);
       usage.set(command, (help.json.data.commandHelp?.usage ?? '') as string);
     }
-    return { commands, options, usage };
+    return { commands, options, usage, globalOptions: new Set(Object.keys(general.json.data.globalOptions ?? {}).map((entry) => entry.split(' ')[0]!)) };
   }
 
   it('never names a command or flag the CLI does not accept', async () => {
@@ -180,6 +180,36 @@ describe('Skill and CLI command contract', () => {
       }
     }
     const { actual, expected } = await golden('contracts/skill-unmentioned-commands.txt', `${unmentioned.sort().join('\n')}\n`);
+    expect(actual).toBe(expected);
+  }, 600_000);
+
+  it('records the flags the CLI accepts that no Skill mentions', async () => {
+    /*
+     * The other half of the drift, and the half that hid for longest.
+     *
+     * The unmentioned-*commands* list above could not see `--compact`: `brief` was named by four
+     * Skills, so the command counted as taught while the flag that folded its thirty-four kilobytes
+     * was mentioned by none of them — deliberately, on a reasoning that a field report later showed
+     * to be wrong. A person cannot choose an option they are never told about when an Agent is the
+     * one running the command.
+     *
+     * Recorded rather than asserted empty, on the same footing as the command list: some flags are
+     * genuinely not Skill-facing (`--root`, `--text`, `--force`), and each entry either earns its
+     * place at review or names work.
+     */
+    const surface = await cliSurface();
+    const named = new Set((await invocations()).flatMap((item) => item.flags));
+    const rows: string[] = [];
+    for (const command of surface.commands) {
+      for (const flag of (surface.options.get(command) ?? []).sort()) {
+        /* Global options are not per-command flags and no Skill should be naming them per command;
+           listing them once per command would bury the entries that mean something under sixty
+           repetitions of `--root` and `--text`. */
+        if (surface.globalOptions.has(flag)) continue;
+        if (!named.has(flag)) rows.push(`${command} ${flag}`);
+      }
+    }
+    const { actual, expected } = await golden('contracts/skill-unmentioned-flags.txt', `${rows.sort().join('\n')}\n`);
     expect(actual).toBe(expected);
   }, 600_000);
 

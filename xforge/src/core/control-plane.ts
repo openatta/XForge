@@ -1,5 +1,4 @@
-import { access, readFile, readdir } from 'node:fs/promises';
-import path from 'node:path';
+import { readFile } from 'node:fs/promises';
 import type {
   ApprovalPolicy,
   ApprovalReceipt,
@@ -10,29 +9,23 @@ import type {
   GovernanceState,
   ProjectContext,
   StageFlow,
-  TransitionReceipt,
 } from '../types.js';
 import { diagnostic } from './errors.js';
 import { normalizeRule, policyApplies, ruleApplies } from './governance.js';
 import { sha256, stableStringify } from './hash.js';
 import { safeResolve } from './path-safety.js';
-import { readReviewAcknowledgements, reviewCovers } from './review-acknowledgement.js';
 import type { SelectedResources } from './resource-loader.js';
 import { changeImplementers, computeGovernanceRevision } from './revision.js';
-import { validateSchema } from './validator.js';
-import { approvalVerifiedInChain, readChangeAuditEvents, remoteDeliveryRequired, type ChangeAuditFacts } from './audit.js';
-import { verifyApprovalReceipt } from './approval-receipt.js';
-import { knownIdentities, unknownIdentityReason, type KnownIdentities } from './ledger-identity.js';
-import { VERIFICATION_RECEIPT_CONDITION, evaluateVerificationReceipt } from './verification-receipt.js';
+import { readChangeAuditEvents, remoteDeliveryRequired, type ChangeAuditFacts } from './audit.js';
+import { knownIdentities } from './ledger-identity.js';
 import { flowArchiveOperation } from './flow-resolver.js';
 import { undeclaredRequiredGates } from './verification.js';
 import { resolveWorkPackages, type WorkPackageResolution } from './work-packages.js';
-import { parse as parseYaml } from 'yaml';
 import { exists } from './files.js';
 import {
   approvalsForPolicy, boundToRevision, loadApprovalReceipts, loadTransitionReceipts, type ApprovalBinding,
 } from './control-plane/receipts.js';
-import { conditionReworkCutoff, evaluateStageCondition, INDEPENDENT_REVIEW_CONDITION } from './control-plane/conditions.js';
+import { conditionReworkCutoff, evaluateStageCondition } from './control-plane/conditions.js';
 import { legalTransitionTargets } from './control-plane/graph.js';
 
 /*

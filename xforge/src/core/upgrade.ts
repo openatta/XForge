@@ -1,4 +1,3 @@
-import path from 'node:path';
 import { sha256 } from './hash.js';
 import type { Manifest } from '../types.js';
 

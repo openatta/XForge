@@ -1,4 +1,3 @@
-import { access } from 'node:fs/promises';
 import path from 'node:path';
 import type { ProjectContext } from '../types.js';
 import { safeResolve } from './path-safety.js';

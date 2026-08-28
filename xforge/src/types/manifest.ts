@@ -2,7 +2,6 @@ import type { Diagnostic } from './protocol.js';
 import type { Metadata } from './resource.js';
 import type { TargetId } from '../constants.js';
 import type { ScaffoldLanguage } from './protocol.js';
-import type { AgentResource, GateResource, HookResource, McpServerResource, PermissionPolicyResource, RuleResource, ScriptResource } from './resource.js';
 
 /**
  * The project as declared, and as loaded.

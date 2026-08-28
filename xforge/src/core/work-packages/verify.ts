@@ -1,5 +1,4 @@
 import type { WorkPackage } from '../../types.js';
-import { XForgeError, diagnostic } from '../errors.js';
 
 /**
  * Turning a plan's `verify` declaration into something that can be executed without an interpreter.

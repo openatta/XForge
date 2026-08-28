@@ -9,6 +9,12 @@
     "declaration": true,
     "sourceMap": true,
     "strict": true,
+    /* Turned on once the fifty-one existing offenders were cleared. An unused import is not a defect
+       on its own, but every one of them is a reader following a name to a module that has nothing to
+       do with the file — and the `core/files.ts` consolidation left four of them behind unnoticed
+       because nothing was looking. */
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": false,
     "esModuleInterop": true,

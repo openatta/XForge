@@ -1,4 +1,3 @@
-import type { TargetId } from '../constants.js';
 
 export interface Metadata {
   name: string;

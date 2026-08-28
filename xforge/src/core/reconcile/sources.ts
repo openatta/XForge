@@ -2,7 +2,6 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import fg from 'fast-glob';
 import type { ProjectContext, StageFlow, StageFlowArtifact } from '../../types.js';
-import { constitutionPrinciples } from '../constitution-check.js';
 import { CHECK_FINDINGS_PATH } from '../check-findings.js';
 import { CONSTITUTION_CHECK_PATH } from '../constitution-check.js';
 import { parseSpecDelta } from '../spec-delta.js';
@@ -10,7 +9,6 @@ import { parseSpecDelta } from '../spec-delta.js';
 import { flowArtifacts } from '../flow-resolver.js';
 import { safeResolve } from '../path-safety.js';
 import { loadYaml } from '../yaml.js';
-import { documentSections as sections } from '../artifact-markers.js';
 import { requirementAnchor } from './model.js';
 import type { ArtifactSource, SourceUnavailable, LedgerFinding, LedgerPrinciple, MaterialDecision, SpecRequirement } from './model.js';
 

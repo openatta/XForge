@@ -1,12 +1,10 @@
 import { readFile } from 'node:fs/promises';
 import type { ChangeState, Diagnostic, GateEvidence, ProjectContext, StageFlow, TransitionReceipt } from '../../types.js';
-import { diagnostic } from '../errors.js';
-import { knownIdentities, unknownIdentityReason, type KnownIdentities } from '../ledger-identity.js';
+import { unknownIdentityReason, type KnownIdentities } from '../ledger-identity.js';
 import { safeResolve } from '../path-safety.js';
 import { evaluateVerificationReceipt, VERIFICATION_RECEIPT_CONDITION } from '../verification-receipt.js';
 import { readReviewAcknowledgements, reviewCovers } from '../review-acknowledgement.js';
 import type { WorkPackageResolution } from '../work-packages.js';
-import { loadYaml } from '../yaml.js';
 import { parse as parseYaml } from 'yaml';
 
 /**

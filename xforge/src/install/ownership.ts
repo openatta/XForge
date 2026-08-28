@@ -121,7 +121,7 @@ export function toOwnershipV2(project: ProjectContext, state: OwnershipState): O
   };
 }
 
-export function flattenOwnership(state: OwnershipState): Record<string, LegacyManagedFileRecord | ManagedFileRecord> {
+function flattenOwnership(state: OwnershipState): Record<string, LegacyManagedFileRecord | ManagedFileRecord> {
   if (state.version === 1) return { ...state.files };
   const files: Record<string, ManagedFileRecord> = {};
   for (const target of Object.values(state.targets)) {
@@ -150,7 +150,6 @@ export function installationSummary(state: OwnershipState): Record<string, unkno
 }
 
 export function targetState(
-  project: ProjectContext,
   previous: OwnershipStateV2,
   target: TargetId,
   now: string,

@@ -26,7 +26,7 @@ interface DiagnosticSite {
   /** The literal code, or null where the first argument is not a string literal. */
   code: string | null;
   /** As passed, defaulting to `error` exactly as `core/errors.ts` does. */
-  severity: 'error' | 'warning' | 'info' | 'dynamic';
+  severity: 'error' | 'warning' | 'info' | 'dynamic' | 'indirect';
   /** Whether a project-relative path was supplied — the third positional argument. */
   hasPath: boolean;
   /** The message argument's source text, for rules that read what a code claims about itself. */
@@ -182,6 +182,34 @@ export async function rawCallCount(xforgeRoot: string): Promise<number> {
   return total;
 }
 
+/**
+ * Codes a module names as data and hands to `diagnostic()` somewhere else.
+ *
+ * `core/reconcile/rules.ts` builds observations carrying `code: 'XFORGE_RECONCILE_…'`, and
+ * `core/reconcile.ts` emits them with `diagnostic(observation.code, …)`. The call site is real and
+ * the code is real; only the *join* between them is indirect, so a scan for literal first arguments
+ * saw a `(dynamic)` call and no codes at all.
+ *
+ * Eleven codes escaped the catalogue that way — and with it the untested-code debt list, which is
+ * built from the catalogue and therefore could not owe anything for a code it had never heard of.
+ * Recorded as `indirect`: this says the product can emit them, and does not claim a severity the
+ * declaration does not carry.
+ */
+function indirectCodes(source: string, file: string): DiagnosticSite[] {
+  const found: DiagnosticSite[] = [];
+  for (const match of source.matchAll(/(?:^|[\s{,])code:\s*'(XFORGE_[A-Z0-9_]+)'/gm)) {
+    found.push({
+      code: match[1]!,
+      severity: 'indirect',
+      hasPath: false,
+      message: '',
+      file,
+      line: source.slice(0, match.index!).split('\n').length,
+    });
+  }
+  return found;
+}
+
 export async function readDiagnosticCatalogue(xforgeRoot: string): Promise<DiagnosticSite[]> {
   const sites: DiagnosticSite[] = [];
   for (const file of await sourceFiles(xforgeRoot)) {
@@ -189,6 +217,7 @@ export async function readDiagnosticCatalogue(xforgeRoot: string): Promise<Diagn
     if (notACallSite(file)) continue;
     const source = await readFile(file, 'utf8');
     const relative = path.relative(xforgeRoot, file).split(path.sep).join('/');
+    sites.push(...indirectCodes(source, relative));
     for (const match of source.matchAll(/(?<![A-Za-z0-9_.])diagnostic\(/g)) {
       const open = match.index! + match[0].length - 1;
       const body = callBody(source, open);

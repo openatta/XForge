@@ -1,7 +1,6 @@
-import { access, readFile, realpath, stat } from 'node:fs/promises';
+import { readFile, realpath, stat } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
-import fg from 'fast-glob';
 import { MAX_GATE_OUTPUT_BYTES, WORK_PACKAGE_VERIFY_TIMEOUT_SECONDS } from '../constants.js';
 import type {
   ChangeConfig,
@@ -9,7 +8,6 @@ import type {
   GateResource,
   ProjectContext,
   WorkPackage,
-  WorkPackageAckReceipt,
   WorkPackageDelivery,
   WorkPackageDispatchReceipt,
   WorkPackagePlan,
@@ -17,17 +15,16 @@ import type {
   WorkPackageState,
 } from '../types.js';
 import type { SelectedResources } from './resource-loader.js';
-import { XForgeError, diagnostic } from './errors.js';
+import { diagnostic } from './errors.js';
 import { normalizeRelative, pathsOverlap, safeResolve } from './path-safety.js';
 import { validateSchema } from './validator.js';
 import { loadYaml } from './yaml.js';
 import { normalizeRule } from './governance.js';
 import { sha256, stableStringify } from './hash.js';
 import { readAcknowledgementAttestations, readAuditEvents } from './audit.js';
-import type { AcknowledgementAttestations } from './audit.js';
 import { exists } from './files.js';
 import { UNSUPPORTED_GLOB_MAGIC, hasMagic, matchesWritePath, staticPrefix } from './work-packages/globs.js';
-import { normalizeVerify, shellLabel, type NormalizedVerify } from './work-packages/verify.js';
+import { normalizeVerify, type NormalizedVerify } from './work-packages/verify.js';
 import {
   appendErrorDiagnostics, latestDelivery, latestDispatch, loadAckReceipts, loadDeliveries, loadDispatches,
 } from './work-packages/records.js';

@@ -34,7 +34,6 @@ import {
 } from './fragments.js';
 import {
   declaredCliIdentity,
-  flattenOwnership,
   installedTargets,
   manifestSelectionDigest,
   readOwnership,
@@ -637,7 +636,7 @@ export async function planProjection(project: ProjectContext, options: Projectio
   for (const target of scopeTargets) {
     const active = targets.includes(target);
     const beforeTarget = previousV2.targets[target];
-    const working = targetState(project, next, target, now);
+    const working = targetState(next, target, now);
     const beforeFiles = stableStringify(working.files);
     const targetDesired = desiredByTarget.get(target) ?? new Map<string, DesiredFile>();
 

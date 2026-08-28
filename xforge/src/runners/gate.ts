@@ -1,6 +1,5 @@
 import { spawn } from 'node:child_process';
 import { readFile, rm } from 'node:fs/promises';
-import path from 'node:path';
 import type { ApprovalReceipt, Diagnostic, FileChange, GateEvidence, GateResource, GovernanceRevision, NextAction, ProjectContext } from '../types.js';
 import { CLI_NAME, CLI_VERSION, MAX_GATE_OUTPUT_BYTES, PROTOCOL_VERSION } from '../constants.js';
 import { atomicWrite } from '../core/files.js';

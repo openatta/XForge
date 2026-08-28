@@ -5,7 +5,7 @@ import type { ApprovalReceipt, ProjectContext } from '../types.js';
 import { unknownKeyWarnings, verdict, type LedgerVerdict } from './ledger.js';
 import { safeResolve } from './path-safety.js';
 import { loadYaml, trimmedText } from './yaml.js';
-import { knownIdentities, unknownIdentityReason, unverifiableIdentityWarning, type KnownIdentities } from './ledger-identity.js';
+import { unknownIdentityReason, unverifiableIdentityWarning, type KnownIdentities } from './ledger-identity.js';
 
 /**
  * Makes the Constitution the enforced first layer it is documented to be.

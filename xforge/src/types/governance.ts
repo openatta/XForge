@@ -1,4 +1,3 @@
-import type { ApprovalPolicy } from './flow.js';
 
 /**
  * The records that decide whether a Change may move.

@@ -1,7 +1,7 @@
 import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import type { ApprovalPolicy, ApprovalReceipt, Diagnostic, ProjectContext, StageFlow, TransitionReceipt } from '../../types.js';
-import { approvalVerifiedInChain, type ChangeAuditFacts } from '../audit.js';
+import { approvalVerifiedInChain } from '../audit.js';
 import { verifyApprovalReceipt } from '../approval-receipt.js';
 import { diagnostic } from '../errors.js';
 import { sha256, stableStringify } from '../hash.js';

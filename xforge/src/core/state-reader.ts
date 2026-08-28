@@ -1,5 +1,4 @@
-import { access, readFile, readdir } from 'node:fs/promises';
-import path from 'node:path';
+import { readFile, readdir } from 'node:fs/promises';
 import fg from 'fast-glob';
 import type { TargetId } from '../constants.js';
 import { TARGETS } from '../constants.js';

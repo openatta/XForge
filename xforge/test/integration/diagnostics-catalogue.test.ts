@@ -19,9 +19,16 @@ describe('diagnostic catalogue', () => {
        first: one that silently skipped call sites would understate the catalogue and weaken the
        rules built on it without failing anything. */
     const sites = await readDiagnosticCatalogue(xforgeRoot);
-    expect(sites.length).toBe(await rawCallCount(xforgeRoot));
-    expect(sites.length).toBeGreaterThan(180);
-    expect(sites.every((site) => site.message.length > 0 && site.file.startsWith('src/'))).toBe(true);
+    /*
+     * Only the direct sites, because only those are `diagnostic(` calls. The catalogue also carries
+     * codes a module declares as data and hands to `diagnostic()` elsewhere — `doctor`'s
+     * suggestions, the control plane's blocks, the reconciliation rules — and counting those against
+     * a raw scan for `diagnostic(` would compare two different things.
+     */
+    const direct = sites.filter((site) => site.severity !== 'indirect');
+    expect(direct.length).toBe(await rawCallCount(xforgeRoot));
+    expect(direct.length).toBeGreaterThan(180);
+    expect(direct.every((site) => site.message.length > 0 && site.file.startsWith('src/'))).toBe(true);
     /*
      * Eight call sites choose their code at runtime — `cli.ts`'s unknown-versus-missing command, the
      * Gate runner forwarding a declared Gate's own refusal, four remedy diagnostics that carry a
@@ -33,6 +40,16 @@ describe('diagnostic catalogue', () => {
      * update that nobody reads.
      */
     expect(sites.filter((site) => site.code === null).length).toBe(8);
+
+    /*
+     * And the indirect ones, counted so they cannot quietly grow either. Forty-four declarations carrying thirty-four distinct codes reached
+     * readers without ever appearing here: the fingerprint claimed to be every diagnostic this
+     * product can emit and was missing a tenth of them, and the untested-code list below is built
+     * from this catalogue — so it could not owe anything for a code it had never heard of.
+     */
+    const indirect = sites.filter((site) => site.severity === 'indirect');
+    expect(indirect.length).toBe(44);
+    expect(new Set(indirect.map((site) => site.code)).size).toBe(34);
   });
 
   it('splits arguments at top-level commas only', () => {
@@ -116,6 +133,12 @@ describe('diagnostic catalogue', () => {
     /*
      * Recorded rather than asserted empty: this is a debt list that may only shrink, and the golden
      * makes each removal visible instead of letting the number drift upward unnoticed.
+     *
+     * It grew by sixteen once, and that growth was the list becoming honest rather than the coverage
+     * getting worse. The catalogue this is built from could not see a code a module declares as data
+     * and hands to `diagnostic()` elsewhere, so thirty-four such codes — `doctor`'s suggestions, the
+     * control plane's blocks, the reconciliation rules — were never candidates for it. Sixteen of
+     * them had no test. They had never had one; the list simply could not say so.
      *
      * Without the line number, on the same reasoning as the catalogue above: the first refactor to
      * delete nine lines from `project-loader.ts` moved both entries and failed this, reporting a

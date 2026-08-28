@@ -1,4 +1,4 @@
-import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import process from 'node:process';
 import type { AuditEvent, ProjectContext } from '../../types.js';
 import { XForgeError, diagnostic } from '../errors.js';

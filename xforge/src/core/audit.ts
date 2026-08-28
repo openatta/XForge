@@ -1,10 +1,7 @@
-import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
-import { rmSync } from 'node:fs';
-import { access, appendFile, mkdir, open, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
-import { hostname } from 'node:os';
+import { createHmac, randomUUID } from 'node:crypto';
+import { appendFile, mkdir, open, readFile, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { AuditEvent, GovernanceRevision, ProjectContext, StageFlow } from '../types.js';
-import { XForgeError, diagnostic } from './errors.js';
 import { atomicWrite, exists } from './files.js';
 import { sha256, stableStringify } from './hash.js';
 import { safeResolve } from './path-safety.js';
