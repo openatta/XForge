@@ -150,7 +150,7 @@ async function activeChangeSummaries(
  * They are omitted, not summarised away: every one is still addressable, and the payload names the
  * option that returns it rather than leaving a caller to discover that a key stopped existing.
  */
-export const STATE_SECTIONS = ['flows', 'targets', 'lockedResources', 'constitution', 'transitions'] as const;
+export const STATE_SECTIONS = ['flows', 'targets', 'lockedResources', 'constitution', 'transitions', 'artifacts'] as const;
 export type StateSection = (typeof STATE_SECTIONS)[number];
 
 interface StateOptions {
@@ -290,6 +290,24 @@ export async function readState(project: ProjectContext, options: StateOptions):
       nextArtifact: selectedChange.nextArtifact,
       workPackages: selectedChange.workPackages,
     };
+    /*
+     * An Artifact's `instruction` and `outline` say how to write it. They are worth their size at
+     * the moment it is written -- `313de21` put the outline here for exactly that -- and nothing
+     * after: a Stage at Verify was carrying the headings for six documents already on disk.
+     *
+     * So they stay on everything not yet written, and on `nextArtifact`, which is the one being
+     * written now and is left whole. `done` loses them. This is a cut over the payload only: what
+     * enforces an outline reads the Flow, not this -- `artifact-markers.ts:121` and
+     * `reconcile/sources.ts` both walk `flowArtifacts(flow)` -- so a trimmed entry cannot weaken a
+     * check. `nextArtifact` keeps its own reference into the untrimmed list, which is what
+     * `cli.ts:703` reads to state the sections a `create-artifact` Action must produce.
+     */
+    if (!wanted.has('artifacts')) {
+      selectedChange.artifacts = selectedChange.artifacts.map((artifact) => artifact.status !== 'done'
+        ? artifact
+        : { ...artifact, instruction: undefined, outline: undefined,
+            guidance: 'Written. Its instruction and outline are in the Flow, or in state --include artifacts.' } as never);
+    }
   }
 
   const resourceSummary: Record<string, unknown> = {

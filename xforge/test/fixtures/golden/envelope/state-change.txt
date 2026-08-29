@@ -306,22 +306,19 @@ exit: 0
           "id": "proposal",
           "generates": "proposal.md",
           "description": "Explain the reason, boundaries, and Flow choice",
-          "instruction": "Describe Why, Scope, Non-goals, Success criteria, impact, rollback, and the factual basis for choosing Solid.",
-          "outline": "## Why\n## Scope\n## Non-goals\n## Success criteria\n## Flow choice\n## Impact and rollback\n",
           "requires": [],
           "status": "done",
           "outputPaths": [
             "proposal.md"
           ],
           "writePath": "xforge/changes/add-feature/proposal.md",
-          "missingDependencies": []
+          "missingDependencies": [],
+          "guidance": "Written. Its instruction and outline are in the Flow, or in state --include artifacts."
         },
         {
           "id": "delta-specs",
           "generates": "specs/**/*.md",
           "description": "Define observable requirement and scenario deltas",
-          "instruction": "Use stable Requirement IDs for success, failure, boundary, and compatibility scenarios without implementation detail.",
-          "outline": "## ADDED Requirements\n### Requirement: <REQ-ID> <name>\n#### Scenario: <name>\n- **WHEN** ...\n- **THEN** ...\n",
           "requires": [
             "proposal"
           ],
@@ -330,14 +327,13 @@ exit: 0
             "specs/widget/spec.md"
           ],
           "writePath": "xforge/changes/add-feature/specs/**/*.md",
-          "missingDependencies": []
+          "missingDependencies": [],
+          "guidance": "Written. Its instruction and outline are in the Flow, or in state --include artifacts."
         },
         {
           "id": "design",
           "generates": "design.md",
           "description": "Record the technical approach, alternatives, and verification notes",
-          "instruction": "Cover current state, target integration points, decisions, failure modes, compatibility, migration, rollback, and verification without becoming a file-by-file task list.",
-          "outline": "## Context\n## Goals and non-goals\n## Decisions and alternatives\n## Failure modes and compatibility\n## Migration and rollback\n## Verification notes\n",
           "markers": [
             {
               "id": "verification-coverage",
@@ -363,14 +359,13 @@ exit: 0
             "design.md"
           ],
           "writePath": "xforge/changes/add-feature/design.md",
-          "missingDependencies": []
+          "missingDependencies": [],
+          "guidance": "Written. Its instruction and outline are in the Flow, or in state --include artifacts."
         },
         {
           "id": "check-report",
           "generates": "check-report.md",
           "description": "Narrate the pre-implementation review across Proposal, delta Specs, and Design",
-          "instruction": "Explain completeness, consistency, testability, feasibility, and risk, and record under Gates and evidence what `xforge check` actually reported. Use Rework to name the Stage a blocker sends this Change back to and what must change there, and say plainly when there is nothing to rework. Do not write a verdict on whether Check passes — the findings ledger decides that, and a verdict in prose only competes with the record that governs.",
-          "outline": "## Completeness\n## Consistency\n## Testability\n## Feasibility and risk\n## Gates and evidence\n## Rework\n",
           "requires": [
             "proposal",
             "delta-specs",
@@ -381,14 +376,13 @@ exit: 0
             "check-report.md"
           ],
           "writePath": "xforge/changes/add-feature/check-report.md",
-          "missingDependencies": []
+          "missingDependencies": [],
+          "guidance": "Written. Its instruction and outline are in the Flow, or in state --include artifacts."
         },
         {
           "id": "check-findings",
           "generates": "evidence/check-findings.yaml",
           "description": "Machine-decidable findings ledger the Check Gate can actually decide",
-          "instruction": "One entry per finding with id, severity (blocker|warning|suggestion), summary, refs to the Artifacts it concerns, and for a blocker a status, a reworkTo Stage while open, and a resolvedBy identity once resolved. Record an explicit empty list when the review found nothing. The Stage cannot exit while any blocker is unresolved.",
-          "outline": "findings:\n  - id: <finding-id>\n    severity: <blocker|warning|suggestion>\n    summary: <what is wrong>\n    refs: [<artifact or spec path>]\n    status: <open|resolved>\n    reworkTo: <stage id, required while a blocker is open>\n    resolvedBy: <name or email, required once status is resolved for a blocker; must match a known approver or Git author>\n",
           "requires": [
             "proposal",
             "delta-specs",
@@ -400,14 +394,13 @@ exit: 0
             "evidence/check-findings.yaml"
           ],
           "writePath": "xforge/changes/add-feature/evidence/check-findings.yaml",
-          "missingDependencies": []
+          "missingDependencies": [],
+          "guidance": "Written. Its instruction and outline are in the Flow, or in state --include artifacts."
         },
         {
           "id": "constitution-check",
           "generates": "evidence/constitution-check.yaml",
           "description": "Answer every Constitution principle for this Change",
-          "instruction": "One entry per `## ` principle in xforge/constitution.md, each with status compliant|violation|not-applicable. Every entry must cite at least one machine-locatable reference in `references` — a Requirement id from this Change's delta Specs, a file path that exists, or `gate:<name>` for a Gate that passed. A violation additionally needs a justification and a named approvedBy; not-applicable needs a justification. A general claim of compliance does not satisfy the Gate, and neither does an approval receipt on its own — a receipt records that someone approved a transition, not why this Change satisfies the principle.",
-          "outline": "principles:\n  - principle: <exact `## ` heading from constitution.md>\n    status: <compliant|violation|not-applicable>\n    references: [<Requirement id | existing path | gate:<name>>]\n    justification: <required for violation and not-applicable>\n    approvedBy: <named person, required for violation>\n",
           "requires": [
             "proposal",
             "delta-specs",
@@ -420,14 +413,13 @@ exit: 0
             "evidence/constitution-check.yaml"
           ],
           "writePath": "xforge/changes/add-feature/evidence/constitution-check.yaml",
-          "missingDependencies": []
+          "missingDependencies": [],
+          "guidance": "Written. Its instruction and outline are in the Flow, or in state --include artifacts."
         },
         {
           "id": "assurance",
           "generates": "assurance.md",
           "description": "Record verification against requirements, design, tests, and constraints",
-          "instruction": "Summarize completeness, correctness, coherence, and Gates with traceable evidence.",
-          "outline": "## Completeness\n## Correctness\n## Coherence\n## Gates and evidence\n## Findings\n",
           "markers": [
             {
               "id": "verification-coverage",
@@ -448,7 +440,8 @@ exit: 0
             "assurance.md"
           ],
           "writePath": "xforge/changes/add-feature/assurance.md",
-          "missingDependencies": []
+          "missingDependencies": [],
+          "guidance": "Written. Its instruction and outline are in the Flow, or in state --include artifacts."
         }
       ],
       "nextArtifact": null,

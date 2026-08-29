@@ -1,7 +1,7 @@
 import { readFile, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { advanceSolidToApply, createCompleteSolidChange, fixture, runCli, updateYaml, yamlFile } from '../helpers.js';
+import { advanceSolidToApply, changeYaml, createCompleteSolidChange, fixture, runCli, updateYaml, write, yamlFile } from '../helpers.js';
 import { fileURLToPath } from 'node:url';
 
 const repositoryRoot = path.resolve(fileURLToPath(new URL('../../..', import.meta.url)));
@@ -424,6 +424,51 @@ describe('state --include', () => {
     const repeated = await stateOf(root, ['--include', 'targets', '--include', 'constitution']);
     expect(repeated.targets).toBeTruthy();
     expect(repeated.context.constitution.content).toContain('#');
+  });
+
+  /* The one section that is cut by status rather than in whole: guidance for a document already
+     written is the part of the payload with the shortest useful life. */
+  it('drops the authoring guidance of a written Artifact and keeps it everywhere else', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const data = await stateOf(root);
+    const artifacts = data.change.artifacts as any[];
+
+    const done = artifacts.filter((artifact) => artifact.status === 'done');
+    expect(done.length).toBeGreaterThan(0);
+    for (const artifact of done) {
+      expect(artifact.instruction, artifact.id).toBeUndefined();
+      expect(artifact.outline, artifact.id).toBeUndefined();
+      expect(artifact.guidance, artifact.id).toContain('--include artifacts');
+      /* What identifies it stays: a listing still has to be readable. */
+      expect(artifact.id).toBeTruthy();
+      expect(artifact.writePath).toBeTruthy();
+    }
+    for (const artifact of artifacts.filter((item) => item.status !== 'done')) {
+      expect(artifact.guidance, artifact.id).toBeUndefined();
+    }
+
+    const whole = await stateOf(root, ['--include', 'artifacts']);
+    expect((whole.change.artifacts as any[]).every((artifact) => artifact.guidance === undefined)).toBe(true);
+    expect((whole.change.artifacts as any[]).some((artifact) => artifact.outline)).toBe(true);
+  });
+
+  /* `nextArtifact` is the Artifact being written now, and `cli.ts:703` reads its outline to tell a
+     `create-artifact` Action which sections to produce. It is a reference into the untrimmed list,
+     so a Change with work still to do must carry the guidance for that work. */
+  it('leaves the Artifact being written whole, and the Action that names its sections', async () => {
+    const root = await fixture();
+    await write(root, 'xforge/changes/add-feature/change.yaml', changeYaml('solid'));
+    const result = await runCli(root, ['state', '--change', 'add-feature']);
+    expect(result.code).toBe(0);
+    const data = result.json.data as any;
+
+    expect(data.change.nextArtifact.id).toBe('proposal');
+    expect(data.change.nextArtifact.outline).toContain('## Why');
+    expect(data.change.nextArtifact.instruction).toBeTruthy();
+    /* And the Action built from it still states the headings. */
+    const create = (result.json.nextActions as any[]).find((item) => item.action === 'create-artifact');
+    expect(create.requiredSections).toContain('Why');
   });
 
   it('refuses a section it does not have, and names the ones it does', async () => {
