@@ -161,6 +161,26 @@ function resolveField(data: unknown, path: string): { found: true; value: unknow
   return { found: true, value: current };
 }
 
+/**
+ * One value out of an Envelope, `data` first.
+ *
+ * `data` is what a caller almost always means, and it stays the default so `--field changes` --
+ * a name both levels carry -- keeps resolving to `data.changes` for every existing caller. But the
+ * Skills tell a Stage to consume the ready Action for the current revision, and `nextActions` is a
+ * sibling of `data` rather than a member of it. Addressing only `data` meant the one thing a Stage
+ * was told to read was the one thing it could not ask for, so it fetched the whole envelope
+ * instead: 23 of 32 `state` calls in a solid run did exactly that.
+ *
+ * A miss reports the `data` walk, not the envelope walk, because that is the level the caller meant.
+ */
+function resolveEnvelopeField(result: Envelope, path: string): { found: true; value: unknown } | { found: false; reason: string } {
+  const inData = resolveField(result.data, path);
+  if (inData.found) return inData;
+  const head = path.split('.')[0]!;
+  if (Object.prototype.hasOwnProperty.call(result, head)) return resolveField(result, path);
+  return inData;
+}
+
 /** Raw value of an option, without validating anything else about the command line. */
 function optionValue(argv: string[], option: string): string | undefined {
   const index = argv.indexOf(option);
@@ -193,7 +213,7 @@ const HELP: Record<CommandName, { usage: string; description: string; options: s
   help: { usage: 'xforge help [command] [--text]', description: 'Show general or command-specific help.', options: ['--text'] },
   version: { usage: 'xforge version [--text]', description: 'Show CLI, protocol, runtime, and build identity.', options: ['--text'] },
   init: { usage: 'xforge [--root <path>] init [--language <en|zh-CN>] [--target <target>] [--dry-run] [--text]', description: 'Initialize the bundled npm Scaffold and optionally project it into one Agent tool.', options: ['--root', '--language', '--target', '--dry-run', '--text'] },
-  state: { usage: 'xforge [--root <path>] state [--change <id>] [--kind <kind>] [--target <target>] [--text] [--field <path>]...', description: 'Read resolved project and Change state. --field prints one value and nothing else, addressed as a dotted path through data (for example change.governance.revision.contentRevision, or change.governance.readyTransitions.0.to — both need --change). Use it instead of grepping the JSON: several governance fields repeat under every historical receipt, so a line-oriented match returns whichever came first rather than the current one. Repeat --field to read several values in one call: the answer is then a JSON object keyed by the paths you asked for, and a path that does not resolve fails the whole call rather than answering partially.', options: ['--root', '--change', '--kind', '--target', '--text', '--field'] },
+  state: { usage: 'xforge [--root <path>] state [--change <id>] [--kind <kind>] [--target <target>] [--text] [--field <path>]...', description: 'Read resolved project and Change state. --field prints one value and nothing else, addressed as a dotted path through data (for example change.governance.revision.contentRevision, or change.governance.readyTransitions.0.to — both need --change). Use it instead of grepping the JSON: several governance fields repeat under every historical receipt, so a line-oriented match returns whichever came first rather than the current one. A path is looked up in data first, then among the envelope own fields, so nextActions and diagnostics are addressable too. Repeat --field to read several values in one call: the answer is then a JSON object keyed by the paths you asked for, and a path that does not resolve fails the whole call rather than answering partially.', options: ['--root', '--change', '--kind', '--target', '--text', '--field'] },
   install: { usage: 'xforge [--root <path>] install [--target <target>] [--adopt] [--dry-run] [--text]', description: 'Install or idempotently reconcile selected project assets.', options: ['--root', '--target', '--adopt', '--dry-run', '--text'] },
   sync: { usage: 'xforge [--root <path>] sync [--target <target>] [--adopt] [--dry-run] [--verify-digests] [--text]', description: 'Incrementally sync localized Scaffold changes to installed targets.', options: ['--root', '--target', '--adopt', '--dry-run', '--verify-digests', '--text'] },
   update: { usage: 'xforge [--root <path>] update [--target <target>] [--adopt] [--dry-run] [--text]', description: 'Fully reconcile installed targets, identities, and Adapter output.', options: ['--root', '--target', '--adopt', '--dry-run', '--text'] },
@@ -950,7 +970,7 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
     const paths = parsed.fields ?? [parsed.field];
     /* Resolve them all before printing anything: a caller that received three of four values and a
        zero exit would carry on believing it had four. */
-    const resolutions = paths.map((path) => ({ path, resolved: resolveField(result.data, path) }));
+    const resolutions = paths.map((path) => ({ path, resolved: resolveEnvelopeField(result, path) }));
     const failed = resolutions.filter((item) => !item.resolved.found);
     if (failed.length > 0) {
       process.stdout.write(present({

@@ -292,6 +292,29 @@ describe('state --field', () => {
     expect(found, JSON.stringify(result.json.diagnostics)).toBeTruthy();
     expect(found.message).toContain('nope.nope');
   });
+
+  /* The Skills tell an Agent to consume the ready Action for the current revision -- which lives in
+     `nextActions`, a sibling of `data` rather than a member of it. `--field` walked `data` only, so
+     the one thing the Stage was told to read was the one thing it could not address, and 23 of 32
+     `state` calls in a solid run took the whole envelope to get at it. */
+  it('addresses envelope-level fields that are not inside data', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const result = await runCli(root, ['state', '--change', CHANGE, '--field', 'nextActions']);
+    expect(result.code).toBe(0);
+    expect(Array.isArray(JSON.parse(result.stdout))).toBe(true);
+  });
+
+  /* `changes` names something in both, and `data` keeps it: an existing caller reading
+     `--field changes` must not silently start receiving a different list. */
+  it('resolves a name shared by data and the envelope against data, as before', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const viaField = await runCli(root, ['state', '--change', CHANGE, '--field', 'changes']);
+    const full = await runCli(root, ['state', '--change', CHANGE]);
+    expect(viaField.code).toBe(0);
+    expect(JSON.parse(viaField.stdout)).toEqual((full.json.data as any).changes);
+  });
 });
 
 /*
