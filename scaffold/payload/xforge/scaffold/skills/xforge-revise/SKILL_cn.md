@@ -6,7 +6,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # 不变量
 
-- 先运行 `xforge state --change <id>`，从依赖图找最早受影响的 governing Artifact；不猜测路径或创建缺失 Artifact。
+- 先运行 `xforge state --change <id> --field nextActions --field diagnostics --field change --field context`，从依赖图找最早受影响的 governing Artifact；不猜测路径或创建缺失 Artifact。
 - 每次编辑前重读磁盘上的现有文件与 Action inputs，跨 Artifact 保持 Requirement、Scenario、决定和范围一致。
 - 依靠 digest/revision 让 Check、Apply 或 Verify 的旧结果失效，不手工篡改 Evidence。
 

@@ -15,7 +15,6 @@ init --target
 install --adopt
 install --target
 review --scope
-state --field
 state --target
 sync --adopt
 sync --target

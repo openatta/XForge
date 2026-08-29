@@ -6,7 +6,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # 不变量
 
-- 先运行 `xforge state --change <id>`，只消费当前 revision 的 ready Clarify Action，不因熟悉 Major 顺序而猜路径。
+- 先运行 `xforge state --change <id> --field nextActions --field diagnostics --field change --field context`，只消费当前 revision 的 ready Clarify Action，不因熟悉 Major 顺序而猜路径。
 - 优先从代码、Specs、Rules 与 Proposal 查明事实；只询问会材料性改变结果且项目无法回答的少量问题。
 - Clarifications 与对 Proposal/delta Specs 的获授权回写必须保持一次一致修订；未解决的 material question 继续阻塞。
 

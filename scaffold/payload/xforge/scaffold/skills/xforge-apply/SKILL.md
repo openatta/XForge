@@ -6,7 +6,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash, Task
 
 # Invariants
 
-- Run `xforge state --change <id>` at the start and after every material change. Consume only the current-revision ready Apply Action; never guess Flow order, paths, Gates, or parallel strategy.
+- Run `xforge state --change <id> --field nextActions --field diagnostics --field change --field context` at the start and after every material change. Consume only the current-revision ready Apply Action; never guess Flow order, paths, Gates, or parallel strategy.
 - Read all Action inputs, Constitution, relevant Rules/Specs, optional Design/Check report, and existing work packages from disk. Chat memory is not a source of truth.
 - Main Agent is always Coordinator and Workers never delegate. XForge does not start model processes; the target runtime activates native sub-Agents.
 - Apply plans are just-in-time execution assets, not a new Stage or second specification source of truth.

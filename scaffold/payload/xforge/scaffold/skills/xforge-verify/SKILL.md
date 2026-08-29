@@ -6,7 +6,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # Invariants
 
-- Run `xforge state --change <id>` and resolve the mode as `verify-only`, `verify-and-archive`, or `archive-current`; without explicit archive authority, verify only.
+- Run `xforge state --change <id> --field nextActions --field diagnostics --field change --field context` and resolve the mode as `verify-only`, `verify-and-archive`, or `archive-current`; without explicit archive authority, verify only.
 - Reread current-revision Proposal, delta/canonical Specs, optional Clarifications/Design/Check report, implementation diff, work packages/deliveries, Constitution, Rules, and Gates.
 - Do not fix product code by default or hand-write/tamper with Gate Evidence. Implementation changes invalidate old verification receipts.
 - Archive is a separate `archive-write` protocol action and does not grant deploy/release authority.

@@ -86,7 +86,7 @@ resources:
     kind: script
     license: project
     version: 1
-  - digest: dfc6604ac7a24227edf688d39b952153267af0900371cc99d405e8efab1df79f
+  - digest: 624b2c2ff716174eacd0c4ecd35dc0a90619a89163bfe8f6f7f69785e30754f0
     id: xforge-apply
     kind: skill
     license: project
@@ -96,17 +96,17 @@ resources:
     kind: skill
     license: project
     version: "1"
-  - digest: 18b836c5bbd3f56e3c0bf60957ace7d8113bec803735c7e35c477258794a89e3
+  - digest: ff3123bb1af70637f81f5693433859b40b320d1bf028245295e1960416a2ebfa
     id: xforge-check
     kind: skill
     license: project
     version: "1"
-  - digest: e793aabfd6a086b03a47093360ffceda3ca0465ce513aa1409c92c1375b7d12e
+  - digest: 598d1e4e63c36e2e6c77a8917200cf9b9b7d5e3befaecc809cb409277521da1e
     id: xforge-clarify
     kind: skill
     license: project
     version: "1"
-  - digest: 3d5ec4a762384c9601a2dbb5e4efe753e2b46002ff04db45e6f05eb8266fcbf8
+  - digest: 0f670c1ac9d44abef5d44f53b54ce610e4791c17f7acfa378c2b65810b14e109
     id: xforge-design
     kind: skill
     license: project
@@ -121,7 +121,7 @@ resources:
     kind: skill
     license: project
     version: "1"
-  - digest: 68dc9c069b1a59aeb2111df96d44adc06c6f1132a40b5f2209408be56b253f80
+  - digest: 92eb929d2c38f33032f863b8759d894e0ca892a8d566d1bd0a9cbb899f4b0a36
     id: xforge-revise
     kind: skill
     license: project
@@ -141,7 +141,7 @@ resources:
     kind: skill
     license: project
     version: "1"
-  - digest: c63604e7e1bf3c37669f184460a455c300edc862b3bf90513c67281988c271f6
+  - digest: de3bcfc590f3ea1a4cea21789e42631e0b74d40b62b81dbf3e48fa740fb3c3b8
     id: xforge-verify
     kind: skill
     license: project

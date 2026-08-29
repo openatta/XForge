@@ -315,6 +315,40 @@ describe('state --field', () => {
     expect(viaField.code).toBe(0);
     expect(JSON.parse(viaField.stdout)).toEqual((full.json.data as any).changes);
   });
+
+  /* The exact call six Stage Skills now show. It exists as a test because the Skills are what an
+     Agent copies: if this shape ever stops resolving, every Stage starts its work with an error. */
+  it('answers the call the Stage Skills show, with every key a Stage was seen to use', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const result = await runCli(root, [
+      'state', '--change', CHANGE,
+      '--field', 'nextActions',
+      '--field', 'diagnostics',
+      '--field', 'change',
+      '--field', 'context',
+    ]);
+    expect(result.code).toBe(0);
+    const value = JSON.parse(result.stdout);
+    expect(Object.keys(value).sort()).toEqual(['change', 'context', 'diagnostics', 'nextActions']);
+    /* The ready Action a Stage is told to consume, and the governance subtree it resolves against. */
+    expect(Array.isArray(value.nextActions)).toBe(true);
+    expect(value.change.governance.currentStage).toBeTruthy();
+  });
+
+  /* And it must be materially smaller than the full envelope, which is the whole reason the Skills
+     changed: a Stage that fetched everything had its result offloaded and then spent further calls
+     reading it back in pieces. */
+  it('sends materially less than the full envelope for that call', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const narrow = await runCli(root, [
+      'state', '--change', CHANGE,
+      '--field', 'nextActions', '--field', 'diagnostics', '--field', 'change', '--field', 'context',
+    ]);
+    const full = await runCli(root, ['state', '--change', CHANGE]);
+    expect(narrow.stdout.length).toBeLessThan(full.stdout.length * 0.7);
+  });
 });
 
 /*

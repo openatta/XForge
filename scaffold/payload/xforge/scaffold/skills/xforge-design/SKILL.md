@@ -6,7 +6,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # Invariants
 
-- Run `xforge state --change <id>`, consume only the current-revision ready Design Action, and reread every Action input.
+- Run `xforge state --change <id> --field nextActions --field diagnostics --field change --field context`, consume only the current-revision ready Design Action, and reread every Action input.
 - Design explains HOW, decisions, and boundaries. It does not repeat Proposal or become a file-by-file task list or persistent plan.
 - Constitution, Rules, current architecture, and Specs constrain the design; summarize their implications instead of copying them mechanically.
 
