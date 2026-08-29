@@ -6,7 +6,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # Invariants
 
-- Run `xforge state` and read the Changes path, Flows, policy, Constitution, Rules, Specs, and modules from State.
+- Run `xforge state --field project --field flows --field changes --field specs` for the Changes path, the modules, the Specs, and each Flow with the `policy` the choice is made against. Read the Constitution from the path State reports; State carries its version and path, not its text.
 - Consume only the ready Action for `xforge-propose`; reread Action inputs before every write and refresh State afterward.
 - Quick is limited to low-risk, single-module, reversible changes with no critical impact; Solid serves ordinary product and engineering work; Major governs high-risk, cross-system, or critical-impact changes. Escalate or request a decision when uncertain.
 - The Constitution ledger is answered at Check, before implementation, and only Solid and Major have a Check Stage. Quick carries no ledger: it is scoped to trivial, single-module, low-risk work, so a per-principle certification would be demanded of a Change whose whole point is that it carries no principle-level risk. That is not a way around the Constitution — it constrains the work regardless, and the CLI enforces Quick's eligibility (`risk: low`, one module, critical impacts forbidden), so putting a Change that needs the ledger into Quick means declaring a classification that is not true.

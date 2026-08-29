@@ -6,7 +6,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # Invariants
 
-- Run `xforge state --kind <skills|agents|rules|policies|hooks|gates|scripts|flows|approvals|mcp-servers>` and read Manifest selection, canonical assets, Adapter capabilities, and degradation. Plain `xforge state` reports every kind at once.
+- Run `xforge state --kind <skills|agents|rules|policies|hooks|gates|scripts|mcp-servers>` and read Manifest selection, canonical assets, and degradation. Plain `xforge state` reports every kind at once. `flows` and `approvals` are not resource kinds — the Flow definitions are `xforge state --include flows`, and Adapter capabilities are `xforge state --include targets`; both are left out by default because neither changes between two reads.
 - `xforge/scaffold/**` is source. `.agents/`, `.codex/`, `.claude/`, `.cursor/`, `.opencode/`, `.github/`, and `opencode.json` are generated and must not be edited directly.
 - Directory discovery never enables an unfinished or unselected resource.
 - Agents and Skills keep English canonical entries plus `_cn` Chinese variants. Manifest `scaffold.language` selects projection; all other Scaffold assets remain English.

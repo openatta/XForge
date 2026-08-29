@@ -36,11 +36,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
    xforge verification finalize --change <id> --status passed --by <做出该断言的人>
    ```
 
-   `change`、`contentRevision`、`gitHead` 以及完整的 Gate 引用集合都是 XForge 已经掌握的事实，它写下的正是稍后判定该 exit condition 所依据的同一份 Gate 集合。`--status passed` 是它唯一不肯替你计算的东西：那个字段是"本 Stage 已验证这项工作"的断言，由 CLI 填写就等于让它替你决定这份 receipt 本身要记录的那件事。
-
-   它不是绕过检查的捷径。在记录某个 Gate 通过之前，它会从磁盘重读该 Gate 的 Evidence；只要本 Stage 引用的任何一个 Gate 相对当前 content revision 已过期、失败过、或从未运行，它就**什么都不写**，并分别指出该重跑、该修、还是该首次运行——那是三个不同的问题。它只写 `passed` 这一种状态；没有验证通过的 Stage 不产出回执。
-
-   需要手工拼装回执时，`xforge verification draft-receipt --change <id>` 输出同样的事实而不写文件。
+   `xforge state --change <id>` 会在 `nextActions` 里给出这一步，命令参数已替换好，并说明它写什么、拒绝写什么。`--status` 与 `--by` 由你填：它们正是这份回执要记录的断言，Agent 代填任何一个都是替别人签字。
 
    它替你避开两个真实运行中付过代价的坑。其一，`xforge state` 里每份历史回执各带一个 `contentRevision`，靠肉眼或 `grep` 取值会拿到已被取代的那个；确需单独取值时用 `--field change.governance.revision.contentRevision`（并带上 `--change <id>`）。其二，引用只写 Gate 名，绝不写 digest——每个 per-run digest 都会随正常推进而变化，抄下来的那一刻起就在失效。不要加 `evidence:` 这一行，没有任何代码会读它。
 

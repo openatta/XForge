@@ -16,6 +16,7 @@ import { executeFindingsResolve } from './commands/findings.js';
 import { executeVerificationDeclare, executeVerificationDraftReceipt, executeVerificationFinalize, executeVerificationRetire } from './commands/verification.js';
 import { executeInstall } from './commands/install.js';
 import { executeState, renderStateText } from './commands/state.js';
+import { STATE_SECTIONS, type StateSection } from './core/state-reader.js';
 import { executeSync } from './commands/sync.js';
 import { executeUninstall } from './commands/uninstall.js';
 import { executeUpdate } from './commands/update.js';
@@ -56,7 +57,7 @@ interface ParsedArguments {
   helpSubcommand?: string;
   subcommand?: string;
   change?: string;
-  kind?: 'skills' | 'agents' | 'rules' | 'policies' | 'hooks' | 'gates' | 'scripts' | 'flows' | 'approvals' | 'mcp-servers';
+  kind?: 'skills' | 'agents' | 'rules' | 'policies' | 'hooks' | 'gates' | 'scripts' | 'mcp-servers';
   target?: TargetId;
   gate?: string;
   to?: string;
@@ -92,6 +93,8 @@ interface ParsedArguments {
   /* Every `--field` on the line, in order. `field` stays the last one so the single-value path is
      untouched; `fields` is what the multi-value path reads. */
   fields?: string[];
+  /** Every `--include` on the line, `all` already expanded. */
+  include?: StateSection[];
 }
 
 /**
@@ -106,12 +109,20 @@ interface ParsedArguments {
 const GROUP_COMMANDS = new Set<string>(['audit', 'hook', 'work-package', 'verification', 'transition', 'review', 'findings']);
 
 const COMMANDS: CommandName[] = ['help', 'version', 'init', 'state', 'install', 'sync', 'update', 'uninstall', 'check', 'stage-bundle', 'explain', 'verification', 'transition', 'approve', 'audit', 'work-package', 'hook', 'archive', 'doctor', 'upgrade-scaffold', 'review', 'findings'];
-const VALID_KINDS = ['skills', 'agents', 'rules', 'policies', 'hooks', 'gates', 'scripts', 'flows', 'approvals', 'mcp-servers'] as const;
+/*
+ * `flows` and `approvals` are gone from this list because they were never in it in any working
+ * sense. `--kind` filters `data.resources`, whose keys come from `SelectedResources`, and that type
+ * has no `flows` and no `approvals` member -- so `--kind flows` walked the valid-kind check, indexed
+ * a key that does not exist, and answered `"resources":{}`. A Skill instructed it. An empty object
+ * is the worst available answer: it reads as "this project has no Flows" rather than as a mistake.
+ * The Flows are reached with `--include flows`, and the refusal now names that.
+ */
+const VALID_KINDS = ['skills', 'agents', 'rules', 'policies', 'hooks', 'gates', 'scripts', 'mcp-servers'] as const;
 /* The only option that may appear more than once. Every other repeat is a mistake -- see the
    duplicate guard in the parse loop. */
-const REPEATABLE_OPTIONS = new Set(['--field']);
+const REPEATABLE_OPTIONS = new Set(['--field', '--include']);
 
-const VALUE_OPTIONS = ['--root', '--change', '--kind', '--target', '--gate', '--to', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--provider', '--output', '--event', '--package', '--language', '--as', '--evidence', '--stage', '--gate-name', '--command', '--module', '--covers', '--working-directory', '--timeout-seconds', '--not-applicable', '--justification', '--by', '--status', '--receipt', '--field', '--id', '--answer', '--scope'] as const;
+const VALUE_OPTIONS = ['--root', '--change', '--kind', '--target', '--gate', '--to', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--provider', '--output', '--event', '--package', '--language', '--as', '--evidence', '--stage', '--gate-name', '--command', '--module', '--covers', '--working-directory', '--timeout-seconds', '--not-applicable', '--justification', '--by', '--status', '--receipt', '--field', '--id', '--answer', '--scope', '--include'] as const;
 
 function isValueOption(token: string): boolean {
   return VALUE_OPTIONS.includes(token as (typeof VALUE_OPTIONS)[number]);
@@ -213,7 +224,7 @@ const HELP: Record<CommandName, { usage: string; description: string; options: s
   help: { usage: 'xforge help [command] [--text]', description: 'Show general or command-specific help.', options: ['--text'] },
   version: { usage: 'xforge version [--text]', description: 'Show CLI, protocol, runtime, and build identity.', options: ['--text'] },
   init: { usage: 'xforge [--root <path>] init [--language <en|zh-CN>] [--target <target>] [--dry-run] [--text]', description: 'Initialize the bundled npm Scaffold and optionally project it into one Agent tool.', options: ['--root', '--language', '--target', '--dry-run', '--text'] },
-  state: { usage: 'xforge [--root <path>] state [--change <id>] [--kind <kind>] [--target <target>] [--text] [--field <path>]...', description: 'Read resolved project and Change state. --field prints one value and nothing else, addressed as a dotted path through data (for example change.governance.revision.contentRevision, or change.governance.readyTransitions.0.to — both need --change). Use it instead of grepping the JSON: several governance fields repeat under every historical receipt, so a line-oriented match returns whichever came first rather than the current one. A path is looked up in data first, then among the envelope own fields, so nextActions and diagnostics are addressable too. Repeat --field to read several values in one call: the answer is then a JSON object keyed by the paths you asked for, and a path that does not resolve fails the whole call rather than answering partially.', options: ['--root', '--change', '--kind', '--target', '--text', '--field'] },
+  state: { usage: 'xforge [--root <path>] state [--change <id>] [--kind <kind>] [--include <section>]... [--target <target>] [--text] [--field <path>]...', description: 'Read resolved project and Change state. --field prints one value and nothing else, addressed as a dotted path through data (for example change.governance.revision.contentRevision, or change.governance.readyTransitions.0.to — both need --change). Use it instead of grepping the JSON: several governance fields repeat under every historical receipt, so a line-oriented match returns whichever came first rather than the current one. A path is looked up in data first, then among the envelope own fields, so nextActions and diagnostics are addressable too. Repeat --field to read several values in one call: the answer is then a JSON object keyed by the paths you asked for, and a path that does not resolve fails the whole call rather than answering partially. Five sections are left out by default because none of them change between two reads and all of them are large: the Flow definitions other than the one this Change runs, the target capability matrix, the lockfile digests, the Constitution\'s text, and the Transition receipt chain. Each is restored by name with --include (repeatable, or --include all), and where one is omitted the payload says which option returns it. --kind is unrelated: it filters the resource listing only.', options: ['--root', '--change', '--kind', '--include', '--target', '--text', '--field'] },
   install: { usage: 'xforge [--root <path>] install [--target <target>] [--adopt] [--dry-run] [--text]', description: 'Install or idempotently reconcile selected project assets.', options: ['--root', '--target', '--adopt', '--dry-run', '--text'] },
   sync: { usage: 'xforge [--root <path>] sync [--target <target>] [--adopt] [--dry-run] [--verify-digests] [--text]', description: 'Incrementally sync localized Scaffold changes to installed targets.', options: ['--root', '--target', '--adopt', '--dry-run', '--verify-digests', '--text'] },
   update: { usage: 'xforge [--root <path>] update [--target <target>] [--adopt] [--dry-run] [--text]', description: 'Fully reconcile installed targets, identities, and Adapter output.', options: ['--root', '--target', '--adopt', '--dry-run', '--text'] },
@@ -329,6 +340,19 @@ function parseArguments(argv: string[]): ParsedArguments {
       if (value !== 'human') throw new XForgeError(diagnostic('XFORGE_ATTESTATION_UNKNOWN', `Unknown attestation: ${value}`));
       parsed.attestation = 'human';
     }
+    if (token === '--include') {
+      /*
+       * Same singular tolerance as `--kind`, for the same reason, plus `all` for the caller who
+       * wants the payload `state` returned before these sections were made opt-in.
+       */
+      if (value === 'all') { parsed.include = [...STATE_SECTIONS]; continue; }
+      const canonical = STATE_SECTIONS.find((section) => section === value || section === `${value}s`
+        || section.toLowerCase() === value.toLowerCase());
+      if (!canonical) {
+        throw new XForgeError(diagnostic('XFORGE_INCLUDE_UNKNOWN', `Unknown section: ${value}. Valid sections are ${STATE_SECTIONS.join(', ')}, or all.`));
+      }
+      (parsed.include ??= []).push(canonical);
+    }
     if (token === '--kind') {
       /*
        * The kinds are plural, and the Skills that tell an Agent to run this say `--kind <resource>`,
@@ -338,7 +362,12 @@ function parseArguments(argv: string[]): ParsedArguments {
        */
       const canonical = VALID_KINDS.find((kind) => kind === value || kind === `${value}s`);
       if (!canonical) {
-        throw new XForgeError(diagnostic('XFORGE_KIND_UNKNOWN', `Unknown resource kind: ${value}. Valid kinds are ${VALID_KINDS.join(', ')}.`));
+        /* `flows` and `approvals` used to be accepted here and answer with nothing, so a caller
+           who learned them from an older Skill is sent to the option that does answer. */
+        const redirect = ['flows', 'flow', 'approvals', 'approval'].includes(value)
+          ? ` ${value.replace(/s$/, '')}s are not a resource kind — use \`xforge state --include flows\`.`
+          : '';
+        throw new XForgeError(diagnostic('XFORGE_KIND_UNKNOWN', `Unknown resource kind: ${value}. Valid kinds are ${VALID_KINDS.join(', ')}.${redirect}`));
       }
       parsed.kind = canonical as ParsedArguments['kind'];
     }
@@ -651,7 +680,7 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
   }
   const command = parsed.command as Exclude<CommandName, 'help' | 'version' | 'init'>;
   if (command === 'state') {
-    const result = await executeState(project, { change: parsed.change, kind: parsed.kind, target: parsed.target });
+    const result = await executeState(project, { change: parsed.change, kind: parsed.kind, target: parsed.target, include: parsed.include });
     const nextActions: NextAction[] = [];
     if (project.compatibility.mode === 'portable') nextActions.push({ action: 'resolve-declared-xforge', reason: 'Managed operations require the exact declared CLI identity.' });
     const stateChange = (result.data.change ?? null) as {
@@ -725,6 +754,32 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
       reason: transition.ready ? `Transition to ${transition.to} is ready.` : `Transition to ${transition.to} is blocked.`, blockedBy: transition.blockedBy,
       command: ['xforge', 'transition', '--change', parsed.change!, '--to', transition.to],
     });
+    /*
+     * The receipt, when the receipt is what stands between this Stage and the next.
+     *
+     * This was four paragraphs of Skill prose -- what `finalize` writes, why it is not a shortcut
+     * past the check, and that `draft-receipt` exists for the hand-assembled case. All of it was
+     * resident in every verify Stage and re-sent on every turn of it, to be acted on at one moment.
+     * A blocked transition already names the condition; the instruction belongs on that signal.
+     *
+     * `--by` ships as a placeholder and `--status` does not, which is not an inconsistency: they are
+     * different kinds of field. `passed` is the only status `finalize` accepts -- anything else is
+     * refused at `commands/verification.ts:586` -- so substituting it decides nothing. `--by` names
+     * the person asserting it, is written to `finalizedBy` unvalidated, and is the one field an
+     * Agent filling in for itself would be recording an authorisation nobody gave.
+     */
+    if (governance?.currentStage && parsed.change) {
+      const blockedOnReceipt = (governance.readyTransitions ?? []).some((transition: any) =>
+        (transition.blockedBy ?? []).some((item: string) => item.startsWith('condition:verificationReceipt:')));
+      if (blockedOnReceipt) nextActions.push({
+        action: 'finalize-verification', type: 'governance', actor: 'human', status: 'ready',
+        inputs: ['this Stage\'s Gate Evidence at the current content revision'], writes: ['verification receipt'],
+        doneWhen: ['The Stage\'s verificationReceipt exit condition is satisfied.'],
+        requiredEvidence: ['current-revision verification receipt'],
+        reason: `The verification receipt is what blocks this Stage. XForge already holds the change, contentRevision, gitHead and cited Gate set, and writes them from the same resolved Gate Evidence the exit condition is decided against — do not transcribe them, and do not assemble the receipt by hand. It is not a shortcut past the check: the Gate Evidence is re-read from disk first, and nothing is written if any cited Gate is stale, failed, or never ran. Supply --by yourself: it names the person asserting the verification, and is the field this command will not compute. Use \`xforge verification draft-receipt --change ${parsed.change}\` to compute the same facts without writing.`,
+        command: ['xforge', 'verification', 'finalize', '--change', parsed.change, '--status', 'passed', '--by', '<the person asserting it>'],
+      });
+    }
     /* `ready-to-archive` is a synthetic terminal Stage, not one of `flow.stages`, so there is no
        Stage to read here. The archive authority comes from `flow.terminal.archive.authority`, which
        flow.schema.json pins to the const `archive-write` — this literal is the schema's only legal

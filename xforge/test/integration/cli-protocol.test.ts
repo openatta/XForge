@@ -1,7 +1,7 @@
 import { readFile, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { createCompleteSolidChange, fixture, runCli, updateYaml, yamlFile } from '../helpers.js';
+import { advanceSolidToApply, createCompleteSolidChange, fixture, runCli, updateYaml, yamlFile } from '../helpers.js';
 import { fileURLToPath } from 'node:url';
 
 const repositoryRoot = path.resolve(fileURLToPath(new URL('../../..', import.meta.url)));
@@ -336,10 +336,18 @@ describe('state --field', () => {
     expect(value.change.governance.currentStage).toBeTruthy();
   });
 
-  /* And it must be materially smaller than the full envelope, which is the whole reason the Skills
-     changed: a Stage that fetched everything had its result offloaded and then spent further calls
-     reading it back in pieces. */
-  it('sends materially less than the full envelope for that call', async () => {
+  /*
+   * And it must send only what was asked for, which is the whole reason the Skills changed: a Stage
+   * that fetched everything had its result offloaded and then spent further calls reading it back
+   * in pieces.
+   *
+   * Asserted by naming the sections that must be absent rather than by a size ratio. The ratio used
+   * to be `< 0.7` and it moved -- not because narrowing got worse, but because the full envelope it
+   * is measured against lost the five `--include` sections and is now much closer to the narrow
+   * form. A threshold that has to be relaxed every time the baseline improves is measuring the
+   * baseline, not the behaviour.
+   */
+  it('sends only the fields that were asked for', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
     const narrow = await runCli(root, [
@@ -347,7 +355,145 @@ describe('state --field', () => {
       '--field', 'nextActions', '--field', 'diagnostics', '--field', 'change', '--field', 'context',
     ]);
     const full = await runCli(root, ['state', '--change', CHANGE]);
-    expect(narrow.stdout.length).toBeLessThan(full.stdout.length * 0.7);
+    expect(narrow.stdout.length).toBeLessThan(full.stdout.length);
+    for (const absent of ['"flows"', '"targets"', '"installation"', '"activeChanges"', '"resources"']) {
+      expect(narrow.stdout, `${absent} was not asked for`).not.toContain(absent);
+    }
+  });
+});
+
+/*
+ * Five sections left `state` because none of them changes between two reads and all of them are
+ * large: a measured solid run makes thirty-two `state` calls, so each was sent thirty-two times to
+ * be read at most once. What matters is that they are *omitted*, not dropped — every one comes back
+ * by name, and the payload says so where it would have been.
+ */
+describe('state --include', () => {
+  const stateOf = async (root: string, extra: string[] = []) =>
+    (await runCli(root, ['state', '--change', 'add-feature', ...extra])).json.data as any;
+
+  it('leaves out the sections that do not change, and says how to get each back', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const data = await stateOf(root);
+
+    expect(data.targets).toBeNull();
+    expect(data.scaffold.lockedResources).toBeNull();
+    expect(data.scaffold.lockedResourceCount).toBeGreaterThan(0);
+    /* The Constitution's text is the copy that was redundant: `XFORGE.md` has it read at bootstrap
+       and `stage-bundle` lists it at every Stage, so what stays here is where to find it. */
+    expect(data.context.constitution.content).toBeUndefined();
+    expect(data.context.constitution.path).toBeTruthy();
+    expect(data.context.constitution.omitted).toContain('--include constitution');
+  });
+
+  it('returns only the Flow the Change runs, in full', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const data = await stateOf(root);
+    expect(data.flows.map((flow: any) => flow.id)).toEqual(['solid']);
+    /* In full, because `flowStages` in cli.ts stamps each Action's authority from these. */
+    expect(data.flows[0].stages[0].authority).toBeTruthy();
+  });
+
+  it('lists every Flow as a catalogue when no Change is named, keeping the policy a choice needs', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const data = (await runCli(root, ['state'])).json.data as any;
+    expect(data.flows.map((flow: any) => flow.id).sort()).toEqual(['major', 'quick', 'solid']);
+    /* `xforge-propose` chooses a Flow against `eligibleWhen`/`requiredWhen`, so the catalogue keeps
+       them; the stage list collapses to ids, which is all a listing was ever read for. */
+    expect(data.flows[0].policy).toBeTruthy();
+    expect(typeof data.flows[0].stages[0]).toBe('string');
+  });
+
+  it('gives each section back by name, and all of them at once', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+
+    const withTargets = await stateOf(root, ['--include', 'targets']);
+    expect(withTargets.targets).toBeTruthy();
+    expect(withTargets.scaffold.lockedResources).toBeNull();
+
+    const withAll = await stateOf(root, ['--include', 'all']);
+    expect(withAll.targets).toBeTruthy();
+    expect(withAll.scaffold.lockedResources).not.toBeNull();
+    expect(withAll.context.constitution.content).toContain('#');
+    expect(withAll.flows).toHaveLength(3);
+
+    const repeated = await stateOf(root, ['--include', 'targets', '--include', 'constitution']);
+    expect(repeated.targets).toBeTruthy();
+    expect(repeated.context.constitution.content).toContain('#');
+  });
+
+  it('refuses a section it does not have, and names the ones it does', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const result = await runCli(root, ['state', '--change', 'add-feature', '--include', 'nonsense']);
+    expect(result.code).not.toBe(0);
+    expect(JSON.stringify(result.json.diagnostics)).toContain('XFORGE_INCLUDE_UNKNOWN');
+  });
+
+  /* `--kind flows` walked the valid-kind check and answered `{}`, because `--kind` filters the
+     resource listing and `SelectedResources` has no `flows`. A Skill instructed it. */
+  it('sends --kind flows to the option that answers it', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const result = await runCli(root, ['state', '--kind', 'flows']);
+    expect(result.code).not.toBe(0);
+    const said = JSON.stringify(result.json.diagnostics);
+    expect(said).toContain('XFORGE_KIND_UNKNOWN');
+    expect(said).toContain('--include flows');
+  });
+});
+
+/*
+ * How to finish a verification receipt was four paragraphs of Skill prose -- resident in every
+ * verify Stage, read on every turn of it, and relevant at exactly one moment. It belongs where the
+ * approval and transition instructions already live: a nextAction that appears when the receipt is
+ * the thing standing between this Stage and the next, carrying the command already substituted.
+ */
+describe('verification receipt nextAction', () => {
+  /* `successful` is private to helpers.ts; this asserts the same thing at the call site. */
+  const ok = async (root: string, args: string[]) => {
+    const result = await runCli(root, args);
+    expect(result.code, `${args.join(' ')} failed: ${JSON.stringify(result.json?.diagnostics)}`).toBe(0);
+    return result;
+  };
+
+  it('names the finalize command when the receipt is what blocks the Stage', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await advanceSolidToApply(root, 'add-feature');
+    await ok(root, ['transition', '--change', 'add-feature', '--to', 'verify']);
+    await ok(root, ['check', '--change', 'add-feature']);
+
+    const state = await runCli(root, ['state', '--change', 'add-feature']);
+    const actions = state.json.nextActions as any[];
+    const finalize = actions.find((item) => item.action === 'finalize-verification');
+    expect(finalize, `nextActions were: ${actions.map((item) => item.action).join(', ')}`).toBeTruthy();
+    /* Substituted, not a template: an Agent that has to fill in <id> is being asked to transcribe. */
+    expect(finalize.command).toEqual([
+      'xforge', 'verification', 'finalize', '--change', 'add-feature',
+      '--status', 'passed', '--by', '<the person asserting it>',
+    ]);
+    /* `passed` is substituted because it is the only status `finalize` accepts; `--by` is left a
+       placeholder because it names a person, which is the assertion an Agent must not make. */
+    expect(finalize.actor).toBe('human');
+  });
+
+  it('does not name it once the receipt is in place', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await advanceSolidToApply(root, 'add-feature');
+    await ok(root, ['transition', '--change', 'add-feature', '--to', 'verify']);
+    await ok(root, ['check', '--change', 'add-feature']);
+    await ok(root, [
+      'verification', 'finalize', '--change', 'add-feature', '--status', 'passed', '--by', 'tester',
+    ]);
+    const state = await runCli(root, ['state', '--change', 'add-feature']);
+    const actions = state.json.nextActions as any[];
+    expect(actions.find((item) => item.action === 'finalize-verification')).toBeFalsy();
   });
 });
 

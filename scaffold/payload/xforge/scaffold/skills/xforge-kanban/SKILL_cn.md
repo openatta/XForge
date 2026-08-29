@@ -6,8 +6,8 @@ allowed-tools: Read, Grep, Glob, Write, Bash(git:*), Bash(node:*)
 
 # 不变量
 
-- 本 Skill 是只读的项目报告能力,独立于 Change/Flow/Gate 生命周期状态;绝不得为它查询带 `--change <id>` 的 `xforge state`,也不得涉及 `xforge/changes`、`xforge/specs`、Evidence 或 Approval。内置脚本可以调用不带 `--change` 的 `xforge state` 来读取 `project.modules` 做分组,读不到时会退化为单一隐式模块——这是项目结构查询,不是 Change/Flow/Gate 治理。
-- 以 `git log`(以及用于模块分组的、来自 `xforge state` 的 `project.modules`)作为唯一事实来源。绝不编造脚本产出之外的提交、作者、日期、计数或模块边界。
+- 本 Skill 是只读的项目报告能力,独立于 Change/Flow/Gate 生命周期状态;绝不得为它查询带 `--change <id>` 的 `xforge state`,也不得涉及 `xforge/changes`、`xforge/specs`、Evidence 或 Approval。内置脚本可以调用 `xforge state --field project.modules` 来读取模块做分组,读不到时会退化为单一隐式模块——这是项目结构查询,不是 Change/Flow/Gate 治理。
+- 以 `git log`(以及用于模块分组的 `xforge state --field project.modules`)作为唯一事实来源。绝不编造脚本产出之外的提交、作者、日期、计数或模块边界。
 - 运行 `scripts/git-activity.mjs` 提取数据;不得凭部分 `git log` 输出或记忆手工计数。
 - 按邮箱而非显示名对贡献者分组——同一个人可能用不同姓名提交(脚本已处理此逻辑,不要自行按姓名重新分组)。
 - 只有提交标题中出现明确的 Conventional Commits 类型前缀(如 `feat:`、`fix(scope):`)才归为 `feat`/`fix`;没有可识别前缀的提交归为 `unclassified`,不得从 diff 或正文猜测意图。

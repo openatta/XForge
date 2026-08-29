@@ -36,11 +36,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
    xforge verification finalize --change <id> --status passed --by <the person asserting it>
    ```
 
-   `change`, `contentRevision`, `gitHead` and the full cited Gate set are facts XForge already holds, and it writes them from the same resolved Gate set the exit condition is later decided against. `--status passed` is the one thing it will not compute: that field is the assertion that this Stage verified the work, and a CLI filling it in would be deciding the thing the receipt exists to record.
-
-   It is not a shortcut past the check. Before recording that a Gate passed it re-reads that Gate's Evidence from disk, and it writes nothing at all when any Gate this Stage cites is stale against the current content revision, failed, or never ran — naming the re-run, the fix, or the first run, because those are three different problems. `passed` is the only status it writes; a Stage that did not verify files no receipt.
-
-   `xforge verification draft-receipt --change <id>` emits the same facts without writing, for the case where the receipt has to be assembled by hand.
+   `xforge state --change <id>` names this step under `nextActions` with the command already substituted, and says what it writes and what it refuses to write. `--status` and `--by` are yours: they are the assertion the receipt exists to record, and an Agent supplying either signs for somebody else.
 
    Two things it protects you from, both of which have cost live runs. `contentRevision` appears once per historical receipt in `xforge state`, so reading it by eye or by `grep` returns a superseded revision; use `--field change.governance.revision.contentRevision` (with `--change <id>`) if you ever need it alone. And a citation names its Gate, never a digest — every per-run digest moves under ordinary progress, so a transcribed one is stale by the time it is read. Do not add an `evidence:` line; nothing reads it.
 

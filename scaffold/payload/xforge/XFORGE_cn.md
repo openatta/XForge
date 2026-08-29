@@ -22,6 +22,21 @@ CLI：本项目运行哪个版本，是记录在 `xforge/manifest.yaml` 里的�
 `npx --no-install xforge ...`，因为可执行文件在 `node_modules/.bin` 而不在
 `PATH` 上。沿用本项目已经在用的那一种形式，不要在两者之间互相改写。
 
+每次 `xforge` 调用都是一个进程，不是一个会话：它每次都从磁盘重新解析项目，运行之间
+不保留任何东西。由此有两点，第二点才是真正的开销。
+
+重复读同一样东西对 XForge 很便宜，对你很贵——贵不在 CLI 重新读，而在它打印出的每一份
+答案都会留在你的上下文里，直到会话结束。所以只取你正要据以行动的那部分。`--field <path>`
+从 Envelope 中取出一个值、别的什么都不打印，并且可以重复：
+`xforge state --change <id> --field nextActions --field change` 是一次调用返回两个值。
+`state` 有五个段默认不返回，要用 `--include` 显式索取，被省略处都会写明取回它的选项。
+
+以及：把彼此不需要读取对方输出的调用串起来。一个受治理的 Change 有几十次 CLI 调用，
+而一个 turn 的代价远高于一个进程，所以 `xforge check --change <id> && xforge transition
+--change <id> --to <stage>` 应该写在一行里，而不是分成两个 turn。这样做是安全的，因为
+每条命令都自己做判断：`transition` 会自行评估就绪状态，条件不满足时照样拒绝，和它单独
+运行时完全一样。当第二条命令不需要你去**读**第一条的输出时就串起来——需要读时就分开。
+
 无论哪种形式，版本都是被强制而不是被假定的：CLI 每次运行都会与
 `xforge/manifest.yaml` 比对，不一致时拒绝写入（`XFORGE_CLI_IDENTITY_MISMATCH`）。
 遇到该诊断应如实报告，而不是设法把它绕过去。

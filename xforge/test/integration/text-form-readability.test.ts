@@ -35,7 +35,10 @@ describe('the readable form of a result', () => {
     expect(text.stdout).not.toContain('"installation"');
     expect(json.stdout.trim().startsWith('{')).toBe(true);
     expect(Object.keys(json.json.data)).toContain('installation');
-    expect(text.stdout.length).toBeLessThan(json.stdout.length / 4);
+    /* A third, not a quarter. The envelope this is measured against no longer carries the Flow
+       definitions, the capability matrix, the lockfile digests, the Constitution's text or the
+       receipt chain, so the gap the readable form has to open is smaller than it was. */
+    expect(text.stdout.length).toBeLessThan(json.stdout.length / 3);
   });
 
   it('names each active Change by id, Flow and Stage rather than joining objects', async () => {

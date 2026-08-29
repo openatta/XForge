@@ -139,10 +139,26 @@ async function activeChangeSummaries(
   }));
 }
 
+/**
+ * Sections `state` leaves out until they are asked for.
+ *
+ * Each one is a fact about the project rather than about the turn: the Flow definitions, the
+ * runtime capability matrix, the lockfile digests, the Constitution's text, the Transition receipt
+ * chain. None of them change between two consecutive reads, and a measured solid run makes
+ * thirty-two `state` calls, so each was being re-sent thirty-two times to be read at most once.
+ *
+ * They are omitted, not summarised away: every one is still addressable, and the payload names the
+ * option that returns it rather than leaving a caller to discover that a key stopped existing.
+ */
+export const STATE_SECTIONS = ['flows', 'targets', 'lockedResources', 'constitution', 'transitions'] as const;
+export type StateSection = (typeof STATE_SECTIONS)[number];
+
 interface StateOptions {
   change?: string;
-  kind?: 'skills' | 'agents' | 'rules' | 'policies' | 'hooks' | 'gates' | 'scripts' | 'flows' | 'approvals' | 'mcp-servers';
+  kind?: 'skills' | 'agents' | 'rules' | 'policies' | 'hooks' | 'gates' | 'scripts' | 'mcp-servers';
   target?: TargetId;
+  /** Sections to restore to the payload. `all` is expanded by the caller, not here. */
+  include?: readonly StateSection[];
 }
 
 export async function readState(project: ProjectContext, options: StateOptions): Promise<{
@@ -169,7 +185,8 @@ export async function readState(project: ProjectContext, options: StateOptions):
     : [];
   const changes = await directoriesAt(changesAbsolute);
   const activeChanges = await activeChangeSummaries(project, changes, flowResult.flows);
-  const flowSummaries = [...flowResult.flows.values()].map((flow) => {
+  const wanted = new Set(options.include ?? []);
+  const flowDetail = (flow: Flow) => {
     const apply = flowApplyOperation(flow);
     const archive = flowArchiveOperation(flow);
     return {
@@ -197,13 +214,26 @@ export async function readState(project: ProjectContext, options: StateOptions):
       archiveRequires: archive.requires,
       mandatoryGates: archive.mandatoryGates,
     };
+  };
+  /* Name, version and description only. Enough to answer "which Flows does this project have" and
+     to pick one, which is the whole of what the catalogue was ever read for. */
+  const flowCatalogue = (flow: Flow) => ({
+    id: flow.metadata.name,
+    version: flow.metadata.version,
+    description: flow.metadata.description,
+    /* `policy` stays. Choosing a Flow is what this listing is for, and `eligibleWhen`/`requiredWhen`
+       are what the choice is made against -- `xforge-propose` reads them by name. */
+    policy: isStageFlow(flow) ? flow.policy : null,
+    stages: isStageFlow(flow) ? flow.stages.map((stage) => stage.id) : null,
   });
 
   let selectedChange: ChangeState | null = null;
   let context: Record<string, unknown> | null = null;
+  let selectedFlow: Flow | null = null;
   if (options.change) {
     const resolved = await resolveChangeState(project, options.change, flowResult.flows);
     selectedChange = resolved.state;
+    selectedFlow = resolved.flow;
     diagnostics.push(...resolved.diagnostics);
     // Surface a mismatched Flow on the very first read, not only at transition or archive.
     diagnostics.push(...flowEligibilityDiagnostics(
@@ -219,7 +249,24 @@ export async function readState(project: ProjectContext, options: StateOptions):
     if (isStageFlow(resolved.flow) && resolved.flow.governance) {
       const control = await resolveControlPlane(project, options.change, resolved.flow, selectedChange, resources, resolved.config, { workPackages });
       diagnostics.push(...control.diagnostics);
-      selectedChange.governance = control.governance;
+      /*
+       * The chain is trimmed here and nowhere earlier. `resolveControlPlane` decides against the
+       * whole of it -- `control-plane.ts:539` reads the last receipt, `:590` walks back to a rework
+       * cutoff -- so this is a presentation cut over a value that has already done its work.
+       *
+       * It is the one section that grows: a receipt is appended per Stage and never removed, so a
+       * Major Change re-sent its entire history on every one of the thirty-two `state` calls a run
+       * makes, and the read was always of the last entry. What stays is that entry, the count, and
+       * the route taken -- enough to answer "where has this been" without carrying the receipts.
+       */
+      selectedChange.governance = { ...control.governance, transitions: wanted.has('transitions')
+        ? control.governance.transitions
+        : {
+          count: control.governance.transitions.length,
+          route: control.governance.transitions.map((receipt) => receipt.to),
+          latest: control.governance.transitions.at(-1) ?? null,
+          omitted: 'Run state --include transitions for the full receipt chain.',
+        } as never };
       contentRevision = control.governance.revision.contentRevision;
     }
     selectedChange.mandatoryGateEvidence = await mandatoryGateEvidence(project, options.change, selectedChange.archive.mandatoryGates, resources, contentRevision);
@@ -228,7 +275,16 @@ export async function readState(project: ProjectContext, options: StateOptions):
       .filter((rule) => ruleApplies(rule, resolved.config, selectedChange?.governance?.currentStage))
       .map((rule) => ({ id: rule.id, severity: rule.severity, instruction: rule.instruction, gateRefs: rule.gateRefs, policyRefs: rule.policyRefs, approvalRefs: rule.approvalRefs }));
     context = {
-      constitution: project.constitution,
+      /*
+       * The Constitution's text, not a reference to it, was returned here on every read. Three
+       * copies reached one session: `XFORGE.md` has the Agent read the file at bootstrap,
+       * `stage-bundle` lists it as always-read at every Stage, and this sent the whole of it again
+       * per call. The first two are deliberate -- the document nobody skips. This one was the
+       * duplicate, so it names the file the other two already read.
+       */
+      constitution: wanted.has('constitution')
+        ? project.constitution
+        : { version: project.constitution.version, ratified: project.constitution.ratified, lastAmended: project.constitution.lastAmended, path: project.constitution.path, content: undefined, omitted: 'Read the file at `path`, or run state --include constitution.' },
       rules: relevantRules,
       relatedSpecs: specs,
       nextArtifact: selectedChange.nextArtifact,
@@ -266,7 +322,11 @@ export async function readState(project: ProjectContext, options: StateOptions):
         version: project.manifest.scaffold.version,
         source: project.manifest.scaffold.source,
         language: project.manifest.scaffold.language,
-        lockedResources: project.lock?.resources ?? [],
+        /* A digest per installed asset. Nothing an Agent does is decided from it -- a drift in it
+           is reported as XFORGE_LOCK_RESOURCES_MISMATCH above, which is the actionable form. */
+        ...(wanted.has('lockedResources')
+          ? { lockedResources: project.lock?.resources ?? [] }
+          : { lockedResources: null, lockedResourceCount: (project.lock?.resources ?? []).length }),
       },
       xforge: {
         declaration: project.manifest.xforge,
@@ -275,9 +335,20 @@ export async function readState(project: ProjectContext, options: StateOptions):
       specs,
       changes,
       activeChanges,
-      flows: flowSummaries,
+      /*
+       * One Change runs one Flow. Returning all three in full on a `--change` read sent two Flow
+       * definitions that could not apply to the Change being asked about; `flowStages` in cli.ts
+       * looks up exactly one by id, which is the only read this ever had.
+       */
+      flows: wanted.has('flows')
+        ? [...flowResult.flows.values()].map(flowDetail)
+        : selectedFlow
+          ? [flowDetail(selectedFlow)]
+          : [...flowResult.flows.values()].map(flowCatalogue),
       resources: filteredResources,
-      targets: capabilityMatrix(targetList),
+      /* Per-target capability matrix. Read once, when Apply decides whether parallel Workers are
+         available -- and `xforge-apply` is told to check the runtime's own list regardless. */
+      targets: wanted.has('targets') ? capabilityMatrix(targetList) : null,
       installation,
       change: selectedChange,
       context,

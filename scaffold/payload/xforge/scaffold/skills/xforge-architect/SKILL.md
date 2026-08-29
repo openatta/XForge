@@ -20,7 +20,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # Execution
 
-1. Establish the current state: read `xforge/architecture.md` if it exists, and run `xforge state` for the project's declared modules and paths.
+1. Establish the current state: read `xforge/architecture.md` if it exists, and run `xforge state --field project` for the project's declared modules and paths.
 2. Choose the way in from what the user has:
    - **From code** — read the tree and report what the architecture *appears* to be, then confirm every line with the user before writing. Reading tells you what is true, never why it was chosen, and the why is the part worth keeping.
    - **By questioning** — converge with a few questions the user can answer without design work: how many protocol entry points, what persists and where, one process or several, what is deliberately out of scope. Stop as soon as the answers pin the module map; a longer interview produces a longer file, which is the wrong direction.

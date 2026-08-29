@@ -158,6 +158,7 @@ XFORGE_HOOK_CLI_IDENTITY_MISMATCH  src/commands/hook.ts
 XFORGE_HOOK_EVENT_UNSUPPORTED  src/install/planner.ts
 XFORGE_HOOK_PLANE_EVENT_MISMATCH  src/core/resource-loader.ts
 XFORGE_HOOK_SCRIPT_MISSING  src/core/resource-loader.ts
+XFORGE_INCLUDE_UNKNOWN  src/cli.ts
 XFORGE_INDEPENDENT_REVIEW_REMEDY  src/core/control-plane.ts
 XFORGE_INIT_CONFLICT  src/commands/init.ts
 XFORGE_INSTALL_CONFLICT  src/install/planner.ts
