@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { changeYaml, createCompleteSolidChange, fixture, runCli, write } from '../helpers.js';
@@ -189,5 +189,56 @@ describe('what a Stage pays to read', () => {
       const result = await runCli(root, example.split(/\s+/u).slice(1));
       expect(result.code, `${example} -> ${result.stdout.slice(0, 300)}`).toBe(0);
     }
+  });
+  /*
+   * Every Stage Skill's own opening call, executed.
+   *
+   * A Skill's Invariant is copied verbatim by the Stage that reads it, so a path that does not
+   * resolve there breaks a Stage's first act — and `--field` is all or nothing, so it breaks the
+   * whole call rather than one value. These were `--field change`, which is 60% of the envelope;
+   * they name what each Stage acts on now, and this runs each of them.
+   */
+  it('runs every Stage Skill opening call, and each one resolves', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const skills = join(root, 'xforge', 'scaffold', 'skills');
+    const names = (await readdir(skills)).filter((name) => name.startsWith('xforge-'));
+
+    const invariants: Array<{ skill: string; command: string }> = [];
+    for (const name of names) {
+      const text = await readFile(join(skills, name, 'SKILL.md'), 'utf8').catch(() => '');
+      for (const match of text.matchAll(/`(xforge state [^`]*--field[^`]*)`/gu)) {
+        invariants.push({ skill: name, command: match[1]!.replace(/<id>/gu, 'add-feature') });
+      }
+    }
+    expect(invariants.length).toBeGreaterThanOrEqual(6);
+
+    for (const { skill, command } of invariants) {
+      const result = await runCli(root, command.split(/\s+/u).slice(1));
+      expect(result.code, `${skill}: ${command} -> ${result.stdout.slice(0, 300)}`).toBe(0);
+    }
+  });
+
+  /*
+   * And what the narrowing bought, asserted as a property rather than a number: the Stage call
+   * costs a fraction of the envelope it was taking most of.
+   */
+  it('leaves a Stage reading a fraction of what --field change returned', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const narrow = await runCli(root, ['state', '--change', 'add-feature',
+      '--field', 'nextActions', '--field', 'diagnostics', '--field', 'change.governance', '--field', 'change.nextArtifact']);
+    const wide = await runCli(root, ['state', '--change', 'add-feature',
+      '--field', 'nextActions', '--field', 'diagnostics', '--field', 'change']);
+
+    expect(narrow.code).toBe(0);
+    expect(narrow.stdout.length).toBeLessThan(wide.stdout.length * 0.75);
+    /* Everything a Stage decides against is still there: which Stage it is on, what is ready, and
+       the Rules — `governance.rules` is how a Rule reaches an Agent at all. */
+    const value = JSON.parse(narrow.stdout);
+    expect(value['change.governance'].currentStage).toBeTruthy();
+    expect(Array.isArray(value['change.governance'].readyTransitions)).toBe(true);
+    expect(Array.isArray(value['change.governance'].rules)).toBe(true);
+    expect(value['change.governance'].revision.contentRevision).toBeTruthy();
   });
 });

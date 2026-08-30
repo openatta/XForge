@@ -6,7 +6,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash, Task
 
 # 不变量
 
-- 开始及每次材料性变更后运行 `xforge state --change <id> --field nextActions --field diagnostics --field change`；只消费当前 revision 的 ready Apply Action，不猜测 Flow 序列、路径、Gate 或并行策略。
+- 开始及每次材料性变更后运行 `xforge state --change <id> --field nextActions --field diagnostics --field change.governance --field change.nextArtifact --field change.workPackages`；只消费当前 revision 的 ready Apply Action，不猜测 Flow 序列、路径、Gate 或并行策略。
 - 从磁盘读取 Action 的全部 inputs、Constitution、相关 Rules/Specs、可选 Design/Check report 和现有工作包；聊天记忆不是事实源。
 - Main Agent 永远承担 Coordinator；Worker 不继续委派。XForge 不创建模型进程，子 Agent 由目标 runtime 的原生能力激活。
 - 计划是 Apply 的即时执行资产，不是新 Stage 或第二份规格事实源。

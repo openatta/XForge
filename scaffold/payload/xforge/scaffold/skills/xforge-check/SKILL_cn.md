@@ -6,7 +6,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # 不变量
 
-- 先运行 `xforge state --change <id> --field nextActions --field diagnostics --field change`，只消费当前 revision 的 ready Check Action，重读 Proposal、Specs、Clarifications、Design、Constitution、Rules 与代码事实。
+- 先运行 `xforge state --change <id> --field nextActions --field diagnostics --field change.governance --field change.nextArtifact --field change.artifacts --field change.mandatoryGateEvidence`，只消费当前 revision 的 ready Check Action，重读 Proposal、Specs、Clarifications、Design、Constitution、Rules 与代码事实。
 - `xforge-check` 做语义审查；`xforge check` 提供 schema、路径、Gate 和 Evidence 的确定性输入，二者不能互相替代。
 - 默认只读 governing artifacts；发现问题时报告 rework，不在审查中悄悄改写上游。
 - Check report 是 LLM Review Evidence，不是 Gate Evidence；即使写出 `PASS` 也不能通过 Machine Gate、Transition 或 Approval。

@@ -845,7 +845,13 @@ export async function resolveWorkPackages(
       if (entry.legacy) {
         diagnostics.push(diagnostic(
           'XFORGE_WORK_PACKAGE_VERIFY_LEGACY_STRING',
-          `Work package ${workPackage.id} declares verify as a single string, which is deprecated and will be removed. Replace it with the argv array XForge will actually run: ${JSON.stringify(entry.argv)}.`,
+          /*
+           * The whole field, not the element. This named the argv array alone -- `["npm","test"]` --
+           * and `verify` is a list *of* argv arrays, so two live runs did exactly what it said and
+           * got `verify: [npm, test]`, which parses as two commands named `npm` and `test`. One of
+           * them then received this same warning twice, once per bogus entry.
+           */
+          `Work package ${workPackage.id} declares verify as a single string, which is deprecated and will be removed. \`verify\` is a list of argv arrays, so write the whole field as ${JSON.stringify([entry.argv])} — the outer list holds the commands, and ${JSON.stringify(entry.argv)} is one of them.`,
           planPath,
           'warning',
           { packageId: workPackage.id, verify: entry.label, argv: entry.argv },
