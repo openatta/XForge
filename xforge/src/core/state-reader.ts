@@ -342,12 +342,13 @@ export async function readState(project: ProjectContext, options: StateOptions):
        */
       constitution: wanted.has('constitution')
         ? project.constitution
-        /* Only where it was before: on a read about a Change. A bare `state` never carried it --
-           `context` did not exist without `--change` -- and moving it to the top level must not
-           quietly add bytes back to the smallest call the CLI makes. */
-        : options.change
-          ? { version: project.constitution.version, ratified: project.constitution.ratified, lastAmended: project.constitution.lastAmended, path: project.constitution.path, content: undefined, omitted: 'Read the file at `path`, or run state --include constitution.' }
-          : null,
+        /* On every read, including a bare `state`. It was gated behind `--change` to keep the
+           smallest call exactly the size it was, and a live Propose run paid for that twice:
+           `xforge-propose`'s Invariant says "Read the Constitution from the path State reports",
+           the Stage ran `state --field constitution` before it had a Change, got a literal `null`
+           with no path and no `omitted` note, and spent two calls discovering the file had to be
+           named by hand. 222 bytes is the cheapest part of that exchange. */
+        : { version: project.constitution.version, ratified: project.constitution.ratified, lastAmended: project.constitution.lastAmended, path: project.constitution.path, content: undefined, omitted: 'Read the file at `path`, or run state --include constitution.' },
       specs,
       changes,
       activeChanges,

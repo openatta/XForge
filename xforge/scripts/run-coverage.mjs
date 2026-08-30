@@ -74,21 +74,20 @@ if (tests.status !== 0) {
      * raised whenever the real figure rises, which is the point: a threshold that never moves is a
      * threshold nobody is defending.
      *
-     * They were 87/74/90/87 against a measured 79.99/68.82/84.41/79.99, so every run of this script
-     * failed on the thresholds alone -- and because `verify` and `prepublishOnly` both call it, the
-     * release gate could not pass for any change whatsoever. A gate that always fails reports
-     * nothing about the code; it only teaches the reader to ignore it. These are the figures the
-     * suite actually reached on 2026-08-29, one point under each.
+     * These were briefly lowered to 79/68/84/79 on the strength of a `coverage-summary.json` sitting
+     * in the tree that reported 79.99/68.82/84.41/79.99. That file was written by a run this machine
+     * had killed part-way through -- the volume filled -- so it recorded the coverage of the tests
+     * that had managed to run, and reading it as the suite's coverage made a passing gate look like
+     * an impossible one. A complete run on 2026-08-30 measures 89.44/76.73/92.52/89.44, which is
+     * what these thresholds were set just under in the first place.
      *
-     * The 88/75 the previous note claimed was never reproduced here. Coverage counts only *spawned*
-     * CLI runs (`XFORGE_TEST_SPAWN_CLI=1`), so anything exercised in-process contributes nothing --
-     * `core/diagnostics-catalogue.ts` sits at 0% for that reason alone. Raising these means giving
-     * more modules a spawned path, not tightening the number.
+     * The lesson is in the failure mode, not the numbers: a partial coverage report is not a smaller
+     * coverage report, and nothing about the file says which it is. Re-measure before believing it.
      */
-    '--statements=79',
-    '--branches=68',
-    '--functions=84',
-    '--lines=79',
+    '--statements=87',
+    '--branches=74',
+    '--functions=90',
+    '--lines=87',
   ], { cwd: packageRoot, stdio: 'inherit' });
   process.exitCode = report.status ?? 1;
 }

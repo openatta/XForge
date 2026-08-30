@@ -270,7 +270,15 @@ export async function executeWorkPackageDraft(project: ProjectContext, options: 
   };
 
   if (changedPaths.length === 0) {
-    diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_EMPTY_DELIVERY', `Nothing changed between ${baseCommit} and HEAD, so this draft has no changed_paths and no evidence entry can cite one. If the work is committed elsewhere, draft from the worktree that holds it.`, workPackages.state.path, 'warning'));
+    /*
+     * The cause first, then the other cause. This named the worktree case alone, and the far more
+     * common one -- the dispatch receipt committed together with the implementation, which makes
+     * base and head the same commit -- was explained in a different diagnostic
+     * (`XFORGE_WORK_PACKAGE_DISPATCH_UNCOMMITTED`) that a Stage only meets if it happens to hit that
+     * path first. Three live runs reached this message, and each spent five or six calls, a
+     * `git reset`, and in one case a `git worktree` that was never needed, before finding the rule.
+     */
+    diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_EMPTY_DELIVERY', `Nothing changed between ${baseCommit} and HEAD, so this draft has no changed_paths and no evidence entry can cite one. A delivery is measured from the commit that dispatched it, so ${baseCommit} is the commit holding this execution's dispatch receipt: if the receipt and the implementation went into that same commit, there is nothing after it to measure and the receipt has to be its own commit, before the work. If instead the work is committed elsewhere, draft from the worktree that holds it.`, workPackages.state.path, 'warning'));
   }
 
   return {

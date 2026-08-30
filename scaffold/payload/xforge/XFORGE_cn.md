@@ -32,8 +32,9 @@ CLI：本项目运行哪个版本，是记录在 `xforge/manifest.yaml` 里的�
 `state` 有五个段默认不返回，要用 `--include` 显式索取，被省略处都会写明取回它的选项。
 
 `check` 同样接受 `--field`。它的回复包含结构报告、解析出的 Change、Gate 选择、工作包选择和
-`gates`；据裁决行动的 Stage 要的是 `gates`，`xforge check --change <id> --field gates` 会把其余
-部分留下不发。但要清楚它没做到什么：`gates` 里每一项都带着自己的 Evidence——verify 命令的全部
+`gates`；据裁决行动的 Stage 要的是 `gates`，`xforge check --change <id> --field gates --field diagnostics` 会把其余
+部分留下不发。诊断一定要一起取：一个不声明 Gate 的 Stage，和一个证据已失效的 Stage，返回的都是空的
+`gates`，只有诊断能把两者分开——有一次实跑把 `[]` 读成了"没什么可说的"，差一步就带着失效证据做了 transition。但要清楚它没做到什么：`gates` 里每一项都带着自己的 Evidence——verify 命令的全部
 stdout、各个摘要、时间戳——所以这是把回复收窄到你据以行动的那部分，而不是把它变小。
 
 被拒绝时也照样只回你问的那些，外加失败原因，所以拒绝之后用 `--field diagnostics` 得到的是几行，

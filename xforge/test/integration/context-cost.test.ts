@@ -241,4 +241,48 @@ describe('what a Stage pays to read', () => {
     expect(Array.isArray(value['change.governance'].rules)).toBe(true);
     expect(value['change.governance'].revision.contentRevision).toBeTruthy();
   });
+  /*
+   * A write that happened is not reported as a failure because of how somebody asked to read it.
+   *
+   * `transition --to <stage> --field change.governance.currentStage` writes the receipt and then
+   * looks up a path a transition envelope does not carry, so the lookup failed after the commit and
+   * the call answered `ok:false`, `data:null`, exit 1. A live run read that as a refusal — and
+   * `transition && <next>`, the chaining XFORGE.md prescribes, breaks on a transition that worked.
+   */
+  it('does not report a completed write as failed when the field name was wrong', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await runCli(root, ['check', '--change', 'add-feature', '--gate', 'structure']);
+
+    const moved = await runCli(root, ['transition', '--change', 'add-feature', '--to', 'design', '--field', 'change.governance.currentStage']);
+
+    expect(moved.code, moved.stdout.slice(0, 400)).toBe(0);
+    expect(moved.json.ok).toBe(true);
+    /* The transition is recorded, and the envelope arrives whole rather than narrowed. */
+    expect((moved.json.data as any).to).toBe('design');
+    const said = JSON.stringify(moved.json.diagnostics);
+    expect(said).toContain('XFORGE_FIELD_NOT_FOUND');
+    expect(said).toContain('the write is recorded either way');
+    /* And it really moved, so a caller that chained past this is not acting on a lie. */
+    const stage = await runCli(root, ['state', '--change', 'add-feature', '--field', 'change.governance.currentStage']);
+    expect(stage.stdout.trim()).toBe('design');
+  });
+
+  /*
+   * `xforge-propose`'s Invariant reads the Constitution from what State reports, and its opening
+   * call has no `--change` — where this used to answer a literal `null` with no path and no note.
+   */
+  it('reports where the Constitution is, with or without a Change', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+
+    for (const args of [['state', '--field', 'constitution'], ['state', '--change', 'add-feature', '--field', 'constitution']]) {
+      const result = await runCli(root, args);
+      expect(result.code, args.join(' ')).toBe(0);
+      const value = JSON.parse(result.stdout);
+      expect(value.path, args.join(' ')).toBeTruthy();
+      expect(value.version, args.join(' ')).toBeTruthy();
+      expect(value.content).toBeUndefined();
+    }
+  });
 });

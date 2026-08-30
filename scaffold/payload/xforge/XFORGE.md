@@ -37,7 +37,10 @@ them, and each says so where it would have been.
 
 `check` takes `--field` too. Its reply carries the structure report, the resolved Change, the Gate
 selection, the work-package selection and `gates`; a Stage acting on the verdict wants `gates`, and
-`xforge check --change <id> --field gates` leaves the rest behind. Note what that does not do: each
+`xforge check --change <id> --field gates --field diagnostics` leaves the rest behind. Ask for the
+diagnostics with it, always: an empty `gates` is what a Stage that declares none looks like, and what
+a Stage whose Evidence went stale looks like, and only the diagnostics tell those apart — a live run
+read `[]` as "nothing to say" and was one call away from transitioning on stale Evidence. Note what that does not do: each
 entry in `gates` carries its own Evidence — the verify command's whole stdout, the digests, the
 timestamps — so this narrows the reply to the part you act on rather than making it small.
 

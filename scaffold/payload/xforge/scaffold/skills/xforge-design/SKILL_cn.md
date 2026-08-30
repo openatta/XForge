@@ -6,7 +6,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # 不变量
 
-- 先运行 `xforge state --change <id> --field nextActions --field diagnostics --field change.governance --field change.nextArtifact`，只消费当前 revision 的 ready Design Action，并重读全部 Action inputs。
+- 先运行 `xforge state --change <id> --field nextActions --field diagnostics --field change.governance --field change.nextArtifact --field change.path`，只消费当前 revision 的 ready Design Action，并重读全部 Action inputs。
 - Design 解释 HOW、决策与边界，不重复 Proposal，不退化为逐文件任务列表或长期 Plan。
 - Constitution、Rules、现有架构和 Specs 是约束；不把约束原文机械复制进设计。
 

@@ -1086,6 +1086,31 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
       return 1;
     }
     const failed = resolutions.filter((item) => !item.resolved.found);
+    /*
+     * A write that happened is never reported as a failure because of how somebody asked to read it.
+     *
+     * `transition --to apply --field change.governance.currentStage` writes the receipt and then
+     * looks up a path a transition envelope does not carry -- it reports `change` as an id, not the
+     * resolved Change -- so the lookup failed after the commit and the call answered `ok:false`,
+     * `data:null`, exit 1. A live run read that as a refusal, and `transition && <next>` breaks on a
+     * transition that worked, which is the exact pattern XFORGE.md tells Agents to use.
+     *
+     * So when the command wrote something, the narrowing is abandoned rather than the result: the
+     * whole envelope is printed, `ok` stays true, the exit code stays 0, and the diagnostic says
+     * which path did not resolve and what the envelope does carry. Nothing is silently dropped --
+     * the caller gets more than it asked for, with the reason, instead of being told its write
+     * failed.
+     */
+    if (failed.length > 0 && result.changes.length > 0) {
+      process.stdout.write(present({
+        ...result,
+        diagnostics: [...result.diagnostics, ...failed.map((item) => diagnostic(
+          'XFORGE_FIELD_NOT_FOUND',
+          `No value at --field ${item.path}. ${(item.resolved as { reason: string }).reason} This command wrote its result, so the whole envelope is printed rather than the values you asked for — the write is recorded either way.`,
+        ))],
+      }, textMode, render));
+      return 0;
+    }
     if (failed.length > 0) {
       process.stdout.write(present({
         ...result, ok: false,
