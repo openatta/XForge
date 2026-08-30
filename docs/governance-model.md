@@ -591,7 +591,207 @@ CLI 会为部分 block 给出 `blockRemedy` 诊断，**先读它再动手**：
 
 ---
 
-## 9. 一页速查
+## 9. 时序视角：谁在什么时候被叫醒
+
+前面八节讲的是**静态语义**——每一个是什么、能证明什么。这一节讲**时序**：
+Skill 如何与控制面握手、Flow 如何流转、以及这四个分别在哪一刻被调用。
+
+> 同样的内容有一份**图解版**：[`governance-timeline.html`](governance-timeline.html)，
+> 在浏览器里打开更易读，也便于发给没读过这份文档的人。
+
+### 9.1 两个时钟
+
+这四个**不在一条流水线上**。它们跑在两个互不相通的时钟上：
+
+```text
+时钟 A · 事件驱动 —— 与 Flow 无关，一直在跑
+└─ PermissionPolicy    每一次匹配的工具调用触发（经 Hook dispatch）
+                       跟当前哪个 Stage、有没有活跃 Change 都无关
+
+时钟 B · 推进驱动 —— 只在有人要求前进时才被叫醒
+├─ Gate                xforge check 时执行，写 Evidence
+└─ Approval            xforge approve 时产出，transition 时被清点
+
+不在任何时钟上
+└─ Rule                没有人「调用」它。每次算 state 时重新核对一遍它的声称
+```
+
+一次 `Write` 调用会被拿去比对 PermissionPolicy，不管 Agent 当时在 Propose、Apply，
+还是根本没打开任何 Change。而 Gate 和 Approval 在同一时刻完全沉默。
+
+### 9.2 Skill 与控制面的握手
+
+**Skill 从不直接接触这四个。** 它只跟两样东西打交道：`xforge state` 的返回，
+和几条 CLI 命令。这四个是控制面内部的判定器。
+
+```text
+Skill                        CLI / 控制面
+  │
+  │ ① xforge state --change <id>
+  ├──────────────────────────►  resolveControlPlane()
+  │                             ├ 算四层 revision
+  │                             ├ 读回执链 → 重建 currentStage
+  │                             ├ 读 Gate Evidence · 读 Approval receipt · 核对审计链
+  │                             ├ 对每个候选目标算 blockedBy
+  │                             └ 重算每条 Rule 的 coverage
+  │ ◄──────────────────────────  nextActions[] + blockedBy[] + rules[]
+  │
+  │ ② 取当前 ready 的 Action，按它自带的 instruction / outline 干活
+  │
+  │ ③ xforge check --change <id>
+  ├──────────────────────────►  Gate runner 跑本 Stage 声明的整组 Gate
+  │ ◄──────────────────────────  写 evidence/*.json（绑定当刻 contentRevision）
+  │
+  │ ④ xforge transition --to <next>
+  ├──────────────────────────►  transition guard 逐项校验（见 §9.3）
+  │ ◄──────────────────────────  通过 → 写回执；不通过 → blockedBy
+```
+
+**Flow 在这里的角色是「声明表」**：某个 Stage 要产出哪些 Artifact、要哪些 Gate、
+出口卡哪些 condition / approval / auditEvent。控制面照着这张表逐条求值。
+Skill 看不到这张表，它只看到求值之后的结果。
+
+### 9.3 transition guard 的精确顺序
+
+以下是 `core/control-plane.ts` 里构造 `blockedBy` 的**实际执行顺序**：
+
+| # | 检查 | 失败时的 blockedBy |
+| --- | --- | --- |
+| 1 | 回执链本身是否有效 | `transition-chain:invalid` |
+| 2 | 本 Stage `produces` 的 Artifact 是否都 `done` | `artifact:<id>` |
+| 3 | 工作包是否都到达 succeeded / integrated / reviewed | `work-package:<id>:<status>` |
+| 4 | 树里有没有无归属的已提交改动 | `tree:unattributed-paths` |
+| 5 | **Gate**：逐个读 Evidence 判三态 | `gate:<id>:missing` / `:failed` / `:stale` |
+| 6 | **出口条件**：台账判定 | `condition:<key>:<reason>` |
+| 7 | **Approval**：按策略清点有效 receipt | `approval:<id>:missing-N` / `:rejected` / `:separation-of-duties` |
+| 8 | 必需审计事件是否齐全、链是否有效 | `audit:<type>:missing` / `audit:chain-invalid` |
+
+**注意第 5 条：transition 不跑 Gate，它只读 Evidence。** Gate 是 `xforge check` 跑的。
+这个分离正是 §3.4 那个时序陷阱的根源——先跑 Gate、再改文件、再跑下一个，
+前一个的 `contentRevision` 就对不上了，于是 transition 读到 `stale`，
+而每个 Gate 自己都写着 `passed`。
+
+**PermissionPolicy 一次都不出现在这张表里。** 它不在推进路径上。
+
+### 9.4 major 全程：6 次推进 + 1 次归档
+
+| # | Stage | Skill | produces | gates | exit 卡什么 | reworkTo |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | `propose` | xforge-propose | proposal · delta-specs | structure | — | — |
+| 2 | `clarify` | xforge-clarify | clarifications · material-questions | — | `materialQuestions: resolved` | propose |
+| 3 | `design` | xforge-design | design | — | — | propose · clarify |
+| 4 | `check` | xforge-check | check-report · check-findings · constitution-check | structure · check-findings · constitution-check | **`approvals: [implementation-major]`** | propose · clarify · design |
+| 5 | `apply` | xforge-apply | （无，产出是代码） | — | — | propose · clarify · design · **check** |
+| 6 | `verify` | xforge-verify | assurance | structure · unit-tests · security-scan | `verificationReceipt: passed`<br>`independentReview: complete` | apply |
+| 7 | `ready-to-archive` | — | — | — | **合成 Stage**，不在 `flow.stages` 里 | 无（只能 `transition repair`） |
+| — | `archive` | xforge-verify | — | 强制 Gate **重跑** | `approvals: [closing-major]` + 审计完整 | — |
+
+几个只在 major 出现的东西，以及它们为什么只在这里：
+
+| | 是什么 | 别的档为什么没有 |
+| --- | --- | --- |
+| `clarify` Stage | 材料性问题必须被具名的人决定，才能进设计 | solid / quick 的问题规模不值得单独一个 Stage |
+| `security-scan` Gate | Verify 多一道 declared Gate | 只有 major 允许 critical impact |
+| `independentReview` 条件 | 交付的工作必须有一次可归属的复核 | 它防的是「一个人设计 + 实现 + 自审 + 签字」，只在高风险下值这个成本 |
+| `separationOfDuties: true` | 审批人不能是本 Change 的 implementer | quick / solid 是 false —— 单人项目仍然能推进 |
+
+#### 四者同时出场的那一段：check 出口
+
+```text
+xforge-check                          CLI / 控制面
+  │
+  │ 1  xforge state
+  │ ◄─────────────────────────────────  blockedBy(→apply):
+  │                                       artifact:check-report
+  │                                       artifact:check-findings
+  │                                       artifact:constitution-check
+  │                                       gate:check-findings:missing
+  │                                       gate:constitution-check:missing
+  │                                       approval:implementation-major:missing-1
+  │
+  │ 2  写 check-report.md            散文
+  │    写 evidence/check-findings.yaml       台账 ← 被 check-findings Gate 读取
+  │    写 evidence/constitution-check.yaml   台账 ← 被 constitution-check Gate 读取
+  │
+  │ 3  xforge check --change <id>        ⚠ 必须在最后一次写入之后、一次性跑
+  ├─────────────────────────────────►  跑 [structure, check-findings, constitution-check]
+  │ ◄─────────────────────────────────  三份 evidence/*.json，各自绑定 contentRevision
+  │
+  │ 4  xforge check --change <id>            ← RECONCILE 条目交给审批人
+  ▼
+—— 交给人 ——————————————————————————————————————————————————————
+  │ 5  xforge approve --change <id> --for apply …
+  ├─────────────────────────────────►  必须真实 TTY；同一次运行里写 receipt
+  │                                     并追加 approval.decided 审计事件
+  │ ◄─────────────────────────────────  绑定 governingRevision
+  ▼
+  │ 6  xforge transition --to apply
+  ├─────────────────────────────────►  guard 逐项（§9.3 的顺序）：
+  │                                      artifact × 3   done ✓
+  │                                      gate × 3       passed 且当前 ✓
+  │                                      approval:      链里有匹配事件 ✓
+  │                                                     governingRevision 一致 ✓
+  │                                                     role 在允许集合 ✓
+  │                                                     SoD: approver ∉ implementers ✓
+  │                                                     minApprovers 1 → valid 1 ✓
+  │ ◄─────────────────────────────────  写 receipt  check → apply
+```
+
+同一段时间里，**PermissionPolicy 在另一个时钟上独立运行**：Agent 每一次读写文件、
+每一次跑命令，都经 hook dispatch 比对一次，与它当前站在哪个 Stage 无关。
+
+### 9.5 rework 与 revise
+
+**rework 本身是一次受保护的 transition，`xforge-revise` 是到达之后干活的 Skill。**
+两者是分开的，这一点经常被混。
+
+```text
+在 check 阶段发现 design 有一个 blocker：
+
+  1  在 check-findings.yaml 里记这条 blocker
+       severity: blocker      status: open
+       reworkTo: design          ← blocker 处于 open 时必填
+
+  2  xforge state
+     ◄── gate:check-findings:failed
+         readyTransitions:
+           apply    blockedBy:[gate:check-findings:failed]
+           propose  ready ✓  ┐
+           clarify  ready ✓  ├ reworkTo 目标，不被任何 Gate / Approval 治理
+           design   ready ✓  ┘
+
+  3  xforge transition --to design      ← 这就是 rework，一次正规 transition
+     ◄── 写回执 check → design
+         ⚠ 副作用：implementation-major 绑在 check 出口 → 失效，必须重签
+
+  ——— 交给 xforge-revise ———
+
+  4  一致地修订受影响的 Artifact
+     这是 revise 存在的全部理由：
+       · 一个改动往往牵连多份 Artifact（改 design 可能要动 delta Specs）
+       · 直接手改上游 Artifact，会让 Change 的其余部分静默地与它不一致
+       · 修订改变 contentRevision → digest 链自动让依赖它的 Evidence 变 stale
+
+  5  xforge state
+     ◄── gate:structure:stale
+         gate:check-findings:stale        ← 全部失效了，这是正确行为
+         gate:constitution-check:stale
+
+  6  交回 xforge-design 收尾，重走 design → check → apply
+     在 check 里把那条 blocker 改成 status: resolved
+     并填 resolvedBy（必须命中 KnownIdentities）
+```
+
+**为什么 `check` 也在 apply 的 `reworkTo` 里**（`major.yaml` 里专门留了注释）：
+没有它，check 是 major 里唯一回不去的 Stage —— `legalTransitionTargets` 只给
+「下一个 Stage + reworkTo」，而 apply 和 verify 都够不到 check。
+结果是实现期发现的 Constitution 违规，只能靠改一份**根本不需要改**的 Design
+来重新走过 Check。允许它并不放松什么：`implementation-major` 绑在 check 出口，
+回去就失效、必须重签——**这与其他每个 rework 目标做的是同一笔交易。**
+
+---
+
+## 10. 一页速查
 
 **判定权归属**
 
@@ -620,6 +820,6 @@ Artifact 写完没有       ← ArtifactState.status
 
 **三个「必须逐字」**
 
-- `xforge brief` 的输出交给人类审批者时
+- `check` 的 `XFORGE_RECONCILE_*` 条目交给人类审批者时
 - Reviewer 的结论转录进 `evidence/review/` 或 `evidence/agents/<pkg>/`
 - `upgrade-scaffold` 报告里的 adoption count

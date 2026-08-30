@@ -1,0 +1,726 @@
+<title>XForge 治理时序</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+
+<style>
+  :root {
+    --sans: "IBM Plex Sans", -apple-system, "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, "Noto Sans Mono CJK SC", monospace;
+
+    --ground:  #FCFCFD;
+    --surface: #FFFFFF;
+    --sunk:    #F3F4F6;
+    --ink:     #16191D;
+    --body:    #464E57;
+    --muted:   #78828C;
+    --line:    #E3E6E9;
+    --line-2:  #CDD3D8;
+
+    --ember:   #B04708;   /* 推进时钟：强制发生的那一刻 */
+    --ember-w: #FBF0E7;   /* ember wash */
+    --tide:    #1F6A6A;   /* 运行时时钟：一直在跑 */
+    --tide-w:  #E9F3F2;
+    --pass:    #1D6549;
+
+    --r: 8px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:  #131619;
+      --surface: #1A1E22;
+      --sunk:    #21262B;
+      --ink:     #F0F2F4;
+      --body:    #B4BDC5;
+      --muted:   #808C96;
+      --line:    #2B3137;
+      --line-2:  #3C444B;
+
+      --ember:   #F0985E;
+      --ember-w: #2C1D12;
+      --tide:    #6FBFBB;
+      --tide-w:  #122422;
+      --pass:    #63BC94;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground:  #131619;
+    --surface: #1A1E22;
+    --sunk:    #21262B;
+    --ink:     #F0F2F4;
+    --body:    #B4BDC5;
+    --muted:   #808C96;
+    --line:    #2B3137;
+    --line-2:  #3C444B;
+
+    --ember:   #F0985E;
+    --ember-w: #2C1D12;
+    --tide:    #6FBFBB;
+    --tide-w:  #122422;
+    --pass:    #63BC94;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--body);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.68;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 28px 96px; }
+  .prose { max-width: 720px; }
+
+  /* ── header ─────────────────────────────────────────── */
+  header { padding: 76px 0 40px; }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px; font-weight: 500;
+    letter-spacing: .13em; text-transform: uppercase;
+    color: var(--ember);
+    margin: 0 0 14px;
+  }
+  h1 {
+    font-size: clamp(30px, 4.4vw, 44px);
+    line-height: 1.16; font-weight: 700; letter-spacing: -.018em;
+    color: var(--ink); margin: 0 0 18px; text-wrap: balance;
+  }
+  .standfirst { font-size: 18px; color: var(--body); margin: 0; max-width: 660px; }
+  .meta {
+    margin-top: 28px; padding-top: 18px; border-top: 1px solid var(--line);
+    font-family: var(--mono); font-size: 12.5px; color: var(--muted);
+  }
+
+  /* ── sections ───────────────────────────────────────── */
+  section { margin-top: 68px; }
+  h2 {
+    font-size: 25px; font-weight: 650; letter-spacing: -.012em;
+    color: var(--ink); margin: 0 0 6px; text-wrap: balance;
+  }
+  h2 .num {
+    font-family: var(--mono); font-size: 15px; font-weight: 500;
+    color: var(--ember); margin-right: 12px;
+  }
+  h3 {
+    font-size: 17px; font-weight: 650; color: var(--ink);
+    margin: 40px 0 10px; letter-spacing: -.006em;
+  }
+  p { margin: 0 0 16px; }
+  .lead { font-size: 17px; margin-bottom: 26px; }
+  strong { color: var(--ink); font-weight: 600; }
+  code {
+    font-family: var(--mono); font-size: .88em;
+    background: var(--sunk); color: var(--ink);
+    padding: 1px 5px; border-radius: 4px;
+  }
+  a { color: var(--ember); text-underline-offset: 3px; }
+  a:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--ember); outline-offset: 3px; border-radius: 3px;
+  }
+
+  /* ── figures ────────────────────────────────────────── */
+  figure { margin: 30px 0 26px; }
+  .fig-shell {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--r); padding: 22px 18px 14px; overflow-x: auto;
+  }
+  .fig-shell svg { display: block; width: 100%; min-width: 620px; height: auto; }
+  .fig text { font-family: var(--sans); }
+  .fig .m { font-family: var(--mono); }
+  figcaption {
+    margin-top: 12px; font-size: 13.5px; color: var(--muted);
+    max-width: 720px;
+  }
+  figcaption b { color: var(--body); font-weight: 600; }
+
+  /* ── transcript blocks ──────────────────────────────── */
+  .tape {
+    background: var(--sunk); border: 1px solid var(--line);
+    border-radius: var(--r); padding: 20px 22px;
+    overflow-x: auto; margin: 24px 0;
+  }
+  .tape pre {
+    margin: 0; font-family: var(--mono); font-size: 12.5px;
+    line-height: 1.72; color: var(--body); white-space: pre;
+  }
+  .tape .hl { color: var(--ember); font-weight: 600; }
+  .tape .ok { color: var(--pass); }
+  .tape .rt { color: var(--tide); font-weight: 500; }
+  .tape .dim { color: var(--muted); }
+  .tape-cap {
+    font-family: var(--mono); font-size: 11.5px; letter-spacing: .09em;
+    text-transform: uppercase; color: var(--muted);
+    margin: 0 0 12px; padding-bottom: 10px; border-bottom: 1px solid var(--line-2);
+  }
+
+  /* ── tables ─────────────────────────────────────────── */
+  .t-shell { overflow-x: auto; margin: 24px 0; }
+  table {
+    border-collapse: collapse; width: 100%; min-width: 560px;
+    font-size: 14.5px;
+  }
+  th, td {
+    text-align: left; padding: 10px 14px;
+    border-bottom: 1px solid var(--line); vertical-align: top;
+  }
+  th {
+    font-size: 12px; font-weight: 600; letter-spacing: .07em;
+    text-transform: uppercase; color: var(--muted);
+    border-bottom: 1px solid var(--line-2);
+  }
+  td:first-child { color: var(--ink); font-weight: 500; white-space: nowrap; }
+  td code { font-size: .85em; }
+  tbody tr:last-child td { border-bottom: none; }
+
+  /* ── callout ────────────────────────────────────────── */
+  .note {
+    background: var(--ember-w); border: 1px solid var(--line);
+    border-radius: var(--r); padding: 18px 22px; margin: 24px 0;
+  }
+  .note p { margin: 0; }
+  .note p + p { margin-top: 10px; }
+  .note .k { color: var(--ink); font-weight: 650; }
+
+  .note.rt-note { background: var(--tide-w); }
+
+  /* ── clock legend chips ─────────────────────────────── */
+  .chips { display: flex; flex-wrap: wrap; gap: 10px; margin: 22px 0 4px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: var(--mono); font-size: 12px;
+    border: 1px solid var(--line-2); border-radius: 999px;
+    padding: 5px 13px 5px 10px; color: var(--body);
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
+  .dot.e { background: var(--ember); }
+  .dot.t { background: var(--tide); }
+  .dot.n { background: var(--line-2); }
+
+  footer {
+    margin-top: 80px; padding-top: 22px; border-top: 1px solid var(--line);
+    font-size: 13.5px; color: var(--muted);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">XForge · 治理模型</p>
+  <h1>谁在什么时候被叫醒</h1>
+  <p class="standfirst">
+    Rule、PermissionPolicy、Gate、Approval —— 这四个常被当成一条流水线上的四道关卡。
+    它们不是。它们跑在两个互不相通的时钟上，而 Skill 一个都不直接调用。
+  </p>
+  <p class="meta">@xforge/cli 0.7.17 · Protocol 2 · 配套文档 docs/governance-model.md §9</p>
+</header>
+
+<section>
+  <h2><span class="num">01</span>两个时钟</h2>
+  <p class="lead">
+    最容易踩的错误心智模型，是把这四个理解成「每个阶段依次检查一遍」。
+    实际上它们被两种完全不同的事件唤醒。
+  </p>
+
+  <div class="chips">
+    <span class="chip"><span class="dot t"></span>运行时时钟 · 一直在跑</span>
+    <span class="chip"><span class="dot e"></span>推进时钟 · 被动唤醒</span>
+    <span class="chip"><span class="dot n"></span>不在任何时钟上</span>
+  </div>
+
+  <figure>
+    <div class="fig-shell">
+      <svg class="fig" viewBox="0 0 920 320" role="img"
+           aria-label="两个时钟对照图：上方运行时时钟在每一次工具调用时触发 PermissionPolicy，密集且与阶段无关；下方推进时钟只在 check、transition、archive 三种时刻唤醒 Gate 与 Approval；中间的 Rule 不在任何时钟上，每次计算 state 时被重新核对。">
+        <defs>
+          <marker id="ah-e" viewBox="0 0 10 8" refX="9" refY="4"
+                  markerWidth="8" markerHeight="7" orient="auto">
+            <polygon points="0,0 10,4 0,8" fill="var(--ember)"/>
+          </marker>
+          <marker id="ah-n" viewBox="0 0 10 8" refX="9" refY="4"
+                  markerWidth="7" markerHeight="6" orient="auto">
+            <polygon points="0,0 10,4 0,8" fill="var(--line-2)"/>
+          </marker>
+        </defs>
+
+        <!-- ── 运行时时钟 ── -->
+        <text x="20" y="30" class="m" font-size="12" font-weight="600" fill="var(--tide)">时钟 A · 事件驱动</text>
+        <text x="20" y="50" font-size="12.5" fill="var(--muted)">PermissionPolicy</text>
+
+        <line x1="20" y1="78" x2="900" y2="78" stroke="var(--tide)" stroke-width="2"/>
+        <g fill="var(--tide)">
+          <circle cx="60"  cy="78" r="4"/><circle cx="105" cy="78" r="4"/>
+          <circle cx="150" cy="78" r="4"/><circle cx="188" cy="78" r="4"/>
+          <circle cx="240" cy="78" r="4"/><circle cx="278" cy="78" r="4"/>
+          <circle cx="325" cy="78" r="4"/><circle cx="372" cy="78" r="4"/>
+          <circle cx="410" cy="78" r="4"/><circle cx="458" cy="78" r="4"/>
+          <circle cx="500" cy="78" r="4"/><circle cx="545" cy="78" r="4"/>
+          <circle cx="590" cy="78" r="4"/><circle cx="632" cy="78" r="4"/>
+          <circle cx="680" cy="78" r="4"/><circle cx="722" cy="78" r="4"/>
+          <circle cx="768" cy="78" r="4"/><circle cx="812" cy="78" r="4"/>
+          <circle cx="858" cy="78" r="4"/>
+        </g>
+        <text x="20" y="102" font-size="12" fill="var(--muted)">每一次匹配的工具调用 —— 与当前在哪个 Stage、有没有活跃 Change 都无关</text>
+
+        <!-- ── Rule ── -->
+        <rect x="330" y="132" width="262" height="44" rx="7"
+              fill="none" stroke="var(--line-2)" stroke-width="1.5" stroke-dasharray="5 4"/>
+        <text x="461" y="152" text-anchor="middle" font-size="13" font-weight="600" fill="var(--ink)">Rule</text>
+        <text x="461" y="168" text-anchor="middle" font-size="11.5" fill="var(--muted)">每次算 state 时重新核对它的声称</text>
+        <line x1="461" y1="132" x2="461" y2="92" stroke="var(--line-2)" stroke-width="1.3"
+              stroke-dasharray="4 4" marker-end="url(#ah-n)"/>
+        <line x1="461" y1="176" x2="461" y2="216" stroke="var(--line-2)" stroke-width="1.3"
+              stroke-dasharray="4 4" marker-end="url(#ah-n)"/>
+
+        <!-- ── 推进时钟 ── -->
+        <line x1="20" y1="240" x2="900" y2="240" stroke="var(--line-2)" stroke-width="2"/>
+        <g fill="var(--ember)">
+          <circle cx="200" cy="240" r="6"/>
+          <circle cx="420" cy="240" r="6"/>
+          <circle cx="640" cy="240" r="6"/>
+          <circle cx="845" cy="240" r="6"/>
+        </g>
+        <text x="200" y="264" text-anchor="middle" class="m" font-size="11" fill="var(--ember)">xforge check</text>
+        <text x="200" y="279" text-anchor="middle" font-size="11" fill="var(--muted)">跑 Gate，写证据</text>
+
+        <text x="420" y="264" text-anchor="middle" class="m" font-size="11" fill="var(--ember)">xforge approve</text>
+        <text x="420" y="279" text-anchor="middle" font-size="11" fill="var(--muted)">人签字，产出凭据</text>
+
+        <text x="640" y="264" text-anchor="middle" class="m" font-size="11" fill="var(--ember)">xforge transition</text>
+        <text x="640" y="279" text-anchor="middle" font-size="11" fill="var(--muted)">清点 Gate 与 Approval</text>
+
+        <text x="845" y="264" text-anchor="middle" class="m" font-size="11" fill="var(--ember)">archive</text>
+        <text x="845" y="279" text-anchor="middle" font-size="11" fill="var(--muted)">重跑强制 Gate</text>
+
+        <text x="20" y="222" class="m" font-size="12" font-weight="600" fill="var(--ember)">时钟 B · 推进驱动</text>
+        <text x="20" y="306" font-size="12" fill="var(--muted)">Gate + Approval —— 只在有人要求前进时被叫醒；其余时间完全沉默</text>
+      </svg>
+    </div>
+    <figcaption>
+      两个时钟的密度差就是这套设计的关键：<b>一次 <code>Write</code> 调用会被拿去比对 PermissionPolicy，
+      不管 Agent 当时在 Propose、Apply，还是根本没打开任何 Change</b>；而在同一时刻，Gate 和 Approval 什么都不做。
+    </figcaption>
+  </figure>
+
+  <div class="note rt-note">
+    <p><span class="k">推论：</span>PermissionPolicy 一次都不出现在推进路径上。
+    它守的是「这个动作现在允许吗」，不是「这一步能不能过」。把它接进 transition 的检查里，
+    等于让一个实时问题去回答一个历史问题。</p>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">02</span>Skill 与控制面的握手</h2>
+  <p class="lead">
+    <strong>Skill 从不直接接触这四个。</strong>它只跟两样东西打交道：<code>xforge state</code> 的返回，
+    和几条 CLI 命令。这四个是控制面内部的判定器。
+  </p>
+
+  <div class="tape">
+    <p class="tape-cap">一次完整往返</p>
+<pre>Skill                        CLI / 控制面
+  │
+  │ <span class="hl">①</span> xforge state --change &lt;id&gt;
+  ├──────────────────────────►  resolveControlPlane()
+  │                             ├ 算四层 revision
+  │                             ├ 读回执链 → 重建 currentStage
+  │                             ├ 读 Gate Evidence · 读 Approval receipt · 核对审计链
+  │                             ├ 对每个候选目标算 blockedBy
+  │                             └ 重算每条 Rule 的 coverage
+  │ ◄──────────────────────────  nextActions[] + blockedBy[] + rules[]
+  │
+  │ <span class="hl">②</span> 取当前 ready 的 Action，按它自带的 instruction / outline 干活
+  │
+  │ <span class="hl">③</span> xforge check --change &lt;id&gt;
+  ├──────────────────────────►  Gate runner 跑本 Stage 声明的整组 Gate
+  │ ◄──────────────────────────  写 evidence/*.json（绑定当刻 contentRevision）
+  │
+  │ <span class="hl">④</span> xforge transition --to &lt;next&gt;
+  ├──────────────────────────►  transition guard 逐项校验
+  │ ◄──────────────────────────  通过 → 写回执；不通过 → blockedBy</pre>
+  </div>
+
+  <p>
+    <strong>Flow 在这里的角色是一张声明表</strong>：某个 Stage 要产出哪些 Artifact、要哪些 Gate、
+    出口卡哪些 condition / approval / auditEvent。控制面照着这张表逐条求值。
+    Skill 看不到这张表 —— 它只看到求值之后的结果。
+  </p>
+</section>
+
+<section>
+  <h2><span class="num">03</span>transition guard 的八步</h2>
+  <p class="lead">
+    这是 <code>core/control-plane.ts</code> 里构造 <code>blockedBy</code> 的实际执行顺序。
+    四者里有三个出现在这里，第四个一次都不出现。
+  </p>
+
+  <figure>
+    <div class="fig-shell">
+      <svg class="fig" viewBox="0 0 920 420" role="img"
+           aria-label="transition guard 的八步检查顺序：回执链、产物、工作包、树归属、Gate、出口条件、Approval、审计事件。其中第五、六、七步分别对应 Gate、出口条件与 Approval，被高亮标出；PermissionPolicy 不在此列。">
+        <g font-size="13">
+          <!-- rows -->
+          <g>
+            <rect x="0" y="8"   width="920" height="42" rx="6" fill="var(--sunk)"/>
+            <rect x="0" y="102" width="920" height="42" rx="6" fill="var(--sunk)"/>
+            <rect x="0" y="196" width="920" height="42" rx="6" fill="var(--ember-w)" stroke="var(--ember)" stroke-width="1"/>
+            <rect x="0" y="243" width="920" height="42" rx="6" fill="var(--ember-w)" stroke="var(--ember)" stroke-width="1"/>
+            <rect x="0" y="290" width="920" height="42" rx="6" fill="var(--ember-w)" stroke="var(--ember)" stroke-width="1"/>
+          </g>
+
+          <!-- 1 -->
+          <circle cx="26" cy="29" r="12" fill="var(--line-2)"/>
+          <text x="26" y="34" text-anchor="middle" class="m" font-size="11.5" font-weight="600" fill="var(--surface)">1</text>
+          <text x="52" y="34" fill="var(--ink)">回执链本身是否有效</text>
+          <text x="900" y="34" text-anchor="end" class="m" font-size="11.5" fill="var(--muted)">transition-chain:invalid</text>
+
+          <!-- 2 -->
+          <circle cx="26" cy="76" r="12" fill="var(--line-2)"/>
+          <text x="26" y="81" text-anchor="middle" class="m" font-size="11.5" font-weight="600" fill="var(--surface)">2</text>
+          <text x="52" y="81" fill="var(--ink)">本 Stage 的 produces 是否都 done</text>
+          <text x="900" y="81" text-anchor="end" class="m" font-size="11.5" fill="var(--muted)">artifact:&lt;id&gt;</text>
+
+          <!-- 3 -->
+          <circle cx="26" cy="123" r="12" fill="var(--line-2)"/>
+          <text x="26" y="128" text-anchor="middle" class="m" font-size="11.5" font-weight="600" fill="var(--surface)">3</text>
+          <text x="52" y="128" fill="var(--ink)">工作包是否都到达终态</text>
+          <text x="900" y="128" text-anchor="end" class="m" font-size="11.5" fill="var(--muted)">work-package:&lt;id&gt;:&lt;status&gt;</text>
+
+          <!-- 4 -->
+          <circle cx="26" cy="170" r="12" fill="var(--line-2)"/>
+          <text x="26" y="175" text-anchor="middle" class="m" font-size="11.5" font-weight="600" fill="var(--surface)">4</text>
+          <text x="52" y="175" fill="var(--ink)">树里有没有无归属的已提交改动</text>
+          <text x="900" y="175" text-anchor="end" class="m" font-size="11.5" fill="var(--muted)">tree:unattributed-paths</text>
+
+          <!-- 5 GATE -->
+          <circle cx="26" cy="217" r="12" fill="var(--ember)"/>
+          <text x="26" y="222" text-anchor="middle" class="m" font-size="11.5" font-weight="600" fill="var(--surface)">5</text>
+          <text x="52" y="222" font-weight="600" fill="var(--ink)">Gate</text>
+          <text x="110" y="222" fill="var(--body)">逐个读 Evidence 判三态 —— 不跑 Gate，只读</text>
+          <text x="900" y="222" text-anchor="end" class="m" font-size="11.5" fill="var(--ember)">gate:&lt;id&gt;:missing|failed|stale</text>
+
+          <!-- 6 CONDITION -->
+          <circle cx="26" cy="264" r="12" fill="var(--ember)"/>
+          <text x="26" y="269" text-anchor="middle" class="m" font-size="11.5" font-weight="600" fill="var(--surface)">6</text>
+          <text x="52" y="269" font-weight="600" fill="var(--ink)">出口条件</text>
+          <text x="130" y="269" fill="var(--body)">结构化台账判定，散文不参与</text>
+          <text x="900" y="269" text-anchor="end" class="m" font-size="11.5" fill="var(--ember)">condition:&lt;key&gt;:&lt;reason&gt;</text>
+
+          <!-- 7 APPROVAL -->
+          <circle cx="26" cy="311" r="12" fill="var(--ember)"/>
+          <text x="26" y="316" text-anchor="middle" class="m" font-size="11.5" font-weight="600" fill="var(--surface)">7</text>
+          <text x="52" y="316" font-weight="600" fill="var(--ink)">Approval</text>
+          <text x="130" y="316" fill="var(--body)">按策略清点有效 receipt（七条判定）</text>
+          <text x="900" y="316" text-anchor="end" class="m" font-size="11.5" fill="var(--ember)">approval:&lt;id&gt;:missing-N</text>
+
+          <!-- 8 -->
+          <circle cx="26" cy="358" r="12" fill="var(--line-2)"/>
+          <text x="26" y="363" text-anchor="middle" class="m" font-size="11.5" font-weight="600" fill="var(--surface)">8</text>
+          <text x="52" y="363" fill="var(--ink)">必需审计事件是否齐全、链是否有效</text>
+          <text x="900" y="363" text-anchor="end" class="m" font-size="11.5" fill="var(--muted)">audit:&lt;type&gt;:missing</text>
+
+          <!-- footnote -->
+          <line x1="0" y1="388" x2="920" y2="388" stroke="var(--line)" stroke-width="1"/>
+          <circle cx="26" cy="407" r="8" fill="none" stroke="var(--tide)" stroke-width="1.5" stroke-dasharray="3 3"/>
+          <text x="52" y="412" font-size="12.5" fill="var(--tide)">PermissionPolicy 一次都不出现在这张表里 —— 它在另一个时钟上</text>
+        </g>
+      </svg>
+    </div>
+    <figcaption>
+      <b>注意第 5 步：transition 不跑 Gate，它只读 Evidence。</b>
+      Gate 是 <code>xforge check</code> 跑的。这个分离正是「所有 Gate 都报 passed、阶段却出不去」的根源 ——
+      先跑一个 Gate、再改文件、再跑下一个，前一个的 <code>contentRevision</code> 就对不上了。
+    </figcaption>
+  </figure>
+</section>
+
+<section>
+  <h2><span class="num">04</span>major 全程</h2>
+  <p class="lead">
+    6 次受保护的推进，加 1 次归档。每个 Stage 挂着什么，决定了它出不去时你会看到什么。
+  </p>
+
+  <figure>
+    <div class="fig-shell">
+      <svg class="fig" viewBox="0 0 1000 300" role="img"
+           aria-label="major 流程全程图：propose、clarify、design、check、apply、verify 六个阶段，加上合成阶段 ready-to-archive 与终态 archive。check 出口挂人工审批，verify 出口挂两个条件，rework 从 check 回到 design、从 apply 回到 check、从 verify 回到 apply。">
+        <defs>
+          <marker id="ah2" viewBox="0 0 10 8" refX="9" refY="4"
+                  markerWidth="7" markerHeight="6" orient="auto">
+            <polygon points="0,0 10,4 0,8" fill="var(--line-2)"/>
+          </marker>
+          <marker id="ah3" viewBox="0 0 10 8" refX="9" refY="4"
+                  markerWidth="7" markerHeight="6" orient="auto">
+            <polygon points="0,0 10,4 0,8" fill="var(--ember)"/>
+          </marker>
+        </defs>
+
+        <!-- stages -->
+        <g font-size="12">
+          <!-- propose -->
+          <rect x="14" y="40" width="112" height="40" rx="6" fill="var(--surface)" stroke="var(--line-2)"/>
+          <text x="70" y="65" text-anchor="middle" class="m" font-size="12" fill="var(--ink)">propose</text>
+          <rect x="14" y="88" width="112" height="20" rx="4" fill="var(--sunk)"/>
+          <text x="70" y="102" text-anchor="middle" class="m" font-size="10" fill="var(--body)">structure</text>
+
+          <!-- clarify -->
+          <rect x="140" y="40" width="112" height="40" rx="6" fill="var(--surface)" stroke="var(--line-2)"/>
+          <text x="196" y="65" text-anchor="middle" class="m" font-size="12" fill="var(--ink)">clarify</text>
+          <rect x="140" y="88" width="112" height="20" rx="4" fill="none" stroke="var(--ember)" stroke-width="1"/>
+          <text x="196" y="102" text-anchor="middle" class="m" font-size="9.5" fill="var(--ember)">materialQuestions</text>
+
+          <!-- design -->
+          <rect x="266" y="40" width="112" height="40" rx="6" fill="var(--surface)" stroke="var(--line-2)"/>
+          <text x="322" y="65" text-anchor="middle" class="m" font-size="12" fill="var(--ink)">design</text>
+
+          <!-- check -->
+          <rect x="392" y="40" width="112" height="40" rx="6" fill="var(--surface)" stroke="var(--ember)" stroke-width="1.6"/>
+          <text x="448" y="65" text-anchor="middle" class="m" font-size="12" font-weight="600" fill="var(--ink)">check</text>
+          <rect x="392" y="88" width="112" height="20" rx="4" fill="var(--sunk)"/>
+          <text x="448" y="102" text-anchor="middle" class="m" font-size="9.5" fill="var(--body)">3 gates</text>
+          <rect x="392" y="112" width="112" height="22" rx="4" fill="var(--ember)"/>
+          <text x="448" y="127" text-anchor="middle" class="m" font-size="10" font-weight="600" fill="var(--surface)">人签字 ①</text>
+
+          <!-- apply -->
+          <rect x="518" y="40" width="112" height="40" rx="6" fill="var(--surface)" stroke="var(--line-2)"/>
+          <text x="574" y="65" text-anchor="middle" class="m" font-size="12" fill="var(--ink)">apply</text>
+          <text x="574" y="102" text-anchor="middle" font-size="10" fill="var(--muted)">产出是代码</text>
+
+          <!-- verify -->
+          <rect x="644" y="40" width="112" height="40" rx="6" fill="var(--surface)" stroke="var(--line-2)"/>
+          <text x="700" y="65" text-anchor="middle" class="m" font-size="12" fill="var(--ink)">verify</text>
+          <rect x="644" y="88" width="112" height="20" rx="4" fill="var(--sunk)"/>
+          <text x="700" y="102" text-anchor="middle" class="m" font-size="9.5" fill="var(--body)">3 gates</text>
+          <rect x="644" y="112" width="112" height="20" rx="4" fill="none" stroke="var(--ember)" stroke-width="1"/>
+          <text x="700" y="126" text-anchor="middle" class="m" font-size="9" fill="var(--ember)">receipt + review</text>
+
+          <!-- ready-to-archive -->
+          <rect x="770" y="40" width="112" height="40" rx="6" fill="var(--sunk)"
+                stroke="var(--line-2)" stroke-dasharray="4 3"/>
+          <text x="826" y="60" text-anchor="middle" class="m" font-size="10.5" fill="var(--body)">ready-to-</text>
+          <text x="826" y="73" text-anchor="middle" class="m" font-size="10.5" fill="var(--body)">archive</text>
+          <text x="826" y="102" text-anchor="middle" font-size="10" fill="var(--muted)">合成阶段</text>
+
+          <!-- archive -->
+          <rect x="896" y="40" width="90" height="40" rx="6" fill="var(--surface)" stroke="var(--ember)" stroke-width="1.6"/>
+          <text x="941" y="65" text-anchor="middle" class="m" font-size="12" font-weight="600" fill="var(--ink)">archive</text>
+          <rect x="896" y="88" width="90" height="20" rx="4" fill="var(--sunk)"/>
+          <text x="941" y="102" text-anchor="middle" class="m" font-size="9.5" fill="var(--body)">Gate 重跑</text>
+          <rect x="896" y="112" width="90" height="22" rx="4" fill="var(--ember)"/>
+          <text x="941" y="127" text-anchor="middle" class="m" font-size="10" font-weight="600" fill="var(--surface)">人签字 ②</text>
+        </g>
+
+        <!-- forward arrows -->
+        <g stroke="var(--line-2)" stroke-width="1.6" marker-end="url(#ah2)">
+          <line x1="128" y1="60" x2="136" y2="60"/>
+          <line x1="254" y1="60" x2="262" y2="60"/>
+          <line x1="380" y1="60" x2="388" y2="60"/>
+          <line x1="506" y1="60" x2="514" y2="60"/>
+          <line x1="632" y1="60" x2="640" y2="60"/>
+          <line x1="758" y1="60" x2="766" y2="60"/>
+          <line x1="884" y1="60" x2="892" y2="60"/>
+        </g>
+
+        <!-- rework arcs -->
+        <g fill="none" stroke="var(--ember)" stroke-width="1.4"
+           stroke-dasharray="5 4" marker-end="url(#ah3)">
+          <path d="M 448 180 C 448 218, 322 218, 322 186"/>
+          <path d="M 574 200 C 574 244, 448 244, 448 186"/>
+          <path d="M 700 180 C 700 214, 574 214, 574 186"/>
+        </g>
+        <text x="448" y="171" text-anchor="middle" font-size="10.5" fill="var(--muted)">rework</text>
+        <text x="574" y="192" text-anchor="middle" font-size="10.5" fill="var(--muted)">rework</text>
+        <text x="700" y="171" text-anchor="middle" font-size="10.5" fill="var(--muted)">rework</text>
+
+        <text x="14" y="278" font-size="12" fill="var(--muted)">
+          rework 本身也是一次受保护的 transition —— 回到 check 之前，implementation-major 凭据即失效，必须重签
+        </text>
+      </svg>
+    </div>
+    <figcaption>
+      <b>Gate 在两处出现，Approval 在两处出现，出口条件在两处出现 —— 但只有 check 出口三者同时到齐。</b>
+      apply 没有声明产物：它的产出是代码本身，由工作包交付记录与真实 diff 来证明。
+    </figcaption>
+  </figure>
+
+  <div class="t-shell">
+    <table>
+      <thead>
+        <tr><th>Stage</th><th>Skill</th><th>gates</th><th>exit 卡什么</th><th>reworkTo</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>propose</code></td><td>xforge-propose</td><td>structure</td><td>—</td><td>—</td></tr>
+        <tr><td><code>clarify</code></td><td>xforge-clarify</td><td>—</td><td><code>materialQuestions: resolved</code></td><td>propose</td></tr>
+        <tr><td><code>design</code></td><td>xforge-design</td><td>—</td><td>—</td><td>propose · clarify</td></tr>
+        <tr><td><code>check</code></td><td>xforge-check</td><td>structure · check-findings · constitution-check</td><td><code>approvals: [implementation-major]</code></td><td>propose · clarify · design</td></tr>
+        <tr><td><code>apply</code></td><td>xforge-apply</td><td>—</td><td>—</td><td>propose · clarify · design · <strong>check</strong></td></tr>
+        <tr><td><code>verify</code></td><td>xforge-verify</td><td>structure · unit-tests · security-scan</td><td><code>verificationReceipt: passed</code><br><code>independentReview: complete</code></td><td>apply</td></tr>
+        <tr><td><code>ready-to-archive</code></td><td>—</td><td>—</td><td>合成阶段，不在 <code>flow.stages</code> 里</td><td>只能 <code>transition repair</code></td></tr>
+        <tr><td><code>archive</code></td><td>xforge-verify</td><td>强制 Gate 重跑</td><td><code>approvals: [closing-major]</code> + 审计完整</td><td>—</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>四者同时出场的那一段：check 出口</h3>
+
+  <div class="tape">
+    <p class="tape-cap">check → apply</p>
+<pre>xforge-check                          CLI / 控制面
+  │
+  │ 1  xforge state
+  │ ◄─────────────────────────────────  blockedBy(→apply):
+  │                                       artifact:check-report
+  │                                       artifact:check-findings
+  │                                       artifact:constitution-check
+  │                                       <span class="hl">gate:check-findings:missing</span>
+  │                                       <span class="hl">gate:constitution-check:missing</span>
+  │                                       <span class="hl">approval:implementation-major:missing-1</span>
+  │
+  │ 2  写 check-report.md            <span class="dim">散文</span>
+  │    写 evidence/check-findings.yaml       <span class="dim">台账 ← 被 check-findings Gate 读取</span>
+  │    写 evidence/constitution-check.yaml   <span class="dim">台账 ← 被 constitution-check Gate 读取</span>
+  │
+  │ 3  xforge check --change &lt;id&gt;        <span class="hl">⚠ 必须在最后一次写入之后、一次性跑</span>
+  ├─────────────────────────────────►  跑 [structure, check-findings, constitution-check]
+  │ ◄─────────────────────────────────  三份 evidence/*.json，各自绑定 contentRevision
+  │
+  │ 4  xforge brief --change &lt;id&gt; --text     <span class="dim">← 逐字交给审批人，不得转述</span>
+  ▼
+<span class="dim">—— 交给人 ——————————————————————————————————————————————————————</span>
+  │ 5  xforge approve --change &lt;id&gt; --for apply …
+  ├─────────────────────────────────►  <span class="hl">必须真实 TTY</span>；同一次运行里写 receipt
+  │                                     并追加 approval.decided 审计事件
+  │ ◄─────────────────────────────────  绑定 governingRevision
+  ▼
+  │ 6  xforge transition --to apply
+  ├─────────────────────────────────►  guard 逐项（第 03 节的顺序）：
+  │                                      artifact × 3   done <span class="ok">✓</span>
+  │                                      gate × 3       passed 且当前 <span class="ok">✓</span>
+  │                                      approval:      链里有匹配事件 <span class="ok">✓</span>
+  │                                                     governingRevision 一致 <span class="ok">✓</span>
+  │                                                     role 在允许集合 <span class="ok">✓</span>
+  │                                                     SoD: approver ∉ implementers <span class="ok">✓</span>
+  │                                                     minApprovers 1 → valid 1 <span class="ok">✓</span>
+  │ ◄─────────────────────────────────  写 receipt  check → apply
+
+<span class="rt">同一段时间里，PermissionPolicy 在另一个时钟上独立运行：Agent 每一次读写文件、</span>
+<span class="rt">每一次跑命令，都经 hook dispatch 比对一次，与它站在哪个 Stage 无关。</span></pre>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">05</span>rework 与 revise</h2>
+  <p class="lead">
+    <strong>rework 本身是一次受保护的 transition，<code>xforge-revise</code> 是到达之后干活的 Skill。</strong>
+    两者是分开的，这一点经常被混。
+  </p>
+
+  <div class="tape">
+    <p class="tape-cap">在 check 阶段发现 design 有一个 blocker</p>
+<pre>  1  在 check-findings.yaml 里记这条 blocker
+       severity: blocker      status: open
+       <span class="hl">reworkTo: design</span>          <span class="dim">← blocker 处于 open 时必填</span>
+
+  2  xforge state
+     ◄── gate:check-findings:failed
+         readyTransitions:
+           apply    blockedBy:[gate:check-findings:failed]
+           propose  ready <span class="ok">✓</span>  ┐
+           clarify  ready <span class="ok">✓</span>  ├ <span class="dim">reworkTo 目标，不被任何 Gate / Approval 治理</span>
+           design   ready <span class="ok">✓</span>  ┘
+
+  3  xforge transition --to design      <span class="dim">← 这就是 rework，一次正规 transition</span>
+     ◄── 写回执 check → design
+         <span class="hl">⚠ 副作用：implementation-major 绑在 check 出口 → 失效，必须重签</span>
+
+  <span class="dim">——— 交给 xforge-revise ———</span>
+
+  4  一致地修订受影响的 Artifact
+     <span class="dim">这是 revise 存在的全部理由：</span>
+       · 一个改动往往牵连多份 Artifact（改 design 可能要动 delta Specs）
+       · 直接手改上游 Artifact，会让 Change 的其余部分静默地与它不一致
+       · 修订改变 contentRevision → digest 链自动让依赖它的 Evidence 变 stale
+
+  5  xforge state
+     ◄── gate:structure:stale
+         gate:check-findings:stale        <span class="dim">← 全部失效了，这是正确行为</span>
+         gate:constitution-check:stale
+
+  6  交回 xforge-design 收尾，重走 design → check → apply
+     在 check 里把那条 blocker 改成 status: resolved
+     并填 resolvedBy（<span class="hl">必须命中 KnownIdentities</span>）</pre>
+  </div>
+
+  <div class="note">
+    <p><span class="k">为什么 check 也在 apply 的 reworkTo 里。</span>
+    没有它，check 是 major 里唯一回不去的 Stage —— <code>legalTransitionTargets</code> 只给
+    「下一个 Stage + reworkTo」，而 apply 和 verify 都够不到 check。
+    结果是实现期发现的 Constitution 违规，只能靠改一份<strong>根本不需要改</strong>的 Design
+    来重新走过 Check。</p>
+    <p>允许它并不放松什么：<code>implementation-major</code> 绑在 check 出口，回去就失效、必须重签
+    —— <strong>这与其他每个 rework 目标做的是同一笔交易。</strong></p>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">06</span>为什么必须是四个</h2>
+  <p class="lead">每个回答一个不同的问题，证据形态也不同。合并任意两个，都会丢掉一样东西。</p>
+
+  <div class="t-shell">
+    <table>
+      <thead>
+        <tr><th></th><th>回答的问题</th><th>证据形态</th><th>谁能产出</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Rule</strong></td>
+          <td>我们的标准是什么，它真的有牙齿吗</td>
+          <td>无 —— 只有 coverage 报告</td>
+          <td>无：它被核对，不被产出</td>
+        </tr>
+        <tr>
+          <td><strong>PermissionPolicy</strong></td>
+          <td>这个动作现在允许吗</td>
+          <td>审计事件</td>
+          <td>Hook dispatcher，实时</td>
+        </tr>
+        <tr>
+          <td><strong>Gate</strong></td>
+          <td>这份内容通过检查了吗</td>
+          <td><code>evidence/*.json</code>，绑 contentRevision</td>
+          <td>只有 CLI 的 Gate runner</td>
+        </tr>
+        <tr>
+          <td><strong>Approval</strong></td>
+          <td>谁授权它继续</td>
+          <td>receipt，绑 governingRevision + 审计事件</td>
+          <td>只有真实终端对话或 MCP provider</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note">
+    <p><span class="k">Rule 合进 Gate</span> → 失去「写下来了但没被强制」这个状态。
+    那正是最初那个失败的形态：规则在，Gate 在，但 Gate 什么都没断言。</p>
+    <p><span class="k">Gate 合进 Approval</span> → 人要为机器能判的东西背书，签字买到的信息反而变少。</p>
+    <p><span class="k">Approval 合进 Gate</span> → Agent 就能自签，因为 Gate 是它能触发的。</p>
+    <p><span class="k">PermissionPolicy 合进 Gate</span> → 危险动作只能事后被发现，而不是当场被拦。</p>
+  </div>
+</section>
+
+<footer>
+  完整的静态语义（每一个是什么、schema、有效性判定）见
+  <code>docs/governance-model.md</code>；本页是它的 §9 时序视角的图解版。
+</footer>
+
+</div>
