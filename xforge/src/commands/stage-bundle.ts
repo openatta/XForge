@@ -46,7 +46,7 @@ interface StageBundleResult {
     since: { receiptId: string; from: string; to: string; gitHead: string } | null;
     worktreeClean: boolean;
     /** Read these in full. */
-    read: Array<{ path: string; reason: 'changed-since-stage-entered' | 'written-by-this-stage' | 'always' | 'no-baseline' | 'worktree-dirty' }>;
+    read: Array<{ path: string; reason: 'changed-since-stage-entered' | 'written-by-this-stage' | 'always' | 'no-baseline' | 'worktree-dirty' | 'comparison-unavailable' }>;
     /** Unchanged since this Stage was entered, with what stands in for reading them. */
     vouched: Array<{ path: string; digest: string; sections: string[] }>;
     bytes: { read: number; vouched: number };
@@ -95,13 +95,35 @@ export async function executeStageBundle(
     diagnostics.push(diagnostic('XFORGE_STAGE_BUNDLE_GIT_UNAVAILABLE', `Git could not report the Change's status, so nothing can be vouched for: ${status.stderr.trim()}`, changeRoot, 'warning'));
   }
 
-  let changed = new Set<string>();
+  /*
+   * `null` means the comparison could not be made, which is not the same as "nothing changed".
+   *
+   * It was a plain empty Set, and every path that failed to fill it -- a `git diff` that exited
+   * non-zero on a shallow clone or a pruned baseline commit -- fell through to the same place a
+   * successful empty diff does, so the command vouched for every Artifact one line after saying
+   * "nothing can be vouched for". A warning that the code contradicts is worse than no warning.
+   */
+  let changed: Set<string> | null = null;
   if (since && worktreeClean) {
+    /*
+     * Git names files from the repository root; this command compares them with paths relative to
+     * the project root, and those are the same string only when the project *is* the repository.
+     * In a monorepo (`/r` the repository, `/r/app` the project) every diffed path arrives as
+     * `app/xforge/changes/...` and matches nothing, so a document that changed is reported as
+     * unchanged -- with a digest offered as the text the previous Stage read.
+     *
+     * `--show-prefix` is that offset, and stripping it puts both sides in the project's own terms.
+     * `check.ts:140` refuses outright in this situation; refusing here would take the command away
+     * from every monorepo, and the offset is knowable, so it is used instead.
+     */
+    const prefix = await git(project.root, ['rev-parse', '--show-prefix']);
     const diff = await git(project.root, ['diff', '--name-only', '--no-renames', '-z', `${since.gitHead}..HEAD`, '--', changeRoot]);
-    if (diff.code !== 0) {
-      diagnostics.push(diagnostic('XFORGE_STAGE_BUNDLE_GIT_UNAVAILABLE', `Git could not compare ${since.gitHead} with HEAD, so nothing can be vouched for: ${diff.stderr.trim()}`, changeRoot, 'warning'));
+    if (prefix.code !== 0 || diff.code !== 0) {
+      diagnostics.push(diagnostic('XFORGE_STAGE_BUNDLE_GIT_UNAVAILABLE', `Git could not compare ${since.gitHead} with HEAD, so nothing can be vouched for and every Artifact is listed to be read: ${(diff.code !== 0 ? diff.stderr : prefix.stderr).trim()}`, changeRoot, 'warning'));
     } else {
-      changed = new Set(diff.stdout.split('\0').filter(Boolean));
+      const offset = prefix.stdout.trim();
+      changed = new Set(diff.stdout.split('\0').filter(Boolean)
+        .map((repositoryPath) => (offset && repositoryPath.startsWith(offset) ? repositoryPath.slice(offset.length) : repositoryPath)));
     }
   }
 
@@ -129,8 +151,9 @@ export async function executeStageBundle(
     const reason = written ? 'written-by-this-stage'
       : !worktreeClean ? 'worktree-dirty'
         : !since ? 'no-baseline'
-          : changed.has(relative) ? 'changed-since-stage-entered'
-            : null;
+          : changed === null ? 'comparison-unavailable'
+            : changed.has(relative) ? 'changed-since-stage-entered'
+              : null;
     if (reason) {
       read.push({ path: relative, reason });
       readBytes += size;

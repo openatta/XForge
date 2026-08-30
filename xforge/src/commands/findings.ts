@@ -144,6 +144,25 @@ export async function executeFindingsResolve(
     ));
   }
 
+  /*
+   * The one transition this command allows is the one it now enforces.
+   *
+   * Its own refusal message says "This entry names no Stage to send the work back to", and
+   * `reconcile.ts:165` only offers the command for findings whose `reworkTo` is empty -- but the
+   * executor applied to any unresolved entry. So `findings resolve` on a blocker declaring
+   * `reworkTo: design` wrote `status: resolved` and `resolvedBy`, `check-findings.ts:133` read that
+   * as closed, and the Gate cleared without the Change ever going back to the Stage the blocker
+   * demanded. A finding that names a Stage is answered by returning to it.
+   */
+  const reworkTo = entryText(target, 'reworkTo');
+  if (reworkTo) {
+    throw new XForgeError(diagnostic(
+      'XFORGE_FINDINGS_REWORK_REQUIRED',
+      `${options.id} names \`reworkTo: ${reworkTo}\`, so it is closed by doing the work again at ${reworkTo}, not by recording an answer here. Run \`xforge transition --change ${options.change} --to ${reworkTo}\`, revise what the finding names, and mark it resolved from the Stage that re-examines it. This command exists for the other kind of finding: one that asked somebody a question and names no Stage to return to.`,
+      relative,
+    ), { root: project.root });
+  }
+
   /* Idempotence is not silence: re-running this must not overwrite somebody else's recorded answer
      with a second one, so an already-resolved entry is reported with who closed it. */
   if (entryText(target, 'status') === 'resolved') {

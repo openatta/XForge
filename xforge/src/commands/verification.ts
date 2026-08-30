@@ -1,6 +1,6 @@
 import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { Diagnostic, FileChange, ProjectContext, VerificationEntry, VerificationRun } from '../types.js';
+import type { Diagnostic, FileChange, ProjectContext, VerificationEntry } from '../types.js';
 import { isRetired, isVerificationRun } from '../types.js';
 import { XForgeError, diagnostic } from '../core/errors.js';
 import { atomicWrite } from '../core/files.js';
@@ -148,7 +148,9 @@ export async function executeVerificationRetire(
     .filter(({ entry }) => (wanted
       ? isVerificationRun(entry) && JSON.stringify(entry.command) === JSON.stringify(wanted)
       : !isVerificationRun(entry) && entry.notApplicable === options.notApplicable))
-    .filter(({ entry }) => options.module === undefined || (entry as VerificationRun).module === options.module);
+    /* Only a run has a module. Casting a dismissal to one made `--module` match nothing rather than
+       filter nothing, so retiring a dismissal by marker failed the moment the flag was present. */
+    .filter(({ entry }) => options.module === undefined || !isVerificationRun(entry) || entry.module === options.module);
 
   if (matches.length === 0) {
     /*
@@ -179,7 +181,12 @@ export async function executeVerificationRetire(
        here would withdraw a check nobody chose to withdraw. */
     throw new XForgeError(diagnostic(
       'XFORGE_VERIFICATION_RETIRE_AMBIGUOUS',
-      `Gate ${options.gate} has ${matches.length} active declarations matching that argument: ${matches.map(({ entry }) => describeEntry(entry)).join('; ')}. Add --module to name which one.`,
+      /* `--module` is only advice when a module could tell them apart. Two dismissals of the same
+         marker carry no field that selects one, so pointing at the flag would send a reader round a
+         loop that cannot end. */
+      `Gate ${options.gate} has ${matches.length} active declarations matching that argument: ${matches.map(({ entry }) => describeEntry(entry)).join('; ')}. ${matches.every(({ entry }) => isVerificationRun(entry))
+        ? 'Add --module to name which one.'
+        : 'A dismissal is identified by its marker alone, so no argument here can separate these two — the duplicate has to go from xforge/manifest.yaml, keeping the one whose justification still holds.'}`,
       relative,
     ));
   }

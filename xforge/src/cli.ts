@@ -577,9 +577,18 @@ function helpEnvelope(subject?: string, subcommand?: string): Envelope {
     root: null,
     data: {
       usage: 'xforge [--root <path>] <command> [options] [--text]',
-      commands: subject
-        ? COMMANDS.filter((command) => command !== subject)
-        : Object.fromEntries(COMMANDS.map((command) => [command, HELP[command].description])),
+      /*
+       * Narrowed under a different name, not the same name with a different type.
+       *
+       * `commands` was a `Record<name, description>` for the index and became a `string[]` when a
+       * subject was named, so a caller doing `data.commands["state"]` got a description in one case
+       * and `undefined` in the other, and `Object.keys` returned names or array indices depending
+       * on which call it had made. A key that is absent is a fact a caller can test; a key whose
+       * type changes underneath it is not.
+       */
+      ...(subject
+        ? { otherCommands: COMMANDS.filter((command) => command !== subject) }
+        : { commands: Object.fromEntries(COMMANDS.map((command) => [command, HELP[command].description])) }),
       globalOptions: { '--root <path>': 'Use an exact project root.', '--text': 'Present the same result as readable text.' },
       commandHelp,
       /* Reported rather than dropped: a reader who asked about one subcommand and is handed the

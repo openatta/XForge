@@ -156,4 +156,67 @@ describe('xforge stage-bundle', () => {
     /* A digest is permission to skip, never a prohibition on looking. */
     expect(text.stdout).toContain('not that reading it is forbidden');
   }, 600_000);
+
+  /*
+   * Git names files from the repository root. This command compares them with paths relative to the
+   * project root, and until `--show-prefix` was subtracted those were the same string only when the
+   * project was the repository — so in a monorepo every diffed path arrived as `app/xforge/...`,
+   * matched nothing, and a document that had changed was handed back with a digest offered as the
+   * text the previous Stage read. The failure the module's own header calls worse than re-reading.
+   */
+  it('sees what changed when the project is not the repository root', async () => {
+    const repository = await fixture('xforge-monorepo-');
+    /* The fixture is the project; the repository is its parent, so the project sits at `app/`. */
+    const { mkdir, cp, rm } = await import('node:fs/promises');
+    const project = `${repository}/app`;
+    await mkdir(project, { recursive: true });
+    for (const entry of ['xforge', 'src']) {
+      await cp(`${repository}/${entry}`, `${project}/${entry}`, { recursive: true, force: true }).catch(() => {});
+      await rm(`${repository}/${entry}`, { recursive: true, force: true });
+    }
+    await createCompleteSolidChange(project);
+    for (const args of [['init', '-q'], ['config', 'user.name', 'XForge Test'], ['config', 'user.email', 'test@example.test']]) {
+      await run('git', ['-C', repository, ...args]);
+    }
+    await commit(repository, 'the Change as the Stage received it');
+    await advanceSolidToApply(project);
+    await commit(repository, 'the transition receipts');
+    await write(project, `xforge/changes/${CHANGE}/proposal.md`, '# Proposal\n\n## Problem\n\nRewritten inside this Stage.\n');
+    await commit(repository, 'an edit made during apply');
+
+    const result = await runCli(project, ['stage-bundle', '--change', CHANGE]);
+    expect(result.code, JSON.stringify(result.json?.diagnostics)).toBe(0);
+    const read = result.json.data.read as Array<{ path: string; reason: string }>;
+    const vouched = result.json.data.vouched as Array<{ path: string }>;
+    expect(read.find((entry) => entry.path.endsWith('proposal.md'))?.reason).toBe('changed-since-stage-entered');
+    expect(vouched.map((entry) => entry.path)).not.toContain(`xforge/changes/${CHANGE}/proposal.md`);
+  });
+
+  /*
+   * A baseline commit git cannot reach — a shallow clone, a rebased or pruned history — used to end
+   * with an empty changed-set that read exactly like "nothing moved", so the command warned that
+   * nothing could be vouched for and then vouched for everything. Not knowing is not the same as
+   * knowing there was no change.
+   */
+  it('vouches for nothing when it cannot make the comparison', async () => {
+    const root = await committedChange();
+    await advanceSolidToApply(root);
+    await commit(root, 'the transition receipts');
+    await write(root, `xforge/changes/${CHANGE}/proposal.md`, '# Proposal\n\n## Problem\n\nRewritten inside this Stage.\n');
+    await commit(root, 'an edit made during apply');
+
+    /* A shallow clone: the tree is clean and the receipt is intact, but the commit it names as the
+       Stage's baseline is not in this repository's object store, so `git diff` cannot answer. */
+    const shallow = `${root}-shallow`;
+    await run('git', ['clone', '--quiet', '--depth', '1', `file://${root}`, shallow]);
+
+    const result = await runCli(shallow, ['stage-bundle', '--change', CHANGE]);
+    expect(result.json.data.worktreeClean).toBe(true);
+    expect(result.json.data.since).not.toBeNull();
+    /* Not one document is taken on a digest, and each says why. */
+    expect(result.json.data.vouched).toEqual([]);
+    const read = result.json.data.read as Array<{ path: string; reason: string }>;
+    expect(read.some((entry) => entry.reason === 'comparison-unavailable')).toBe(true);
+    expect(JSON.stringify(result.json.diagnostics)).toContain('XFORGE_STAGE_BUNDLE_GIT_UNAVAILABLE');
+  });
 });

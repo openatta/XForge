@@ -187,6 +187,34 @@ describe('Check findings ledger', () => {
     /* The failure is recorded as Evidence, not merely printed. */
     expect(gate.json.data.gates.find((item: any) => item.id === 'check-findings').evidence.stderr).toContain('F-1');
   });
+
+  /*
+   * The warning is usually the sentence that explains the failure, and a failing verdict was the
+   * one place `ledgerReport` dropped warnings — so `resolveBy:` for `resolvedBy:` failed with
+   * "marked resolved but names no resolvedBy" while the line naming the typo went nowhere. The
+   * module's own contract says warnings "never decide anything, and must still be reported".
+   */
+  it('keeps the warning that explains the failure, on the failure', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await write(root, ledgerPath, [
+      'findings:',
+      '  - id: F-1',
+      '    severity: blocker',
+      '    summary: Design contradicts the delta Spec.',
+      '    refs: [design.md]',
+      '    status: resolved',
+      '    resolveBy: owner@example.test',
+      '',
+    ].join('\n'));
+
+    const gate = await runCli(root, ['check', '--change', CHANGE, '--gate', 'check-findings'], approvalTestEnv);
+    const evidence = gate.json.data.gates.find((item: any) => item.id === 'check-findings').evidence;
+    expect(gate.code).toBe(1);
+    expect(evidence.stderr).toContain('resolvedBy');
+    /* Both halves: what failed, and the misspelling that caused it. */
+    expect(evidence.stderr).toContain('unknown key "resolveBy"');
+  });
 });
 
 describe('Constitution ledger', () => {

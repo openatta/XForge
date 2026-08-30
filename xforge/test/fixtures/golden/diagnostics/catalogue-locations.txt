@@ -111,6 +111,7 @@ XFORGE_FINDINGS_LEDGER_MISSING  src/commands/findings.ts
 XFORGE_FINDINGS_RESOLVER_UNKNOWN  src/commands/findings.ts
 XFORGE_FINDINGS_RESOLVER_UNVERIFIABLE  src/commands/findings.ts
 XFORGE_FINDINGS_REVISION_MOVED  src/commands/findings.ts
+XFORGE_FINDINGS_REWORK_REQUIRED  src/commands/findings.ts
 XFORGE_FINDINGS_STAGE_CLOSED  src/commands/findings.ts
 XFORGE_FLOW_ARTIFACT_DUPLICATE  src/core/flow-resolver.ts
 XFORGE_FLOW_ARTIFACT_MULTIPLE_PRODUCERS  src/core/flow-resolver.ts

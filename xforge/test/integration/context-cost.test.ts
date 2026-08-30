@@ -26,14 +26,17 @@ describe('what a Stage pays to read', () => {
 
     /* The command asked about is answered in full. */
     expect((one.json.data as any).commandHelp.usage).toContain('verification');
-    /* The others are named, so "what else is there" is still answerable, but not described. */
-    const listed = (one.json.data as any).commands;
+    /* The others are named, so "what else is there" is still answerable, but not described. Under
+       a key of its own: `commands` keeps one type, and its absence is what says the reply narrowed. */
+    const listed = (one.json.data as any).otherCommands;
+    expect((one.json.data as any).commands).toBeUndefined();
     expect(Array.isArray(listed)).toBe(true);
     expect(listed).toContain('approve');
     expect(listed).not.toContain('verification');
     expect(one.stdout.length).toBeLessThan(index.stdout.length / 2);
 
     /* Bare `help` is untouched: there the index is the answer, not the overhead. */
+    expect((index.json.data as any).otherCommands).toBeUndefined();
     expect(Array.isArray((index.json.data as any).commands)).toBe(false);
     expect((index.json.data as any).commands.verification).toContain('declared-verification Gate');
   });

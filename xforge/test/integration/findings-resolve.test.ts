@@ -220,4 +220,40 @@ describe('xforge findings resolve', () => {
     expect(awaiting.command.join(' ')).toContain(`xforge findings resolve --change ${CHANGE} --id CHK-001`);
     expect(awaiting.actor).toBe('human');
   });
+
+  /*
+   * The one transition this command allows is the one it enforces.
+   *
+   * A finding that names `reworkTo` is closed by going back to that Stage and doing the work again.
+   * The executor applied to any unresolved entry, so recording an answer here wrote `resolved` and
+   * `resolvedBy`, `check-findings.ts` read that as closed, and the Gate cleared without the Change
+   * ever returning — the blocker's own routing quietly discarded by the command whose refusal
+   * message says it is for findings that name no Stage.
+   */
+  it('refuses a finding that names a Stage to send the work back to', async () => {
+    const root = await fixture();
+    /* Not advanced: an open blocker is what keeps the Change at Check, which is exactly the state
+       this refusal is about. */
+    await createCompleteSolidChange(root);
+    await write(root, `xforge/changes/${CHANGE}/${CHECK_FINDINGS_PATH}`, `findings:
+  - id: CHK-001
+    severity: blocker
+    summary: The Design contradicts the acceptance suite.
+    reworkTo: design
+    refs: [design.md]
+`);
+
+    const result = await runCli(root, [
+      'findings', 'resolve', '--change', CHANGE, '--id', 'CHK-001',
+      '--answer', 'Decided: keep the Design.', '--by', 'owner@example.test',
+    ]);
+
+    expect(result.code).toBe(1);
+    const said = JSON.stringify(result.json.diagnostics);
+    expect(said).toContain('XFORGE_FINDINGS_REWORK_REQUIRED');
+    /* It names the Stage and the command that gets there, rather than only refusing. */
+    expect(said).toContain('transition --change add-feature --to design');
+    /* And nothing was written: the entry is still open. */
+    expect((await ledger(root)).findings[0].status).toBeUndefined();
+  });
 });

@@ -384,7 +384,10 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
       code: 'XFORGE_DOCTOR_RULE_SCOPE_EMPTY',
       id: name,
       message: `Rule ${name} is scoped to ${paths.join(', ')}, which matches no file in this repository. XForge compares that list with the paths a Change declares in change.yaml, and the installed Adapters hand it to the host as a file matcher; on this layout both come up empty, so the Rule is registered, enforceable, and reaching nothing. Rewrite scope.paths to the paths this repository actually uses, or drop it to have the Rule apply everywhere.`,
-      path: `xforge/scaffold/rules/${name}.yaml`,
+      /* The Rule's own path, not a guess at one: `resource-loader.ts` resolves rules through
+         `localizedVariant`, so a `_cn` project keeps its Rules somewhere this template does not
+         name, and the reader is sent to a file that does not exist. */
+      path: rule.yamlPath,
       severity: 'info',
     });
   }

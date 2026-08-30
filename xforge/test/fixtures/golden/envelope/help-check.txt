@@ -8,7 +8,7 @@ exit: 0
   "root": null,
   "data": {
     "usage": "xforge [--root <path>] <command> [options] [--text]",
-    "commands": [
+    "otherCommands": [
       "help",
       "version",
       "init",

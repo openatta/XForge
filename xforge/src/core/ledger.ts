@@ -117,12 +117,19 @@ export function unknownKeyWarnings(entry: unknown, known: readonly string[], whe
 /**
  * What a Gate prints for a ledger it evaluated.
  *
- * `stdout` on a pass, `stderr` on a failure, and the warnings attached to the pass — because a
- * passing Gate's output is the only thing a reader gets, and dropping the warnings there is exactly
- * the defect this module exists to make unrepeatable.
+ * `stdout` on a pass, `stderr` on a failure, and the warnings either way — because a Gate's output
+ * is the only thing a reader gets, and dropping the warnings is exactly the defect this module
+ * exists to make unrepeatable.
+ *
+ * A failure kept them out for longer than the pass did, which is backwards: the warning is most
+ * often the sentence that explains the failure. `resolveBy:` instead of `resolvedBy:` fails with
+ * "marked resolved but names no resolvedBy" and warns "unknown key \"resolveBy\"; did you mean
+ * \"resolvedBy\"?" -- and only the half that does not say what to do was printed.
  */
 export function ledgerReport(headline: string, result: LedgerVerdict): { stdout: string; stderr: string } {
-  if (result.status !== 'passed') return { stdout: '', stderr: result.problems.join('\n') };
+  if (result.status !== 'passed') {
+    return { stdout: '', stderr: [...result.problems, ...result.warnings.map((warning) => `warning: ${warning}`)].join('\n') };
+  }
   return {
     stdout: [headline, ...result.warnings.map((warning) => `warning: ${warning}`)].join('\n'),
     stderr: '',
