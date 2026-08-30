@@ -1,4 +1,6 @@
 import { spawn } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { changeYaml, createCompleteSolidChange, fixture, runCli, write } from '../helpers.js';
 
@@ -160,5 +162,32 @@ describe('what a Stage pays to read', () => {
     const inData = await runCli(root, ['state', '--change', 'add-feature', '--field', 'change.governance.currentStage']);
     expect(inData.code).toBe(1);
     expect(Object.keys(inData.json.data as object)).toEqual(['change.governance.currentStage']);
+  });
+
+  /*
+   * Every `--field` example in the contract document, executed.
+   *
+   * `XFORGE.md` is the one file every Stage reads before it calls anything, so a command written
+   * there is a command Agents will run verbatim. One shipped naming `check --field blockedBy` —
+   * a field `check` does not have — and because `--field` is all or nothing, an Agent following it
+   * got `XFORGE_FIELD_NOT_FOUND`, exit 1, and none of the `gates` it had also asked for. A live run
+   * found it; nothing in the suite could have, because no test ran what the document says to run.
+   */
+  it('runs every --field example the contract document gives, and each one resolves', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const contract = await readFile(join(root, 'xforge', 'XFORGE.md'), 'utf8');
+
+    const examples = [...contract.matchAll(/`(xforge [^`]*--field[^`]*)`/gu)]
+      .map((match) => match[1]!.replace(/<id>/gu, 'add-feature'));
+    /* The document is the source of the list, so an example added later is covered without this
+       test changing — and a document that stops giving examples fails here rather than passing
+       vacuously. */
+    expect(examples.length).toBeGreaterThanOrEqual(2);
+
+    for (const example of examples) {
+      const result = await runCli(root, example.split(/\s+/u).slice(1));
+      expect(result.code, `${example} -> ${result.stdout.slice(0, 300)}`).toBe(0);
+    }
   });
 });

@@ -35,12 +35,19 @@ prints nothing else, and repeats: `xforge state --change <id> --field nextAction
 is one call returning two values. Five sections are left out of `state` until `--include` asks for
 them, and each says so where it would have been.
 
-`check` takes `--field` too, and it is the command where it saves the most: its reply carries a
-full Evidence record per Gate — the verify command's whole stdout, five digests, timestamps — and
-what a Stage almost always wants from it is `gates` and `blockedBy`. Ask for those unless you are
-about to read the evidence itself: `xforge check --change <id> --field gates --field blockedBy`.
-A failing call answers the same way, narrowed to what you asked for plus why it failed, so
-`--field diagnostics` after a refusal is one value rather than the whole project.
+`check` takes `--field` too. Its reply carries the structure report, the resolved Change, the Gate
+selection, the work-package selection and `gates`; a Stage acting on the verdict wants `gates`, and
+`xforge check --change <id> --field gates` leaves the rest behind. Note what that does not do: each
+entry in `gates` carries its own Evidence — the verify command's whole stdout, the digests, the
+timestamps — so this narrows the reply to the part you act on rather than making it small.
+
+A refusal answers the same way, narrowed to what you asked for plus why it failed, so
+`--field diagnostics` after one is a few lines rather than the whole project.
+
+`--field` takes a dotted path, not only a top-level name: `--field change.governance.currentStage`
+prints one string. And it is all or nothing — one name that does not resolve fails the call and
+returns none of the values, so a guessed path costs the whole reply. Where a Change is blocked is
+`state`, not `check`: `--field change.governance.readyTransitions`, whose entries carry `blockedBy`.
 
 And chain the calls that do not read each other. A governed Change is dozens of CLI invocations,
 and a turn costs far more than a process, so `xforge check --change <id> && xforge transition

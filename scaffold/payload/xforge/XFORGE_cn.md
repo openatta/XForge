@@ -31,11 +31,18 @@ CLI：本项目运行哪个版本，是记录在 `xforge/manifest.yaml` 里的�
 `xforge state --change <id> --field nextActions --field change` 是一次调用返回两个值。
 `state` 有五个段默认不返回，要用 `--include` 显式索取，被省略处都会写明取回它的选项。
 
-`check` 同样接受 `--field`，而且它是收益最大的那条命令：它的回复里每个 Gate 都带一份完整
-Evidence——verify 命令的全部 stdout、五个摘要、时间戳——而一个 Stage 从中真正要看的几乎
-总是 `gates` 和 `blockedBy`。除非你正要读证据本身，否则就只取这两个：
-`xforge check --change <id> --field gates --field blockedBy`。调用失败时也照样只回你问的那些，
-外加失败原因，所以被拒绝之后用 `--field diagnostics` 拿到的是一个值，而不是整个项目。
+`check` 同样接受 `--field`。它的回复包含结构报告、解析出的 Change、Gate 选择、工作包选择和
+`gates`；据裁决行动的 Stage 要的是 `gates`，`xforge check --change <id> --field gates` 会把其余
+部分留下不发。但要清楚它没做到什么：`gates` 里每一项都带着自己的 Evidence——verify 命令的全部
+stdout、各个摘要、时间戳——所以这是把回复收窄到你据以行动的那部分，而不是把它变小。
+
+被拒绝时也照样只回你问的那些，外加失败原因，所以拒绝之后用 `--field diagnostics` 得到的是几行，
+而不是整个项目。
+
+`--field` 接受点号路径，不限于顶层名字：`--field change.governance.currentStage` 只打印一个字符串。
+并且它是全有或全无——只要有一个名字解析不出来，整次调用就失败、一个值都不返回，所以猜错一个路径
+的代价是整份回复。另外，"卡在哪里"要问 `state` 而不是 `check`：
+`--field change.governance.readyTransitions`，其中每一项都带 `blockedBy`。
 
 以及：把彼此不需要读取对方输出的调用串起来。一个受治理的 Change 有几十次 CLI 调用，
 而一个 turn 的代价远高于一个进程，所以 `xforge check --change <id> && xforge transition
