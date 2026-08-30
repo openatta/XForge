@@ -66,6 +66,7 @@ exit: 0
       },
       "integrity": "sha256:<sha256>"
     },
+    "constitution": null,
     "specs": [],
     "changes": [
       "add-feature"
@@ -211,8 +212,7 @@ exit: 0
       "healthy": true,
       "lastSyncedAt": {}
     },
-    "change": null,
-    "context": null
+    "change": null
   },
   "diagnostics": [],
   "changes": [],

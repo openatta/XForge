@@ -35,10 +35,12 @@ describe('the readable form of a result', () => {
     expect(text.stdout).not.toContain('"installation"');
     expect(json.stdout.trim().startsWith('{')).toBe(true);
     expect(Object.keys(json.json.data)).toContain('installation');
-    /* A third, not a quarter. The envelope this is measured against no longer carries the Flow
-       definitions, the capability matrix, the lockfile digests, the Constitution's text or the
-       receipt chain, so the gap the readable form has to open is smaller than it was. */
-    expect(text.stdout.length).toBeLessThan(json.stdout.length / 3);
+    /* Two fifths, not a third, and not the quarter it started at. Each cut to the envelope closes
+       this gap without the readable form changing at all: the JSON no longer carries the Flow
+       definitions, the capability matrix, the lockfile digests, the Constitution's text, the
+       receipt chain, or the `context` block that repeated `change` and `specs`. The property this
+       is reaching for is that the summary is a fraction of the envelope, not which fraction. */
+    expect(text.stdout.length).toBeLessThan(json.stdout.length / 2.5);
   });
 
   it('names each active Change by id, Flow and Stage rather than joining objects', async () => {

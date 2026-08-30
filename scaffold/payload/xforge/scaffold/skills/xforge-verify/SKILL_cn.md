@@ -6,7 +6,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # 不变量
 
-- 先运行 `xforge state --change <id> --field nextActions --field diagnostics --field change --field context`，解析用户意图为 `verify-only`、`verify-and-archive` 或 `archive-current`；没有明确归档授权时只验证。
+- 先运行 `xforge state --change <id> --field nextActions --field diagnostics --field change`，解析用户意图为 `verify-only`、`verify-and-archive` 或 `archive-current`；没有明确归档授权时只验证。
 - 重读当前 revision 的 Proposal、delta/main Specs、可选 Clarifications/Design/Check report、实现 diff、工作包/deliveries、Constitution、Rules 和 Gates。
 - 默认不修产品代码，不手写或篡改 Gate Evidence；实现变化会使旧验证回执失效。
 - Archive 是独立的 `archive-write` 协议动作，不代表 deploy/release 权限。

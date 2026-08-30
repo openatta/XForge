@@ -31,6 +31,12 @@ CLI：本项目运行哪个版本，是记录在 `xforge/manifest.yaml` 里的�
 `xforge state --change <id> --field nextActions --field change` 是一次调用返回两个值。
 `state` 有五个段默认不返回，要用 `--include` 显式索取，被省略处都会写明取回它的选项。
 
+`check` 同样接受 `--field`，而且它是收益最大的那条命令：它的回复里每个 Gate 都带一份完整
+Evidence——verify 命令的全部 stdout、五个摘要、时间戳——而一个 Stage 从中真正要看的几乎
+总是 `gates` 和 `blockedBy`。除非你正要读证据本身，否则就只取这两个：
+`xforge check --change <id> --field gates --field blockedBy`。调用失败时也照样只回你问的那些，
+外加失败原因，所以被拒绝之后用 `--field diagnostics` 拿到的是一个值，而不是整个项目。
+
 以及：把彼此不需要读取对方输出的调用串起来。一个受治理的 Change 有几十次 CLI 调用，
 而一个 turn 的代价远高于一个进程，所以 `xforge check --change <id> && xforge transition
 --change <id> --to <stage>` 应该写在一行里，而不是分成两个 turn。这样做是安全的，因为

@@ -66,6 +66,13 @@ exit: 0
       },
       "integrity": "sha256:<sha256>"
     },
+    "constitution": {
+      "version": "1.1.0",
+      "ratified": "2026-08-08",
+      "lastAmended": "2026-08-08",
+      "path": "xforge/constitution.md",
+      "omitted": "Read the file at `path`, or run state --include constitution."
+    },
     "specs": [],
     "changes": [
       "add-feature"
@@ -650,46 +657,6 @@ exit: 0
           "sourceFilesChangedSince": null
         }
       ]
-    },
-    "context": {
-      "constitution": {
-        "version": "1.1.0",
-        "ratified": "2026-08-08",
-        "lastAmended": "2026-08-08",
-        "path": "xforge/constitution.md",
-        "omitted": "Read the file at `path`, or run state --include constitution."
-      },
-      "rules": [
-        {
-          "id": "observable-requirements-are-tested",
-          "severity": "must",
-          "instruction": "Every externally observable requirement added or modified by a Change must have automated verification. A requirement whose only evidence is prose is not verified.",
-          "gateRefs": [
-            "unit-tests"
-          ],
-          "policyRefs": [],
-          "approvalRefs": []
-        },
-        {
-          "id": "prefer-small-explicit-contracts",
-          "severity": "should",
-          "instruction": "Prefer small, testable modules with explicit contracts over broad shared helpers. Judgement guidance only; XForge does not claim to enforce it.",
-          "gateRefs": [],
-          "policyRefs": [],
-          "approvalRefs": []
-        },
-        {
-          "id": "design-within-the-declared-architecture",
-          "severity": "should",
-          "instruction": "When xforge/architecture.md exists, read it before designing or implementing, and state in the Stage's Artifact how this Change stands against each decision it touches: within it, deliberately departing from it (say why), or proposing to change it. A departure that is written down is a fact somebody can act on; the same departure recorded in a build-file comment is one nobody will find. Proposing a change is a legitimate third answer, not a failure — an architecture that can only be complied with is one every Change will quietly route around. When the file does not exist, proceed normally and say so once: it is a project that has not written its architecture down, not a project in violation. Judgement guidance only; XForge does not claim to enforce it.",
-          "gateRefs": [],
-          "policyRefs": [],
-          "approvalRefs": []
-        }
-      ],
-      "relatedSpecs": [],
-      "nextArtifact": null,
-      "workPackages": null
     }
   },
   "diagnostics": [

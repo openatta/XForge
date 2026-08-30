@@ -6,7 +6,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # Invariants
 
-- Run `xforge state --change <id> --field nextActions --field diagnostics --field change --field context` and consume only the current-revision ready Clarify Action.
+- Run `xforge state --change <id> --field nextActions --field diagnostics --field change` and consume only the current-revision ready Clarify Action.
 - Resolve facts from code, Specs, Rules, and Proposal first; ask only a small set of project-unanswerable questions that materially affect the result.
 - Keep Clarifications and authorized Proposal/delta Spec updates in one consistent revision. Any unresolved material question remains blocking.
 

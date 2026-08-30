@@ -286,7 +286,7 @@ export async function resolveControlPlane(
    *
    * `ruleApplies` compares a Rule's `scope.paths` against the paths this Change declares in its own
    * `change.yaml` — not against the repository — and a Rule that matches none of them is absent
-   * from `context.rules`, which is how a Rule reaches the Agent at all. It is not weakened, not
+   * from `governance.rules`, which is how a Rule reaches the Agent at all. It is not weakened, not
    * downgraded, not reported: it is simply not there, and the Change proceeds as though it had
    * never been written. A live monorepo run finished a Major Change with `governance.rules: []`
    * while `observable-requirements-are-tested` (severity `must`) sat selected in the Manifest, its

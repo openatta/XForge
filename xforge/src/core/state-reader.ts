@@ -15,7 +15,6 @@ import { codeMovedSince, gitRevisions } from './revision.js';
 import { resolveWorkPackages } from './work-packages.js';
 import { installationSummary, readOwnership } from '../install/ownership.js';
 import { loadTransitionReceipts, resolveControlPlane } from './control-plane.js';
-import { normalizeRule, ruleApplies } from './governance.js';
 import { exists } from './files.js';
 
 async function directoriesAt(root: string): Promise<string[]> {
@@ -228,7 +227,6 @@ export async function readState(project: ProjectContext, options: StateOptions):
   });
 
   let selectedChange: ChangeState | null = null;
-  let context: Record<string, unknown> | null = null;
   let selectedFlow: Flow | null = null;
   if (options.change) {
     const resolved = await resolveChangeState(project, options.change, flowResult.flows);
@@ -270,26 +268,6 @@ export async function readState(project: ProjectContext, options: StateOptions):
       contentRevision = control.governance.revision.contentRevision;
     }
     selectedChange.mandatoryGateEvidence = await mandatoryGateEvidence(project, options.change, selectedChange.archive.mandatoryGates, resources, contentRevision);
-    const relevantRules = [...resources.rules.values()]
-      .map((rule) => normalizeRule(rule.value))
-      .filter((rule) => ruleApplies(rule, resolved.config, selectedChange?.governance?.currentStage))
-      .map((rule) => ({ id: rule.id, severity: rule.severity, instruction: rule.instruction, gateRefs: rule.gateRefs, policyRefs: rule.policyRefs, approvalRefs: rule.approvalRefs }));
-    context = {
-      /*
-       * The Constitution's text, not a reference to it, was returned here on every read. Three
-       * copies reached one session: `XFORGE.md` has the Agent read the file at bootstrap,
-       * `stage-bundle` lists it as always-read at every Stage, and this sent the whole of it again
-       * per call. The first two are deliberate -- the document nobody skips. This one was the
-       * duplicate, so it names the file the other two already read.
-       */
-      constitution: wanted.has('constitution')
-        ? project.constitution
-        : { version: project.constitution.version, ratified: project.constitution.ratified, lastAmended: project.constitution.lastAmended, path: project.constitution.path, content: undefined, omitted: 'Read the file at `path`, or run state --include constitution.' },
-      rules: relevantRules,
-      relatedSpecs: specs,
-      nextArtifact: selectedChange.nextArtifact,
-      workPackages: selectedChange.workPackages,
-    };
     /*
      * An Artifact's `instruction` and `outline` say how to write it. They are worth their size at
      * the moment it is written -- `313de21` put the outline here for exactly that -- and nothing
@@ -350,6 +328,26 @@ export async function readState(project: ProjectContext, options: StateOptions):
         declaration: project.manifest.xforge,
         integrity: project.lock?.xforge?.integrity ?? null,
       },
+      /*
+       * A pointer, not the document. `XFORGE.md` has the Agent read the file at bootstrap and
+       * `stage-bundle` lists it as always-read at every Stage, so sending the text again per call
+       * was a third copy of something nobody skips. `--include constitution` returns the whole of
+       * it for a caller that has no file access.
+       *
+       * It sits at the top level because it is a project fact. It used to live under `context`,
+       * which was a second copy of four things `change` and `specs` already held -- the same
+       * `ruleApplies` filter as `governance.rules`, the same `nextArtifact`, the same
+       * `workPackages` byte for byte, the same `specs` -- about a quarter of every `state --change`
+       * reply. `context` is gone; this is the one member of it that was not a duplicate.
+       */
+      constitution: wanted.has('constitution')
+        ? project.constitution
+        /* Only where it was before: on a read about a Change. A bare `state` never carried it --
+           `context` did not exist without `--change` -- and moving it to the top level must not
+           quietly add bytes back to the smallest call the CLI makes. */
+        : options.change
+          ? { version: project.constitution.version, ratified: project.constitution.ratified, lastAmended: project.constitution.lastAmended, path: project.constitution.path, content: undefined, omitted: 'Read the file at `path`, or run state --include constitution.' }
+          : null,
       specs,
       changes,
       activeChanges,
@@ -369,7 +367,6 @@ export async function readState(project: ProjectContext, options: StateOptions):
       targets: wanted.has('targets') ? capabilityMatrix(targetList) : null,
       installation,
       change: selectedChange,
-      context,
     },
     diagnostics,
   };

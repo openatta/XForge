@@ -1034,11 +1034,48 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
     render = (data: unknown) => renderUpgradeText({ data: data as Record<string, unknown>, diagnostics: [], changes: [] });
   }
 
-  if (parsed?.field && result.ok) {
+  if (parsed?.field) {
     const paths = parsed.fields ?? [parsed.field];
     /* Resolve them all before printing anything: a caller that received three of four values and a
        zero exit would carry on believing it had four. */
     const resolutions = paths.map((path) => ({ path, resolved: resolveEnvelopeField(result, path) }));
+    /*
+     * A failed call answers the question it was asked, not every question.
+     *
+     * `--field` used to apply only to `ok` results, so a refusal printed the whole resolved project
+     * — and the call an Agent makes right after a refusal is `--field diagnostics`, asking what went
+     * wrong. A measured Major run spent 105KB, 27% of everything the CLI said to it, receiving the
+     * entire project five times in answer to a request for one value. That is the same cost the
+     * typo path below was written to avoid, on the path that is actually taken more often.
+     *
+     * What a refusal must never do is read like a success: `ok` stays false, every diagnostic is
+     * kept, and the exit code is still 1. Only `data` narrows. A path that does not resolve is
+     * reported as such rather than sent back as `null`, because a failed call often has not built
+     * the section being asked about, and "absent" and "null" are different answers.
+     */
+    if (!result.ok) {
+      const missing = resolutions.filter((item) => !item.resolved.found);
+      /*
+       * Only what came out of `data` is echoed into it. A path is looked up in `data` first and
+       * then among the envelope's own fields, so `--field diagnostics` resolves to the list this
+       * envelope is already printing -- copying it into `data` would answer one question twice,
+       * which on a refusal is most of the reply.
+       */
+      const fromData = resolutions.filter((item) => item.resolved.found
+        && result.data !== null && typeof result.data === 'object'
+        && Object.hasOwn(result.data as object, item.path.split('.')[0]!));
+      process.stdout.write(present({
+        ...result,
+        data: fromData.length > 0
+          ? Object.fromEntries(fromData.map((item) => [item.path, (item.resolved as { value: unknown }).value]))
+          : null,
+        diagnostics: [...result.diagnostics, ...missing.map((item) => diagnostic(
+          'XFORGE_FIELD_NOT_FOUND',
+          `No value at --field ${item.path}: this call did not succeed, so that part of the answer was never built. ${(item.resolved as { reason: string }).reason} The diagnostics above say why the call failed; run it without --field to see the whole envelope.`,
+        ))],
+      }, textMode, render));
+      return 1;
+    }
     const failed = resolutions.filter((item) => !item.resolved.found);
     if (failed.length > 0) {
       process.stdout.write(present({

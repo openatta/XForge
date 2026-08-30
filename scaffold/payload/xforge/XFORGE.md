@@ -35,6 +35,13 @@ prints nothing else, and repeats: `xforge state --change <id> --field nextAction
 is one call returning two values. Five sections are left out of `state` until `--include` asks for
 them, and each says so where it would have been.
 
+`check` takes `--field` too, and it is the command where it saves the most: its reply carries a
+full Evidence record per Gate — the verify command's whole stdout, five digests, timestamps — and
+what a Stage almost always wants from it is `gates` and `blockedBy`. Ask for those unless you are
+about to read the evidence itself: `xforge check --change <id> --field gates --field blockedBy`.
+A failing call answers the same way, narrowed to what you asked for plus why it failed, so
+`--field diagnostics` after a refusal is one value rather than the whole project.
+
 And chain the calls that do not read each other. A governed Change is dozens of CLI invocations,
 and a turn costs far more than a process, so `xforge check --change <id> && xforge transition
 --change <id> --to <stage>` belongs on one line rather than in two turns. This is safe because

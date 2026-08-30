@@ -6,7 +6,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # Invariants
 
-- Run `xforge state --change <id> --field nextActions --field diagnostics --field change --field context` and use the dependency graph to find the earliest affected governing Artifact; never guess paths or create a missing Artifact.
+- Run `xforge state --change <id> --field nextActions --field diagnostics --field change` and use the dependency graph to find the earliest affected governing Artifact; never guess paths or create a missing Artifact.
 - Reread existing files and Action inputs before every edit; keep Requirements, Scenarios, decisions, and scope consistent across Artifacts.
 - Let digest/revision changes invalidate stale Check, Apply, or Verify results. Never tamper with Evidence manually.
 

@@ -117,4 +117,45 @@ describe('what a Stage pays to read', () => {
     expect(said.message).toContain('stage-bundle');
     expect(said.message).toContain('Commit the receipt');
   });
+  /*
+   * The call a Stage makes immediately after a refusal is `--field diagnostics`, asking what went
+   * wrong — and until now that was answered with the whole resolved project, because `--field` was
+   * applied only to `ok` results. A measured Major run spent 105KB that way, 27% of everything the
+   * CLI said to it, over five calls that each asked for one value.
+   *
+   * A work-package plan in a project that is not a Git worktree is the shape that produces it: the
+   * envelope is fully built and then refused, which is exactly when a narrowed read is worth most.
+   */
+  it('answers a failed call with the field that was asked for, not the whole project', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await write(root, 'xforge/changes/add-feature/work-packages.yaml', [
+      'apiVersion: xforge.dev/v1alpha1', 'kind: WorkPackagePlan', 'packages:', '  - id: T001', '    goal: Implement T001', '    depends_on: []',
+      '    inputs: ["xforge/changes/add-feature/design.md"]', '    write_paths: ["src/order/**"]',
+      '    skills: ["xforge-apply"]', '    verify: [["npm", "test"]]',
+      '    done_when: ["T001 is covered by an automated check"]', '',
+    ].join('\n'));
+
+    const full = await runCli(root, ['state', '--change', 'add-feature']);
+    const narrow = await runCli(root, ['state', '--change', 'add-feature', '--field', 'diagnostics']);
+
+    expect(full.code, full.stdout.slice(0, 400)).toBe(1);
+    expect(narrow.code).toBe(1);
+    /* Still a refusal: `ok` false and the exit code unchanged. Only `data` narrowed. */
+    expect(narrow.json.ok).toBe(false);
+    expect(narrow.stdout.length).toBeLessThan(full.stdout.length / 4);
+    /* The sections nobody asked for are gone, including the largest ones. */
+    for (const absent of ['"installation"', '"resources"', '"flows"', '"artifacts"']) {
+      expect(narrow.stdout, `${absent} was not asked for`).not.toContain(absent);
+    }
+    /* And the value asked for is there. `diagnostics` is an envelope field, so it arrives once, at
+       the envelope level, rather than being copied into `data` as well. */
+    expect(narrow.json.data).toBeNull();
+    expect(JSON.stringify(narrow.json.diagnostics)).toContain('XFORGE_WORK_PACKAGE_GIT_REQUIRED');
+
+    /* A path that does live in `data` comes back inside it, and still nothing else does. */
+    const inData = await runCli(root, ['state', '--change', 'add-feature', '--field', 'change.governance.currentStage']);
+    expect(inData.code).toBe(1);
+    expect(Object.keys(inData.json.data as object)).toEqual(['change.governance.currentStage']);
+  });
 });

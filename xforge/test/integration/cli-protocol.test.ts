@@ -317,7 +317,9 @@ describe('state --field', () => {
   });
 
   /* The exact call six Stage Skills now show. It exists as a test because the Skills are what an
-     Agent copies: if this shape ever stops resolving, every Stage starts its work with an error. */
+     Agent copies: if this shape ever stops resolving, every Stage starts its work with an error.
+     `--field context` was in it until `context` turned out to be a second copy of `change` and
+     `specs`; the Skills dropped it in the same commit that removed the section. */
   it('answers the call the Stage Skills show, with every key a Stage was seen to use', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
@@ -326,11 +328,10 @@ describe('state --field', () => {
       '--field', 'nextActions',
       '--field', 'diagnostics',
       '--field', 'change',
-      '--field', 'context',
     ]);
     expect(result.code).toBe(0);
     const value = JSON.parse(result.stdout);
-    expect(Object.keys(value).sort()).toEqual(['change', 'context', 'diagnostics', 'nextActions']);
+    expect(Object.keys(value).sort()).toEqual(['change', 'diagnostics', 'nextActions']);
     /* The ready Action a Stage is told to consume, and the governance subtree it resolves against. */
     expect(Array.isArray(value.nextActions)).toBe(true);
     expect(value.change.governance.currentStage).toBeTruthy();
@@ -352,7 +353,7 @@ describe('state --field', () => {
     await createCompleteSolidChange(root);
     const narrow = await runCli(root, [
       'state', '--change', CHANGE,
-      '--field', 'nextActions', '--field', 'diagnostics', '--field', 'change', '--field', 'context',
+      '--field', 'nextActions', '--field', 'diagnostics', '--field', 'change',
     ]);
     const full = await runCli(root, ['state', '--change', CHANGE]);
     expect(narrow.stdout.length).toBeLessThan(full.stdout.length);
@@ -382,9 +383,9 @@ describe('state --include', () => {
     expect(data.scaffold.lockedResourceCount).toBeGreaterThan(0);
     /* The Constitution's text is the copy that was redundant: `XFORGE.md` has it read at bootstrap
        and `stage-bundle` lists it at every Stage, so what stays here is where to find it. */
-    expect(data.context.constitution.content).toBeUndefined();
-    expect(data.context.constitution.path).toBeTruthy();
-    expect(data.context.constitution.omitted).toContain('--include constitution');
+    expect(data.constitution.content).toBeUndefined();
+    expect(data.constitution.path).toBeTruthy();
+    expect(data.constitution.omitted).toContain('--include constitution');
   });
 
   it('returns only the Flow the Change runs, in full', async () => {
@@ -418,12 +419,12 @@ describe('state --include', () => {
     const withAll = await stateOf(root, ['--include', 'all']);
     expect(withAll.targets).toBeTruthy();
     expect(withAll.scaffold.lockedResources).not.toBeNull();
-    expect(withAll.context.constitution.content).toContain('#');
+    expect(withAll.constitution.content).toContain('#');
     expect(withAll.flows).toHaveLength(3);
 
     const repeated = await stateOf(root, ['--include', 'targets', '--include', 'constitution']);
     expect(repeated.targets).toBeTruthy();
-    expect(repeated.context.constitution.content).toContain('#');
+    expect(repeated.constitution.content).toContain('#');
   });
 
   /* The one section that is cut by status rather than in whole: guidance for a document already

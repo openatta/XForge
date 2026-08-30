@@ -6,7 +6,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # Invariants
 
-- Run `xforge state --change <id> --field nextActions --field diagnostics --field change --field context`, consume only the current-revision ready Check Action, and reread Proposal, Specs, Clarifications, Design, Constitution, Rules, and code facts.
+- Run `xforge state --change <id> --field nextActions --field diagnostics --field change`, consume only the current-revision ready Check Action, and reread Proposal, Specs, Clarifications, Design, Constitution, Rules, and code facts.
 - `xforge-check` performs semantic review; `xforge check` supplies deterministic schema, path, Gate, and Evidence input. Neither replaces the other.
 - Governing Artifacts are read-only by default. Report rework instead of silently rewriting upstream content.
 - A Check report is LLM Review Evidence, not Gate Evidence; `PASS` cannot satisfy a Machine Gate, Transition, or Approval.
