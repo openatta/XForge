@@ -42,14 +42,14 @@ describe('diagnostic catalogue', () => {
     expect(sites.filter((site) => site.code === null).length).toBe(8);
 
     /*
-     * And the indirect ones, counted so they cannot quietly grow either. Forty-four declarations carrying thirty-four distinct codes reached
+     * And the indirect ones, counted so they cannot quietly grow either. Forty-five declarations carrying thirty-five distinct codes reached
      * readers without ever appearing here: the fingerprint claimed to be every diagnostic this
      * product can emit and was missing a tenth of them, and the untested-code list below is built
      * from this catalogue — so it could not owe anything for a code it had never heard of.
      */
     const indirect = sites.filter((site) => site.severity === 'indirect');
-    expect(indirect.length).toBe(44);
-    expect(new Set(indirect.map((site) => site.code)).size).toBe(34);
+    expect(indirect.length).toBe(45);
+    expect(new Set(indirect.map((site) => site.code)).size).toBe(35);
   });
 
   it('splits arguments at top-level commas only', () => {

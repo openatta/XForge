@@ -145,6 +145,32 @@ describe('work-package protocol', () => {
   });
 
   /* The statuses that stay refused now say what closes the gap, rather than restating the status. */
+  /*
+   * And the block a rejected review leaves behind now names that command where a Stage will see it.
+   * `failed` used to be grouped with the statuses this remedy said nothing about, so a Change sat on
+   * `work-package:T001:failed` with `nextActions` offering only backward transitions.
+   */
+  it('names re-dispatch as the way out of a failed delivery', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([workPackage('T001')]));
+    const { binding } = await dispatchWithCommittedReceipt(root);
+    const base = await git(root, ['rev-parse', 'HEAD']);
+    await write(root, `xforge/changes/add-feature/evidence/agents/T001/${binding.executionId}.yaml`, delivery(binding, {
+      status: 'failed', issues: ['the independent review returned changes-required'],
+      base_commit: base, head_commit: base, changed_paths: [], validation: [],
+    }));
+    await git(root, ['add', '-A']);
+    await git(root, ['commit', '-qm', 'T001 delivery failed']);
+
+    const blocked = await runCli(root, ['transition', '--change', 'add-feature', '--to', 'verify']);
+    expect(blocked.json.diagnostics.some((item: any) => item.message === 'Transition is blocked by work-package:T001:failed.')).toBe(true);
+    const remedy = blocked.json.diagnostics.find((item: any) => item.code === 'XFORGE_WORK_PACKAGE_FAILED_REMEDY');
+    expect(remedy?.message, JSON.stringify(blocked.json.diagnostics)).toContain('xforge work-package dispatch --change add-feature --package T001');
+    /* And it says why that is not the same as editing the record somebody reviewed. */
+    expect(remedy?.message).toContain('mints a new execution');
+  });
+
   it('names the route out of every status it will not dispatch', async () => {
     const running = await fixture();
     await createCompleteSolidChange(running);

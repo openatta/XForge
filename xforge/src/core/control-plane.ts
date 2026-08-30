@@ -518,8 +518,26 @@ export function blockRemedy(
     };
   }
 
-  /* Every later status — dispatched, in-progress, failed — is waiting on the Worker's delivery or
-     on a fix to it, which is work, not a command this sentence could name. */
+  /*
+   * `failed` has a command now, so it gets one.
+   *
+   * It was grouped with the statuses "waiting on the Worker's delivery … which is work, not a
+   * command this sentence could name", and that was true while `dispatch` refused anything but
+   * `ready`. A rejected review leaves the package here, and three live runs reached this state and
+   * found nothing naming the way on — one closed the loop only by reading the compiled source. The
+   * work is still work; what this can name is the command that lets the work start again.
+   */
+  const failed = blocks.flatMap((block) => /^work-package:(.+):failed$/.exec(block)?.[1] ?? []);
+  if (failed.length > 0) {
+    const packages = failed.map((id) => `\`xforge work-package dispatch --change ${changeId} --package ${id}\``).join(', ');
+    return {
+      code: 'XFORGE_WORK_PACKAGE_FAILED_REMEDY',
+      message: `A delivery in this Change's work-package plan is recorded as failed — which is where a rejected review leaves it. Fix what the delivery or the review names, then dispatch the package again: ${packages}. That mints a new execution, so the delivery a reviewer already read stays on disk as they read it, and the new attempt is measured from its own base commit. Commit the dispatch receipt before the work, or the two share a commit and there is nothing between base and head to deliver.`,
+    };
+  }
+
+  /* Every remaining status — dispatched, in-progress — is waiting on the Worker's delivery, which is
+     work, not a command this sentence could name. */
   return null;
 }
 

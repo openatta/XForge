@@ -372,6 +372,7 @@ XFORGE_WORK_PACKAGE_DUPLICATE  src/core/work-packages.ts
 XFORGE_WORK_PACKAGE_EMPTY_DELIVERY  src/commands/work-package.ts
 XFORGE_WORK_PACKAGE_EMPTY_DELIVERY  src/core/work-packages.ts
 XFORGE_WORK_PACKAGE_EXECUTION_DUPLICATE  src/core/work-packages/records.ts
+XFORGE_WORK_PACKAGE_FAILED_REMEDY  src/core/control-plane.ts
 XFORGE_WORK_PACKAGE_GIT_DIFF_FAILED  src/commands/work-package.ts
 XFORGE_WORK_PACKAGE_GIT_DIFF_FAILED  src/core/work-packages.ts
 XFORGE_WORK_PACKAGE_GIT_REQUIRED  src/commands/work-package.ts
