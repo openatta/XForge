@@ -108,6 +108,69 @@ describe('work-package protocol', () => {
     expect(dispatched.json.diagnostics.some((item: any) => item.code === 'XFORGE_WORK_PACKAGE_UNDISPATCHED_REMEDY')).toBe(false);
   });
 
+  /*
+   * A rejected package has to be doable again, by a command.
+   *
+   * `dispatch` accepted only `ready`, so a package whose delivery failed — the shape an independent
+   * review produces when it returns `changes-required` — was refused with "Work package T001 is
+   * failed." and nothing else. `explain` returned the same sentence, `nextActions` offered only
+   * backward Stage transitions, and a live Major run closed the loop by reading `dist/` to learn
+   * that status comes from the latest delivery file, then hand-editing that file. Twice.
+   */
+  it('dispatches a package again after its delivery failed, as a new execution', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([workPackage('T001')]));
+    const { binding } = await dispatchWithCommittedReceipt(root);
+    const base = await git(root, ['rev-parse', 'HEAD']);
+    await write(root, `xforge/changes/add-feature/evidence/agents/T001/${binding.executionId}.yaml`, delivery(binding, {
+      status: 'failed',
+      issues: ['the independent review returned changes-required'],
+      base_commit: base,
+      head_commit: base,
+      changed_paths: [],
+      validation: [],
+    }));
+    await git(root, ['add', '-A']);
+    await git(root, ['commit', '-qm', 'T001 delivery failed']);
+
+    expect((await runCli(root, ['state', '--change', 'add-feature', '--field', 'change.workPackages.packages.0.status'])).stdout.trim()).toBe('failed');
+
+    const again = await runCli(root, ['work-package', 'dispatch', '--change', 'add-feature', '--package', 'T001'], approvalTestEnv);
+    expect(again.code, JSON.stringify(again.json.diagnostics)).toBe(0);
+    /* A new execution, so the delivery a reviewer read is still on disk exactly as it was read. */
+    expect(again.json.data.receipt.executionId).not.toBe(binding.executionId);
+    const rejected = await runCli(root, ['state', '--change', 'add-feature', '--field', `change.workPackages.packages.0.delivery.execution_id`]);
+    expect(rejected.stdout.trim()).toBe(binding.executionId);
+  });
+
+  /* The statuses that stay refused now say what closes the gap, rather than restating the status. */
+  it('names the route out of every status it will not dispatch', async () => {
+    const running = await fixture();
+    await createCompleteSolidChange(running);
+    await write(running, 'xforge/changes/add-feature/work-packages.yaml', plan([workPackage('T001')]));
+    const { binding } = await dispatchWithCommittedReceipt(running);
+
+    /* Dispatched, nothing delivered: the way out is to record the delivery. */
+    const second = await runCli(running, ['work-package', 'dispatch', '--change', 'add-feature', '--package', 'T001'], approvalTestEnv);
+    expect(second.code).toBe(1);
+    const runningSaid = second.json.diagnostics.find((item: any) => item.code === 'XFORGE_WORK_PACKAGE_NOT_READY')?.message ?? '';
+    expect(runningSaid).toContain('already dispatched');
+    expect(runningSaid).toContain(binding.executionId);
+    expect(runningSaid).toContain('work-package draft --change add-feature --package T001');
+
+    /* Delivered and succeeded: the way out is to record a failed delivery first, and it says why
+       the record a reviewer already read must not be the thing that gets edited. */
+    const done = await fixture();
+    await createCompleteSolidChange(done);
+    await succeededDelivery(done);
+    const refused = await runCli(done, ['work-package', 'dispatch', '--change', 'add-feature', '--package', 'T001'], approvalTestEnv);
+    expect(refused.code).toBe(1);
+    const doneSaid = refused.json.diagnostics.find((item: any) => item.code === 'XFORGE_WORK_PACKAGE_NOT_READY')?.message ?? '';
+    expect(doneSaid).toContain('status: failed');
+    expect(doneSaid).toContain('never by editing the record the reviewer read');
+  });
+
   it('accepts only the eight canonical work-package fields', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);

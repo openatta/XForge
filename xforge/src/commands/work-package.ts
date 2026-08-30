@@ -50,7 +50,31 @@ export async function executeWorkPackageDispatch(project: ProjectContext, option
   if (diagnostics.some((item) => item.severity === 'error')) {
     throw new XForgeError(diagnostics, { root: project.root });
   }
-  if (selected.status !== 'ready') throw new XForgeError(diagnostic('XFORGE_WORK_PACKAGE_NOT_READY', `Work package ${options.packageId} is ${selected.status}.`));
+  /*
+   * `failed` is dispatchable. Everything else that is not `ready` is refused with the way out.
+   *
+   * A package whose delivery failed -- because the work did not hold, or because an independent
+   * review returned `changes-required` and the delivery was recorded as failed -- is exactly the
+   * package that has to be done again. It was refused here, and nothing anywhere named a route: the
+   * message said "Work package T001 is failed.", `explain` returned the same sentence back, and
+   * `nextActions` offered only backward Stage transitions. A live Major run got out by reading this
+   * package's own compiled source to learn that status is derived from the latest delivery file, and
+   * then hand-editing that file -- twice. A rework loop that only a reader of `dist/` can close is
+   * not a rework loop.
+   *
+   * Re-dispatching mints a new `executionId`, so the rejected delivery stays on disk exactly as it
+   * was reviewed and the new attempt is measured from its own base commit. Nothing is overwritten,
+   * which is the difference between this and editing the record that a reviewer already read.
+   */
+  if (selected.status !== 'ready' && selected.status !== 'failed') {
+    const draft = `\`xforge work-package draft --change ${options.change} --package ${options.packageId}\``;
+    const remedy = selected.status === 'running'
+      ? `It was already dispatched${selected.executionId ? ` as ${selected.executionId}` : ''} and no delivery has been recorded for that execution yet. Record the delivery — ${draft} writes the half XForge already knows — and dispatch again only if it is recorded as failed.`
+      : selected.status === 'blocked'
+        ? `It is waiting on ${selected.missingDependencies.length > 0 ? `dependencies that have not succeeded: ${selected.missingDependencies.join(', ')}` : 'a dependency that has not succeeded'}. Deliver those first; this one becomes ready on its own.`
+        : `Its delivery succeeded, so there is nothing to dispatch. If a review rejected it, record a delivery for execution ${selected.delivery?.execution_id ?? '<execution>'} with \`status: failed\` (start from ${draft}), which returns the package to failed, then dispatch again — a rejected package is re-done as a new execution, never by editing the record the reviewer read.`;
+    throw new XForgeError(diagnostic('XFORGE_WORK_PACKAGE_NOT_READY', `Work package ${options.packageId} is ${selected.status}. ${remedy}`));
+  }
 
   const executionId = randomUUID();
   const auditCorrelationId = randomUUID();
