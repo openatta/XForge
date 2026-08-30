@@ -229,7 +229,7 @@ const HELP: Record<CommandName, { usage: string; description: string; options: s
   sync: { usage: 'xforge [--root <path>] sync [--target <target>] [--adopt] [--dry-run] [--verify-digests] [--text]', description: 'Incrementally sync localized Scaffold changes to installed targets.', options: ['--root', '--target', '--adopt', '--dry-run', '--verify-digests', '--text'] },
   update: { usage: 'xforge [--root <path>] update [--target <target>] [--adopt] [--dry-run] [--text]', description: 'Fully reconcile installed targets, identities, and Adapter output.', options: ['--root', '--target', '--adopt', '--dry-run', '--text'] },
   uninstall: { usage: 'xforge [--root <path>] uninstall [--target <target>] [--force] [--dry-run] [--text]', description: 'Remove managed target files, refusing on a digest mismatch unless --force.', options: ['--root', '--target', '--force', '--dry-run', '--text'] },
-  check: { usage: 'xforge [--root <path>] check [--change <id>] [--gate <id>] [--stage <id> | --all-gates] [--force] [--text]', description: 'Validate project structure, deliveries, and the Gates the current Stage requires. With no Gate selection this also executes the verify commands declared by every work package, which for a large plan is dozens of external commands and minutes of wall time; narrowing with --gate, --stage or --all-gates runs only the selected Gates and skips them. Every one of those commands runs in this same working tree, one after another, so a verify command must be safe to re-enter: a suite that writes to a fixed scratch path, or asserts wall-clock throughput, will fail here for reasons that have nothing to do with the code under test.', options: ['--root', '--change', '--gate', '--stage', '--all-gates', '--force', '--text'] },
+  check: { usage: 'xforge [--root <path>] check [--change <id>] [--gate <id>] [--stage <id> | --all-gates] [--force] [--text]', description: 'Validate project structure, deliveries, and the Gates the current Stage requires. With no Gate selection this also executes the verify commands declared by every work package, which for a large plan is dozens of external commands and minutes of wall time; narrowing with --gate, --stage or --all-gates runs only the selected Gates and skips them. Every one of those commands runs in this same working tree, one after another, so a verify command must be safe to re-enter: a suite that writes to a fixed scratch path, or asserts wall-clock throughput, will fail here for reasons that have nothing to do with the code under test. --field takes one value out of the result and prints nothing else, addressed as a dotted path through data (for example gates.0.status, or blockedBy); repeat it to read several in one call. This is the largest recurring output a Stage produces, and it is usually consulted for one of them.', options: ['--root', '--change', '--gate', '--stage', '--all-gates', '--force', '--text', '--field'] },
   'stage-bundle': { usage: 'xforge [--root <path>] stage-bundle --change <id> [--text]', description: 'List which of this Change\'s Artifacts have moved since the current Stage was entered, and which a digest can stand in for. A Transition receipt records the commit its Stage began at, so the set that changed is computable rather than assumed; the Stage\'s own outputs and the Constitution are always listed to be read, and an uncommitted edit anywhere under the Change voids every digest because git compares commits and cannot see one.', options: ['--root', '--change', '--text'] },
   explain: { usage: 'xforge explain <XFORGE_CODE> [--text]', description: 'Say what a diagnostic code means: its severity, and every message it can carry, from a catalogue frozen into this build. One code is raised from more than one place and each says something slightly different; which of those a reader has not met is what tells them the code has another cause. No project is required.', options: ['--text'] },
   verification: {
@@ -561,12 +561,25 @@ function helpEnvelope(subject?: string, subcommand?: string): Envelope {
     throw new XForgeError(diagnostic('XFORGE_HELP_COMMAND_UNKNOWN', `Unknown help command: ${subject}`));
   }
   const commandHelp = subject ? HELP[subject as CommandName] : null;
+  /*
+   * The index of every command answers "what can this thing do". `help <command>` is a different
+   * question, and it was answering both: the full descriptions of all twenty-two commands ahead of
+   * the one that was asked for. Several of those descriptions are paragraphs, so the index was 75%
+   * of the reply — an end-to-end run spent more context on three `help` calls than on the ten
+   * `state --field` calls the whole cost argument in XFORGE.md is built around.
+   *
+   * Asking about one command now lists the others by name only, which still answers "what else is
+   * there" and costs a line instead of a page. Bare `help` is unchanged: there, the index is the
+   * answer.
+   */
   return envelope({
     command: 'help',
     root: null,
     data: {
       usage: 'xforge [--root <path>] <command> [options] [--text]',
-      commands: Object.fromEntries(COMMANDS.map((command) => [command, HELP[command].description])),
+      commands: subject
+        ? COMMANDS.filter((command) => command !== subject)
+        : Object.fromEntries(COMMANDS.map((command) => [command, HELP[command].description])),
       globalOptions: { '--root <path>': 'Use an exact project root.', '--text': 'Present the same result as readable text.' },
       commandHelp,
       /* Reported rather than dropped: a reader who asked about one subcommand and is handed the

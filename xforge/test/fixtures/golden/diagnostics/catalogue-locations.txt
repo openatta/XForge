@@ -76,6 +76,7 @@ XFORGE_CHECK_PASSED_WITH_WARNINGS  src/commands/check.ts
 XFORGE_CHECK_STAGE_UNKNOWN  src/commands/check.ts
 XFORGE_CLI_IDENTITY_MISMATCH  src/core/project-loader.ts
 XFORGE_CONDITION_LEDGER_STALE_REMEDY  src/core/control-plane.ts
+XFORGE_CONDITION_LEDGER_UNDECIDED_REMEDY  src/core/control-plane/conditions.ts
 XFORGE_CONSTITUTION_DATE_INVALID  src/core/constitution.ts
 XFORGE_CONSTITUTION_FRONTMATTER_INVALID  src/core/constitution.ts
 XFORGE_CONSTITUTION_MISSING  src/core/constitution.ts
@@ -291,6 +292,7 @@ XFORGE_TRANSITION_RECEIPT_EXISTS  src/commands/transition.ts
 XFORGE_TRANSITION_RECEIPT_INVALID  src/core/control-plane/receipts.ts
 XFORGE_TRANSITION_RECEIPT_SUBJECT_MISMATCH  src/core/control-plane/receipts.ts
 XFORGE_TRANSITION_RECEIPT_UNATTESTED  src/commands/transition.ts
+XFORGE_TRANSITION_RECEIPT_UNCOMMITTED  src/commands/transition.ts
 XFORGE_TRANSITION_REPAIR_ARGUMENTS_REQUIRED  src/cli.ts
 XFORGE_TRANSITION_REPAIR_RECEIPT_REFERENCED  src/commands/transition.ts
 XFORGE_TRANSITION_REPAIR_UNKNOWN_RECEIPT  src/commands/transition.ts

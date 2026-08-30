@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import type { ChangeState, Diagnostic, GateEvidence, ProjectContext, StageFlow, TransitionReceipt } from '../../types.js';
 import { unknownIdentityReason, type KnownIdentities } from '../ledger-identity.js';
+import { diagnostic } from '../errors.js';
 import { safeResolve } from '../path-safety.js';
 import { evaluateVerificationReceipt, VERIFICATION_RECEIPT_CONDITION } from '../verification-receipt.js';
 import { readReviewAcknowledgements, reviewCovers } from '../review-acknowledgement.js';
@@ -32,12 +33,31 @@ interface ConditionLedgerEntry {
 function nonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
-function entryDecided(entry: ConditionLedgerEntry, known?: KnownIdentities): boolean {
-  if (!(nonEmptyString(entry.question) && nonEmptyString(entry.decision) && nonEmptyString(entry.decidedBy)
-    && nonEmptyString(entry.decidedAt) && !Number.isNaN(Date.parse(entry.decidedAt as string)))) return false;
+/**
+ * `null` when the entry is decided, otherwise why it is not.
+ *
+ * It returned a boolean, and the count of falses became `undecided-N` — a number and nothing else.
+ * An end-to-end run met `undecided-4` over four entries whose every field was populated, could not
+ * tell which four or why, and ended up reading this file to find out that `decidedBy` had failed an
+ * identity check nothing had mentioned. The reason was computed here and dropped one line later.
+ *
+ * The `constitution-check` Gate hits the same check and says the whole of it, listing the names that
+ * would have passed. That is the standard this now meets.
+ */
+function entryDecidedReason(entry: ConditionLedgerEntry, known?: KnownIdentities): string | null {
+  for (const field of ['question', 'decision', 'decidedBy', 'decidedAt'] as const) {
+    if (!nonEmptyString(entry[field])) return `has no ${field}`;
+  }
+  if (Number.isNaN(Date.parse(entry.decidedAt as string))) return `has a decidedAt that is not a date: "${entry.decidedAt as string}"`;
   /* A decision has to be attributable to somebody the repository has actually seen; a non-empty
      string let a live run get away with `decidedBy: XForge Live E2E`. */
-  return known ? unknownIdentityReason(entry.decidedBy, known) === null : true;
+  if (!known) return null;
+  const unknown = unknownIdentityReason(entry.decidedBy as string, known);
+  return unknown === null ? null : `is decided by "${entry.decidedBy as string}", which ${unknown}`;
+}
+
+function entryDecided(entry: ConditionLedgerEntry, known?: KnownIdentities): boolean {
+  return entryDecidedReason(entry, known) === null;
 }
 /**
  * When this Stage's inputs were last re-opened, or null if they never were.
@@ -101,6 +121,7 @@ async function evaluateExitCondition(
   expected: string,
   known?: KnownIdentities,
   reworkCutoff?: number | null,
+  diagnostics?: Diagnostic[],
 ): Promise<{ satisfied: boolean; reason: string }> {
   if (!CONDITION_KEY_PATTERN.test(key)) return { satisfied: false, reason: 'invalid-key' };
   let document: unknown = null;
@@ -135,7 +156,29 @@ async function evaluateExitCondition(
    * Only a list that is present and deliberately empty reaches the `status` check below.
    */
   const undecided = entries.filter((entry) => !entry || typeof entry !== 'object' || !entryDecided(entry, known));
-  if (undecided.length > 0) return { satisfied: false, reason: `undecided-${undecided.length}` };
+  if (undecided.length > 0) {
+    /*
+     * `undecided-N` stays the block token — it is matched by prefix elsewhere, and a count is the
+     * right shape for a machine. The sentence that says which entries and why goes beside it, so
+     * the reader is not left counting.
+     */
+    if (diagnostics) {
+      const named = entries.map((entry, index) => ({ entry, index }))
+        .filter(({ entry }) => !entry || typeof entry !== 'object' || !entryDecided(entry, known))
+        .map(({ entry, index }) => {
+          if (!entry || typeof entry !== 'object') return `entry ${index + 1} is not a mapping`;
+          const id = nonEmptyString(entry.id) ? `"${entry.id as string}"` : `entry ${index + 1}`;
+          return `${id} ${entryDecidedReason(entry, known)}`;
+        });
+      diagnostics.push(diagnostic(
+        'XFORGE_CONDITION_LEDGER_UNDECIDED_REMEDY',
+        `${undecided.length} of ${entries.length} entr${entries.length === 1 ? 'y' : 'ies'} in \`evidence/conditions/${key}.yaml\` ${undecided.length === 1 ? 'is' : 'are'} not decided: ${named.join('; ')}. An entry counts as decided only when \`question\`, \`decision\`, \`decidedBy\` and \`decidedAt\` are all present, \`decidedAt\` parses as a date, and \`decidedBy\` names somebody this Change can attest — an approver on an approval receipt, or a Git author of the Change directory.`,
+        `${project.changesPath}/${changeId}/evidence/conditions/${key}.yaml`,
+        'warning',
+      ));
+    }
+    return { satisfied: false, reason: `undecided-${undecided.length}` };
+  }
   /*
    * Reached only by entries `entryDecided` already accepted, so `decidedAt` is present and parses.
    * An entry decided before the Change last went back past this Stage was decided against inputs
@@ -278,5 +321,5 @@ export async function evaluateStageCondition(
   if (key === INDEPENDENT_REVIEW_CONDITION) {
     return independentReviewCondition(project, changeId, context.workPackages, expected, context.contentRevision, context.diagnostics);
   }
-  return evaluateExitCondition(project, changeId, key, expected, context.identities, context.reworkCutoff);
+  return evaluateExitCondition(project, changeId, key, expected, context.identities, context.reworkCutoff, context.diagnostics);
 }

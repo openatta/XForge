@@ -265,6 +265,24 @@ export async function executeTransition(project: ProjectContext, options: { chan
     throw error;
   }
   const change: FileChange = { action: 'create', path: target, digest: sha256(content), source: `transition:${receipt.from}:${receipt.to}` };
+  /*
+   * This write is the reason the next `stage-bundle` will refuse to be useful.
+   *
+   * `stage-bundle` computes what moved with `git diff <the Stage's gitHead>..HEAD`, so it answers
+   * about commits and an uncommitted edit voids every voucher — deliberately, because reporting
+   * "unchanged" about a file that changed is worse than the re-reading it saves. The receipt
+   * written a line above is exactly such an edit, which makes the first `stage-bundle` of every
+   * Stage fall back to "read all of it" unless the receipt is committed first.
+   *
+   * An end-to-end run hit this at the first transition and inferred the cause; nothing said it. The
+   * command that creates the condition is the one that can name it, so it does.
+   */
+  diagnostics.push(diagnostic(
+    'XFORGE_TRANSITION_RECEIPT_UNCOMMITTED',
+    `This transition wrote ${target}, so the Change directory now has an uncommitted edit. \`xforge stage-bundle --change ${options.change}\` compares commits, and any uncommitted edit under the Change makes it list every Artifact to be read in full rather than the short set that actually moved. Commit the receipt before running it.`,
+    target,
+    'info',
+  ));
   return { data: { change: options.change, from: receipt.from, to: receipt.to, ready: true, receipt, dryRun: false }, diagnostics, changes: [change], nextActions };
 }
 
