@@ -11,7 +11,7 @@ exit: 1
     {
       "code": "XFORGE_RULE_OUT_OF_CHANGE_SCOPE",
       "severity": "info",
-      "message": "1 severity-must Rule(s) do not apply to this Change and are not in its instruction context: governance-assets-are-integrator-only (scope xforge/constitution.md, xforge/specs/**, xforge/manifest.yaml, xforge/lock.yaml, xforge/flows/**, xforge/.audit/**). A Rule's scope.paths is compared with the paths this Change declares in change.yaml, never with the repository, so a Rule reaches this Change only when the two share a root. If one of these was meant to apply, widen the Change's scope.paths or correct the Rule's.",
+      "message": "1 severity-must Rule(s) do not apply to this Change and are not in its instruction context: governance-assets-are-integrator-only (scope xforge/constitution.md, xforge/specs/**, xforge/manifest.yaml, xforge/lock.yaml, xforge/flows/**, xforge/.audit/**, xforge/.upgrade/snapshot/**, xforge/UPGRADING.md). A Rule's scope.paths is compared with the paths this Change declares in change.yaml, never with the repository, so a Rule reaches this Change only when the two share a root. If one of these was meant to apply, widen the Change's scope.paths or correct the Rule's.",
       "path": "xforge/changes/add-feature/change.yaml"
     },
     {

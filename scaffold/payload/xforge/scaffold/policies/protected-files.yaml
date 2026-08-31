@@ -26,16 +26,31 @@ spec:
     #   - xforge/scaffold/**  the xforge-scaffold Skill legitimately authors resources there.
     #   - xforge/changes/**   xforge-propose/xforge-apply and the other lifecycle Skills write
     #                         Change content there through normal governed Changes.
+    #   - xforge/scripts/**   xforge-upgrade-scaffold merges the release's Scripts into them, the
+    #                         same way it merges xforge/scaffold/**.
+    #   - xforge/.upgrade/incoming/**  the staged release the merge reads *from*. It is the CLI's to
+    #                         write and to delete, and an Agent that only reads it is doing the job.
     #   - xforge/manifest.yaml  moved to the `protected-manifest` policy, which asks instead of
     #                         denying. See that file for why; this list stays unconditional.
     # Denying any of them would break those workflows, not harden them.
+    #
+    # The two upgrade paths that ARE denied are denied for opposite failures:
+    #   - xforge/.upgrade/snapshot/**  the restore point, and the only copy of the Scaffold as it
+    #                         stood before staging. An Agent writing it does not damage a working
+    #                         file; it destroys the one thing that makes the upgrade undoable.
+    #   - xforge/UPGRADING.md  the in-flight marker, written at stage and removed at complete or
+    #                         rollback. Deleting it breaks nothing loudly — it silently removes the
+    #                         warning every other command shows while an upgrade is unfinished.
     paths:
       - xforge/constitution.md
       - xforge/specs/**
       - xforge/lock.yaml
       - xforge/flows/**
       - xforge/.audit/**
+      - xforge/.upgrade/snapshot/**
+      - xforge/UPGRADING.md
   exceptActors: [integrator]
   reason: >-
     Shared governance files may be written only by the Integrator, an explicit XForge transaction,
-    or the CLI itself. Flow definitions and the audit chain are CLI-owned; no Skill authors them.
+    or the CLI itself. Flow definitions, the audit chain, the upgrade restore point and its
+    in-flight marker are CLI-owned; no Skill authors them.

@@ -18,6 +18,7 @@ import { getAdapter } from '../adapters/index.js';
 import { capabilityGapDiagnostics } from '../install/planner.js';
 import { undeclaredRequiredGates } from '../core/verification.js';
 import { exists } from '../core/files.js';
+import { readStagedUpgrade, upgradeInProgressDiagnostic } from '../core/upgrade-sentinel.js';
 
 type DoctorKind = 'skills' | 'agents' | 'rules' | 'policies' | 'hooks' | 'gates' | 'scripts' | 'flows' | 'approvals' | 'mcp-servers';
 type DoctorScope = 'skills' | 'agents' | 'rules' | 'policies' | 'hooks' | 'gates' | 'flows' | 'approvals' | 'mcp-servers';
@@ -118,6 +119,22 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
   assertManaged(project, 'doctor');
   const structure = await checkStructure(project);
   const diagnostics: Diagnostic[] = [];
+
+  /*
+   * An unfinished upgrade leads the report, because it is the explanation for the rest of it.
+   * doctor is the command a person runs when something is off, and a half-merged Scaffold produces
+   * findings that are all true and none of them about the project: a Skill the merge has not
+   * brought across yet is dangling, a Gate the merge already adopted is uncited by a Flow that
+   * still is not. Read without the upgrade in view, that is a list of things to go and fix; read
+   * with it, it is a list of what the merge has left to do.
+   *
+   * A diagnostic and not a DoctorFinding, deliberately. Every finding is counted into `summary` and
+   * every count feeds `--strict`, so filing this as one would make `doctor --strict` fail for the
+   * duration of an upgrade — turning a warning into the refusal this was explicitly not to be, in
+   * whatever CI the project points at it.
+   */
+  const staged = await readStagedUpgrade(project.root);
+  if (staged) diagnostics.push(upgradeInProgressDiagnostic(staged));
 
   const danglingReferences: DoctorFinding[] = [];
   /* A Hook whose event no enabled target exposes is a dangling extension in exactly the sense

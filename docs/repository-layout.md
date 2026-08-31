@@ -12,17 +12,15 @@
 
 ## 1. 项目根
 
+`xforge/` 下住着三种生命周期完全不同的东西，平铺成一棵树是看不出来的。
+所以按**归属域（ownership zone）**分组——这就是 `xforge/src/core/ownership-zones.ts` 里那张表，
+`upgrade-scaffold` 的事务范围、PermissionPolicy 的 deny / ask 列表、
+以及合并提示里那份「## Never」全部由它派生，不再是四份各自手工维护、彼此看不见的清单。
+
 ```text
 xforge/
-├── manifest.yaml               ← 唯一的启用清单
-├── lock.yaml                   ← CLI/Scaffold 身份与完整性
-├── constitution.md             ← 长期工程原则
-├── XFORGE.md                   ← 给 Agent 的项目引导
-├── architecture.md             ← 可选，跨 Change 的架构决策（≤50 行 / 6 条）
-├── upgrade-log.md              ← 可选，每次完成的 upgrade-scaffold
 │
-├── flows/*.yaml                ← Flow 定义（受 protected-files deny）
-│
+│  ── managed-source ──  CLI 发布的规范源。升级事务对整树快照、逐文件分类、可整树恢复
 ├── scaffold/                   ← 规范源，投影的输入
 │   ├── skills/<id>/SKILL.md (+ SKILL_cn.md)
 │   ├── agents/<id>.yaml + <id>.md (+ <id>_cn.md)
@@ -31,20 +29,66 @@ xforge/
 │   ├── hooks/<id>.yaml
 │   ├── gates/<id>.yaml
 │   └── mcp-servers/<id>.yaml
+├── flows/*.yaml                ← Flow 定义（Agent 写入被 deny）
+├── scripts/<id>/               ← Script 也是一等资源源，与上面两棵同进事务
+│   └── script.yaml + entry
 │
-├── scripts/<id>/script.yaml + entry
+│  ── project-owned ──  项目自己写的。升级只推进 Manifest 里的版本锚点，别的一个字不动
+├── manifest.yaml               ← 唯一的启用清单（Agent 写入要人确认）
+├── constitution.md             ← 长期工程原则（Agent 写入被 deny）
+├── architecture.md             ← 可选，跨 Change 的架构决策（≤50 行 / 6 条）
+├── XFORGE.md                   ← 给 Agent 的项目引导
 │
-├── specs/                      ← 主 Specs（受 protected-files deny）
+│  ── derived ──  输出而不是输入。不进事务，靠重新投影再生
+├── lock.yaml                   ← CLI/Scaffold 身份与完整性（Agent 写入被 deny）
+├── .state.json                 ← 运行期缓存，无权威，gitignored
+│
+│  ── record ──  发生过什么。升级既不读也不写它，任何方向都不
 ├── changes/<change-id>/        ← 见 §2
 ├── changes/archive/            ← 已归档的 Change
-└── .audit/events.jsonl         ← 本地哈希链，gitignored
+├── specs/                      ← 主 Specs（Agent 写入被 deny）
+├── .audit/events.jsonl         ← 本地哈希链，gitignored
+│
+│  ── transient ──  升级自己的工作状态。它不在事务里，它就是事务
+├── .upgrade/                   ← 整个目录 gitignored（CLI 往里写一份 .gitignore）
+│   ├── incoming/               ← 新版 scaffold/ flows/ scripts/，原样待合并
+│   ├── snapshot/               ← 暂存前的受管树整树，回滚点（Agent 写入被 deny）
+│   ├── state.json              ← from/toVersion、时间戳、提交 id、前后摘要
+│   ├── plan.json               ← 分类结果，机器读
+│   ├── plan.md                 ← 同一份，人读
+│   └── MERGE.md                ← 交给 Agent 的合并提示
+├── UPGRADING.md                ← 在途哨兵，刻意可见（Agent 写入被 deny）
+│
+│  ── 不属任何 zone
+└── upgrade-log.md              ← 追加式历史，必须活过每一次完成与回滚
 ```
+
+### 1.1 五个域的性质
+
+| zone | 进升级事务 | 可再生 | 升级永不碰 | Agent 直接写 |
+| --- | --- | --- | --- | --- |
+| `managed-source` | **整树快照** | 否 | 否 | `scaffold/` `scripts/` 开放；`flows/` deny |
+| `project-owned` | 仅版本锚点 | 否 | 否 | `manifest.yaml` 要确认；`constitution.md` deny；其余开放 |
+| `derived` | 不进 | **是**（重新投影） | 否 | `lock.yaml` deny；`.state.json` 开放 |
+| `record` | 不进 | 否 | **是** | `changes/` 开放；`specs/` `.audit/` deny |
+| `transient` | 不进（它就是事务） | 否 | 否 | `snapshot/` `UPGRADING.md` deny；`incoming/` 与计划文档开放（合并 Agent 要读） |
+
+> **「升级碰不碰它」和「Agent 能不能写它」是两个问题，压成一个布尔值必然有一条路径答错。**
+> `changes/` 在 `record` 域里——一次升级永远不读也不写它——而生命周期 Skills 整天经由
+> 受治理的 Change 往里写；`scaffold/` 是最受管的一棵树，`xforge-scaffold` Skill 却正当地在里面创作。
+> 前一列说的是升级事务，后一列说的是一次 Agent 的工具调用。
+
+`flows/` 与 `scripts/` 和 `scaffold/` 同域，不是排版上的顺手：
+Flow 与 Script 都是一等资源源，只是不住在 `scaffold/` 里面。
+它们各自都曾因为「受管树」是一份手写清单而长期落在事务之外——
+项目一辈子跑着 `init` 那天的那一份，而升级日志还在报告「计划点到的每个文件都已一致」，
+说的是一份根本点不到它们的计划。
 
 **`manifest.yaml` 显式选择每一个 Skill、Agent、Rule、PermissionPolicy、Hook、Gate、
 McpServer 与投影目标。存在于 `scaffold/` 之下并不启用一个资源。**
 
 生成的投影目录（`.claude/`、`.codex/`、`.cursor/`、`.opencode/`、`.agents/`、`.github/`）
-是**输出**，不是源。手改会被拒绝而不是合并。
+和 `lock.yaml` 同属 `derived`：它们是**输出**，不是源。手改会被拒绝而不是合并。
 
 ---
 
@@ -457,9 +501,15 @@ Constitution 的修改（它们会改变 `policySnapshotDigest`）**不影响已
 
 ```gitignore
 xforge/.audit/               # 随包的 xforge/.audit/.gitignore 内容是 `*` + `!.gitignore`
+xforge/.upgrade/             # 同法：CLI 暂存时往里写一份自己的 .gitignore
 **/xforge/.state.json
 **/.xforge-archive-*
 ```
+
+`xforge/.upgrade/` 是一次升级的在途工作区——待合并的新版树、回滚快照、分类结果——
+合并做完就整个消失，提交它等于把一个中间状态永久留在历史里。
+**`xforge/UPGRADING.md` 刻意不在这份清单里**：它是那次升级唯一可见的痕迹，
+一次没走完的升级应当在目录列表和 `git status` 里都扎眼，而不是藏在一个点开头的目录中。
 
 `xforge/.audit/events.jsonl` 是**本地哈希链**——它是可再生的运行时缓存，
 而它的持久投影是每个 Change 的 `evidence/audit/index.json`。
@@ -554,3 +604,4 @@ spec:
 | 生成文件被用户修改 | sync / update / uninstall 报冲突，**不覆盖** |
 | 未声明验证命令 | Gate **拒绝**（不是失败），去问人 |
 | 有未归档 Change 时 upgrade-scaffold | **拒绝**，除非 `--with-active-changes` |
+| 受管路径有未提交改动时 upgrade-scaffold | **拒绝**，要求先提交；`--allow-dirty` 放行并记下「这次没有提交兜底」 |

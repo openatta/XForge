@@ -49,6 +49,7 @@ interface ParsedArguments {
   complete: boolean;
   rollback: boolean;
   withActiveChanges: boolean;
+  allowDirty: boolean;
   root?: string;
   stage?: string;
   helpCommand?: string;
@@ -249,9 +250,9 @@ const HELP: Record<CommandName, { usage: string; description: string; options: s
   hook: { usage: 'xforge hook dispatch --target <target> --event <event>', description: 'Internal platform Hook dispatcher.', options: ['--root', '--target', '--event'] },
   archive: { usage: 'xforge [--root <path>] archive --change <id> [--dry-run] [--text]', description: 'Verify, merge Specs, and atomically archive a Change. --field takes one value out of the result and prints nothing else, addressed as a dotted path through data; repeat it to read several in one call.', options: ['--root', '--change', '--dry-run', '--text', '--field'] },
   'upgrade-scaffold': {
-    usage: 'xforge [--root <path>] upgrade-scaffold [--complete | --rollback] [--with-active-changes] [--force] [--dry-run] [--text]',
-    description: 'Stage the Scaffold this CLI ships beside the project\'s own and classify every file, so a person or an Agent can merge it.',
-    options: ['--root', '--complete', '--rollback', '--with-active-changes', '--force', '--dry-run', '--text'],
+    usage: 'xforge [--root <path>] upgrade-scaffold [--complete | --rollback] [--with-active-changes] [--allow-dirty] [--force] [--dry-run] [--text]',
+    description: 'Stage the Scaffold this CLI ships beside the project\'s own and classify every file, so a person or an Agent can merge it. Staging refuses while the managed paths have uncommitted changes, because the commit it records is the restore point underneath the snapshot; --allow-dirty stages without one.',
+    options: ['--root', '--complete', '--rollback', '--with-active-changes', '--allow-dirty', '--force', '--dry-run', '--text'],
   },
   review: {
     usage: 'xforge [--root <path>] review acknowledge --change <id> --evidence <path> [--scope <text>] [--dry-run] [--text]',
@@ -262,7 +263,7 @@ const HELP: Record<CommandName, { usage: string; description: string; options: s
 };
 
 function parseArguments(argv: string[]): ParsedArguments {
-  const parsed: ParsedArguments = { command: '', text: false, dryRun: false, verifyDigests: false, strict: false, allGates: false, force: false, adopt: false, complete: false, rollback: false, withActiveChanges: false };
+  const parsed: ParsedArguments = { command: '', text: false, dryRun: false, verifyDigests: false, strict: false, allGates: false, force: false, adopt: false, complete: false, rollback: false, withActiveChanges: false, allowDirty: false };
   const seen = new Set<string>();
   const positionals: string[] = [];
   let helpShortcut = false;
@@ -288,6 +289,7 @@ function parseArguments(argv: string[]): ParsedArguments {
     if (token === '--complete') { parsed.complete = true; continue; }
     if (token === '--rollback') { parsed.rollback = true; continue; }
     if (token === '--with-active-changes') { parsed.withActiveChanges = true; continue; }
+    if (token === '--allow-dirty') { parsed.allowDirty = true; continue; }
     if (token === '--all-gates') { parsed.allGates = true; continue; }
     if (token === '--force') { parsed.force = true; continue; }
     if (token === '--adopt') { parsed.adopt = true; continue; }
@@ -872,7 +874,7 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
     }
     const mode = parsed.complete ? 'complete' : parsed.rollback ? 'rollback' : 'stage';
     const result = await executeUpgrade(project, {
-      mode, dryRun: parsed.dryRun, force: parsed.force, withActiveChanges: parsed.withActiveChanges,
+      mode, dryRun: parsed.dryRun, force: parsed.force, withActiveChanges: parsed.withActiveChanges, allowDirty: parsed.allowDirty,
     });
     return envelope({ command, root: project.root, ...result });
   }

@@ -1,4 +1,5 @@
 import { sha256 } from './hash.js';
+import { transactionPrefixes } from './ownership-zones.js';
 import type { Manifest } from '../types.js';
 
 /**
@@ -44,24 +45,28 @@ export interface UpgradePlan {
   counts: Record<UpgradeDisposition, number>;
 }
 
-export const SCAFFOLD_PREFIX = 'xforge/scaffold/';
-const FLOWS_PREFIX = 'xforge/flows/';
+/* Local to this file: it names the tree the `SELECTABLE` rows below happen to share, which is a
+   fact about where those assets are filed rather than a boundary anything outside needs. The
+   boundary is `ownership-zones.ts`. */
+const SCAFFOLD_PREFIX = 'xforge/scaffold/';
 
 /**
  * Every tree an upgrade proposes changes to, and the one root they are staged beneath.
  *
- * `xforge/scaffold/` was the whole managed set, so a Flow -- which lives beside it rather than
- * inside it -- was never brought, never diffed, and never mentioned. A project ran whatever Flow it
- * was initialised with for as long as it existed, and the upgrade log said "every file the plan
- * named now matches" of a plan that could not name them. `SELECTABLE` has carried a `flow` row all
- * along, pointing at `xforge/scaffold/flows/`, a directory that has never existed in any payload:
- * the intent was written down and the wiring was not.
+ * Read, not declared. This used to be a hand-written list, and a hand-written list is how
+ * `xforge/flows/` spent several releases outside the transaction: a Flow lives beside the Scaffold
+ * rather than inside it, so for as long as this named `xforge/scaffold/` alone a Flow was never
+ * brought, never diffed, and never mentioned, while the upgrade log reported "every file the plan
+ * named now matches" of a plan that could not name one. `xforge/scripts/` was in the same position
+ * until this line started reading `core/ownership-zones.ts`. The list is now a consequence of the
+ * `managed-source` zone, so the next tree that becomes a first-class resource source is managed the
+ * moment it is added to that table instead of the next time somebody notices the omission.
  *
  * Adoption is still nobody's decision but the project's. A Flow states how many approvals a Stage
  * needs and where a blocker sends the work back; bringing the file is not the same as adopting it,
  * and `complete` measures what the merge kept rather than assuming it kept everything.
  */
-export const MANAGED_PREFIXES = [SCAFFOLD_PREFIX, FLOWS_PREFIX] as const;
+export const MANAGED_PREFIXES: readonly string[] = transactionPrefixes;
 
 /** The root every managed tree hangs from, and the prefix staged copies are keyed against. */
 export const MANAGED_ROOT = 'xforge/';
@@ -103,15 +108,22 @@ export function classifyScaffold(
  * list selects it. Skills are a directory of files; everything else is one file per id.
  */
 const SELECTABLE = [
-  { kind: 'skill', prefix: SCAFFOLD_PREFIX, directory: 'skills', list: 'skills', directoryAsset: true },
-  { kind: 'rule', prefix: SCAFFOLD_PREFIX, directory: 'rules', list: 'rules', directoryAsset: false },
-  { kind: 'gate', prefix: SCAFFOLD_PREFIX, directory: 'gates', list: 'gates', directoryAsset: false },
-  /* Flows sit beside the Scaffold rather than inside it, which is why this row selected nothing for
-     as long as it assumed otherwise. */
-  { kind: 'flow', prefix: 'xforge/', directory: 'flows', list: 'flows', directoryAsset: false },
-  { kind: 'hook', prefix: SCAFFOLD_PREFIX, directory: 'hooks', list: 'hooks', directoryAsset: false },
-  { kind: 'policy', prefix: SCAFFOLD_PREFIX, directory: 'policies', list: 'policies', directoryAsset: false },
-  { kind: 'mcpServer', prefix: SCAFFOLD_PREFIX, directory: 'mcp-servers', list: 'mcpServers', directoryAsset: false },
+  { kind: 'skill', prefix: SCAFFOLD_PREFIX, directory: 'skills', list: 'skills', selectedIn: 'scaffold', directoryAsset: true },
+  { kind: 'rule', prefix: SCAFFOLD_PREFIX, directory: 'rules', list: 'rules', selectedIn: 'scaffold', directoryAsset: false },
+  { kind: 'gate', prefix: SCAFFOLD_PREFIX, directory: 'gates', list: 'gates', selectedIn: 'scaffold', directoryAsset: false },
+  /* Why each row carries its own prefix: not every managed tree lives under `xforge/scaffold/`.
+     Flows sit beside it, and this row selected nothing for as long as it assumed otherwise. */
+  { kind: 'flow', prefix: MANAGED_ROOT, directory: 'flows', list: 'flows', selectedIn: 'scaffold', directoryAsset: false },
+  { kind: 'hook', prefix: SCAFFOLD_PREFIX, directory: 'hooks', list: 'hooks', selectedIn: 'scaffold', directoryAsset: false },
+  { kind: 'policy', prefix: SCAFFOLD_PREFIX, directory: 'policies', list: 'policies', selectedIn: 'scaffold', directoryAsset: false },
+  { kind: 'mcpServer', prefix: SCAFFOLD_PREFIX, directory: 'mcp-servers', list: 'mcpServers', selectedIn: 'scaffold', directoryAsset: false },
+  /* And why each row also carries where its selection list lives. A Script is selected by the
+     Manifest's top-level `scripts`, not by `scaffold.scripts`, so a row that assumed one shape for
+     every kind would read an absent list, find nothing selected, and report every shipped Script as
+     awaiting a decision on every upgrade. `xforge/scripts/` only reached this table when it joined
+     the managed set; the misreading it would have caused is the same one the `flow` row above spent
+     two releases in. */
+  { kind: 'script', prefix: MANAGED_ROOT, directory: 'scripts', list: 'scripts', selectedIn: 'manifest', directoryAsset: true },
 ] as const;
 
 /**
@@ -124,11 +136,13 @@ const SELECTABLE = [
  */
 export function unselectedAssets(manifest: Manifest, incoming: Map<string, Buffer>): UnselectedAsset[] {
   const scaffold = (manifest.scaffold ?? {}) as Record<string, unknown>;
+  const root = manifest as unknown as Record<string, unknown>;
   const found: UnselectedAsset[] = [];
-  for (const { kind, prefix: root, directory, list, directoryAsset } of SELECTABLE) {
-    const selected = new Set((Array.isArray(scaffold[list]) ? scaffold[list] as string[] : []));
+  for (const { kind, prefix: treeRoot, directory, list, selectedIn, directoryAsset } of SELECTABLE) {
+    const declared = selectedIn === 'manifest' ? root[list] : scaffold[list];
+    const selected = new Set((Array.isArray(declared) ? declared as string[] : []));
     const ids = new Set<string>();
-    const prefix = `${root}${directory}/`;
+    const prefix = `${treeRoot}${directory}/`;
     for (const relative of incoming.keys()) {
       if (!relative.startsWith(prefix)) continue;
       const rest = relative.slice(prefix.length);
@@ -170,12 +184,47 @@ export function buildUpgradePlan(input: {
   };
 }
 
-/** The staged copy is visible on purpose: an unfinished upgrade should be obvious in a file listing. */
-export const stagedDirectory = (version: string): string => `xforge/scaffold-${version}`;
-/** The rollback snapshot is not: it is a safety net the project does not work in. */
-export const rollbackDirectory = (version: string): string => `xforge/.rollback/scaffold-${version}`;
-export const ROLLBACK_MANIFEST = 'xforge/.rollback/manifest.json';
+/**
+ * Everything one upgrade is working with, under one root, named without a version.
+ *
+ * Both halves used to live at the top of `xforge/`: the staged release at `xforge/scaffold-<version>/`
+ * and the snapshot at `xforge/.rollback/scaffold-<version>/`. The staged copy was up there on
+ * purpose — an unfinished upgrade should be obvious in a listing rather than hidden in a dotfile —
+ * and the cost of that argument was a directory one suffix away from `xforge/scaffold/`, sitting
+ * next to it, holding a near-identical tree. Every glob over `xforge/scaffold*`, every tab
+ * completion and every Agent reading a file listing had to tell them apart by a version number.
+ * The visibility is now carried by `xforge/UPGRADING.md`, which says what is in flight in a sentence
+ * instead of implying it with a directory, and which `doctor`, `state`, `check` and `transition` all
+ * read — a better reader than a file listing, since the person who staged the upgrade is not the one
+ * who needed telling.
+ *
+ * The version leaves the names with it. Exactly one upgrade is ever in flight, `state.json` records
+ * both ends of the span, and `complete` and `rollback` were already deriving these paths from that
+ * record rather than from anything they knew. A fixed name is one a `.gitignore` and a
+ * PermissionPolicy can be written against, which is what lets the snapshot be denied to Agents by
+ * `protected-files` instead of by a sentence in the merge prompt.
+ */
+export const UPGRADE_DIRECTORY = 'xforge/.upgrade';
+export const STAGED_DIRECTORY = `${UPGRADE_DIRECTORY}/incoming`;
+export const SNAPSHOT_DIRECTORY = `${UPGRADE_DIRECTORY}/snapshot`;
+export const UPGRADE_STATE = `${UPGRADE_DIRECTORY}/state.json`;
 export const UPGRADE_LOG = 'xforge/upgrade-log.md';
+
+/**
+ * Where a CLI before this layout put the same three things.
+ *
+ * Read, never written. A project can be holding a staged upgrade when this version arrives — stage
+ * on the old CLI, install this one, then complete or roll back — and refusing that project would
+ * strand it between two Scaffolds with the merge already half done. So `complete` and `rollback`
+ * look here when the new paths are empty, finish the job, and remove the old directories with it.
+ * `stage` only ever writes the new layout, so nothing new is ever created in this shape.
+ *
+ * Removable once no supported version can still be mid-upgrade in it: 0.9.0.
+ */
+export const LEGACY_STAGED_DIRECTORY = (version: string): string => `xforge/scaffold-${version}`;
+export const LEGACY_SNAPSHOT_ROOT = 'xforge/.rollback';
+export const LEGACY_SNAPSHOT_DIRECTORY = (version: string): string => `${LEGACY_SNAPSHOT_ROOT}/scaffold-${version}`;
+export const LEGACY_UPGRADE_STATE = `${LEGACY_SNAPSHOT_ROOT}/manifest.json`;
 
 export interface RollbackManifest {
   fromVersion: string;
@@ -183,7 +232,18 @@ export interface RollbackManifest {
   stagedAt: string;
   completedAt: string | null;
   gitHead: string | null;
-  /** Digests of `xforge/scaffold/**` as it stood before staging — what a rollback restores to. */
+  /**
+   * Whether the managed trees were free of uncommitted work when this was staged.
+   *
+   * `gitHead` alone does not say what a rollback needs to know. A commit is only a restore point for
+   * the files that were actually in it, so a HEAD recorded over a dirty working tree names a state
+   * the project was never in — and offering it as a fallback would hand somebody a command that
+   * silently discards whatever they had not committed. False here (or a null `gitHead`) means the
+   * snapshot is the only route back, and `--rollback` says so instead of printing a git command that
+   * cannot be trusted.
+   */
+  gitClean: boolean;
+  /** Digests of the managed trees as they stood before staging — what a rollback restores to. */
   before: Record<string, string>;
   /**
    * Digests as they stood when the merge was declared complete. Absent until then.

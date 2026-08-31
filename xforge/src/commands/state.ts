@@ -1,5 +1,33 @@
 import { wrap } from '../protocol/render.js';
-export { readState as executeState } from '../core/state-reader.js';
+import type { Diagnostic, ProjectContext } from '../types.js';
+import { readState } from '../core/state-reader.js';
+import { readStagedUpgrade, upgradeInProgressDiagnostic } from '../core/upgrade-sentinel.js';
+
+/**
+ * `xforge state`, which is `readState` plus the one thing a resolved project cannot show.
+ *
+ * This module used to be a re-export and the wrapper is the whole of what it adds. `state` is the
+ * read an Agent makes before it does anything — it is how a Skill finds the current Stage, the next
+ * Artifact and the Gates that stand between them — and every one of those answers is computed from
+ * a Scaffold that may be half-way through a merge. The resolved state is not wrong; it is simply
+ * the only report here that cannot say where its own inputs came from, because it describes the
+ * project as configured and an unfinished upgrade is a fact about the configuration itself.
+ *
+ * Appended after the read rather than raised inside it, because `core/state-reader.ts` answers a
+ * question about a resolved project and knows nothing about upgrade transactions. `src/index.ts`
+ * publishes `readState` directly, so a library consumer calling it still gets the resolution
+ * without this notice; the CLI's `state` command is what routes through here.
+ */
+export async function executeState(
+  project: ProjectContext,
+  options: Parameters<typeof readState>[1],
+): Promise<{ data: Record<string, unknown>; diagnostics: Diagnostic[] }> {
+  const result = await readState(project, options);
+  const staged = await readStagedUpgrade(project.root);
+  return staged
+    ? { ...result, diagnostics: [...result.diagnostics, upgradeInProgressDiagnostic(staged)] }
+    : result;
+}
 
 /**
  * The readable form of `xforge state`.

@@ -6,27 +6,27 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # 不变量
 
-- 先读 `xforge/scaffold-<version>/MERGE.md` 和 `plan.json`。它们已经把整个工作面说清楚，不需要靠翻脚手架去发现。
+- 先读 `xforge/.upgrade/MERGE.md` 和 `xforge/.upgrade/plan.json`。它们已经把整个工作面说清楚，不需要靠翻脚手架去发现。
 - `identical` 的文件已成定局，**不要打开它们**——计划存在的意义，就是让工作量是那几个有差异的文件，而不是那七十八个没差异的。
-- `xforge/scaffold/**` 与 `xforge/flows/**` 是项目的，`xforge/scaffold-<version>/**` 是发行版的，且按合并去向组织（`scaffold/` 进前者，`flows/` 进后者）。**默认谁也不压过谁。**
+- `xforge/scaffold/**`、`xforge/flows/**` 与 `xforge/scripts/**` 是项目的，`xforge/.upgrade/incoming/**` 是发行版的，且按合并去向组织（`incoming/scaffold/`、`incoming/flows/`、`incoming/scripts/` 各进同名的那棵树）。**默认谁也不压过谁。**
 - **Flow 永远不是例行采纳。** 它规定一个 Stage 需要几个审批、blocker 把工作退回哪里——那是项目自己的治理规则。只报告差异，交由人决定；采纳它还会作废该 Flow 上所有在途 Change 的审批。
-- `xforge/.rollback/**` 是还原点，绝不写入。
+- `xforge/.upgrade/snapshot/**` 是还原点，`xforge/UPGRADING.md` 是升级在途的标记，由 CLI 在暂存时写入、在 complete 或 rollback 时删除。两者都绝不写入。
 - 用 `xforge state --kind skills`（以及 `--kind rules`）读取本项目当前选中了什么，不要去解析 `xforge/manifest.yaml`。选中了什么是 CLI 报告的**已解析事实**，而那个文件只是它的输入之一。
 - `manifest.scaffold.version` 跟随的是脚手架的**内容**，只有 `upgrade-scaffold --complete` 会推进它；因此「CLI 比脚手架新」是正常状态，不是故障。若 `xforge upgrade-scaffold` 因声明的 CLI 与运行的 CLI 不一致而拒绝，先跑 `xforge update`：它只动 CLI 那个版本号，脚手架的版本号仍停在文件所在的位置。
 - `XFORGE_UPGRADE_VERSION_PIN_UNRELIABLE` 表示版本号声称脚手架已经是即将安装的这个版本，而文件并非如此——这是旧版 `update` 在没有合并任何东西的情况下推进了版本号留下的。起始版本已无法恢复，因此报告出的版本跨度没有意义；合并本身是按文件内容算的，不受影响。说明一次即可继续。
 
 # 权限
 
-- 可写 `xforge/scaffold/**`；`xforge/manifest.yaml` 仅在记录人**明确批准过**的选择时可写。
+- 可写 `xforge/scaffold/**` 与 `xforge/scripts/**`；`xforge/manifest.yaml` 仅在记录人**明确批准过**的选择时可写。
 - 不得触碰 `xforge/changes/**`、`xforge/specs/**`、审计链、审批、`xforge/constitution.md`、`xforge/architecture.md`。脚手架可以重新生成，治理记录不能——一条能被重建的审计链，本来就不值得保留。
 - **绝不删除 `project-only` 文件。** 没有任何依据能区分"上游删掉的资产"和"本项目自己写的资产"，按前一种理解去删，就是凭猜测销毁别人的工作。
 
 # 执行
 
 1. 每个 `added` 文件：逐字拷入。**不要**把它加进 Manifest 选择——文件随发行版到达，不等于决定要运行它。
-2. 每个 `changed` 文件：两份都读。吸收新版**规定**的东西，保住本项目**知道**的东西。一个带着真实测试命令的 Gate、一段本项目选定的 Skill 措辞、一个有人调过的阈值——那些是关于这个项目的事实，要活过升级。
+2. 每个 `changed` 文件：两份都读。吸收新版**规定**的东西，保住本项目**知道**的东西。一个带着真实测试命令的 Gate、一份本项目在跑的 Script 代码、一段本项目选定的 Skill 措辞、一个有人调过的阈值——那些是关于这个项目的事实，要活过升级。
 3. 英文与 `_cn` 两份 Skill 必须保持等价。只合并一种语言，会让项目留下两份互相矛盾的 Skill，而 Agent 读到哪一份就变成了 Manifest 语言设置的问题，而不是项目决定的问题。
-4. 运行 `xforge upgrade-scaffold --complete`，然后 `xforge install`，然后 `xforge doctor`。
+4. 运行 `xforge upgrade-scaffold --complete`，然后 `xforge doctor`。`--complete` 会自行重新投射，所以这里没有 `xforge install` 这一步。
 
 # 证据
 
@@ -38,7 +38,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 - 当某个 `changed` 文件的两份内容**不可能同时成立**时停下——比如新版删掉了本项目依赖的某条规则，或改名了本项目引用的东西。那是关于这个项目的决定，不是关于合并的。
 - 宁可停下，也不要靠"整份采纳新版"来化解冲突。**偏向上游是唯一永远可用、而几乎永远不对的解法**；项目就是这样悄悄失去那些脚手架本来就邀请它做的适配的。
-- 当暂存目录不存在、或它的 `plan.json` 无法解析时停下：去运行 `xforge upgrade-scaffold`，而不是靠翻目录把计划重建出来。
+- 当 `xforge/.upgrade/incoming/` 不存在、或 `xforge/.upgrade/plan.json` 无法解析时停下：去运行 `xforge upgrade-scaffold`，而不是靠翻目录把计划重建出来。
 
 # 判断要点
 

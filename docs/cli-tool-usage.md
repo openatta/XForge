@@ -96,7 +96,7 @@ npx --no-install xforge <command>    # 项目本地安装（可执行文件在 n
 | `work-package` | 写 | 派工 / 起草交付 / 确认集成或复核 |
 | `audit` | 读 / 有条件写 | 审计链的检视、校验、导出、重投递、修剪 |
 | `archive` | 写 | 校验、合并 Specs、原子归档 |
-| `upgrade-scaffold` | 写 | 暂存并分类新版 Scaffold 供人合并 |
+| `upgrade-scaffold` | 写 | 暂存并分类新版受管树供人合并；完成 / 回滚时自己重新投影 |
 | `doctor` | 读 | 报告未被引用与悬空的扩展资源 |
 | `hook` | 内部 | 平台 Hook 分发器 |
 
@@ -201,7 +201,7 @@ xforge [--root <path>] doctor [--kind <kind>] [--strict] [--text]
 Flow 漂移会报成两条不同的 `info`，因为修法不同：
 
 - `XFORGE_DOCTOR_FLOW_VERSION_DRIFT` —— 本地版本落后出厂版本。常见情形，
-  跑 `xforge upgrade-scaffold` 会把出厂 Flow 暂存到你的旁边，由你决定是否采纳——
+  跑 `xforge upgrade-scaffold` 会把出厂 Flow 暂存到 `xforge/.upgrade/incoming/flows/`，由你决定是否采纳——
   Flow 规定了一个 Stage 需要几个审批、blocker 把工作退回哪里，所以它只被**带来**，不会被替你采纳。
 - `XFORGE_DOCTOR_FLOW_CONTENT_DRIFT` —— **版本号相同但内容不同**。要么是有人就地改了 Flow
   却没动版本号，要么它来自一个用同一编号发出不同内容的构建。**只比版本号看不见这一种**，
@@ -261,25 +261,94 @@ xforge [--root <path>] uninstall [--target <t>] [--force]  [--dry-run] [--text]
 ### `upgrade-scaffold`
 
 ```bash
-xforge [--root <path>] upgrade-scaffold [--complete | --rollback] [--with-active-changes] [--force] [--dry-run] [--text]
+xforge [--root <path>] upgrade-scaffold [--complete | --rollback] [--with-active-changes] [--allow-dirty] [--force] [--dry-run] [--text]
 ```
 
-把这个 CLI 附带的 Scaffold **暂存**在项目自己的旁边，并对每个文件分类，供人或 Agent 合并。
-**它从不替你合并。**
+把这个 CLI 附带的受管树**暂存**到 `xforge/.upgrade/incoming/`，逐文件分类，供人或 Agent 合并。
+**它从不替你合并。** 这不是胆怯，而是可计算与需判断的边界正好落在这里：
+哪些文件不同是算术；一个项目自己写进 Skill 的措辞该不该让位给更新的默认值，
+是关于这个项目意图的问题——替你回答它，等于把 Scaffold 存在的意义（邀请你改它）覆盖掉。
+
+**受管树有三棵**：`xforge/scaffold/**`、`xforge/flows/**`、`xforge/scripts/**`。
+三棵一起快照、一起比对、一起恢复。Script 与 Flow 一样是一等资源源，只是不住在 `scaffold/` 里面。
+
+#### 三个时刻
+
+一次由别人完成的合并，缺任何一个时刻都不安全：
+
+| 时刻 | 命令 | 做什么 |
+| --- | --- | --- |
+| **stage** | `upgrade-scaffold` | 先拍快照 → 暂存新版 → 分类 → 立哨兵。`xforge/scaffold/` 下不会有任何改动 |
+| **complete** | `--complete` | 清掉 `.upgrade/`、推进 Scaffold 版本锚点、**重新投影**、写 `upgrade-log.md`、撤哨兵。这是「合并后基线」唯一存在的时刻 |
+| **rollback** | `--rollback` | 从快照整树恢复、退回版本锚点、**重新投影**、撤哨兵。完成之后又有新工作时它会拒绝——没有 complete 记下的那份基线，它根本看不出有新工作 |
+
+#### 磁盘上的东西
+
+| 路径 | 是什么 |
+| --- | --- |
+| `xforge/.upgrade/incoming/` | 新版 `scaffold/` `flows/` `scripts/`，按它们该去的相对位置摆好 |
+| `xforge/.upgrade/snapshot/` | 暂存前的受管树整树。**只有一份**，它是回滚点 |
+| `xforge/.upgrade/state.json` | `fromVersion` / `toVersion`、暂存与完成时间、提交 id、前后摘要 |
+| `xforge/.upgrade/plan.json` · `plan.md` · `MERGE.md` | 分类结果：机器一份、人一份、交给 Agent 的合并提示一份 |
+| `xforge/UPGRADING.md` | 在途哨兵，刻意可见 |
+| `xforge/upgrade-log.md` | 追加式历史，跨完成与回滚存活 |
+
+**目录名里不带版本号。** 同时只可能有一次升级在途，是哪一次由 `state.json` 里的
+`fromVersion` / `toVersion` 回答，那是记录该待的地方，不是目录名。
+
+`xforge/.upgrade/` 整个 gitignored——CLI 暂存时往里写一份 `.gitignore`，
+与 `xforge/.audit/` 同法。`xforge/UPGRADING.md` 则**不是**：
+一次没走完的升级应当在目录列表和 `git status` 里都扎眼。
+它存在期间，`doctor`、`state`、`check`、`transition` 都会给出警告——
+在一半的合并上继续推进一个 Change，是要被告知的。
+
+#### 选项
 
 | 选项 | 作用 |
 | --- | --- |
-| （无） | 暂存 + 快照 + 分类。`xforge/scaffold/` 下不会有任何改动 |
-| `--complete` | 合并完成后收尾，推进 Scaffold 版本锚点 |
-| `--rollback` | 恢复到暂存之前。**只保留一份快照**（上一次升级的） |
+| （无） | 快照 + 暂存 + 分类 + 立哨兵 |
+| `--complete` | 合并完成后收尾：推进版本锚点、重新投影、记账 |
+| `--rollback` | 恢复到暂存之前并重新投影。**只保留一份快照**（本次暂存时拍的那份） |
 | `--with-active-changes` | 接受「在有未归档 Change 的情况下升级」 |
-| `--force` | 升级完成后 Scaffold 又变过时，仍然回滚 |
+| `--allow-dirty` | 接受「受管路径有未提交改动」，并把「这次没有提交兜底」记进 `state.json` |
+| `--force` | 升级完成后受管树又变过，仍然回滚 |
 
-> **有未归档 Change 时它直接拒绝**（`XFORGE_UPGRADE_ACTIVE_CHANGES`）：
-> 那些 Change 剩下的 Stage 会在它们的 Design 从未见过的 Gate 下运行。
-> 这是一个关于工作的决定，所以它停下来点名。
+#### 两道拒绝
 
-`xforge/upgrade-log.md` 记录每一次完成的升级，在暂存目录和回滚之后都存活。
+> **有未归档 Change 时拒绝**（`XFORGE_UPGRADE_ACTIVE_CHANGES`）：
+> 那些 Change 剩下的 Stage 会在它们的 Design 从未见过的 Gate 与 Skill 下运行。
+> 这是一个关于工作的决定，所以它停下来点名。`--with-active-changes` 是接受这个后果，不是消除它。
+>
+> **受管路径有未提交改动时拒绝**：`stage` 只对那三棵受管树和 `xforge/manifest.yaml` 跑一次 `git status --porcelain`。
+> 干净——记下当前 HEAD 的提交 id；脏——要求你**先提交**；`--allow-dirty` 放行，
+> 代价是这次升级没有提交兜底，`state.json` 会如实记下这一点。
+> 不是 Git 工作树时不记提交 id，直接落到快照这一条路上。
+
+#### 提交是兜底，快照仍是正路
+
+`--rollback` 恢复的**永远**是快照。记下过提交 id 时它多做一件事：把那条按路径限定的
+Git 命令**打印**出来，作为手工退路——
+
+```bash
+git restore --source=<记下的 HEAD> -- xforge/scaffold xforge/flows xforge/scripts xforge/manifest.yaml
+```
+
+**它自己绝不执行这条命令。** 一次升级被授权改写的只有那三棵树与版本锚点的当前内容；
+替你跑一条从历史里取版本的 Git 命令，是它没有拿到的授权。把命令摆在你面前，决定权还在你这边。
+提交 id 同时写进 `xforge/upgrade-log.md`，与暂存 / 完成时间戳并排——
+事后要回答「那次升级是从哪个提交出发的」，看的是这里。
+
+#### 完成与回滚自己重新投影
+
+`--complete` 与 `--rollback` 都会在收尾时把投影重跑一遍，**不需要你再手动 `xforge install`**。
+
+投影是纯函数：源 × Manifest × Adapter 版本。既然算得出来就不必快照它——
+**回放比保存便宜，而且不会保存到一份过期的**：合并动过源，快照下来的投影就是错的。
+以前 `--rollback` 只还原源，然后叫你「跑 `xforge install` 重新投影」，
+结果是在有人想起来之前，项目一直自相矛盾：源已经退回旧版，
+`.claude/` / `.codex/` 等投影和 `lock.yaml` 还停在新版。
+
+收尾之后仍然建议跑一次 `xforge doctor`；**`xforge install` 不再是其中一步。**
 
 ---
 
@@ -564,6 +633,10 @@ xforge archive --change <change-id>
 | `XFORGE_VERIFICATION_NOT_DECLARED` | Gate **拒绝**（不是失败）：项目没说自己怎么验证。**停下来问用户**，然后 `verification declare` |
 | `XFORGE_VERIFICATION_TOOLCHAIN_UNCOVERED` | 同上；有意不覆盖的工具链用 `--not-applicable` |
 | `XFORGE_UPGRADE_ACTIVE_CHANGES` | 有未归档 Change。先归档，这是人的决定 |
+| `XFORGE_UPGRADE_UNCOMMITTED` | 受管路径有未提交改动，这次升级会没有提交兜底。**先提交**；`--allow-dirty` 是接受后果，不是消除它 |
+| `XFORGE_UPGRADE_UNCOMMITTED_ACCEPTED` | warning：`--allow-dirty` 已放行，快照是唯一退路 |
+| `XFORGE_UPGRADE_IN_PROGRESS` | warning：`xforge/UPGRADING.md` 还在，一次合并没有收尾。`doctor` / `state` / `check` / `transition` 都会说这句 |
+| `XFORGE_UPGRADE_ROLLBACK_BACKSTOP` | info：回滚已用快照完成，这条给出那条按路径限定的 `git restore` 手工退路 |
 | `XFORGE_FIELD_NOT_FOUND` | `--field` 路径不存在。去掉 `--field` 看 `data` 的形状 |
 | `XFORGE_APPROVAL_TRANSITION_UNKNOWN` / `_UNAPPROVABLE` | `--for` 填错了，**什么都没写入**。改参数，不要重跑 |
 | `XFORGE_APPROVAL_NOT_IN_AUDIT_CHAIN` | receipt 在审计链里找不到匹配事件，不进有效集合 |
@@ -578,5 +651,6 @@ xforge archive --change <change-id>
    多个历史回执下重复出现的字段会让行匹配返回过时的那一个。
 2. **别照 usage 字符串拼审批命令。** 从 `state.nextActions[].command` 里原样取。
 3. **别把「拒绝」当成「失败」去绕过。** Gate refuse 是一个未被回答的问题，
-   `upgrade-scaffold` refuse 是一个属于人的决定，`ready-to-archive` 无可用 transition
+   `upgrade-scaffold` refuse 是一个属于人的决定（先归档、或者先提交），
+   `ready-to-archive` 无可用 transition
    是 Stage 层面已无可走——三者的正确反应都不是重试。

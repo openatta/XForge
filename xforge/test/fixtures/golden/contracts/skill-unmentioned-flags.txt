@@ -22,6 +22,7 @@ sync --verify-digests
 uninstall --target
 update --adopt
 update --target
+upgrade-scaffold --allow-dirty
 upgrade-scaffold --rollback
 upgrade-scaffold --with-active-changes
 verification --justification

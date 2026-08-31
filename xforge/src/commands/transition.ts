@@ -14,6 +14,7 @@ import { assertManaged } from '../core/project-loader.js';
 import { safeResolve } from '../core/path-safety.js';
 import { loadSelectedResources } from '../core/resource-loader.js';
 import { resolveWorkPackages } from '../core/work-packages.js';
+import { readStagedUpgrade, upgradeInProgressDiagnostic } from '../core/upgrade-sentinel.js';
 
 /**
  * Receipts on disk that this working tree wrote and that no `stage.entered` event attests.
@@ -119,6 +120,28 @@ export async function executeTransition(project: ProjectContext, options: { chan
     ]);
   }
   const diagnostics = [...eligibility, ...resources.diagnostics, ...workPackages.diagnostics, ...control.diagnostics];
+  /*
+   * Of the four commands that report an open upgrade, this is the one where the hazard is not
+   * hypothetical, so it says what it is rather than reusing the general wording.
+   *
+   * A transition is the moment the Change binds to its governance. The receipt records the Gates
+   * that were satisfied and the policy snapshot they were satisfied under, and both are read out of
+   * the Scaffold and the Flow as they stand right now — which, mid-merge, is neither release. The
+   * Stage advances under a Gate set half from the old version and half from the new, the receipt
+   * says it advanced legitimately, and it is a true record of a rule no release ever shipped.
+   *
+   * Still a warning. `stage()` refuses to open an upgrade while a Change is unarchived unless the
+   * person passes `--with-active-changes`, so any Change transitioning here belongs to somebody who
+   * was told this would happen and said yes; the remaining job is to keep saying it at the moment it
+   * takes effect, not to strand a Change part-way through a Flow with no way out.
+   */
+  const staged = await readStagedUpgrade(project.root);
+  if (staged) {
+    diagnostics.push(upgradeInProgressDiagnostic(
+      staged,
+      'This transition would advance the Stage under half-merged Gates and Flows: the receipt it writes binds to the Gate set and the policy snapshot as they stand mid-merge, which is neither the version this project came from nor the one it is going to.',
+    ));
+  }
   for (const block of requirement.blockedBy) diagnostics.push(diagnostic('XFORGE_TRANSITION_BLOCKED', `Transition is blocked by ${block}.`, `${project.changesPath}/${options.change}`));
   const remedy = blockRemedy(requirement.blockedBy, options.change);
   if (remedy) diagnostics.push(diagnostic(remedy.code, remedy.message, `${project.changesPath}/${options.change}`, 'info'));

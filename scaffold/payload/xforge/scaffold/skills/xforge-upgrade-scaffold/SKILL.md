@@ -6,27 +6,27 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # Invariants
 
-- Read `xforge/scaffold-<version>/MERGE.md` and `plan.json` first. They name the whole job; nothing here requires reading the Scaffold to discover it.
+- Read `xforge/.upgrade/MERGE.md` and `xforge/.upgrade/plan.json` first. They name the whole job; nothing here requires reading the Scaffold to discover it.
 - The `identical` files are already settled. Do not open them — the plan exists so the work is the few files that differ, not the seventy-eight that do not.
-- `xforge/scaffold/**` and `xforge/flows/**` are the project's; `xforge/scaffold-<version>/**` is the release's, laid out the way it merges (`scaffold/` into the first, `flows/` into the second). Neither side is authoritative over the other by default.
+- `xforge/scaffold/**`, `xforge/flows/**` and `xforge/scripts/**` are the project's; `xforge/.upgrade/incoming/**` is the release's, laid out the way it merges (`incoming/scaffold/`, `incoming/flows/` and `incoming/scripts/` each into the tree of the same name). Neither side is authoritative over the other by default.
 - A Flow is never a routine adopt. It states how many approvals a Stage needs and where a blocker sends the work back — the project's own governance. Report what differs and leave the decision to a person; adopting one also invalidates the approvals of any Change still running under it.
-- `xforge/.rollback/**` is the restore point. Never write to it.
+- `xforge/.upgrade/snapshot/**` is the restore point and `xforge/UPGRADING.md` is the in-flight marker, written by the CLI at stage and removed at complete or rollback. Never write to either.
 - Read what this project currently selects with `xforge state --kind skills` (and `--kind rules`), not by parsing `xforge/manifest.yaml`. What is selected is a resolved fact the CLI reports; the file is one input to it.
 - `manifest.scaffold.version` tracks the Scaffold's *content* and only `upgrade-scaffold --complete` advances it, so a project whose CLI is newer than its Scaffold is in a normal state, not a broken one. If `xforge upgrade-scaffold` refuses because the declared CLI does not match the running one, run `xforge update` first: it moves the CLI pin alone and leaves the Scaffold pin where the files are.
 - `XFORGE_UPGRADE_VERSION_PIN_UNRELIABLE` means the pin says this Scaffold is already the incoming version while files disagree — written by an older `update` that advanced the pin without merging anything. The starting version is unrecoverable, so the reported span is meaningless; the merge itself is computed from file content and is unaffected. Say so once and continue.
 
 # Authority
 
-- Write `xforge/scaffold/**`, and `xforge/manifest.yaml` only to record selections a person explicitly approved.
+- Write `xforge/scaffold/**` and `xforge/scripts/**`, and `xforge/manifest.yaml` only to record selections a person explicitly approved.
 - Do not touch `xforge/changes/**`, `xforge/specs/**`, the audit chain, approvals, `xforge/constitution.md`, or `xforge/architecture.md`. The Scaffold can be regenerated; the governance record cannot, and an audit chain that could be rebuilt would not be worth keeping.
 - Never delete a `project-only` file. Nothing distinguishes an asset upstream dropped from one this project wrote, so deleting on that reading destroys somebody's work on the strength of a guess.
 
 # Execution
 
 1. For each `added` file: copy it in verbatim. Do not add it to Manifest selection — a file arriving in a release is not a decision to run it.
-2. For each `changed` file: read both versions. Adopt what the new one **rules**; keep what this project **knows**. A Gate carrying a real test command, a Skill carrying wording this project chose, a threshold somebody tuned — those are facts about this project and they survive the upgrade.
+2. For each `changed` file: read both versions. Adopt what the new one **rules**; keep what this project **knows**. A Gate carrying a real test command, a Script carrying code this project runs, a Skill carrying wording this project chose, a threshold somebody tuned — those are facts about this project and they survive the upgrade.
 3. Keep English and `_cn` Skill variants equivalent. Merging one language and not the other leaves the project with two Skills that disagree, and whichever an Agent reads is then a matter of the Manifest's language setting rather than of what the project decided.
-4. Run `xforge upgrade-scaffold --complete`, then `xforge install`, then `xforge doctor`.
+4. Run `xforge upgrade-scaffold --complete`, then `xforge doctor`. `--complete` reprojects on its own, so `xforge install` is not a step here.
 
 # Evidence
 
@@ -38,7 +38,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 - Stop when a `changed` file's two versions cannot both hold — when the release removes a rule the project depends on, or renames something the project references. That is a decision about the project, not about the merge.
 - Stop rather than resolve a conflict by taking the newer file wholesale. Preferring upstream is the one resolution that is always available and almost never right; it is how a project silently loses the adaptation the Scaffold existed to invite.
-- Stop when the staged directory is missing or its `plan.json` does not parse: run `xforge upgrade-scaffold` rather than reconstructing the plan by reading directories.
+- Stop when `xforge/.upgrade/incoming/` is missing or `xforge/.upgrade/plan.json` does not parse: run `xforge upgrade-scaffold` rather than reconstructing the plan by reading directories.
 
 # Judgment calls
 

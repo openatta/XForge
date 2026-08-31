@@ -16,6 +16,7 @@ import { sha256, stableStringify } from '../core/hash.js';
 import { safeResolve } from '../core/path-safety.js';
 import { AUDIT_DIRECTORY } from '../constants.js';
 import { reconcileChange } from '../core/reconcile.js';
+import { readStagedUpgrade, upgradeInProgressDiagnostic } from '../core/upgrade-sentinel.js';
 
 /** Stages that run before any implementation exists, so no work-package verify can be meaningful. */
 const PRE_APPLY_STAGES = new Set(['propose', 'clarify', 'design', 'check']);
@@ -269,6 +270,22 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
   if (diagnostics.some((item) => staleLockCodes.has(item.code))) {
     diagnostics.push(diagnostic('XFORGE_LOCK_STALE', 'Run xforge install to resolve and lock current Manifest paths, Scaffold, and resources before check.', 'xforge/lock.yaml'));
   }
+  /*
+   * A Gate that runs mid-upgrade is a Gate whose definition may be either release's.
+   *
+   * The Evidence this run writes is bound to a policy snapshot and cited by everything downstream,
+   * so a `passed` recorded here can be a pass against a command the merge is about to replace, or
+   * against one it has just brought in that the Flow around it has not adopted. Neither is wrong to
+   * do — checking is how somebody finds out what the merge broke — but the result is worth less than
+   * it looks, and nothing else in the Evidence says so.
+   *
+   * Not counted as an advisory, and pathed away from the Change on purpose: `advisories` below picks
+   * up warnings inside the Change's own directory, and this one is a fact about the project. Adding
+   * it there would make XFORGE_CHECK_PASSED_WITH_WARNINGS fire on every run of an otherwise clean
+   * Change for as long as the upgrade stays open.
+   */
+  const staged = await readStagedUpgrade(project.root);
+  if (staged) diagnostics.push(upgradeInProgressDiagnostic(staged));
   const changes: FileChange[] = [];
   const hasStructureErrors = diagnostics.some((item) => item.severity === 'error');
   const gateResults: CheckData['gates'] = [];

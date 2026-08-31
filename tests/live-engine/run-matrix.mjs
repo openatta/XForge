@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -319,7 +319,21 @@ const SCENARIOS = {
       const solidPath = path.join(projectRoot, 'xforge', 'flows', 'solid.yaml');
       const solid = existsSync(solidPath) ? parse(await readFile(solidPath, 'utf8')) : null;
       const approverCounts = (solid?.governance?.approvalPolicies ?? []).map((policy) => policy.minApprovers);
-      const stagedLeft = readdirSync(path.join(projectRoot, 'xforge')).filter((name) => name.startsWith('scaffold-'));
+      /*
+       * What "finished" looks like after the working state moved into `xforge/.upgrade/`.
+       *
+       * This used to scan `xforge/` for a `scaffold-<version>` directory. That name no longer exists
+       * in any layout this CLI writes, so the check would have passed on every run including one
+       * where the Skill never ran `--complete` at all — a green assertion that could no longer fail
+       * is worse than no assertion. Two facts now stand in for it: the staged release is gone, and
+       * the marker every other command reads is gone with it.
+       */
+      const incomingLeft = existsSync(path.join(projectRoot, 'xforge', '.upgrade', 'incoming'));
+      const markerLeft = existsSync(path.join(projectRoot, 'xforge', 'UPGRADING.md'));
+      /* And the half `--complete` now does on the Skill's behalf: the targets render the merged
+         Scaffold without anybody running `xforge install`. */
+      const projected = path.join(projectRoot, '.claude', 'skills', 'xforge-upgrade-scaffold', 'SKILL.md');
+      const projectedSkill = existsSync(projected) ? await readFile(projected, 'utf8') : '';
       return [
         /* The whole point: the project's own command survived a merge that also adopted the release. */
         { name: 'kept-project-command', ok: merged.includes(PROJECT_ADAPTED_TEST_COMMAND[0]), detail: `expected ${PROJECT_ADAPTED_TEST_COMMAND.join(' ')} to survive` },
@@ -331,7 +345,8 @@ const SCENARIOS = {
          * compared.
          */
         { name: 'kept-project-governance', ok: approverCounts.length > 0 && approverCounts.every((count) => count === 2), detail: `minApprovers ${JSON.stringify(approverCounts)}, expected every policy to stay at 2` },
-        { name: 'upgrade-completed', ok: stagedLeft.length === 0, detail: stagedLeft.join(', ') || 'no staged directory left behind' },
+        { name: 'upgrade-completed', ok: !incomingLeft && !markerLeft, detail: [incomingLeft ? 'xforge/.upgrade/incoming still present' : null, markerLeft ? 'xforge/UPGRADING.md still present' : null].filter(Boolean).join(', ') || 'staged release and in-flight marker both cleared' },
+        { name: 'reprojected-without-install', ok: projectedSkill.includes('.upgrade/'), detail: projectedSkill ? 'projected Skill names the merged layout' : 'no projected xforge-upgrade-scaffold SKILL.md' },
       ];
     },
   },

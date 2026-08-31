@@ -7,15 +7,20 @@ spec:
   severity: must
   instruction: >-
     Shared governance assets (Constitution, canonical Specs, Manifest, Lock, Flow definitions, the
-    audit chain) are written by the Integrator, an explicit XForge transaction, or the CLI itself,
-    never by a Worker implementing a work package. Scaffold resources under xforge/scaffold/ and
-    Change content under xforge/changes/ are written by the governing Skills and are intentionally
-    outside this Rule's scope.
+    audit chain, the upgrade restore point and the xforge/UPGRADING.md marker that says an upgrade
+    is unfinished) are written by the Integrator, an explicit XForge transaction, or the CLI itself,
+    never by a Worker implementing a work package. Scaffold resources under xforge/scaffold/,
+    Scripts under xforge/scripts/ and Change content under xforge/changes/ are written by the
+    governing Skills and are intentionally outside this Rule's scope.
   scope:
     # Mirrors the union of protected-files' deny list and protected-manifest's ask list exactly.
-    # Scaffold resources and Change content are edited through normal governed Changes
-    # (xforge-scaffold, xforge-propose/xforge-apply) and are deliberately absent from all three
-    # lists — declaring a path here that no policy covers would misreport it as guarded.
+    # Scaffold resources, Scripts and Change content are edited through normal governed Changes
+    # (xforge-scaffold, xforge-upgrade-scaffold, xforge-propose/xforge-apply) and are deliberately
+    # absent from all three lists — declaring a path here that no policy covers would misreport it
+    # as guarded. xforge/.upgrade/incoming/ is absent for the same reason: the merge reads it, and
+    # only the CLI writes or removes it. The two paths an upgrade does add are the ones an Agent can
+    # only make worse by touching — the snapshot is what a rollback restores from, and UPGRADING.md
+    # is the marker that tells every later command an upgrade was never finished.
     paths:
       - xforge/constitution.md
       - xforge/specs/**
@@ -23,6 +28,8 @@ spec:
       - xforge/lock.yaml
       - xforge/flows/**
       - xforge/.audit/**
+      - xforge/.upgrade/snapshot/**
+      - xforge/UPGRADING.md
   enforcement:
     # guarded: a live PermissionPolicy intercepts the write at the tool call. protected-files
     # refuses it outright; protected-manifest requires a human confirmation instead, because

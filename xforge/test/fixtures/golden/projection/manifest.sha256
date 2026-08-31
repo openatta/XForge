@@ -15,7 +15,7 @@ c923819d75aa70f916b677e94a47e8a0c109111f129080188a041cda0ddd327b  .agents/skills
 cccfa6833892d88468c44af168782a3e40ab19d492779e7caa4c93d1d452972e  .agents/skills/xforge-scaffold/agents/openai.yaml
 e7b77cec552b0d2aa9c4472a9c70b8646e3a15077285765f4d8a94835993e121  .agents/skills/xforge-status/SKILL.md
 eaef958cfd2d11797b7b6c3fa5d4d401fbe9818ad90af5194d67271bba39c24a  .agents/skills/xforge-status/agents/openai.yaml
-7aea0d315165fb6fc3743e2a85b11f482e5e994e0a57cb3744c651f7e5ea8997  .agents/skills/xforge-upgrade-scaffold/SKILL.md
+d302983da120e5362ab6a07c47b335e9025301c525818e7e49e90a619d471317  .agents/skills/xforge-upgrade-scaffold/SKILL.md
 d38402a894abfd8afcd3a81ceac33094c5a91cea3d1f219490b5fba9dfb22249  .agents/skills/xforge-verify/SKILL.md
 d38246a26d4a9319e506213a8a5c1f317d103cf33e22a00fa14685f43f6a093d  .claude/agents/integrator.md
 47d7afad2c5afc25df6c13eab4de1f796d41a74304e73f5f235912d36a997805  .claude/agents/reviewer.md
@@ -34,7 +34,7 @@ b6d5021e5d0715a204e60ab1a8af4793d120550b56390778126f85613289b681  .claude/comman
 4269bc5070c102380c50892684b328afad055771c3d3b23050c1b8f2688811be  .claude/commands/xforge/verify.md
 5c31c75f51fb4d6c3dc44d948b6ab78087678b7def735b28327715b839cad96b  .claude/rules/design-decisions-need-a-human.md
 9ae7551cc591a5f7740732e0eba5e81fe487eafe0d3c880193028d766a92d2a8  .claude/rules/design-within-the-declared-architecture.md
-466f6ab9a8e42a86f16f4e2c459ada756f85385de978a69158909d1dd7e02c10  .claude/rules/governance-assets-are-integrator-only.md
+8f787bcd3f97f3635dcbe40b5c760dd353ee6e1876b82d1bbee89b6a60cbd33b  .claude/rules/governance-assets-are-integrator-only.md
 2124a634294f9d01d26713e588b45601802c0b1983fc09f890896b23c3e0da81  .claude/rules/observable-requirements-are-tested.md
 68897fd6cb85a718731a2ca69802eed8ad462a2869e0900b9357c6d433628627  .claude/rules/prefer-small-explicit-contracts.md
 8d5b85887ec26c57bf8b15ce494bbcabaa6eff5e619a9c8e655c4c3e5b6326d1  .claude/rules/xforge-bootstrap.md
@@ -56,7 +56,7 @@ c923819d75aa70f916b677e94a47e8a0c109111f129080188a041cda0ddd327b  .claude/skills
 cccfa6833892d88468c44af168782a3e40ab19d492779e7caa4c93d1d452972e  .claude/skills/xforge-scaffold/agents/openai.yaml
 e7b77cec552b0d2aa9c4472a9c70b8646e3a15077285765f4d8a94835993e121  .claude/skills/xforge-status/SKILL.md
 eaef958cfd2d11797b7b6c3fa5d4d401fbe9818ad90af5194d67271bba39c24a  .claude/skills/xforge-status/agents/openai.yaml
-7aea0d315165fb6fc3743e2a85b11f482e5e994e0a57cb3744c651f7e5ea8997  .claude/skills/xforge-upgrade-scaffold/SKILL.md
+d302983da120e5362ab6a07c47b335e9025301c525818e7e49e90a619d471317  .claude/skills/xforge-upgrade-scaffold/SKILL.md
 d38402a894abfd8afcd3a81ceac33094c5a91cea3d1f219490b5fba9dfb22249  .claude/skills/xforge-verify/SKILL.md
 bfcb443830a4e38f8a9eb3dbc6cce8b8974003098a75380a2d19696c6b1db626  .codex/agents/integrator.toml
 ad0a8fc8862f6c7d16a5fd0337047913a50b82d4f8c2c7901d70f101aa46f3ca  .codex/agents/reviewer.toml
@@ -80,7 +80,7 @@ c429b045487836d435bd22e6c698559f86d94b2da7b0cb77fc78418a43db1519  .cursor/comman
 5bf6a6adc81ded5e5d4892dd5ed07183d816987696ef386ef73bcc864252b365  .cursor/hooks.json
 2318a1fd3139798958dea6ebc688389db8f7a3f9db125c331ea4ef135830cea3  .cursor/rules/design-decisions-need-a-human.mdc
 9bcdad6d66395ac28a09078947d9ca67d4b841bab32a691b5ccb2d88eb1cd3b3  .cursor/rules/design-within-the-declared-architecture.mdc
-dc342d12c619716275c359d071f6fce89172a0fd921436f688c4a33d9ee6c66f  .cursor/rules/governance-assets-are-integrator-only.mdc
+40e24a9264e8611e3bbd2be009120e925bb63f3deabed5a3677e15516464965b  .cursor/rules/governance-assets-are-integrator-only.mdc
 3565791f6c3ed8ac1bb80a6fcf0b9c4e4e2eb099aae7b6da55d9a1516d5f02c7  .cursor/rules/observable-requirements-are-tested.mdc
 cb25f47dfaa1d286c15e6802c5b474d60fef42145b5b5218be22177e595fa7dd  .cursor/rules/prefer-small-explicit-contracts.mdc
 e1b523004fea5775e716b544d5dd16fe1039f6e024836d9b99a0c3bc3f90df27  .cursor/rules/xforge-bootstrap.mdc
@@ -101,7 +101,7 @@ c923819d75aa70f916b677e94a47e8a0c109111f129080188a041cda0ddd327b  .cursor/skills
 cccfa6833892d88468c44af168782a3e40ab19d492779e7caa4c93d1d452972e  .cursor/skills/xforge-scaffold/agents/openai.yaml
 e7b77cec552b0d2aa9c4472a9c70b8646e3a15077285765f4d8a94835993e121  .cursor/skills/xforge-status/SKILL.md
 eaef958cfd2d11797b7b6c3fa5d4d401fbe9818ad90af5194d67271bba39c24a  .cursor/skills/xforge-status/agents/openai.yaml
-7aea0d315165fb6fc3743e2a85b11f482e5e994e0a57cb3744c651f7e5ea8997  .cursor/skills/xforge-upgrade-scaffold/SKILL.md
+d302983da120e5362ab6a07c47b335e9025301c525818e7e49e90a619d471317  .cursor/skills/xforge-upgrade-scaffold/SKILL.md
 d38402a894abfd8afcd3a81ceac33094c5a91cea3d1f219490b5fba9dfb22249  .cursor/skills/xforge-verify/SKILL.md
 50d3929a542ac29c0878a85c14b7a3b5b026e98c289dbef289c75680b9c7a6db  .github/agents/integrator.agent.md
 54e1a87bb41fa842f8dc78841ba6255d783d4f2b71a50982da2091f3e9360c62  .github/agents/reviewer.agent.md
@@ -109,7 +109,7 @@ a5337b49e6673c0f77894ac61e33fdc93d9402798f57feba248017b9cd106ba8  .github/agents
 4926c5c747f65533ff2cfa5e715a99c95f14a0262dd99c8a8ce09736bb012c8e  .github/hooks/xforge.json
 8d841289b776603bb663675aab1cf8c5dc1e5dbaf662605e054e7f565a588d93  .github/instructions/design-decisions-need-a-human.instructions.md
 38f6d6bbbb9d626a14d5932c24fc23286f778e241387b5a159f59359fb906da1  .github/instructions/design-within-the-declared-architecture.instructions.md
-8377240d9f70d7139366164217a348c32b909880efe8a7530693b8f785f00ed6  .github/instructions/governance-assets-are-integrator-only.instructions.md
+f654ce6871c94c8b1bf61f0b01d77d545da04f168cfaac9d1a133ede0bdb85f6  .github/instructions/governance-assets-are-integrator-only.instructions.md
 8e1860235d86ff2ff313e7fbd52e56821c41668813100fd9315779562aa2528c  .github/instructions/observable-requirements-are-tested.instructions.md
 2c3faccba99c88593dc790205c5c8bf538764e59b613b4b0f2350f0ec2116a45  .github/instructions/prefer-small-explicit-contracts.instructions.md
 6782623da986cf2d5afb19651188a37ecc74c35793cd22c7a28472211619b6a9  .github/instructions/xforge-bootstrap.instructions.md
@@ -142,7 +142,7 @@ c923819d75aa70f916b677e94a47e8a0c109111f129080188a041cda0ddd327b  .github/skills
 cccfa6833892d88468c44af168782a3e40ab19d492779e7caa4c93d1d452972e  .github/skills/xforge-scaffold/agents/openai.yaml
 e7b77cec552b0d2aa9c4472a9c70b8646e3a15077285765f4d8a94835993e121  .github/skills/xforge-status/SKILL.md
 eaef958cfd2d11797b7b6c3fa5d4d401fbe9818ad90af5194d67271bba39c24a  .github/skills/xforge-status/agents/openai.yaml
-7aea0d315165fb6fc3743e2a85b11f482e5e994e0a57cb3744c651f7e5ea8997  .github/skills/xforge-upgrade-scaffold/SKILL.md
+d302983da120e5362ab6a07c47b335e9025301c525818e7e49e90a619d471317  .github/skills/xforge-upgrade-scaffold/SKILL.md
 d38402a894abfd8afcd3a81ceac33094c5a91cea3d1f219490b5fba9dfb22249  .github/skills/xforge-verify/SKILL.md
 087ef6d6a0b54475467a831069f3afb5dbedd5a87e5934073fd1d1555ea6b8f8  .opencode/agents/integrator.md
 7cb63c283c7132ac5577ccb3a372126dccf4238e93fa257ec2e66ea9bffa09ba  .opencode/agents/reviewer.md
@@ -177,7 +177,7 @@ c923819d75aa70f916b677e94a47e8a0c109111f129080188a041cda0ddd327b  .opencode/skil
 cccfa6833892d88468c44af168782a3e40ab19d492779e7caa4c93d1d452972e  .opencode/skills/xforge-scaffold/agents/openai.yaml
 e7b77cec552b0d2aa9c4472a9c70b8646e3a15077285765f4d8a94835993e121  .opencode/skills/xforge-status/SKILL.md
 eaef958cfd2d11797b7b6c3fa5d4d401fbe9818ad90af5194d67271bba39c24a  .opencode/skills/xforge-status/agents/openai.yaml
-7aea0d315165fb6fc3743e2a85b11f482e5e994e0a57cb3744c651f7e5ea8997  .opencode/skills/xforge-upgrade-scaffold/SKILL.md
+d302983da120e5362ab6a07c47b335e9025301c525818e7e49e90a619d471317  .opencode/skills/xforge-upgrade-scaffold/SKILL.md
 d38402a894abfd8afcd3a81ceac33094c5a91cea3d1f219490b5fba9dfb22249  .opencode/skills/xforge-verify/SKILL.md
 be892811c2a6d6bcbc7da37f07a4e5df5666d6ca77ca1bfae43ab72ebdf9cea0  AGENTS.md
 52cf8669cc4195f357777c294dc3a741c4868a54296bd1f4bab9790efc3af431  CLAUDE.md

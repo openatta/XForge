@@ -46,7 +46,7 @@ resources:
     kind: gate
     license: project
     version: 4
-  - digest: 990f970191c3e163e4b76e4cb89aaad7e26853bb735eb3d4b64d24dee0c89dcf
+  - digest: ffb1cca8b4476a664f4736c73463c9845fe032226815ad51acae23003f6ccb2e
     id: protected-files
     kind: permission-policy
     license: project
@@ -66,7 +66,7 @@ resources:
     kind: rule
     license: project
     version: 1
-  - digest: c0aba0ed91ef29e744f19ee9f93a374d4b73dd2d7f6518368ed1ce1836b8baba
+  - digest: ec7057935a0715eadcf0b6e76d8696496b9900f94dc9e5a752da995d237c42ea
     id: governance-assets-are-integrator-only
     kind: rule
     license: project
@@ -136,7 +136,7 @@ resources:
     kind: skill
     license: project
     version: "1"
-  - digest: b187d075ddf40a24217c982fb7a3aa6bad6a0becf354299aa3d4512199fd1c25
+  - digest: a4e3d6e662a158a0ca667e646765bd668bdc38a8ef3e04fe431e3961419f08e8
     id: xforge-upgrade-scaffold
     kind: skill
     license: project
@@ -160,7 +160,7 @@ targets:
   - opencode
   - github-copilot
 xforge:
-  integrity: sha256:91afc42d7ace4796e03dac3699fe6dc2b759752c4cea489a6ae994f08ee8bcf8
+  integrity: sha256:1bc2d10d1acc5d0ca8e21c1439d2e68283a88477b4b89cfc446aec6f44b78e74
   package: "@xforge/cli"
   protocol: "2"
   source: npm
