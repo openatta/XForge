@@ -1,0 +1,238 @@
+# A template, not an active Flow. Copy it to xforge/flows/solid-contract.yaml to adopt it.
+#
+# It ships here rather than in xforge/flows/ because that directory is read by listing it: every
+# file in it is a loaded Flow, and a loaded Flow nobody has selected is reported by `xforge doctor`
+# as unused on every project that has a Change in flight. Shipping this one enabled would buy
+# "available out of the box" at the price of a finding nobody can act on, in every project that
+# never wanted contracts — which is the trade this codebase refuses everywhere else.
+#
+# Adopting it is four steps:
+#   1. cp xforge/scaffold/flows/solid-contract.yaml xforge/flows/solid-contract.yaml
+#   2. add contract-lint, contract-compat, contract-drift and module-boundaries to
+#      `scaffold.gates`, and interfaces-are-contract-governed to `scaffold.rules`
+#   3. set `flow: solid-contract`, or select it per Change in change.yaml
+#   4. `xforge verification declare` a command for each of the four Gates
+#
+# Do step 3 while no Change is unarchived. The whole Flow object is an input to
+# policySnapshotDigest, so switching Flows moves the revision of every Change in flight and
+# invalidates the approvals already collected against it.
+#
+# Derived from solid.yaml v6 by five edits: the contract-delta Artifact, contract-lint on the design
+# Stage, contract-compat and the contractDecisions exit condition on check, and contract-drift plus
+# module-boundaries on verify. Applying those same five to major.yaml produces the Major equivalent;
+# it is not shipped separately because it would be the same five edits over a Flow far fewer projects
+# run.
+apiVersion: xforge.dev/v1alpha2
+kind: Flow
+metadata:
+  name: solid-contract
+  version: 1
+  description: Solid delivery for a project whose module interfaces are governed by a contract baseline
+policy:
+  assuranceLevel: solid
+  eligibleWhen:
+    risk: [low, medium]
+    criticalImpacts: forbidden
+artifacts:
+  - id: proposal
+    generates: proposal.md
+    description: Explain the reason, boundaries, and Flow choice
+    instruction: Describe Why, Scope, Non-goals, Success criteria, impact, rollback, and the factual basis for choosing Solid.
+    outline: |
+      ## Why
+      ## Scope
+      ## Non-goals
+      ## Success criteria
+      ## Flow choice
+      ## Impact and rollback
+  - id: delta-specs
+    generates: specs/**/*.md
+    description: Define observable requirement and scenario deltas
+    instruction: Use stable Requirement IDs for success, failure, boundary, and compatibility scenarios without implementation detail.
+    outline: |
+      ## ADDED Requirements
+      ### Requirement: <REQ-ID> <name>
+      #### Scenario: <name>
+      - **WHEN** ...
+      - **THEN** ...
+  - id: design
+    generates: design.md
+    description: Record the technical approach, alternatives, and verification notes
+    instruction: Cover current state, target integration points, decisions, failure modes, compatibility, migration, rollback, and verification without becoming a file-by-file task list.
+    outline: |
+      ## Context
+      ## Goals and non-goals
+      ## Decisions and alternatives
+      ## Failure modes and compatibility
+      ## Migration and rollback
+      ## Verification notes
+    markers:
+      - id: verification-coverage
+        section: Verification notes
+        role: requirement-coverage
+      - id: rejected-alternative
+        section: Decisions and alternatives
+        role: decision-alternative
+        pattern: ['**Rejected alternative:', '**被否决的替代方案：']
+  - id: contract-delta
+    generates: contract-delta.md
+    description: Declare this Change's delta to the module interface baseline
+    instruction: >-
+      List every contract element this Change adds, modifies or removes, addressed by its contract
+      element id — the `<kind>:<selector>` form the project's own enumeration prints, such as
+      `openapi:paths./orders.post`. For each, give the owning module, whether the change is breaking,
+      and the before and after shape. For a breaking change give the expand-contract steps and cite
+      the entry in evidence/conditions/contractDecisions.yaml that records who decided it. Never edit
+      xforge/contracts/ directly: it is the record of what was agreed, and archive is what merges
+      this delta into it. Do not restate Requirements and do not describe implementation. Write
+      "(none)" under a section with nothing in it — an empty section is an assertion that there is
+      nothing there, which is what the reconciliation reads it as, and a blank one is an omission.
+    outline: |
+      ## ADDED Contract Elements
+      ## MODIFIED Contract Elements
+      ## REMOVED Contract Elements
+      ## Breaking Changes
+      ## Consumer Impact
+    markers:
+      # `declared-gap` rather than a role of its own, because it already has a consumer: RC-4 reads
+      # every declared gap and reports the ones no finding cites. A breaking change written here and
+      # absent from the findings ledger is exactly that shape, so the check costs nothing to obtain.
+      #
+      # No `minOccurrences`. A Change with no breaking change is the ordinary case, and requiring an
+      # occurrence would make "(none)" an error.
+      - id: contract-breaking
+        section: Breaking Changes
+        role: declared-gap
+        pattern: ['**BREAKING', '**破坏性']
+  - id: check-report
+    generates: check-report.md
+    description: Narrate the pre-implementation review across Proposal, delta Specs, and Design
+    instruction: Explain completeness, consistency, testability, feasibility, and risk, and record under Gates and evidence what `xforge check` actually reported. Use Rework to name the Stage a blocker sends this Change back to and what must change there, and say plainly when there is nothing to rework. Do not write a verdict on whether Check passes — the findings ledger decides that, and a verdict in prose only competes with the record that governs.
+    outline: |
+      ## Completeness
+      ## Consistency
+      ## Testability
+      ## Feasibility and risk
+      ## Gates and evidence
+      ## Rework
+  - id: check-findings
+    generates: evidence/check-findings.yaml
+    description: Machine-decidable findings ledger the Check Gate can actually decide
+    instruction: One entry per finding with id, severity (blocker|warning|suggestion), summary, refs to the Artifacts it concerns, and for a blocker a status, a reworkTo Stage while open, and a resolvedBy identity once resolved. Record an explicit empty list when the review found nothing. The Stage cannot exit while any blocker is unresolved.
+    outline: |
+      findings:
+        - id: <finding-id>
+          severity: <blocker|warning|suggestion>
+          summary: <what is wrong>
+          refs: [<artifact or spec path>]
+          status: <open|resolved>
+          reworkTo: <stage id, required while a blocker is open>
+          resolvedBy: <name or email, required once status is resolved for a blocker; must match a known approver or Git author>
+  - id: constitution-check
+    generates: evidence/constitution-check.yaml
+    description: Answer every Constitution principle for this Change
+    instruction: One entry per `## ` principle in xforge/constitution.md, each with status compliant|violation|not-applicable. Every entry must cite at least one machine-locatable reference in `references` — a Requirement id from this Change's delta Specs, a file path that exists, or `gate:<name>` for a Gate that passed. A violation additionally needs a justification and a named approvedBy; not-applicable needs a justification. A general claim of compliance does not satisfy the Gate, and neither does an approval receipt on its own — a receipt records that someone approved a transition, not why this Change satisfies the principle.
+    outline: |
+      principles:
+        - principle: <exact `## ` heading from constitution.md>
+          status: <compliant|violation|not-applicable>
+          references: [<Requirement id | existing path | gate:<name>>]
+          justification: <required for violation and not-applicable>
+          approvedBy: <named person, required for violation>
+  - id: assurance
+    generates: assurance.md
+    description: Record verification against requirements, design, tests, and constraints
+    instruction: Summarize completeness, correctness, coherence, and Gates with traceable evidence.
+    outline: |
+      ## Completeness
+      ## Correctness
+      ## Coherence
+      ## Gates and evidence
+      ## Findings
+    markers:
+      - id: verification-coverage
+        section: Completeness
+        role: requirement-coverage
+governance:
+  # `planning-solid` keeps its name although it is no longer collected at the design exit. The name
+  # is a reference, not a description: `design-decisions-need-a-human` lists it under `approvalRefs`,
+  # and a ref naming no policy in the running Flow is ignored rather than reported — so renaming it
+  # would leave that Rule silently `coverage: unenforceable` in every project that has already
+  # adopted it, with nothing to point at the cause.
+  #
+  # It now gates the check exit instead, which is the last moment before implementation begins and
+  # the same moment Major collects `implementation-major`. Collecting it one Stage earlier meant the
+  # approver signed before the two ledgers that decide whether the planning holds — `check-findings`
+  # and `constitution-check` — had been written at all, so `xforge brief`'s reconciliation section
+  # had nothing to compare and rendered "(no differences found)", which reads exactly like a clean
+  # review. Both Flows now take that decision where the evidence for it exists.
+  approvalPolicies:
+    - id: planning-solid
+      minApprovers: 1
+      roles: [owner, maintainer]
+      separationOfDuties: false
+      providers: [local, enterprise-approvals]
+    - id: closing-solid
+      minApprovers: 1
+      roles: [owner, maintainer]
+      separationOfDuties: false
+      providers: [local, enterprise-approvals]
+  audit:
+    requiredEventTypes: [gate.after, stage.entered, approval.decided]
+    runtimeCoverage: optional
+    remoteDelivery: optional
+stages:
+  - id: propose
+    skill: xforge-propose
+    authority: planning-write
+    requires: []
+    produces: [proposal, delta-specs]
+    gates: [structure]
+
+  - id: design
+    skill: xforge-design
+    authority: planning-write
+    requires: [propose]
+    # Order carries meaning: an Artifact listed after another in the same Stage depends on it, so
+    # contract-delta is written against a design that already exists rather than beside it.
+    produces: [design, contract-delta]
+    gates: [contract-lint]
+    reworkTo: [propose]
+  - id: check
+    skill: xforge-check
+    authority: assurance-write
+    requires: [design]
+    produces: [check-report, check-findings, constitution-check]
+    gates: [structure, check-findings, constitution-check, contract-compat]
+    reworkTo: [propose, design]
+    exit:
+      conditions:
+        contractDecisions: resolved
+      approvals: [planning-solid]
+  - id: apply
+    skill: xforge-apply
+    authority: implementation-write
+    requires: [check]
+    produces: []
+    reworkTo: [propose, design, check]
+  - id: verify
+    skill: xforge-verify
+    authority: assurance-write
+    requires: [apply]
+    produces: [assurance]
+    gates: [structure, unit-tests, contract-drift, module-boundaries]
+    reworkTo: [apply]
+    exit:
+      conditions:
+        verificationReceipt: passed
+terminal:
+  archive:
+    handler: xforge-verify
+    authority: archive-write
+    requires: [verify]
+    syncSpecs: true
+    approvals: [closing-solid]
+    auditPolicy:
+      requiredEventTypes: [gate.after, stage.entered, approval.decided]
+      runtimeCoverage: optional
+      remoteDelivery: optional

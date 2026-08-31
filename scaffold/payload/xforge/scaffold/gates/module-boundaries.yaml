@@ -1,0 +1,32 @@
+# Whether the module dependency directions a project declared are still the ones its code takes.
+#
+# `builtin: declared` because contract dialects differ per project -- OpenAPI, protobuf, SQL, an
+# API report -- and no list of dialects inside the CLI would change that. It would only move the
+# edge to whichever dialect was left out. What the CLI can decide is whether this project said how
+# it checks its own contracts, and it refuses until the project has.
+#
+# Reads project.modules[].dependsOn and refuses an import that runs against it. A contract says what a module may assume of another; this says which modules may assume anything at all.
+#
+# `required: true` is load bearing despite the schema calling the field ignored: core/verification.ts
+# reads it to decide whether an undeclared Gate is worth reporting. Gate scheduling genuinely does
+# not read it; the undeclared check does.
+#
+# Note on toolchain coverage. Every declared Gate is measured against the build-system markers found
+# in the project root and each declared module root, and a project with more than one marker must say
+# which of them each command covers. A contract Gate reads the contract baseline, not a module's
+# build system, so the honest declaration names every marker at once:
+#   xforge verification declare --gate-name module-boundaries --command '[...]' \
+#     --covers '["package.json","<module>/package.json"]' --by <person>
+# Declaring without --covers in a multi-module project fails with
+# XFORGE_VERIFICATION_TOOLCHAIN_UNCOVERED, which reads like a missing test command and is not one.
+apiVersion: xforge.dev/v1alpha1
+kind: Gate
+metadata:
+  name: module-boundaries
+  version: 1
+spec:
+  required: true
+  builtin: declared
+  timeoutSeconds: 600
+  maxOutputBytes: 16384
+  evidence: module-boundaries.json

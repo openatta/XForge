@@ -1,0 +1,44 @@
+# Ships unselected. Add it to `scaffold.rules` in the Manifest, together with the four contract
+# Gates it names, when this project adopts a contract-governed Flow. Selecting the Rule without the
+# Gates leaves it reporting `unenforceable`, which is worse than not selecting it: a Rule that names
+# a mechanism nothing runs reads as governed in every coverage report.
+apiVersion: xforge.dev/v1alpha2
+kind: Rule
+metadata:
+  name: interfaces-are-contract-governed
+  version: 1
+spec:
+  severity: must
+  instruction: >-
+    Interfaces between modules — HTTP operations, event schemas, database table structure, and the
+    symbols one module exports to another — are defined by the baseline under xforge/contracts/, and
+    a Change that alters one declares the alteration in its own contract-delta before implementing
+    it. Reference the contract from the implementation rather than restating it, so there is one
+    place a reader can be wrong about. Never edit the baseline directly: it is the record of what was
+    agreed, archive merges the delta into it, and a Worker who edits it in place leaves every other
+    package building against something nothing agreed to. When the implementation and the contract
+    disagree, change the implementation — changing the contract is a decision that needs a named
+    person in evidence/conditions/contractDecisions.yaml. The protected-files policy is a guardrail
+    an honest Agent respects rather than a boundary that stops a determined one; the binding check is
+    contract-compat, which compares what the delta declared against what actually moved.
+  scope:
+    # Matched against a Change's declared change.yaml scope.paths, not against the repository — and
+    # handed to the host as a native file matcher as well, so it has to read sensibly as both. Source
+    # roots rather than xforge/contracts/**: the Change this Rule needs to reach is the one editing
+    # an implementation, which is where an interface moves without anyone saying so.
+    paths:
+      - src/**
+      - migrations/**
+  enforcement:
+    gateRefs:
+      - contract-compat
+      - contract-drift
+      - module-boundaries
+    policyRefs:
+      # protected-files, not a policy of this Rule's own. The deny list is derived from
+      # core/ownership-zones.ts, which is where xforge/contracts/** is claimed; a second policy
+      # naming the same path would be a second copy to edit and the first one to go stale.
+      - protected-files
+    # approvalRefs is empty on purpose. A contract decision rides the contractDecisions ledger plus
+    # whichever planning approval the Flow already collects, and naming one of those policies would
+    # report `unenforceable` under every Flow that does not declare it.

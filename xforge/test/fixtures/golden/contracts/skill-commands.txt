@@ -80,6 +80,10 @@ update  <- xforge-upgrade-scaffold/SKILL.md
 update  <- xforge-upgrade-scaffold/SKILL_cn.md
 upgrade-scaffold  <- xforge-upgrade-scaffold/SKILL.md
 upgrade-scaffold  <- xforge-upgrade-scaffold/SKILL_cn.md
+verification declare  <- xforge-check/SKILL.md
+verification declare  <- xforge-check/SKILL_cn.md
+verification declare  <- xforge-design/SKILL.md
+verification declare  <- xforge-design/SKILL_cn.md
 verification declare  <- xforge-scaffold/SKILL.md
 verification declare  <- xforge-scaffold/SKILL_cn.md
 verification declare  <- xforge-verify/SKILL.md

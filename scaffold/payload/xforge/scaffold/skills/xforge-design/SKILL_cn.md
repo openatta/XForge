@@ -12,7 +12,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # 权限
 
-- 只可写 Action 返回的 Design Artifact 路径。
+- 只可写 Action 返回的 Artifact 路径。在受契约治理的 Flow 上那是两份文档：Design 与 `contract-delta`，两者都不是 `xforge/contracts/` 本身。
 - 不得改 Proposal/Specs/Clarifications、产品代码、Check report、Evidence、任务或 Archive；上游需要修改时返回 rework。
 
 # 执行
@@ -20,7 +20,8 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 1. 建模当前系统、目标行为、集成点、数据与接口边界。
 2. 记录主要决策、可行替代方案及拒绝理由，覆盖失败模式、兼容性、迁移和回滚。
 3. 严格按照当前 Action 的 Design artifact `instruction` 与 outline 执行——Solid 与 Major 的深度差异（例如 Major 的 trust boundaries、风险与缓解、测试策略、rollout、monitoring、stop signals、owner 和并行边界）已经在其中表达，不要补充或省略 Action 未定义的章节。
-4. 刷新 State 并运行 `xforge check --change <id>`；只修复 Design 权限内的结构问题，然后调用 typed nextAction 中通往 Check 的 Transition。所有随附 Flow 都不在 Design 出口收取审批——`planning-solid` 与 `implementation-major` 都改在 Check 出口收取——所以不要在这里等一份没人会发起的 receipt，也不要尝试为本 Stage 审批：`xforge approve` 会拒绝任何策略都不治理的 transition。
+4. 当 Action 列出 `contract-delta` Artifact 时，同样要写。它逐条列出本 Change 移动的模块接口，用项目自己的枚举打印出来的 contract element id 定位，并且是一个 Change 唯一可以声明「接口变了」的地方——`xforge/contracts/` 是已经约定过的记录，把 delta 合并进去是 archive 的事。就地改基线，会让其他所有包对着一个没人约定过的接口继续实现。空的章节写 `(none)`，那是一条断言；留空是一处遗漏。声明了 `contract-lint` 的 Stage 在本项目记录命令之前无法通过——`xforge verification declare --gate-name contract-lint --command '[...]' --by <人>`——因为 declared Gate 在没有声明时是拒绝而不是放行，而手改 Manifest 既受治理，也正是某次实跑把 Manifest 改到读不出来的原因。
+5. 刷新 State 并运行 `xforge check --change <id>`；只修复 Design 权限内的结构问题，然后调用 typed nextAction 中通往 Check 的 Transition。所有随附 Flow 都不在 Design 出口收取审批——`planning-solid` 与 `implementation-major` 都改在 Check 出口收取——所以不要在这里等一份没人会发起的 receipt，也不要尝试为本 Stage 审批：`xforge approve` 会拒绝任何策略都不治理的 transition。
 
 # 证据
 

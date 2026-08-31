@@ -17,6 +17,18 @@ remains the coordinator. Apply derives optional `work-packages.yaml` at
 execution time; XForge validates the DAG and delivery evidence but does not
 provide a general Agent runtime.
 
+## Templates
+
+`flows/` holds Flow definitions that ship unselected. Nothing loads them: `xforge/flows/` is read by
+listing it, so a Flow placed there is a Flow this project runs, and one nobody selected is reported
+as unused for as long as it sits there. A template is copied into `xforge/flows/` by the project
+adopting it. Each one carries its own adoption steps at the top of the file.
+
+`flows/solid-contract.yaml` is Solid with a contract baseline: an interface delta declared per
+Change, four declared Gates that check it, and a decision ledger for breaking changes. Adopting it
+also means selecting `rules/interfaces-are-contract-governed.yaml` and the four `contract-*` and
+`module-boundaries` Gates, which likewise ship unselected.
+
 ## Enforcement boundary
 
 `fs.write` PermissionPolicies (such as `policies/protected-files.yaml`) are an
