@@ -124,6 +124,7 @@
               "properties": {
                 "risk": { "$ref": "#/$defs/riskList" },
                 "criticalImpacts": { "enum": ["forbidden", "allowed"] },
+                "contractImpact": { "enum": ["forbidden", "allowed"], "description": "Whether a Change that classifies itself as moving a module interface may run on this Flow. Separate from criticalImpacts on purpose: a Flow can forbid every critical impact and still be the right place to govern an interface change, which is what the shipped Solid Flow does. Optional and absent means allowed." },
                 "maxModules": { "type": "integer", "minimum": 1 }
               }
             },
@@ -136,7 +137,7 @@
                 "anyImpact": {
                   "type": "array",
                   "uniqueItems": true,
-                  "items": { "enum": ["security", "privacy", "publicApi", "dataMigration"] }
+                  "items": { "enum": ["security", "privacy", "publicApi", "dataMigration", "moduleContract"] }
                 }
               }
             },

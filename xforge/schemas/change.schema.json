@@ -11,7 +11,8 @@
       "required": ["risk", "security", "privacy", "publicApi", "dataMigration"],
       "properties": {
         "risk": { "enum": ["low", "medium", "high"] }, "security": { "type": "boolean" },
-        "privacy": { "type": "boolean" }, "publicApi": { "type": "boolean" }, "dataMigration": { "type": "boolean" }
+        "privacy": { "type": "boolean" }, "publicApi": { "type": "boolean" }, "dataMigration": { "type": "boolean" },
+        "moduleContract": { "type": "boolean", "description": "This Change moves an interface between modules. Deliberately absent from `required`: adding it there would invalidate every change.yaml written before contracts existed, all at once and with no route forward for a Change already in flight." }
       }
     },
     "scope": {

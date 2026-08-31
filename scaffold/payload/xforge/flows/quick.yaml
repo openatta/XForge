@@ -9,6 +9,14 @@ policy:
   eligibleWhen:
     risk: [low]
     criticalImpacts: forbidden
+    # Quick has propose, apply and verify and nothing between them: no Stage that could produce an
+    # interface delta and no Gate that would read one. A Change that moves an interface here has not
+    # skipped a step, it is on a Flow that has no step for it.
+    #
+    # Self-reported, like every other classification key -- nothing compares it with the diff. What
+    # this buys is narrow and worth having anyway: a Change that *says* it moves an interface cannot
+    # proceed on a Flow that cannot govern it, and the escalation names the Flow that can.
+    contractImpact: forbidden
     maxModules: 1
 artifacts:
   - id: proposal

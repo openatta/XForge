@@ -136,6 +136,7 @@ exit: 0
               "low"
             ],
             "criticalImpacts": "forbidden",
+            "contractImpact": "forbidden",
             "maxModules": 1
           }
         },

@@ -17,6 +17,8 @@ export interface ChangeConfig {
     privacy: boolean;
     publicApi: boolean;
     dataMigration: boolean;
+    /* Optional, so a change.yaml written before contracts existed still satisfies this type. */
+    moduleContract?: boolean;
   };
   scope: { modules: string[]; paths: string[] };
 }

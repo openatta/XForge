@@ -33,6 +33,11 @@ policy:
   eligibleWhen:
     risk: [low, medium]
     criticalImpacts: forbidden
+    # Explicit, though `allowed` is the default, because this is the Flow whose whole purpose is to
+    # carry an interface change and reading that off an absent key is worse than reading it off a
+    # present one. It sits beside `criticalImpacts: forbidden` deliberately: a Flow can refuse every
+    # critical impact and still be the right place to govern a contract.
+    contractImpact: allowed
 artifacts:
   - id: proposal
     generates: proposal.md

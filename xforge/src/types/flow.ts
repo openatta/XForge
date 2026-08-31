@@ -119,11 +119,12 @@ export interface StageFlow {
     eligibleWhen: {
       risk: Array<'low' | 'medium' | 'high'>;
       criticalImpacts: 'forbidden' | 'allowed';
+      contractImpact?: 'forbidden' | 'allowed';
       maxModules?: number;
     };
     requiredWhen?: {
       risk?: Array<'low' | 'medium' | 'high'>;
-      anyImpact?: Array<'security' | 'privacy' | 'publicApi' | 'dataMigration'>;
+      anyImpact?: Array<'security' | 'privacy' | 'publicApi' | 'dataMigration' | 'moduleContract'>;
     };
     /** Accepted for compatibility with Flows written before it was removed; nothing reads it. */
     onUncertain?: 'escalate' | 'request-decision';

@@ -72,7 +72,7 @@ interface ChangeLike {
   id?: string;
   path?: string;
   flow?: string;
-  classification?: { risk?: string; security?: boolean; privacy?: boolean; publicApi?: boolean; dataMigration?: boolean };
+  classification?: { risk?: string; security?: boolean; privacy?: boolean; publicApi?: boolean; dataMigration?: boolean; moduleContract?: boolean };
   nextArtifact?: { id?: string; writePath?: string; outputPaths?: string[]; missingDependencies?: string[] } | null;
   archive?: { ready?: boolean; mandatoryGates?: string[] };
   workPackages?: { ready?: string[]; unattributedPaths?: string[]; packages?: Array<{ id?: string; status?: string }> } | null;
@@ -146,7 +146,11 @@ export function renderStateText(data: unknown): string {
   lines.push('');
   lines.push(`CHANGE ${change.id ?? '?'} — flow ${change.flow ?? '?'}, stage ${governance?.currentStage ?? '(ungoverned)'}`);
   const classification = change.classification ?? {};
-  const impacts = (['security', 'privacy', 'publicApi', 'dataMigration'] as const).filter((key) => classification[key]);
+  /* The second hardcoded impact list in this package, and it stays hardcoded because it answers a
+     different question: core/checker.ts's IMPACT_KEYS decides eligibility, this one decides what a
+     reader is shown. `moduleContract` belongs here and not there -- a person reading a Change wants
+     to know it moves an interface, and no Flow becomes ineligible because they were told. */
+  const impacts = (['security', 'privacy', 'publicApi', 'dataMigration', 'moduleContract'] as const).filter((key) => classification[key]);
   lines.push(`  Risk ${classification.risk ?? '?'}; declared impacts: ${list(impacts)}`);
   if (governance?.revision) lines.push(`  Content revision: ${governance.revision.contentRevision ?? '(none)'}    Git head: ${governance.revision.gitHead ?? '(unknown)'}`);
 
