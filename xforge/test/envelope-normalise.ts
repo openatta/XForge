@@ -53,6 +53,16 @@ const RULES: Array<[RegExp, string]> = [
   /* Node's own version travels in `xforge version`, and the suite runs on more than one. */
   [/"nodeVersion":\s*"v[\d.]+"/g, '"nodeVersion": "<node>"'],
   [/\bv\d+\.\d+\.\d+\b/g, '<node>'],
+  /*
+   * The OS user recorded as a `local-os` system actor: every transition the CLI performs itself
+   * is attributed to whoever owns the checkout, and the suite runs on more than one machine.
+   */
+  [/"id"\s*:\s*"[^"]*"(\s*,\s*"provider"\s*:\s*"local-os")/g, '"id": "<os-user>"$1'],
+  /*
+   * The checkout's remote, spelled the way this clone reached it — https on one machine, ssh on
+   * another. Only the `buildIdentity` one: a `repository` field anywhere else is product content.
+   */
+  [/("buildIdentity"\s*:\s*\{[^}]*"repository"\s*:\s*)"[^"]*"/g, '$1"<repository>"'],
 ];
 
 export function normaliseEnvelope(text: string, options: NormaliseOptions): string {

@@ -500,7 +500,7 @@ exit: 0
             "previousReceiptDigest": "<sha256>",
             "transitionedAt": "<timestamp>",
             "actor": {
-              "id": "xbitshans",
+              "id": "<os-user>",
               "provider": "local-os",
               "type": "system"
             },
