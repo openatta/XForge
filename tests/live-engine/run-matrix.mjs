@@ -313,8 +313,30 @@ const SCENARIOS = {
       commit(projectRoot, 'Staged a Scaffold upgrade for the merge exercise');
     },
     assert: async (projectRoot) => {
+      /*
+       * Where the project's command has to survive, not which file it has to survive in.
+       *
+       * This used to grep the merged Gate for the command text, which was right while a Gate carried
+       * its own `command:`. The shipped Gate reached `builtin: declared` and reads whatever the
+       * project declared under `manifest.verification.<gate>` instead, so a v4 Gate has no `command:`
+       * to find -- and the assertion could no longer pass for *any* correct merge. A live run then
+       * reported red against a merge that had adopted the new mechanism and migrated the command
+       * across with `xforge verification declare`, which is exactly the outcome the scenario wants.
+       *
+       * So the check follows the fact rather than the file: the command survives if the merged Gate
+       * still runs it directly, or if the Manifest declares it for the Gate that now reads it from
+       * there. Losing it in both places is the failure this exists to catch, and still fails.
+       */
       const gatePath = path.join(projectRoot, 'xforge', 'scaffold', 'gates', 'unit-tests.yaml');
       const merged = existsSync(gatePath) ? await readFile(gatePath, 'utf8') : '';
+      const manifestAfter = parse(await readFile(path.join(projectRoot, 'xforge', 'manifest.yaml'), 'utf8'));
+      const declaredCommands = (manifestAfter?.verification?.['unit-tests'] ?? [])
+        .map((entry) => (entry?.command ?? []).join(' '));
+      const wanted = PROJECT_ADAPTED_TEST_COMMAND.join(' ');
+      const commandSurvives = merged.includes(PROJECT_ADAPTED_TEST_COMMAND[0]) || declaredCommands.includes(wanted);
+      const commandDetail = declaredCommands.length > 0
+        ? `Gate declares ${JSON.stringify(declaredCommands)}`
+        : 'the Gate carries no command and the Manifest declares none';
       /* The Flow half: a governance choice this project made must not be adopted away. */
       const solidPath = path.join(projectRoot, 'xforge', 'flows', 'solid.yaml');
       const solid = existsSync(solidPath) ? parse(await readFile(solidPath, 'utf8')) : null;
@@ -336,7 +358,7 @@ const SCENARIOS = {
       const projectedSkill = existsSync(projected) ? await readFile(projected, 'utf8') : '';
       return [
         /* The whole point: the project's own command survived a merge that also adopted the release. */
-        { name: 'kept-project-command', ok: merged.includes(PROJECT_ADAPTED_TEST_COMMAND[0]), detail: `expected ${PROJECT_ADAPTED_TEST_COMMAND.join(' ')} to survive` },
+        { name: 'kept-project-command', ok: commandSurvives, detail: commandSurvives ? commandDetail : `expected ${wanted} to survive in the Gate or in manifest.verification; ${commandDetail}` },
         /*
          * A Flow states how many approvals a Stage needs. This project chose two; the shipped Flow
          * asks for one. Adopting the incoming file wholesale would drop that choice without anyone

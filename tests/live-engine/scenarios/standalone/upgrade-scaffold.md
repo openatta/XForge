@@ -21,9 +21,13 @@ wholesale destroys the project's command and is a failure of this run, however
 tidy the result looks; so is one that keeps the old file and drops what the
 release added.
 
-Copy the `added` files in verbatim. Do **not** add anything to
-`xforge/manifest.yaml`: a file arriving with a release is not a decision to run
-it. Report those as a decision for a person instead.
+Copy the `added` files in verbatim. Do **not** add a Skill, Rule, Gate, Flow or
+any other asset to the Manifest's selection lists: a file arriving with a release
+is not a decision to run it. Report those as a decision for a person instead.
+That is a rule about *selection*. If the merge adopts a mechanism that moves
+where something the project already had is written down, carrying it across with
+the CLI command that exists for that is not selecting anything — and losing it
+because it now lives elsewhere is the failure this run is looking for.
 
 Do not create a Change, do not touch `src/**`, `xforge/changes/**` or
 `xforge/specs/**`, and never write into `xforge/.upgrade/snapshot/**` or
