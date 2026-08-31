@@ -159,3 +159,63 @@ describe('reading the contract baseline back', () => {
     expect(unknownSubcommand.json.diagnostics[0].code).toBe('XFORGE_SUBCOMMAND_UNKNOWN');
   });
 });
+
+describe('what every Change in flight will do to the baseline', () => {
+  it('lists each Change\'s declared elements and names the ones two Changes both claim', async () => {
+    /*
+     * The question the control plane is structurally unable to answer. `contentRevision` is computed
+     * per Change over that Change's own directory and its Flow, so two Changes can each be entirely
+     * compliant, each carry a human approval, and each say something different about the same
+     * interface — and nothing compares them. No Gate can close it either: a Gate runs inside one
+     * Change and sees one Change.
+     */
+    const root = await fixture();
+    await write(root, 'xforge/changes/expand/change.yaml', changeYaml('solid'));
+    await write(root, 'xforge/changes/expand/contracts/http.md', [
+      '## ADDED Contract Elements', '', '### Element: openapi:paths./orders/{id}/cancel.post', '', '- module: api', '',
+      '## MODIFIED Contract Elements', '', '### Element: openapi:components.schemas.Order', '', '- module: api', '',
+    ].join('\n'));
+    await write(root, 'xforge/changes/contract-half/change.yaml', changeYaml('solid'));
+    await write(root, 'xforge/changes/contract-half/contracts/http.md', [
+      '## REMOVED Contract Elements', '', '### Element: openapi:components.schemas.Order', '', '- module: api', '',
+    ].join('\n'));
+    /* A Change with a delta that asserts it moves nothing is still listed: it has said something,
+       and leaving it out would read as a Change nobody looked at. */
+    await write(root, 'xforge/changes/quiet/change.yaml', changeYaml('solid'));
+    await write(root, 'xforge/changes/quiet/contracts/http.md', '## ADDED Contract Elements\n\n(none)\n');
+    /* And one with no delta at all, which is most Changes and is not part of this answer. */
+    await write(root, 'xforge/changes/unrelated/change.yaml', changeYaml('solid'));
+
+    const status = await runCli(root, ['contract', 'status']);
+    expect(status.code).toBe(0);
+    expect(status.json.data.changes.map((item: any) => item.change)).toEqual(['contract-half', 'expand', 'quiet']);
+    expect(status.json.data.changes.find((item: any) => item.change === 'quiet').elements).toEqual([]);
+
+    expect(status.json.data.overlaps).toHaveLength(1);
+    const [overlap] = status.json.data.overlaps;
+    expect(overlap.id).toBe('openapi:components.schemas.Order');
+    expect(overlap.claims).toEqual([
+      { change: 'contract-half', operation: 'REMOVED' },
+      { change: 'expand', operation: 'MODIFIED' },
+    ]);
+
+    /* Reporting, never blocking. An expand half and a contract half of one planned migration look
+       exactly like a collision, and a CLI that refused would be deciding a question it cannot see
+       the answer to. */
+    expect(status.json.diagnostics).toEqual([]);
+
+    const text = await runCli(root, ['contract', 'status', '--text']);
+    expect(text.stdout).toContain('CLAIMED BY MORE THAN ONE CHANGE');
+    expect(text.stdout).toContain('openapi:components.schemas.Order');
+  });
+
+  it('says plainly when nothing in flight touches an interface', async () => {
+    const root = await fixture();
+    await write(root, 'xforge/changes/plain/change.yaml', changeYaml('solid'));
+    const status = await runCli(root, ['contract', 'status']);
+    expect(status.code).toBe(0);
+    expect(status.json.data).toEqual({ changes: [], overlaps: [] });
+    const text = await runCli(root, ['contract', 'status', '--text']);
+    expect(text.stdout).toContain('No Change in flight declares a contract delta.');
+  });
+});

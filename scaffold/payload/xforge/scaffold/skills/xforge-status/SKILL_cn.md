@@ -19,6 +19,7 @@ allowed-tools: Read, Grep, Glob, Bash(xforge:*)
 # 执行
 
 1. **全局视图（未指定 Change 时的默认）。** 按 `activeChanges` 报出每个在飞 Change 的 id、Flow、当前 Stage 与 risk；按 Stage 排序使最接近完成的排在前面，并给出总数。清单为空时直接说明——**空清单是一个答案，不是一次失败**。
+   有一个以上 Change 在飞时，同时运行 `xforge contract status`，报出被不止一个 Change 声明的契约元素。这是 State 唯一回答不了的问题：content revision 是按 Change 计算的，所以两个 Change 可以各自合规、各自拿到审批，却对同一个接口说了两件不同的事，而没有任何一处会去比对它们。把它当作事实报告，而不是过错——一次迁移的 expand 与 contract 两半看起来正是这个样子——并指出哪个 Change 会在合并时撞上它：后归档的那个。
 2. **单 Change 视图。** 解析 Change ID（归属不唯一时请求用户选择），输出 Flow、当前 Stage/state revision、ready/blocked Transitions、pending Approvals、Rule 的 instructed/guarded/verified/approved/uncovered coverage、Policy/Hook active coverage、Audit chain/remote pending/gaps、工作包/deliveries、Evidence freshness、Verify/Archive readiness。
 3. 给出下一合法 Action、对应 Skill 和为何尚未 ready。**只报出 Skill 名称，不得代为执行**——报告就绪与迈出这一步是两种不同的权限。
 4. Requirement ID 确定性索引不可用时明确标记为启发式，不从 Markdown 搜索结果过度推断状态。

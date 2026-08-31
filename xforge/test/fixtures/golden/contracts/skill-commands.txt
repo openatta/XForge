@@ -26,6 +26,8 @@ check  <- xforge-verify/SKILL.md
 check  <- xforge-verify/SKILL_cn.md
 contract list  <- xforge-design/SKILL.md
 contract list  <- xforge-design/SKILL_cn.md
+contract status  <- xforge-status/SKILL.md
+contract status  <- xforge-status/SKILL_cn.md
 doctor  <- xforge-upgrade-scaffold/SKILL.md
 doctor  <- xforge-upgrade-scaffold/SKILL_cn.md
 explain  <- xforge-apply/SKILL.md

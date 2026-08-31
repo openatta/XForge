@@ -11,7 +11,7 @@ import { executeApprove, type ApprovalTerminal } from './commands/approve.js';
 import { executeAudit } from './commands/audit.js';
 import { executeCheck } from './commands/check.js';
 import { executeStageBundle, renderStageBundleText } from './commands/stage-bundle.js';
-import { executeContractList, renderContractListText } from './commands/contract.js';
+import { executeContractList, executeContractStatus, renderContractListText, renderContractStatusText } from './commands/contract.js';
 import { executeExplain, renderExplainText } from './commands/explain.js';
 import { executeFindingsResolve } from './commands/findings.js';
 import { executeVerificationDeclare, executeVerificationDraftReceipt, executeVerificationFinalize, executeVerificationRetire } from './commands/verification.js';
@@ -251,8 +251,8 @@ const HELP: Record<CommandName, { usage: string; description: string; options: s
   audit: { usage: 'xforge [--root <path>] audit <status|verify|export|retry|prune> [--change <id>] [--output <path>] [--text]', description: 'Inspect, verify, export, redeliver, or prune the append-only audit chain. --field takes one value out of the result and prints nothing else, addressed as a dotted path through data; repeat it to read several in one call.', options: ['--root', '--change', '--output', '--text', '--field'] },
   'work-package': { usage: 'xforge [--root <path>] work-package <dispatch|draft|acknowledge> --change <id> --package <id> [--as <integrator|reviewer> --evidence <path> [--scope <text>]] [--dry-run] [--text]', description: 'Dispatch a work package, draft its delivery record from what XForge already knows, or acknowledge integration/review evidence. --scope records what the acknowledgement actually covered, in the acknowledger\'s own words; it is optional and never inferred, so an absent scope means nobody said. --field takes one value out of the result and prints nothing else, addressed as a dotted path through data; repeat it to read several in one call.', options: ['--root', '--change', '--package', '--as', '--evidence', '--scope', '--dry-run', '--text', '--field'] },
   contract: {
-    usage: 'xforge [--root <path>] contract list [--kind <kind>] [--text] [--field <path>]...',
-    description: 'List what the contract baseline records: every contract element, by the `<kind>:<selector>` id a delta has to address it by, and the module each one belongs to. Read-only, and there is no command beside it that writes an element: the baseline advances by a merged contract delta and by nothing else, so a second writer would undo the one property it has. --kind filters to one dialect and still lists a domain that matches nothing, because "records no element of this kind" and "does not exist" are different answers.',
+    usage: 'xforge [--root <path>] contract list [--kind <kind>] [--text] [--field <path>]...\n       xforge [--root <path>] contract status [--text] [--field <path>]...',
+    description: 'list: what the contract baseline records — every contract element, by the `<kind>:<selector>` id a delta has to address it by, and the module each one belongs to. Read-only, and there is no command beside it that writes an element: the baseline advances by a merged contract delta and by nothing else, so a second writer would undo the one property it has. --kind filters to one dialect and still lists a domain that matches nothing, because "records no element of this kind" and "does not exist" are different answers. status: what every Change in flight declares it will do to that baseline, and which elements more than one of them claims — the question no Gate can answer, because a content revision is computed per Change and a Gate runs inside one. It reports and never blocks: an expand half and a contract half of one migration look exactly like a collision, and whichever Change archives second is the one that would otherwise find out at merge time.',
     options: ['--root', '--kind', '--text', '--field'],
   },
   hook: { usage: 'xforge hook dispatch --target <target> --event <event>', description: 'Internal platform Hook dispatcher.', options: ['--root', '--target', '--event'] },
@@ -724,11 +724,15 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
   }
   const command = parsed.command as Exclude<CommandName, 'help' | 'version' | 'init'>;
   if (command === 'contract') {
-    if (parsed.subcommand !== 'list') {
-      throw new XForgeError(diagnostic('XFORGE_SUBCOMMAND_UNKNOWN', `Unknown contract subcommand: ${parsed.subcommand ?? '(none)'}. The only one is \`list\`.`));
+    if (parsed.subcommand === 'list') {
+      const result = await executeContractList(project, { kind: parsed.contractKind });
+      return envelope({ command: 'contract', root: project.root, data: result.data, diagnostics: result.diagnostics });
     }
-    const result = await executeContractList(project, { kind: parsed.contractKind });
-    return envelope({ command: 'contract', root: project.root, data: result.data, diagnostics: result.diagnostics });
+    if (parsed.subcommand === 'status') {
+      const result = await executeContractStatus(project);
+      return envelope({ command: 'contract', root: project.root, data: result.data, diagnostics: result.diagnostics });
+    }
+    throw new XForgeError(diagnostic('XFORGE_SUBCOMMAND_UNKNOWN', `Unknown contract subcommand: ${parsed.subcommand ?? '(none)'}. They are \`list\` and \`status\`.`));
   }
   if (command === 'state') {
     const result = await executeState(project, { change: parsed.change, kind: parsed.kind, target: parsed.target, include: parsed.include });
@@ -1062,7 +1066,9 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
   } else if (parsed?.command === 'contract' && result.ok) {
     /* A list of ids is what a person came for; as JSON it is the same list behind two levels of
        nesting, and the ids are what gets copied into a delta by hand. */
-    render = (data: unknown) => renderContractListText({ ok: true, data, diagnostics: [] } as Parameters<typeof renderContractListText>[0]);
+    render = parsed.subcommand === 'status'
+      ? (data: unknown) => renderContractStatusText({ ok: true, data, diagnostics: [] } as Parameters<typeof renderContractStatusText>[0])
+      : (data: unknown) => renderContractListText({ ok: true, data, diagnostics: [] } as Parameters<typeof renderContractListText>[0]);
   } else if (parsed?.command === 'stage-bundle' && result.ok) {
     /* The reading plan is the entire output; as JSON it is a list of paths nobody scans. */
     render = (data: unknown) => renderStageBundleText(data as Parameters<typeof renderStageBundleText>[0]);
