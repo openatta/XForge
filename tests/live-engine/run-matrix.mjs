@@ -541,7 +541,20 @@ function changeState(projectRoot) {
   /* Reaching here without an id means a caller ran before `resolveChangeId`. Say that, rather than
      passing `null` to the CLI and reporting whatever it makes of it. */
   if (!changeId) throw new Error('changeState was called before the run resolved which Change it owns.');
-  return tryXforgeJson(projectRoot, ['state', '--change', changeId]).data.change;
+  /*
+   * `--include transitions`, because this harness reads the receipt *chain*.
+   *
+   * `76fbf49` stopped `state` from re-sending the whole chain on every call — it now reports
+   * `{count, route, latest}` and returns the receipts themselves only when asked. Three sites here
+   * call `.at(-1)` on `governance.transitions`, which had silently become an object: the first live
+   * Major run after that change died at its first rework with `.at is not a function`, having
+   * already walked propose → clarify → design → check. Nothing caught it in between because nothing
+   * had run this harness since.
+   *
+   * Asked for by name rather than read from `latest`, so the rework accounting keeps working against
+   * the chain it was written for, and a future trim of `latest` cannot quietly change what it means.
+   */
+  return tryXforgeJson(projectRoot, ['state', '--change', changeId, '--include', 'transitions']).data.change;
 }
 
 /**
