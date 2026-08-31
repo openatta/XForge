@@ -18,8 +18,21 @@ describe('path safety', () => {
   });
 
   it('rejects overlapping and generated logical roots', () => {
-    expect(codeOf(() => assertLogicalPaths('docs', 'docs/changes'))).toBe('XFORGE_PATHS_OVERLAP');
-    expect(codeOf(() => assertLogicalPaths('.agents/specs', 'docs/changes'))).toBe('XFORGE_PATH_GENERATED_TARGET');
+    expect(codeOf(() => assertLogicalPaths('docs', 'docs/changes', 'docs/contracts'))).toBe('XFORGE_PATHS_OVERLAP');
+    expect(codeOf(() => assertLogicalPaths('.agents/specs', 'docs/changes', 'docs/contracts'))).toBe('XFORGE_PATH_GENERATED_TARGET');
+  });
+
+  it('compares every logical root against every other, not only the first pair', () => {
+    /*
+     * Two roots needed one comparison and a third needs three, which is the shape that gets a pair
+     * quietly skipped. Contracts overlapping Specs is the pair with the most to lose: a merge that
+     * wrote a contract into the Specs tree would put a record no delta produced where every reader
+     * expects one, and nothing downstream distinguishes them by path.
+     */
+    expect(codeOf(() => assertLogicalPaths('a/specs', 'b/changes', 'a/specs/http'))).toBe('XFORGE_PATHS_OVERLAP');
+    expect(codeOf(() => assertLogicalPaths('a/specs', 'b/changes', 'b/changes'))).toBe('XFORGE_PATHS_OVERLAP');
+    expect(codeOf(() => assertLogicalPaths('a/specs', 'b/changes', '.agents/contracts'))).toBe('XFORGE_PATH_GENERATED_TARGET');
+    expect(codeOf(() => assertLogicalPaths('a/specs', 'b/changes', 'c/contracts'))).toBe(null);
   });
 
   it('rejects malicious resource names', () => {

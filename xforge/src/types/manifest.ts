@@ -37,7 +37,7 @@ export interface Manifest {
   metadata: Metadata;
   project: {
     layout: 'single' | 'monorepo';
-    paths?: { specs?: string; changes?: string };
+    paths?: { specs?: string; changes?: string; contracts?: string };
     modules: ProjectModule[];
   };
   scaffold: {
@@ -216,7 +216,7 @@ export interface Lockfile {
   protocol?: string;
   scaffold?: Record<string, unknown>;
   xforge?: Record<string, unknown>;
-  paths?: { specs?: string; changes?: string };
+  paths?: { specs?: string; changes?: string; contracts?: string };
   resources?: Array<Record<string, unknown>>;
   targets?: string[];
   generatedProtocol?: string;
@@ -245,8 +245,10 @@ export interface ProjectContext {
   lock: Lockfile | null;
   specsPath: string;
   changesPath: string;
+  contractsPath: string;
   specsPathSource: 'default' | 'manifest';
   changesPathSource: 'default' | 'manifest';
+  contractsPathSource: 'default' | 'manifest';
   constitution: Constitution;
   compatibility: Compatibility;
   diagnostics: Diagnostic[];

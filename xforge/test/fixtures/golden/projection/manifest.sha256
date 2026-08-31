@@ -34,7 +34,7 @@ b6d5021e5d0715a204e60ab1a8af4793d120550b56390778126f85613289b681  .claude/comman
 4269bc5070c102380c50892684b328afad055771c3d3b23050c1b8f2688811be  .claude/commands/xforge/verify.md
 5c31c75f51fb4d6c3dc44d948b6ab78087678b7def735b28327715b839cad96b  .claude/rules/design-decisions-need-a-human.md
 9ae7551cc591a5f7740732e0eba5e81fe487eafe0d3c880193028d766a92d2a8  .claude/rules/design-within-the-declared-architecture.md
-8f787bcd3f97f3635dcbe40b5c760dd353ee6e1876b82d1bbee89b6a60cbd33b  .claude/rules/governance-assets-are-integrator-only.md
+6a2710235fc0a7a97324e0adb5986641e40f2695cbf96d25a19022e28e675d0c  .claude/rules/governance-assets-are-integrator-only.md
 2124a634294f9d01d26713e588b45601802c0b1983fc09f890896b23c3e0da81  .claude/rules/observable-requirements-are-tested.md
 68897fd6cb85a718731a2ca69802eed8ad462a2869e0900b9357c6d433628627  .claude/rules/prefer-small-explicit-contracts.md
 8d5b85887ec26c57bf8b15ce494bbcabaa6eff5e619a9c8e655c4c3e5b6326d1  .claude/rules/xforge-bootstrap.md
@@ -80,7 +80,7 @@ c429b045487836d435bd22e6c698559f86d94b2da7b0cb77fc78418a43db1519  .cursor/comman
 5bf6a6adc81ded5e5d4892dd5ed07183d816987696ef386ef73bcc864252b365  .cursor/hooks.json
 2318a1fd3139798958dea6ebc688389db8f7a3f9db125c331ea4ef135830cea3  .cursor/rules/design-decisions-need-a-human.mdc
 9bcdad6d66395ac28a09078947d9ca67d4b841bab32a691b5ccb2d88eb1cd3b3  .cursor/rules/design-within-the-declared-architecture.mdc
-40e24a9264e8611e3bbd2be009120e925bb63f3deabed5a3677e15516464965b  .cursor/rules/governance-assets-are-integrator-only.mdc
+f6227f284bb5262930ecb51b78c24706fb67efcd3344576a4400ecbbdc960bd9  .cursor/rules/governance-assets-are-integrator-only.mdc
 3565791f6c3ed8ac1bb80a6fcf0b9c4e4e2eb099aae7b6da55d9a1516d5f02c7  .cursor/rules/observable-requirements-are-tested.mdc
 cb25f47dfaa1d286c15e6802c5b474d60fef42145b5b5218be22177e595fa7dd  .cursor/rules/prefer-small-explicit-contracts.mdc
 e1b523004fea5775e716b544d5dd16fe1039f6e024836d9b99a0c3bc3f90df27  .cursor/rules/xforge-bootstrap.mdc
@@ -109,7 +109,7 @@ a5337b49e6673c0f77894ac61e33fdc93d9402798f57feba248017b9cd106ba8  .github/agents
 4926c5c747f65533ff2cfa5e715a99c95f14a0262dd99c8a8ce09736bb012c8e  .github/hooks/xforge.json
 8d841289b776603bb663675aab1cf8c5dc1e5dbaf662605e054e7f565a588d93  .github/instructions/design-decisions-need-a-human.instructions.md
 38f6d6bbbb9d626a14d5932c24fc23286f778e241387b5a159f59359fb906da1  .github/instructions/design-within-the-declared-architecture.instructions.md
-f654ce6871c94c8b1bf61f0b01d77d545da04f168cfaac9d1a133ede0bdb85f6  .github/instructions/governance-assets-are-integrator-only.instructions.md
+78a41eb72beca0600864ec53c30e97e8af97d5c64818b6c2e152d35d2fbc2f5b  .github/instructions/governance-assets-are-integrator-only.instructions.md
 8e1860235d86ff2ff313e7fbd52e56821c41668813100fd9315779562aa2528c  .github/instructions/observable-requirements-are-tested.instructions.md
 2c3faccba99c88593dc790205c5c8bf538764e59b613b4b0f2350f0ec2116a45  .github/instructions/prefer-small-explicit-contracts.instructions.md
 6782623da986cf2d5afb19651188a37ecc74c35793cd22c7a28472211619b6a9  .github/instructions/xforge-bootstrap.instructions.md

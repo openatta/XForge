@@ -25,26 +25,53 @@ export function normalizeRelative(input: string, label = 'path'): string {
   return normalized === '' ? '.' : normalized;
 }
 
-export function assertLogicalPaths(specs: string, changes: string): void {
-  const left = normalizeRelative(specs, 'project.paths.specs');
-  const right = normalizeRelative(changes, 'project.paths.changes');
-  if (left === right || left.startsWith(`${right}/`) || right.startsWith(`${left}/`)) {
-    throw new XForgeError(diagnostic(
-      'XFORGE_PATHS_OVERLAP',
-      'Specs and Changes paths must be distinct and cannot contain one another.',
-      'xforge/manifest.yaml',
-      'error',
-      { specs: left, changes: right },
-    ));
-  }
-  for (const generated of GENERATED_ROOTS) {
-    if (left === generated || left.startsWith(`${generated}/`) || right === generated || right.startsWith(`${generated}/`)) {
+/**
+ * The logical roots a project relocates, checked against each other and against generated targets.
+ *
+ * Written as a loop over pairs rather than as the comparisons themselves. Two roots need one
+ * comparison and a third needs three, which is exactly the arithmetic that leaves a pair out: the
+ * version of this function that compared `specs` with `changes` in a hand-written condition would
+ * have grown a second condition for contracts and, on the evidence of every other duplicated list
+ * in this codebase, not a third. `pathsOverlap` is already exported and is the same judgement, so
+ * the pairs are generated and the judgement is borrowed.
+ *
+ * Contracts overlapping Specs is the pair with the most to lose. Both trees hold a canonical record
+ * that only a merged delta writes, and nothing downstream tells them apart by anything but path --
+ * so a contract merged into the Specs tree would sit where every reader expects a Requirement, with
+ * no delta that produced it.
+ */
+export function assertLogicalPaths(specs: string, changes: string, contracts: string): void {
+  const roots = [
+    { key: 'specs', value: normalizeRelative(specs, 'project.paths.specs') },
+    { key: 'changes', value: normalizeRelative(changes, 'project.paths.changes') },
+    { key: 'contracts', value: normalizeRelative(contracts, 'project.paths.contracts') },
+  ] as const;
+  const details = Object.fromEntries(roots.map((root) => [root.key, root.value]));
+
+  for (let index = 0; index < roots.length; index += 1) {
+    for (let other = index + 1; other < roots.length; other += 1) {
+      const left = roots[index]!;
+      const right = roots[other]!;
+      if (!pathsOverlap(left.value, right.value)) continue;
       throw new XForgeError(diagnostic(
-        'XFORGE_PATH_GENERATED_TARGET',
-        'Specs and Changes paths cannot be inside a generated Adapter target.',
+        'XFORGE_PATHS_OVERLAP',
+        `The ${left.key} and ${right.key} paths must be distinct and cannot contain one another.`,
         'xforge/manifest.yaml',
         'error',
-        { specs: left, changes: right, generated },
+        details,
+      ));
+    }
+  }
+
+  for (const generated of GENERATED_ROOTS) {
+    for (const root of roots) {
+      if (root.value !== generated && !root.value.startsWith(`${generated}/`)) continue;
+      throw new XForgeError(diagnostic(
+        'XFORGE_PATH_GENERATED_TARGET',
+        `The ${root.key} path cannot be inside a generated Adapter target.`,
+        'xforge/manifest.yaml',
+        'error',
+        { ...details, generated },
       ));
     }
   }

@@ -1,14 +1,14 @@
 ---
 description: "governance-assets-are-integrator-only (must)"
-applyTo: "xforge/constitution.md,xforge/specs/**,xforge/manifest.yaml,xforge/lock.yaml,xforge/flows/**,xforge/.audit/**,xforge/.upgrade/snapshot/**,xforge/UPGRADING.md"
+applyTo: "xforge/constitution.md,xforge/specs/**,xforge/contracts/**,xforge/manifest.yaml,xforge/lock.yaml,xforge/flows/**,xforge/.audit/**,xforge/.upgrade/snapshot/**,xforge/UPGRADING.md"
 ---
 
 # governance-assets-are-integrator-only
 
 Severity: must
 
-Scope: xforge/constitution.md, xforge/specs/**, xforge/manifest.yaml, xforge/lock.yaml, xforge/flows/**, xforge/.audit/**, xforge/.upgrade/snapshot/**, xforge/UPGRADING.md — this Rule reaches a Change whose declared scope.paths share a root with these, and your host also treats them as file globs.
+Scope: xforge/constitution.md, xforge/specs/**, xforge/contracts/**, xforge/manifest.yaml, xforge/lock.yaml, xforge/flows/**, xforge/.audit/**, xforge/.upgrade/snapshot/**, xforge/UPGRADING.md — this Rule reaches a Change whose declared scope.paths share a root with these, and your host also treats them as file globs.
 
-Shared governance assets (Constitution, canonical Specs, Manifest, Lock, Flow definitions, the audit chain, the upgrade restore point and the xforge/UPGRADING.md marker that says an upgrade is unfinished) are written by the Integrator, an explicit XForge transaction, or the CLI itself, never by a Worker implementing a work package. Scaffold resources under xforge/scaffold/, Scripts under xforge/scripts/ and Change content under xforge/changes/ are written by the governing Skills and are intentionally outside this Rule's scope.
+Shared governance assets (Constitution, canonical Specs, the contract baseline under xforge/contracts/, Manifest, Lock, Flow definitions, the audit chain, the upgrade restore point and the xforge/UPGRADING.md marker that says an upgrade is unfinished) are written by the Integrator, an explicit XForge transaction, or the CLI itself, never by a Worker implementing a work package. The contract baseline is the sharpest of these: the other packages are already building against it, so editing an interface in place leaves them implementing something nothing agreed to, and they find out at integration. Scaffold resources under xforge/scaffold/, Scripts under xforge/scripts/ and Change content under xforge/changes/ are written by the governing Skills and are intentionally outside this Rule's scope.
 
 Enforcement: gates=none; policies=protected-files, protected-manifest; approvals=none.

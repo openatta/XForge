@@ -165,11 +165,24 @@ export const OWNERSHIP_ZONES: readonly OwnershipZone[] = [
      * and none of that gives an upgrade any business restoring an older copy of it. `specs/` is
      * `deny` because a canonical Spec changes only by a merged delta, and `.audit/` because a
      * hash-chained ledger an Agent can write is a ledger that proves nothing.
+     *
+     * `contracts/` is here for the same reason as `specs/`, one level out: a Spec records what the
+     * product must do and a contract records what one module promises another, and both change only
+     * by a delta that was reviewed and merged. Writing the baseline directly is worse than writing a
+     * Spec directly, because the other modules are already building against it -- a Worker that
+     * edits an interface leaves every parallel package implementing something nothing agreed to, and
+     * the packages find out at integration.
+     *
+     * `neverTouch` is the half that is easy to get wrong here. Rolling a Scaffold back to an older
+     * release must not roll back what this project's modules promise each other: the CLI's version
+     * and the project's interface history are unrelated facts, and a snapshot holding the second
+     * would let a rollback quietly restore an interface two Changes ago.
      */
     id: 'record',
     entries: [
       { path: 'xforge/changes/', kind: 'prefix', agentWrite: 'open' },
       { path: 'xforge/specs/', kind: 'prefix', agentWrite: 'deny' },
+      { path: 'xforge/contracts/', kind: 'prefix', agentWrite: 'deny' },
       { path: 'xforge/.audit/', kind: 'prefix', agentWrite: 'deny' },
     ],
     inTransaction: 'none',

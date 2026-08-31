@@ -311,6 +311,7 @@ export async function readState(project: ProjectContext, options: StateOptions):
         paths: {
           specs: { value: project.specsPath, source: project.specsPathSource },
           changes: { value: project.changesPath, source: project.changesPathSource },
+          contracts: { value: project.contractsPath, source: project.contractsPathSource },
         },
         compatibility: project.compatibility,
       },

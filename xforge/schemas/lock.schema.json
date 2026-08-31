@@ -24,7 +24,7 @@
     },
     "paths": {
       "type": "object", "additionalProperties": false, "required": ["specs", "changes"],
-      "properties": { "specs": { "type": "string" }, "changes": { "type": "string" } }
+      "properties": { "specs": { "type": "string" }, "changes": { "type": "string" }, "contracts": { "type": "string" } }
     },
     "resources": {
       "type": "array",

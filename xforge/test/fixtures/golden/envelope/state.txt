@@ -25,6 +25,10 @@ exit: 0
         "changes": {
           "value": "xforge/changes",
           "source": "manifest"
+        },
+        "contracts": {
+          "value": "xforge/contracts",
+          "source": "default"
         }
       },
       "compatibility": {

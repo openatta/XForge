@@ -132,6 +132,27 @@ describe('what the table derives', () => {
     expect(neverTouchPaths).not.toContain('xforge/.upgrade/**');
   });
 
+  it('puts the contract baseline where the Spec baseline already is', () => {
+    /*
+     * `xforge/contracts/` is the same kind of thing as `xforge/specs/`: a canonical record that
+     * changes only by a merged delta, so an Agent writing it directly leaves every other package
+     * implementing against an interface nothing agreed to.
+     *
+     * `neverTouch` is the half that is easy to get wrong. A Scaffold rollback restores the trees the
+     * upgrade transaction carries, and the interface history of a project is not one of them --
+     * rolling the CLI back to an older release must not roll back what the project's modules promise
+     * each other. That is the same reason `xforge/specs/` and `xforge/changes/` sit in this zone,
+     * and it is why the baseline must not be reachable from `transactionPrefixes`.
+     */
+    const zone = zoneFor('xforge/contracts/http/orders.openapi.yaml');
+    expect(zone?.id).toBe('record');
+    expect(zone?.neverTouch).toBe(true);
+    expect(zone?.inTransaction).toBe('none');
+    expect(guardedPaths).toContain('xforge/contracts/**');
+    expect(neverTouchPaths).toContain('xforge/contracts/**');
+    expect(transactionPrefixes).not.toContain('xforge/contracts/');
+  });
+
   it('keeps a glob out of the list twice when it qualifies on two grounds', () => {
     /* `xforge/specs/` is both denied and inside the `neverTouch` record. A duplicated glob in a
        rendered policy is a second rule that can be edited out of step with the first. */
