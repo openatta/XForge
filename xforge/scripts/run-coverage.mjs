@@ -42,12 +42,13 @@ if (tests.status !== 0) {
    * cap on the macOS runner once the suite reached ~270 tests, the 4096 cap here once the suite
    * reached ~450 (the tests themselves all passed; only the merge OOMed, plateauing at ~4.05 GB
    * against the cap — a ceiling, not a load problem), and the 8192 cap once the suite reached
-   * ~565. Raising the cap for this one child keeps the reporter headroom independent of however
-   * Node sizes the default from the runner's RAM. The cap is an upper bound, not a reservation:
-   * actual usage stays where the model needs.
+   * ~565, and the 16384 cap once the suite reached ~760 — on a 32 GB machine, where the same
+   * merge completes under a 32768 cap. Raising the cap for this one child keeps the reporter
+   * headroom independent of however Node sizes the default from the runner's RAM. The cap is an
+   * upper bound, not a reservation: actual usage stays where the model needs.
    */
   const report = spawnSync(process.execPath, [
-    '--max-old-space-size=16384',
+    '--max-old-space-size=32768',
     c8,
     'report',
     `--temp-directory=${rawRoot}`,
