@@ -215,6 +215,11 @@ XFORGE_PROJECT_NOT_FOUND  src/core/project-loader.ts
 XFORGE_PROTOCOL_MISMATCH  src/core/project-loader.ts
 XFORGE_READY_RECEIPT_STALE_REMEDY  src/core/control-plane.ts
 XFORGE_RECONCILE_CONSTITUTION_UNREADABLE  src/core/reconcile/sources.ts
+XFORGE_RECONCILE_CONTRACT_DELTA_EMPTY  src/core/reconcile/rules.ts
+XFORGE_RECONCILE_CONTRACT_IMPACT_UNDECLARED  src/core/reconcile/rules.ts
+XFORGE_RECONCILE_CONTRACT_MODULE_OUT_OF_SCOPE  src/core/reconcile/rules.ts
+XFORGE_RECONCILE_CONTRACT_UNREADABLE  src/core/reconcile/sources.ts
+XFORGE_RECONCILE_CONTRACTS_UNREADABLE  src/core/reconcile/sources.ts
 XFORGE_RECONCILE_COVERAGE_SECTION_MISSING  src/core/reconcile/rules.ts
 XFORGE_RECONCILE_DECISION_NOT_WRITTEN_BACK  src/core/reconcile/rules.ts
 XFORGE_RECONCILE_DECLARED_GAP_UNRESOLVED  src/core/reconcile/rules.ts
@@ -284,6 +289,7 @@ XFORGE_STAGE_BUNDLE_GIT_UNAVAILABLE  src/commands/stage-bundle.ts
 XFORGE_STAGE_BUNDLE_NO_BASELINE  src/commands/stage-bundle.ts
 XFORGE_STAGE_BUNDLE_TREE_DIRTY  src/commands/stage-bundle.ts
 XFORGE_STATE_UPGRADE_REQUIRED  src/install/planner.ts
+XFORGE_SUBCOMMAND_UNKNOWN  src/cli.ts
 XFORGE_SYMLINK_ESCAPE  src/core/path-safety.ts
 XFORGE_TARGET_NOT_ENABLED  src/install/planner.ts
 XFORGE_TARGET_NOT_INSTALLED  src/commands/uninstall.ts

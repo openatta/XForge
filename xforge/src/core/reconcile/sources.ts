@@ -4,13 +4,14 @@ import fg from 'fast-glob';
 import type { ProjectContext, StageFlow, StageFlowArtifact } from '../../types.js';
 import { CHECK_FINDINGS_PATH } from '../check-findings.js';
 import { CONSTITUTION_CHECK_PATH } from '../constitution-check.js';
+import { parseContractDelta } from '../contract-delta.js';
 import { parseSpecDelta } from '../spec-delta.js';
 
 import { flowArtifacts } from '../flow-resolver.js';
 import { safeResolve } from '../path-safety.js';
 import { loadYaml } from '../yaml.js';
 import { requirementAnchor } from './model.js';
-import type { ArtifactSource, SourceUnavailable, LedgerFinding, LedgerPrinciple, MaterialDecision, SpecRequirement } from './model.js';
+import type { ArtifactSource, ContractElement, SourceUnavailable, LedgerFinding, LedgerPrinciple, MaterialDecision, SpecRequirement } from './model.js';
 
 /**
  * Reading the Artifacts and ledgers the reconciliation rules compare, and nothing else.
@@ -143,6 +144,63 @@ export async function readFindings(
   return { findings, present: true, unavailable };
 }
 /** Decided material questions that name where their decision has to be written back. */
+/**
+ * The contract elements this Change's own deltas declare.
+ *
+ * The module comes out of the block body rather than out of a field the parser knows about, because
+ * the delta is a document a person writes and `- module: api` is a convention its Artifact
+ * instruction asks for, not a schema. A block that names none yields an empty module and the rule
+ * that reads it says nothing -- an absent convention is not a difference between two records.
+ */
+export async function readContractElements(
+  project: ProjectContext,
+  changeId: string,
+): Promise<{ elements: ContractElement[]; declared: boolean; unavailable: SourceUnavailable[] }> {
+  const elements: ContractElement[] = [];
+  const unavailable: SourceUnavailable[] = [];
+  const relative = `${project.changesPath}/${changeId}/contracts`;
+  let directory: string;
+  try {
+    directory = await safeResolve(project.root, relative);
+  } catch {
+    return { elements, declared: false, unavailable };
+  }
+  let files: string[] = [];
+  try {
+    files = (await fg('**/*.md', { cwd: directory, onlyFiles: true, followSymbolicLinks: false })).sort();
+  } catch {
+    /* The directory simply not existing is the ordinary case for a Change that touches no interface,
+       and `fg` returns an empty list for it rather than throwing. Reaching here means it exists and
+       could not be listed, which is a source that could not be read. */
+    unavailable.push({ section: 'contracts', code: 'XFORGE_RECONCILE_CONTRACTS_UNREADABLE', reason: `Contract delta directory could not be listed: ${relative}` });
+    return { elements, declared: false, unavailable };
+  }
+  /* Whether the Change holds a contract delta at all, which is a different fact from whether that
+     delta names anything: "(none)" in every section is an assertion, and silence is not. */
+  const declared = files.length > 0;
+  for (const file of files) {
+    let content: string;
+    try {
+      content = await readFile(path.join(directory, file), 'utf8');
+    } catch {
+      unavailable.push({ section: 'contracts', code: 'XFORGE_RECONCILE_CONTRACT_UNREADABLE', reason: `Contract delta could not be read: ${relative}/${file}` });
+      continue;
+    }
+    for (const section of parseContractDelta(content).sections) {
+      for (const element of section.elements) {
+        elements.push({
+          id: element.id,
+          operation: section.operation,
+          module: /^[ \t]*[-*+][ \t]+module:[ \t]*(\S.*)$/m.exec(element.content)?.[1]?.trim() ?? '',
+          file: `${relative}/${file}`,
+          line: element.line,
+        });
+      }
+    }
+  }
+  return { elements, declared, unavailable };
+}
+
 export async function readMaterialDecisions(project: ProjectContext, changeId: string): Promise<MaterialDecision[]> {
   for (const extension of ['yaml', 'yml', 'json']) {
     const relative = `${project.changesPath}/${changeId}/evidence/conditions/materialQuestions.${extension}`;

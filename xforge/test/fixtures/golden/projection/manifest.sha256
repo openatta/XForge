@@ -4,7 +4,7 @@ bdd17aa2b8be7610edbdc65906a25ff4922af803d8d0a6adb46626ea3669d3b3  .agents/skills
 4020ec4a574ccb874552d7aae301b6ce45d46da3c5b4ab302eb05e8077d65f66  .agents/skills/xforge-check/agents/openai.yaml
 5c99f9550ee643918e9ab06408d0d85a8fd5ea0ed62ce175cd716f804e64f7c3  .agents/skills/xforge-clarify/SKILL.md
 2ba9dee2f198385f7bc897d8d4818d4dfb3069be6933a1550bad637c077cdec0  .agents/skills/xforge-clarify/agents/openai.yaml
-5aa9d396f25021b121ba14f78c5c0b2f5f3827b13075b1d052d50f2f89902e2f  .agents/skills/xforge-design/SKILL.md
+6529f9c0d9692fbfc769f21b10d8d412f250aed86b11a744e2c86097f2632385  .agents/skills/xforge-design/SKILL.md
 53e1fe805439fc8e97f32c99a6d00015d52118f6f48735ac6b4732724f7adecc  .agents/skills/xforge-design/agents/openai.yaml
 a954a59f66fd9a4dcaa94a02b61d6ed6800a4fbe3018db36cadebbfc68b38328  .agents/skills/xforge-kanban/SKILL.md
 6f38bf9d7049a327c5a76eb9735d3ff463768d0f816dbc4d2188ecb7a47f4144  .agents/skills/xforge-kanban/scripts/git-activity.mjs
@@ -45,7 +45,7 @@ bdd17aa2b8be7610edbdc65906a25ff4922af803d8d0a6adb46626ea3669d3b3  .claude/skills
 4020ec4a574ccb874552d7aae301b6ce45d46da3c5b4ab302eb05e8077d65f66  .claude/skills/xforge-check/agents/openai.yaml
 5c99f9550ee643918e9ab06408d0d85a8fd5ea0ed62ce175cd716f804e64f7c3  .claude/skills/xforge-clarify/SKILL.md
 2ba9dee2f198385f7bc897d8d4818d4dfb3069be6933a1550bad637c077cdec0  .claude/skills/xforge-clarify/agents/openai.yaml
-5aa9d396f25021b121ba14f78c5c0b2f5f3827b13075b1d052d50f2f89902e2f  .claude/skills/xforge-design/SKILL.md
+6529f9c0d9692fbfc769f21b10d8d412f250aed86b11a744e2c86097f2632385  .claude/skills/xforge-design/SKILL.md
 53e1fe805439fc8e97f32c99a6d00015d52118f6f48735ac6b4732724f7adecc  .claude/skills/xforge-design/agents/openai.yaml
 a954a59f66fd9a4dcaa94a02b61d6ed6800a4fbe3018db36cadebbfc68b38328  .claude/skills/xforge-kanban/SKILL.md
 6f38bf9d7049a327c5a76eb9735d3ff463768d0f816dbc4d2188ecb7a47f4144  .claude/skills/xforge-kanban/scripts/git-activity.mjs
@@ -90,7 +90,7 @@ bdd17aa2b8be7610edbdc65906a25ff4922af803d8d0a6adb46626ea3669d3b3  .cursor/skills
 4020ec4a574ccb874552d7aae301b6ce45d46da3c5b4ab302eb05e8077d65f66  .cursor/skills/xforge-check/agents/openai.yaml
 5c99f9550ee643918e9ab06408d0d85a8fd5ea0ed62ce175cd716f804e64f7c3  .cursor/skills/xforge-clarify/SKILL.md
 2ba9dee2f198385f7bc897d8d4818d4dfb3069be6933a1550bad637c077cdec0  .cursor/skills/xforge-clarify/agents/openai.yaml
-5aa9d396f25021b121ba14f78c5c0b2f5f3827b13075b1d052d50f2f89902e2f  .cursor/skills/xforge-design/SKILL.md
+6529f9c0d9692fbfc769f21b10d8d412f250aed86b11a744e2c86097f2632385  .cursor/skills/xforge-design/SKILL.md
 53e1fe805439fc8e97f32c99a6d00015d52118f6f48735ac6b4732724f7adecc  .cursor/skills/xforge-design/agents/openai.yaml
 a954a59f66fd9a4dcaa94a02b61d6ed6800a4fbe3018db36cadebbfc68b38328  .cursor/skills/xforge-kanban/SKILL.md
 6f38bf9d7049a327c5a76eb9735d3ff463768d0f816dbc4d2188ecb7a47f4144  .cursor/skills/xforge-kanban/scripts/git-activity.mjs
@@ -131,7 +131,7 @@ bdd17aa2b8be7610edbdc65906a25ff4922af803d8d0a6adb46626ea3669d3b3  .github/skills
 4020ec4a574ccb874552d7aae301b6ce45d46da3c5b4ab302eb05e8077d65f66  .github/skills/xforge-check/agents/openai.yaml
 5c99f9550ee643918e9ab06408d0d85a8fd5ea0ed62ce175cd716f804e64f7c3  .github/skills/xforge-clarify/SKILL.md
 2ba9dee2f198385f7bc897d8d4818d4dfb3069be6933a1550bad637c077cdec0  .github/skills/xforge-clarify/agents/openai.yaml
-5aa9d396f25021b121ba14f78c5c0b2f5f3827b13075b1d052d50f2f89902e2f  .github/skills/xforge-design/SKILL.md
+6529f9c0d9692fbfc769f21b10d8d412f250aed86b11a744e2c86097f2632385  .github/skills/xforge-design/SKILL.md
 53e1fe805439fc8e97f32c99a6d00015d52118f6f48735ac6b4732724f7adecc  .github/skills/xforge-design/agents/openai.yaml
 a954a59f66fd9a4dcaa94a02b61d6ed6800a4fbe3018db36cadebbfc68b38328  .github/skills/xforge-kanban/SKILL.md
 6f38bf9d7049a327c5a76eb9735d3ff463768d0f816dbc4d2188ecb7a47f4144  .github/skills/xforge-kanban/scripts/git-activity.mjs
@@ -166,7 +166,7 @@ bdd17aa2b8be7610edbdc65906a25ff4922af803d8d0a6adb46626ea3669d3b3  .opencode/skil
 4020ec4a574ccb874552d7aae301b6ce45d46da3c5b4ab302eb05e8077d65f66  .opencode/skills/xforge-check/agents/openai.yaml
 5c99f9550ee643918e9ab06408d0d85a8fd5ea0ed62ce175cd716f804e64f7c3  .opencode/skills/xforge-clarify/SKILL.md
 2ba9dee2f198385f7bc897d8d4818d4dfb3069be6933a1550bad637c077cdec0  .opencode/skills/xforge-clarify/agents/openai.yaml
-5aa9d396f25021b121ba14f78c5c0b2f5f3827b13075b1d052d50f2f89902e2f  .opencode/skills/xforge-design/SKILL.md
+6529f9c0d9692fbfc769f21b10d8d412f250aed86b11a744e2c86097f2632385  .opencode/skills/xforge-design/SKILL.md
 53e1fe805439fc8e97f32c99a6d00015d52118f6f48735ac6b4732724f7adecc  .opencode/skills/xforge-design/agents/openai.yaml
 a954a59f66fd9a4dcaa94a02b61d6ed6800a4fbe3018db36cadebbfc68b38328  .opencode/skills/xforge-kanban/SKILL.md
 6f38bf9d7049a327c5a76eb9735d3ff463768d0f816dbc4d2188ecb7a47f4144  .opencode/skills/xforge-kanban/scripts/git-activity.mjs
