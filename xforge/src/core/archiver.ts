@@ -9,6 +9,7 @@ import { atomicWrite, backup, exists } from './files.js';
 import { assertManaged } from './project-loader.js';
 import { safeResolve } from './path-safety.js';
 import { planSpecMutations, type SpecMutation } from './spec-merger.js';
+import { planContractMutations } from './contract-merger.js';
 import { isStageFlow, resolveChangeState } from './flow-resolver.js';
 import { contentRevisionUnderPolicy } from './revision.js';
 import { loadSelectedResources, type SelectedResources } from './resource-loader.js';
@@ -52,10 +53,35 @@ async function incompleteTasks(project: ProjectContext, changeId: string, tracks
   return [...source.matchAll(/^\s*-\s*\[ \]\s+(.+)$/gmi)].map((match) => match[1]!.trim());
 }
 
+/**
+ * One mutation list, two kinds of record.
+ *
+ * Spec and contract mutations share the `{ path, content, change }` shape and go into the same array
+ * on purpose: `applyArchiveTransaction` backs up, writes and rolls back whatever is in it, so a
+ * second list would need a second transaction, and a second transaction is how a Spec merge survives
+ * a contract merge that failed. `kind` exists only to report the two separately afterwards.
+ */
+type ArchiveMutation = SpecMutation & { kind: 'spec' | 'contract' };
+
+/**
+ * What archive reports it wrote, split by which record it wrote to.
+ *
+ * `specs` used to be `plan.mutations.map(item => item.path)`, and letting contract paths into it
+ * would have been the cheapest change here and a wrong one: `data.specs` is a published field, and a
+ * reader that has always been able to treat every entry as a canonical Spec would silently start
+ * being wrong about some of them.
+ */
+function writtenRecords(mutations: ArchiveMutation[]): { specs: string[]; contracts: string[] } {
+  return {
+    specs: mutations.filter((item) => item.kind === 'spec').map((item) => item.path),
+    contracts: mutations.filter((item) => item.kind === 'contract').map((item) => item.path),
+  };
+}
+
 interface ArchivePlan {
   changeId: string;
   target: string;
-  mutations: SpecMutation[];
+  mutations: ArchiveMutation[];
   changes: FileChange[];
   diagnostics: Diagnostic[];
   mandatoryGates: string[];
@@ -172,7 +198,22 @@ async function planArchive(project: ProjectContext, changeId: string, options: P
   const targetName = archiveName(changeId);
   const target = `${project.changesPath}/archive/${targetName}`;
   if (await exists(await safeResolve(project.root, target))) diagnostics.push(diagnostic('XFORGE_ARCHIVE_TARGET_EXISTS', 'Archive target already exists.', target));
-  const mutations = structure.change?.archive.syncSpecs ? await planSpecMutations(project, changeId) : [];
+  /*
+   * Both merges are planned here, after the early return above, and never before it. `planArchive`
+   * refuses to plan any mutation while a structural, governance or task error stands, and that
+   * ordering is the reason `archive --dry-run` cannot be used to ask "would this merge?" -- the
+   * feasibility checks in `core/checker.ts` answer that question at check time instead.
+   *
+   * Both planners are idempotent reads. `executeArchive` plans twice against the same facts, so a
+   * planner with a side effect would perform it twice.
+   */
+  const specMutations: ArchiveMutation[] = structure.change?.archive.syncSpecs
+    ? (await planSpecMutations(project, changeId)).map((item) => ({ ...item, kind: 'spec' as const }))
+    : [];
+  const contractMutations: ArchiveMutation[] = structure.change?.archive.syncContracts
+    ? (await planContractMutations(project, changeId)).map((item) => ({ ...item, kind: 'contract' as const }))
+    : [];
+  const mutations = [...specMutations, ...contractMutations];
   const changes = [
     ...mutations.map((item) => item.change),
     { action: 'move' as const, from: `${project.changesPath}/${changeId}`, path: target, source: `change:${changeId}` },
@@ -205,7 +246,7 @@ async function applyArchiveTransaction(project: ProjectContext, plan: ArchivePla
 }
 
 export async function executeArchive(project: ProjectContext, changeId: string, dryRun: boolean): Promise<{
-  data: { change: string; target: string; dryRun: boolean; mandatoryGates: string[]; specs: string[] };
+  data: { change: string; target: string; dryRun: boolean; mandatoryGates: string[]; specs: string[]; contracts: string[] };
   diagnostics: Diagnostic[];
   changes: FileChange[];
 }> {
@@ -213,7 +254,7 @@ export async function executeArchive(project: ProjectContext, changeId: string, 
   let plan = await planArchive(project, changeId, { auditFacts });
   if (plan.diagnostics.some((item) => item.severity === 'error') || dryRun) {
     return {
-      data: { change: changeId, target: plan.target, dryRun, mandatoryGates: plan.mandatoryGates, specs: plan.mutations.map((item) => item.path) },
+      data: { change: changeId, target: plan.target, dryRun, mandatoryGates: plan.mandatoryGates, ...writtenRecords(plan.mutations) },
       diagnostics: plan.diagnostics,
       changes: plan.changes,
     };
@@ -230,7 +271,7 @@ export async function executeArchive(project: ProjectContext, changeId: string, 
   const diagnostics = [...checked.diagnostics];
   if (diagnostics.some((item) => item.severity === 'error')) {
     return {
-      data: { change: changeId, target: plan.target, dryRun: false, mandatoryGates: plan.mandatoryGates, specs: plan.mutations.map((item) => item.path) },
+      data: { change: changeId, target: plan.target, dryRun: false, mandatoryGates: plan.mandatoryGates, ...writtenRecords(plan.mutations) },
       diagnostics,
       changes: checked.changes,
     };
@@ -239,7 +280,7 @@ export async function executeArchive(project: ProjectContext, changeId: string, 
   plan = await planArchive(project, changeId, { auditFacts });
   if (plan.diagnostics.some((item) => item.severity === 'error')) {
     return {
-      data: { change: changeId, target: plan.target, dryRun: false, mandatoryGates: plan.mandatoryGates, specs: [] },
+      data: { change: changeId, target: plan.target, dryRun: false, mandatoryGates: plan.mandatoryGates, specs: [], contracts: [] },
       diagnostics: plan.diagnostics,
       changes: checked.changes,
     };
@@ -251,7 +292,7 @@ export async function executeArchive(project: ProjectContext, changeId: string, 
   }
   await recordAudit(project, { eventType: 'archive.after', change: changeId, flow: auditResolved.flow.metadata.name, stage: 'archived', revision: auditControl?.governance.revision, outcome: 'succeeded', output: { target: plan.target } });
   return {
-    data: { change: changeId, target: plan.target, dryRun: false, mandatoryGates: plan.mandatoryGates, specs: plan.mutations.map((item) => item.path) },
+    data: { change: changeId, target: plan.target, dryRun: false, mandatoryGates: plan.mandatoryGates, ...writtenRecords(plan.mutations) },
     diagnostics,
     changes: [...checked.changes, ...plan.changes],
   };

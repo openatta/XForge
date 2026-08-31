@@ -474,7 +474,8 @@ exit: 0
           "structure",
           "unit-tests"
         ],
-        "syncSpecs": true
+        "syncSpecs": true,
+        "syncContracts": false
       },
       "workPackages": null,
       "governance": {

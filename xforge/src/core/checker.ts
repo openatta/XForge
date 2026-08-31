@@ -10,6 +10,8 @@ import { resolveChangeState } from './flow-resolver.js';
 import { resolveWorkPackages, type WorkPackageResolution } from './work-packages.js';
 import { normalizeRule } from './governance.js';
 import { loadTransitionReceipts } from './control-plane.js';
+import { validateChangeContractDeltas } from './contract-delta.js';
+import { validateContractMergeFeasibility } from './contract-merger.js';
 import { validateChangeSpecDeltas } from './spec-delta.js';
 import { validateSpecMergeFeasibility } from './spec-merger.js';
 import { validateArtifactMarkers } from './artifact-markers.js';
@@ -223,6 +225,11 @@ export async function checkStructure(project: ProjectContext, changeId?: string)
      * unavailable until after the closing approval had been given.
      */
     if (resolved.state.archive.syncSpecs) diagnostics.push(...await validateSpecMergeFeasibility(project, changeId));
+    /* The same pair for contracts, and the same reasoning. An element block is well-formed and still
+       unmergeable when it says ADDED about an id the baseline already records — which is the shape a
+       second Change takes after the first one archived the same element. */
+    diagnostics.push(...await validateChangeContractDeltas(project, changeId));
+    if (resolved.state.archive.syncContracts) diagnostics.push(...await validateContractMergeFeasibility(project, changeId));
     diagnostics.push(...await validateArtifactMarkers(project, changeId));
     for (const module of resolved.config.scope.modules) {
       if (!moduleIds.has(module)) diagnostics.push(diagnostic('XFORGE_CHANGE_MODULE_UNKNOWN', `Change references unknown module ${module}.`, `${project.changesPath}/${changeId}/change.yaml`));

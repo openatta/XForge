@@ -60,7 +60,7 @@ export interface ArtifactDefinition {
    * `core/artifact-markers.ts`. The two are disjoint in practice: `outline` checks a single
    * free-form document, and every delta Spec writes a glob, which outline validation skips.
    */
-  validator?: 'spec-delta' | 'outline';
+  validator?: 'spec-delta' | 'contract-delta' | 'outline';
   markers?: ArtifactMarker[];
 }
 
@@ -71,7 +71,7 @@ export interface LegacyFlow {
   artifacts: ArtifactDefinition[];
   operations: {
     apply: { requires: string[]; tracks: string };
-    archive: { requires: string[]; syncSpecs: boolean; mandatoryGates: string[] };
+    archive: { requires: string[]; syncSpecs: boolean; syncContracts?: boolean; mandatoryGates: string[] };
   };
 }
 
@@ -140,6 +140,7 @@ export interface StageFlow {
       authority: 'archive-write';
       requires: string[];
       syncSpecs: boolean;
+      syncContracts?: boolean;
       /** Accepted for compatibility with Flows written before it was removed; nothing reads it. */
       evidencePolicy?: 'current-revision';
       approvals?: string[];

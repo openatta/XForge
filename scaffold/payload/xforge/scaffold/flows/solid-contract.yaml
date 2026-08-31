@@ -75,35 +75,39 @@ artifacts:
         role: decision-alternative
         pattern: ['**Rejected alternative:', '**被否决的替代方案：']
   - id: contract-delta
-    generates: contract-delta.md
+    generates: contracts/**/*.md
+    validator: contract-delta
     description: Declare this Change's delta to the module interface baseline
     instruction: >-
-      List every contract element this Change adds, modifies or removes, addressed by its contract
-      element id — the `<kind>:<selector>` form the project's own enumeration prints, such as
-      `openapi:paths./orders.post`. For each, give the owning module, whether the change is breaking,
-      and the before and after shape. For a breaking change give the expand-contract steps and cite
-      the entry in evidence/conditions/contractDecisions.yaml that records who decided it. Never edit
+      One file per contract domain under contracts/, mirroring the domain files in
+      xforge/contracts/. In each, list every contract element this Change adds, modifies or removes
+      as a `### Element:` block headed by its contract element id — the `<kind>:<selector>` form the
+      project's own enumeration prints, such as `openapi:paths./orders.post`. Under each block give
+      the owning module, whether the change is breaking, and the before and after shape. For a
+      breaking change give the expand-contract steps and cite the entry in
+      evidence/conditions/contractDecisions.yaml that records who decided it. Never edit
       xforge/contracts/ directly: it is the record of what was agreed, and archive is what merges
       this delta into it. Do not restate Requirements and do not describe implementation. Write
       "(none)" under a section with nothing in it — an empty section is an assertion that there is
-      nothing there, which is what the reconciliation reads it as, and a blank one is an omission.
+      nothing there, which is what the merge reads it as, and a blank one is an omission and is
+      refused.
     outline: |
       ## ADDED Contract Elements
+      ### Element: <kind>:<selector>
       ## MODIFIED Contract Elements
       ## REMOVED Contract Elements
       ## Breaking Changes
       ## Consumer Impact
-    markers:
-      # `declared-gap` rather than a role of its own, because it already has a consumer: RC-4 reads
-      # every declared gap and reports the ones no finding cites. A breaking change written here and
-      # absent from the findings ledger is exactly that shape, so the check costs nothing to obtain.
-      #
-      # No `minOccurrences`. A Change with no breaking change is the ordinary case, and requiring an
-      # occurrence would make "(none)" an error.
-      - id: contract-breaking
-        section: Breaking Changes
-        role: declared-gap
-        pattern: ['**BREAKING', '**破坏性']
+    # No markers, and the reason is worth recording because it cost something. An Artifact whose
+    # `generates` contains a `*` skips marker and outline validation entirely
+    # (core/artifact-markers.ts short-circuits on it), so the glob and a `contract-breaking` marker
+    # cannot both exist. The glob wins: one file per domain is what lets two Changes touch two
+    # domains without meeting in the same file, and it is what makes the destination of a merge
+    # derivable from the delta's own path rather than from a convention held somewhere else.
+    #
+    # What the marker would have bought was RC-4 reading `## Breaking Changes` and reporting a
+    # breaking change no finding cites. That check is real -- it was watched to fire -- and it is
+    # given up here rather than forgotten.
   - id: check-report
     generates: check-report.md
     description: Narrate the pre-implementation review across Proposal, delta Specs, and Design
@@ -231,6 +235,7 @@ terminal:
     authority: archive-write
     requires: [verify]
     syncSpecs: true
+    syncContracts: true
     approvals: [closing-solid]
     auditPolicy:
       requiredEventTypes: [gate.after, stage.entered, approval.decided]

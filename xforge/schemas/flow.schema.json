@@ -48,7 +48,7 @@
         "markers": { "$ref": "#/$defs/artifactMarkers" }
       }
     },
-    "artifactValidator": { "enum": ["spec-delta", "outline"] },
+    "artifactValidator": { "enum": ["spec-delta", "contract-delta", "outline"] },
     "artifactMarkers": {
       "type": "array",
       "items": { "$ref": "#/$defs/artifactMarker" }
@@ -95,6 +95,7 @@
               "properties": {
                 "requires": { "$ref": "#/$defs/idList" },
                 "syncSpecs": { "type": "boolean" },
+                "syncContracts": { "type": "boolean", "description": "Merge this Change's contract deltas into the contract baseline at archive. Optional and absent means false, so every Flow written before contracts existed keeps working unchanged." },
                 "mandatoryGates": { "$ref": "#/$defs/idList" }
               }
             }
@@ -219,6 +220,7 @@
                 "authority": { "const": "archive-write" },
                 "requires": { "$ref": "#/$defs/idList" },
                 "syncSpecs": { "type": "boolean" },
+                "syncContracts": { "type": "boolean", "description": "Merge this Change's contract deltas into the contract baseline at archive. Deliberately absent from `required`: a Flow written before contracts existed is still a valid Flow, and adding this to the required set would invalidate every one of them at once." },
                 "evidencePolicy": { "const": "current-revision", "description": "Accepted for compatibility with Flows written before v0.7.9 and no longer read by the CLI; archive always binds Evidence to the current revision. The shipped Flows omit it." },
                 "approvals": { "$ref": "#/$defs/idList" },
                 "auditPolicy": { "$ref": "#/$defs/auditPolicy" }

@@ -83,6 +83,16 @@ XFORGE_CONSTITUTION_MISSING  src/core/constitution.ts
 XFORGE_CONSTITUTION_RULE_CONFLICT  src/core/resource-loader.ts
 XFORGE_CONSTITUTION_SECTION_MISSING  src/core/constitution.ts
 XFORGE_CONSTITUTION_VERSION_INVALID  src/core/constitution.ts
+XFORGE_CONTRACT_DELTA_ELEMENT_DUPLICATE  src/core/contract-delta.ts
+XFORGE_CONTRACT_DELTA_ELEMENT_ID_INVALID  src/core/contract-delta.ts
+XFORGE_CONTRACT_DELTA_ELEMENT_ORPHAN  src/core/contract-delta.ts
+XFORGE_CONTRACT_DELTA_ELEMENT_UNNAMED  src/core/contract-delta.ts
+XFORGE_CONTRACT_DELTA_FILE_EMPTY  src/core/contract-delta.ts
+XFORGE_CONTRACT_DELTA_NO_SECTION  src/core/contract-delta.ts
+XFORGE_CONTRACT_DELTA_SECTION_CONTRADICTORY  src/core/contract-delta.ts
+XFORGE_CONTRACT_DELTA_SECTION_DUPLICATE  src/core/contract-delta.ts
+XFORGE_CONTRACT_DELTA_SECTION_EMPTY  src/core/contract-delta.ts
+XFORGE_CONTRACT_MERGE_CONFLICT  src/core/contract-merger.ts
 XFORGE_DECISION_UNKNOWN  src/cli.ts
 XFORGE_DOCTOR_APPROVAL_POLICY_UNUSABLE  src/commands/doctor.ts
 XFORGE_DOCTOR_APPROVALS_INTERACTIVE_ONLY  src/commands/doctor.ts

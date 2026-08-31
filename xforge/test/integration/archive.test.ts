@@ -45,6 +45,94 @@ describe('archive transaction', () => {
     expect(await exists(path.join(archiveRoot, archiveNames[0]!, 'evidence', 'tests.json'))).toBe(true);
   });
 
+  it('merges a contract delta into the baseline in the same transaction as the Spec merge', async () => {
+    /*
+     * The whole point of the contract baseline, end to end. A Change declares an interface delta, and
+     * the record of what the modules promise each other advances only when that Change archives --
+     * so the next Change starts from what was agreed rather than from what the last one happened to
+     * leave in the working tree.
+     *
+     * Both merges go through one transaction on purpose. A separate contract transaction would let a
+     * Spec merge succeed beside a contract merge that failed, which is a repository stating two
+     * different things about the same Change.
+     */
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await updateYaml(root, 'xforge/scaffold/gates/unit-tests.yaml', (gate) => { gate.spec.command = [process.execPath, '-e', 'process.exit(0)']; delete gate.spec.builtin; });
+    await updateYaml(root, 'xforge/flows/solid.yaml', (flow: any) => {
+      flow.artifacts.push({
+        id: 'contract-delta',
+        generates: 'contracts/**/*.md',
+        validator: 'contract-delta',
+        description: 'Declare this Change\'s delta to the module interface baseline',
+        instruction: 'List every contract element this Change adds, modifies or removes.',
+        outline: '## ADDED Contract Elements\n## MODIFIED Contract Elements\n## REMOVED Contract Elements\n',
+      });
+      flow.stages.find((stage: any) => stage.id === 'design').produces.push('contract-delta');
+      flow.terminal.archive.syncContracts = true;
+    });
+    await write(root, 'xforge/contracts/http.md', [
+      '# http', '', '## Purpose', '', 'Established by archived XForge Changes.', '', '## Elements', '',
+      '### Element: openapi:paths./orders.get', '', '- module: api', '',
+    ].join('\n'));
+    await write(root, 'xforge/changes/add-feature/contracts/http.md', [
+      '## ADDED Contract Elements', '',
+      '### Element: openapi:paths./orders.post', '', '- module: api', '',
+      '## MODIFIED Contract Elements', '', '(none)', '',
+      '## REMOVED Contract Elements', '', '(none)', '',
+    ].join('\n'));
+    expect((await runCli(root, ['install'])).code).toBe(0);
+    await advanceSolidToReadyToArchive(root);
+
+    const dry = await runCli(root, ['archive', '--change', 'add-feature', '--dry-run'], approvalTestEnv);
+    expect(dry.code, JSON.stringify(dry.json.diagnostics, null, 2)).toBe(0);
+    /* Reported apart from `specs`, because a reader that has always been able to treat every entry
+       there as a canonical Spec would otherwise silently start being wrong about some of them. */
+    expect(dry.json.data.specs).toEqual(['xforge/specs/widget/spec.md']);
+    expect(dry.json.data.contracts).toEqual(['xforge/contracts/http.md']);
+
+    const archived = await runCli(root, ['archive', '--change', 'add-feature'], approvalTestEnv);
+    expect(archived.code, JSON.stringify(archived.json.diagnostics, null, 2)).toBe(0);
+    const baseline = await readFile(path.join(root, 'xforge', 'contracts', 'http.md'), 'utf8');
+    expect(baseline).toContain('### Element: openapi:paths./orders.get');
+    expect(baseline).toContain('### Element: openapi:paths./orders.post');
+  });
+
+  it('refuses at check, before an approval is given, when the contract delta cannot merge', async () => {
+    /*
+     * The failure this check exists to move earlier. `planArchive` plans no mutation while any
+     * governance block stands, and "the closing approval is missing" is one -- so an unmergeable
+     * delta could not be discovered until after the approval had been collected, and the only route
+     * back voids it. Two files, no Gate, no approval, no working tree.
+     */
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await updateYaml(root, 'xforge/flows/solid.yaml', (flow: any) => {
+      flow.artifacts.push({
+        id: 'contract-delta',
+        generates: 'contracts/**/*.md',
+        validator: 'contract-delta',
+        description: 'Declare this Change\'s delta to the module interface baseline',
+        instruction: 'List every contract element this Change adds, modifies or removes.',
+        outline: '## ADDED Contract Elements\n## MODIFIED Contract Elements\n## REMOVED Contract Elements\n',
+      });
+      flow.stages.find((stage: any) => stage.id === 'design').produces.push('contract-delta');
+      flow.terminal.archive.syncContracts = true;
+    });
+    await write(root, 'xforge/contracts/http.md', '# http\n\n## Elements\n\n### Element: openapi:paths./orders.get\n\n- module: api\n');
+    await write(root, 'xforge/changes/add-feature/contracts/http.md', [
+      '## ADDED Contract Elements', '', '### Element: openapi:paths./orders.get', '', '- module: api', '',
+    ].join('\n'));
+    expect((await runCli(root, ['install'])).code).toBe(0);
+
+    const checked = await runCli(root, ['check', '--change', 'add-feature']);
+    const codes = checked.json.diagnostics.map((item: any) => item.code);
+    expect(codes).toContain('XFORGE_CONTRACT_MERGE_CONFLICT');
+    const conflict = checked.json.diagnostics.find((item: any) => item.code === 'XFORGE_CONTRACT_MERGE_CONFLICT');
+    expect(conflict.message).toContain('openapi:paths./orders.get');
+    expect(conflict.path).toBe('xforge/changes/add-feature/contracts/http.md');
+  });
+
   it('blocks archive on a missing Artifact or failed mandatory Gate', async () => {
     const incompleteRoot = await fixture();
     await createCompleteSolidChange(incompleteRoot);

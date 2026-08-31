@@ -14,7 +14,8 @@ exit: 1
       "structure",
       "unit-tests"
     ],
-    "specs": []
+    "specs": [],
+    "contracts": []
   },
   "diagnostics": [
     {

@@ -44,7 +44,7 @@ export interface ChangeState {
   artifacts: ArtifactState[];
   nextArtifact: ArtifactState | null;
   apply: { ready: boolean; requires: string[]; tracks: string | null };
-  archive: { ready: boolean; requires: string[]; mandatoryGates: string[]; syncSpecs: boolean };
+  archive: { ready: boolean; requires: string[]; mandatoryGates: string[]; syncSpecs: boolean; syncContracts: boolean };
   workPackages: WorkPackagePlanState | null;
   governance?: GovernanceState;
   /**
