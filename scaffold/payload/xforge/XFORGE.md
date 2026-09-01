@@ -32,7 +32,7 @@ Reading the same thing twice is cheap for XForge and expensive for you — not b
 re-reads it, but because every answer it prints stays in your context for the rest of the session.
 So ask for what you are about to act on. `--field <path>` takes one value out of the Envelope and
 prints nothing else, and repeats: `xforge state --change <id> --field nextActions --field change`
-is one call returning two values. Five sections are left out of `state` until `--include` asks for
+is one call returning two values. Six sections are left out of `state` until `--include` asks for
 them, and each says so where it would have been.
 
 `check` takes `--field` too. Its reply carries the structure report, the resolved Change, the Gate
@@ -69,6 +69,11 @@ attempting to satisfy it.
 Use XForge `quick` when delivery speed is the priority and the Change is low
 risk, bounded, and reversible; use `solid` for stable routine delivery; use
 `major` for significant, high-risk, cross-system, or critical-impact changes.
+None of the three can carry a Change that moves an interface between modules:
+set `classification.moduleContract` truthfully and all three refuse it with
+`XFORGE_FLOW_TOO_WEAK`, naming an eligible Flow if this project has adopted
+one. The refusal is the key working — answering `false` to clear it is the one
+move that puts an interface change on a Flow with no step for it.
 When the active Change has two or more dependency-ready work packages
 with non-overlapping `write_paths`, follow the Constitution's Parallel
 Development principle and the `work-packages.yaml` DAG. Main Agent assigns a

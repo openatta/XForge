@@ -15,7 +15,9 @@ policy:
     #
     # Self-reported, like every other classification key -- nothing compares it with the diff. What
     # this buys is narrow and worth having anyway: a Change that *says* it moves an interface cannot
-    # proceed on a Flow that cannot govern it, and the escalation names the Flow that can.
+    # proceed on a Flow that cannot govern it, and the escalation names an eligible Flow when the
+    # project has one -- and says plainly that it has none when it does not, because "try another"
+    # is the wrong advice there.
     contractImpact: forbidden
     maxModules: 1
 artifacts:
