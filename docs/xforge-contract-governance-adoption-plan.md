@@ -1,5 +1,18 @@
 # XForge 契约治理 · 落地方案（Adoption Plan）v1 · 对齐 0.8.0
 
+> ⚠️ **这份计划已经被实施推翻了四处。原文保留，因为改动的理由比计划本身有价值。**
+> 实施结果见分支 `contract-governance`；下面这张表是计划与落地的差异，按发现顺序。
+>
+> | 计划怎么说 | 实际怎么做 | 为什么 |
+> | --- | --- | --- |
+> | 基线是方言文件（`.yaml` / `.proto` / `schema.sql`） | 基线是**元素记录**（`xforge/contracts/*.md`，按 `<kind>:<selector>` 逐条列出） | CLI 不理解任何方言，`syncContracts` 面对一份 OpenAPI 文档**没有任何东西可以合并**。方言文档留在实现那一侧 |
+> | 决策 ①(a)：随包但不登记 = 零影响 | Flow 做成 `xforge/scaffold/flows/` 下的**模板** | `xforge/flows/` 是靠**列目录**读的，放进去就是「项目在跑的 Flow」，不登记也躲不掉 `XFORGE_DOCTOR_UNUSED_FLOW` |
+> | M1（随包资源）在 M2a（所有权）之前 | **M2a 先做** | M1 要发的 Rule 声称 `protected-files` 守着基线，而这句话要到 M2a 才成立。先发就是发布一句假话 |
+> | §7.4：把 `moduleContract` 加进 `IMPACT_KEYS` | **单独一个键** | `quick` 和 `solid` 都写 `criticalImpacts: forbidden`，加进去会让**专门治理接口的那个 Flow 第一个失去资格** |
+> | M4「明确不做」 | **做了** | `xforge contract status`。在记录式基线下它不需要适配器，纯读 delta 即可 |
+>
+> 另外：§9 的验收项 8（Rule coverage 含 `verified`）预期是错的，理由见 M0 报告 F5。
+
 > **本文与设计文档的关系**：`docs/xforge-contract-governance.md`（v2.1，源码核实版）**原文不动**。
 > 那份文档回答「这套机制该长什么样、为什么」；本文只回答**「怎么把它加进今天这个仓库」**——
 > 切分、顺序、每一步的精确改动面、会因此变红的既有测试，以及需要人拍板的决策。

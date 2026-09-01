@@ -165,7 +165,7 @@ policy:      # 资格：什么样的 Change 可以 / 必须走这条 Flow
 artifacts:   # 要求产出哪些文档，每份怎么写（instruction / outline / markers）
 governance:  # 审批策略 + 审计策略
 stages:      # stage graph：归哪个 Skill、需要哪些 Gate、出口条件、能返工到哪
-terminal:    # 归档：需要哪些审批、审计策略、是否 syncSpecs
+terminal:    # 归档：需要哪些审批、审计策略、是否 syncSpecs / syncContracts
 ```
 
 ### 4.2 三档内置 Flow 的真实 stage graph
@@ -184,16 +184,27 @@ terminal:    # 归档：需要哪些审批、审计策略、是否 syncSpecs
 
 ```yaml
 # quick
-eligibleWhen: { risk: [low], criticalImpacts: forbidden, maxModules: 1 }
+eligibleWhen: { risk: [low], criticalImpacts: forbidden, contractImpact: forbidden, maxModules: 1 }
 # solid
-eligibleWhen: { risk: [low, medium], criticalImpacts: forbidden }
+eligibleWhen: { risk: [low, medium], criticalImpacts: forbidden, contractImpact: forbidden }
 # major
-eligibleWhen: { risk: [low, medium, high], criticalImpacts: allowed }
+eligibleWhen: { risk: [low, medium, high], criticalImpacts: allowed, contractImpact: forbidden }
 requiredWhen: { risk: [high], anyImpact: [security, privacy, publicApi, dataMigration] }
+# solid-contract（模板，随包但未启用）
+eligibleWhen: { risk: [low, medium], criticalImpacts: forbidden, contractImpact: allowed }
 ```
 
 `quick` 会**拒绝**跨模块或非低风险的工作；触及安全 / 隐私 / 公开 API / 数据迁移的高风险变更
 **必须**走 `major`。把一个真正需要台账的 Change 塞进 Quick，等于声明一份与事实不符的 classification。
+
+`contractImpact` 与 `criticalImpacts` 是**两个问题、两个键**，这一点是刻意的。
+判断一个 Flow 能不能承载接口变更，看的不是它有没有 design stage——`solid` 和 `major` 都有——
+而是它**有没有声明 contract-delta 这个 Artifact、并在归档时合并它**。三个随包 Flow 都没有，
+所以三个都写 `contractImpact: forbidden`：接受一份自己治理不了的声明，比拒绝它更糟。
+
+反过来，把 `moduleContract` 并进 critical impacts 会让一次编辑同时点燃三处判定，其中两处是错的——
+`quick` 和 `solid` 都写着 `criticalImpacts: forbidden`，于是**专门为治理接口而写的那个 Flow，
+会第一个变得没资格承载接口变更**。
 
 ### 4.3 一个 stage 长什么样
 
@@ -311,7 +322,15 @@ Archive 在 **plan 和 execution 两次**检查终态治理：
 Gate 重跑后**重新 plan**，再执行原子事务。任何中间错误都保持 Change 未归档。
 
 `syncSpecs: true` 时 delta Specs 合并回主 Specs——**这是需求能跨 Change 存活的机制**。
-架构决策没有这条路，所以才有 `xforge/architecture.md` 这个独立的持久记录
+`syncContracts: true` 是同一个机制作用在**模块之间的接口**上：Change 写 contract-delta，
+归档把它合并进 `xforge/contracts/`，于是「这两个模块约定了什么」也能跨 Change 存活。
+
+为什么接口需要单独一条：`contentRevision` 是**按 Change 算的**，输入集合只覆盖该 Change 目录内的
+产出。两个 Change 可以各自完全合规、各自拿到人的审批，却对同一个 `POST /orders` 说了两件不同的事，
+而控制面没有任何一处会发现——跨 Change 的一致性从设计上就不在判定范围内。基线把「上次约定的是什么」
+变成一份持久记录，`xforge contract status` 则把「在途的几个 Change 各自打算怎么改它」摆到一起。
+
+架构决策没有这两条路，所以才有 `xforge/architecture.md` 这个独立的持久记录
 （上限 50 行、6 条决策，唯一写者是 `xforge-architect`）。
 
 ---
@@ -531,7 +550,7 @@ Adapter 报告 `guidance`、`permissionPolicy`、`runtimeHook.*`、`auditDeliver
   artifacts: ArtifactState[],       // status / outputPaths / writePath / missingDependencies
   nextArtifact,
   apply:   { ready, requires, tracks },
-  archive: { ready, requires, mandatoryGates, syncSpecs },
+  archive: { ready, requires, mandatoryGates, syncSpecs, syncContracts },
   workPackages: WorkPackagePlanState | null,
   governance: GovernanceState,
   mandatoryGateEvidence: [{

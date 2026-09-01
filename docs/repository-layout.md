@@ -22,6 +22,7 @@ xforge/
 │
 │  ── managed-source ──  CLI 发布的规范源。升级事务对整树快照、逐文件分类、可整树恢复
 ├── scaffold/                   ← 规范源，投影的输入
+│   ├── flows/<id>.yaml         ← 随包但未启用的 Flow 模板，复制进 xforge/flows/ 才生效
 │   ├── skills/<id>/SKILL.md (+ SKILL_cn.md)
 │   ├── agents/<id>.yaml + <id>.md (+ <id>_cn.md)
 │   ├── rules/<id>.yaml
@@ -47,6 +48,7 @@ xforge/
 ├── changes/<change-id>/        ← 见 §2
 ├── changes/archive/            ← 已归档的 Change
 ├── specs/                      ← 主 Specs（Agent 写入被 deny）
+├── contracts/                  ← 契约基线：模块之间承诺了什么（Agent 写入被 deny）
 ├── .audit/events.jsonl         ← 本地哈希链，gitignored
 │
 │  ── transient ──  升级自己的工作状态。它不在事务里，它就是事务
@@ -160,12 +162,21 @@ classification:
   privacy: false
   publicApi: false
   dataMigration: false
+  moduleContract: false # 可选：本 Change 是否移动了模块之间的接口
 scope:
   modules: [root]
   paths: [src/**]
 ```
 
 必填：`flow`、`classification`（五个字段全要）、`scope`（`modules` + `paths`）。
+
+`moduleContract` **可选**，缺省当 false——加进必填会让契约出现之前写的每一份 `change.yaml`
+在同一刻全部失效，而且对已经在途的 Change 没有任何前进的路。它由 `eligibleWhen.contractImpact`
+消费：随包三个 Flow 都写 `forbidden`，因为它们都没有可以承载这份声明的 Artifact。
+
+它是**自报**的，没有任何东西拿它跟 diff 比对。它买到的东西很窄，但值得有：一个**确实这么说了**的
+Change，无法在治理不了它的 Flow 上继续走。而 `check` 的 RC-7 会把这份自报与 Change 自己写的
+contract-delta 摆在一起——只陈述差异，不判定哪一份记录是错的。
 
 ### 2.3 `generates` 与 `writePath`
 
@@ -459,7 +470,17 @@ CLI 的复核项：dispatch binding、commit ancestry、`base...head` 的**实�
 xforge/changes/<change-id>/     →    xforge/changes/archive/<change-id>/
 ```
 
-`syncSpecs: true` 时，delta Specs 在同一次原子事务里合并进 `xforge/specs/`。
+`syncSpecs: true` 时，delta Specs 在同一次原子事务里合并进 `xforge/specs/`；
+`syncContracts: true` 时，contract-delta 在**同一次**事务里合并进 `xforge/contracts/`。
+
+两者共用一个 mutation 列表，因此也共用一次备份与回滚——分成两次事务，就会出现
+「Spec 合并成功、契约合并失败」的仓库状态，对同一个 Change 说两件不同的事。
+
+`xforge/contracts/` 是**记录**而不是方言文档：它按 `<kind>:<selector>` 逐条列出模块对外暴露的
+契约元素，CLI 不理解任何方言，也不打算学。OpenAPI 文档、`.proto`、schema dump 留在实现那一侧，
+由项目自己的 `contract-compat` 命令去比对两者。这正是 api-extractor 的 `.api.md`、
+`cargo-public-api` 那套「基线快照」做法，只是把合并挪进了治理层——于是
+「有人改了接口」和「有人同意改接口」不再是同一件事。
 
 **归档后的 Change 不再被控制面评估。** 这意味着后续对 Flow / Rule / Policy / Gate /
 Constitution 的修改（它们会改变 `policySnapshotDigest`）**不影响已归档的 Change**——
