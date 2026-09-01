@@ -108,7 +108,30 @@ function assertNoStaleVersion(previousVersion) {
      * the release path. A guard that duplicated that would add a second thing to keep in step with
      * the first.
      */
-    .filter((file) => !file.startsWith('xforge/test/fixtures/golden/'));
+    .filter((file) => !file.startsWith('xforge/test/fixtures/golden/'))
+    /*
+     * Files that name a version on purpose, and would name the wrong thing if rewritten.
+     *
+     * Two kinds, and both recur at every release rather than being about this one:
+     *
+     * - **Worked examples of version *precedence*.** `compareVersions` is explained and tested with
+     *   concrete strings — `0.8.0-rc.1 < 0.8.0` — and the point of the example is the relationship
+     *   between the two, not the number. Substituting the current release into them leaves prose and
+     *   assertions that no longer demonstrate what they were written to demonstrate. They also match
+     *   only because the search is a substring one: `0.8.0-rc.1` contains `0.8.0`.
+     * - **Records of work done at a particular version.** A plan and a pilot report describe what
+     *   was true when they were written. Moving their version number forward would make them claim
+     *   to describe a release they predate.
+     *
+     * Listed rather than pattern-matched: each entry is a judgement about that file's content, and a
+     * pattern would quietly adopt the next file that happened to fit it.
+     */
+    .filter((file) => ![
+      'xforge/src/core/project-loader.ts',
+      'xforge/test/unit/version-compare.test.ts',
+      'docs/xforge-contract-governance-adoption-plan.md',
+      'docs/xforge-contract-governance-m0-pilot.md',
+    ].includes(file));
   if (remaining.length > 0) {
     fail(`These tracked files still name ${previousVersion} after the rewrite: ${remaining.join(', ')}. Add each to versionedTextFiles, or record here why it keeps the old version.`);
   }
