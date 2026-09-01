@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { chmod } from 'node:fs/promises';
+import path from 'node:path';
 import { changeYaml, fixture, runCli, updateYaml, write } from '../helpers.js';
 
 /**
@@ -27,6 +29,9 @@ async function contractFlowFixture(): Promise<string> {
     });
     flow.stages.find((stage: any) => stage.id === 'design').produces.push('contract-delta');
     flow.terminal.archive.syncContracts = true;
+    /* A Flow that collects and merges interface deltas is one a Change may declare a module contract
+       on. The shipped `solid` refuses the claim precisely because it does neither. */
+    flow.policy.eligibleWhen.contractImpact = 'allowed';
   });
   return root;
 }
@@ -217,5 +222,110 @@ describe('what every Change in flight will do to the baseline', () => {
     expect(status.json.data).toEqual({ changes: [], overlaps: [] });
     const text = await runCli(root, ['contract', 'status', '--text']);
     expect(text.stdout).toContain('No Change in flight declares a contract delta.');
+  });
+});
+
+describe('an element id addresses one element, across the whole Change', () => {
+  it('refuses the same id in two of a Change\'s own domain files', async () => {
+    /*
+     * A contract element id is a global address — it is what a later Change's MODIFIED block names —
+     * while a domain file is only where the record of it happens to live. Validating each file alone
+     * let one Change write the same id into two baseline records at archive, after which `contract
+     * list` shows it twice and a later MODIFIED reaches whichever domain it names, leaving the other
+     * copy stale with nothing reporting the divergence.
+     */
+    const root = await contractFlowFixture();
+    await write(root, 'xforge/changes/split/change.yaml', changeYaml('solid'));
+    await write(root, 'xforge/changes/split/proposal.md', '## Why\nOne id, two domain files.\n');
+    await write(root, 'xforge/changes/split/specs/fix/spec.md', '## ADDED Requirements\n\n### Requirement: REQ-1 Works\n\n#### Scenario: ok\n- **WHEN** used\n- **THEN** it works\n');
+    await write(root, 'xforge/changes/split/contracts/orders.md', '## ADDED Contract Elements\n\n### Element: openapi:paths./orders.post\n\n- module: root\n');
+    await write(root, 'xforge/changes/split/contracts/payments.md', '## ADDED Contract Elements\n\n### Element: openapi:paths./orders.post\n\n- module: root\n');
+    expect((await runCli(root, ['install'])).code).toBe(0);
+
+    const checked = await runCli(root, ['check', '--change', 'split']);
+    const duplicate = checked.json.diagnostics.find((item: any) => item.code === 'XFORGE_CONTRACT_DELTA_ELEMENT_DUPLICATE');
+    expect(duplicate, JSON.stringify(checked.json.diagnostics.map((d: any) => d.code))).toBeTruthy();
+    expect(duplicate.message).toContain('contracts/orders.md');
+    expect(duplicate.message).toContain('contracts/payments.md');
+  });
+
+  it('counts a collision by Change, not by delta file', async () => {
+    /*
+     * `contract status` exists to say that two Changes disagree. One Change naming an id in two of
+     * its own files appended two claims, and the report announced "claimed by more than one Change"
+     * about one Change — false about the only fact the command reports.
+     */
+    const root = await fixture();
+    await write(root, 'xforge/changes/one/change.yaml', changeYaml('solid'));
+    await write(root, 'xforge/changes/one/contracts/orders.md', '## ADDED Contract Elements\n\n### Element: a:b\n');
+    await write(root, 'xforge/changes/one/contracts/payments.md', '## MODIFIED Contract Elements\n\n### Element: a:b\n');
+    expect((await runCli(root, ['contract', 'status'])).json.data.overlaps).toEqual([]);
+
+    await write(root, 'xforge/changes/two/change.yaml', changeYaml('solid'));
+    await write(root, 'xforge/changes/two/contracts/orders.md', '## REMOVED Contract Elements\n\n### Element: a:b\n');
+    const overlaps = (await runCli(root, ['contract', 'status'])).json.data.overlaps;
+    expect(overlaps).toHaveLength(1);
+    expect(new Set(overlaps[0].claims.map((claim: any) => claim.change))).toEqual(new Set(['one', 'two']));
+  });
+
+  it('lists exactly the ids the merge can find', async () => {
+    /*
+     * The list and the merge read the same file, and they used to read it differently: the list
+     * scanned every `### Element:` heading, the merge only those inside `## Elements`. An id outside
+     * that section — a hand-seeded baseline, or one carried in a trailing section — was offered here
+     * as addressable and then refused at merge, on the archive path, after the closing approval.
+     */
+    const root = await fixture();
+    await write(root, 'xforge/contracts/http.md', [
+      '# http', '', '### Element: openapi:stray.get', '', '## Elements', '',
+      '### Element: openapi:paths./orders.get', '', '- module: api', '',
+      '## Notes', '', '### Element: openapi:alsoStray.get', '',
+    ].join('\n'));
+    const listed = await runCli(root, ['contract', 'list']);
+    expect(listed.json.data.domains[0].elements.map((item: any) => item.id)).toEqual(['openapi:paths./orders.get']);
+    expect(listed.json.data.domains[0].elements[0].module).toBe('api');
+  });
+});
+
+describe('a read that failed does not answer as a read that found nothing', () => {
+  it('reports an unreadable baseline instead of reporting no baseline', async () => {
+    /*
+     * `safeResolve` rethrows a raw Node error for anything that is not a missing path, and those
+     * carry no diagnostics. Taking `?? []` there left an empty list, the envelope derives `ok` from
+     * the diagnostics, and an unreadable baseline printed "No contract baseline" and exited 0.
+     *
+     * The Skills send the design Agent here to read the ids it has to address. That answer would
+     * have it declare every element as ADDED against a baseline that already records them, and find
+     * out at archive.
+     */
+    const root = await fixture();
+    await write(root, 'xforge/contracts/http.md', '# http\n\n## Elements\n\n### Element: a:b\n');
+    await write(root, 'xforge/contracts/orders.md', '# orders\n\n## Elements\n\n### Element: c:d\n');
+    await chmod(path.join(root, 'xforge', 'contracts', 'http.md'), 0o000);
+    try {
+      const listed = await runCli(root, ['contract', 'list']);
+      expect(listed.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_CONTRACT_READ_FAILED');
+      expect(listed.code).not.toBe(0);
+      /* The domains that could be read are still reported: one unreadable file does not make the
+         rest unreportable, and it does not pass as a domain that records nothing either. */
+      expect(listed.json.data.domains.map((item: any) => item.domain)).toEqual(['orders']);
+    } finally {
+      await chmod(path.join(root, 'xforge', 'contracts', 'http.md'), 0o644);
+    }
+  });
+
+  it('reports an unreadable contract delta instead of a Change that claims nothing', async () => {
+    const root = await fixture();
+    await write(root, 'xforge/changes/one/change.yaml', changeYaml('solid'));
+    await write(root, 'xforge/changes/one/contracts/orders.md', '## ADDED Contract Elements\n\n### Element: a:b\n');
+    await chmod(path.join(root, 'xforge', 'changes', 'one', 'contracts', 'orders.md'), 0o000);
+    try {
+      const status = await runCli(root, ['contract', 'status']);
+      expect(status.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_CONTRACT_READ_FAILED');
+      expect(status.code).not.toBe(0);
+      expect(status.stdout).not.toContain('No Change in flight declares a contract delta.');
+    } finally {
+      await chmod(path.join(root, 'xforge', 'changes', 'one', 'contracts', 'orders.md'), 0o644);
+    }
   });
 });

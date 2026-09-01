@@ -52,6 +52,29 @@ const EMPTY_ASSERTION = /^[ \t]*(?:[-*+][ \t]+)?\(none\)[ \t]*$/i;
  * entry and a `blockedBy` token without needing to be quoted in any of them.
  */
 const ELEMENT_ID = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?:\S+$/;
+/**
+ * A ceiling on the selector, not an opinion about its shape.
+ *
+ * The selector is the dialect's own address space and this layer does not get to say what OpenAPI or
+ * protobuf may call things. What it can say is that an id has to stay usable as a markdown heading, a
+ * `refs` entry and a line in a report a person reads, and nothing legitimate needs five hundred
+ * characters to be unambiguous.
+ */
+const ELEMENT_ID_MAX = 512;
+
+/**
+ * The owning module a delta block names, or empty when it names none.
+ *
+ * Stops at the first whitespace and strips surrounding backticks. Capturing the rest of the line
+ * meant `- module: api  # the orders API` yielded a "module" no scope could contain, and RC-7 then
+ * reported a module the Change does own as out of scope -- a standing info finding with no fix,
+ * which is the permanent unactionable diagnostic this codebase refuses everywhere else. `- module:`
+ * is a prose convention rather than a schema, so decoration has to be tolerated rather than refused.
+ */
+export function moduleOf(body: string): string {
+  const raw = /^[ \t]*[-*+][ \t]+module:[ \t]*(\S+)/m.exec(body)?.[1] ?? '';
+  return raw.replace(/^[`'"]+|[`'"]+$/g, '');
+}
 
 export function hasContractDeltaSections(source: string): boolean {
   return source.split(/\r?\n/).some((line) => SECTION_HEADER.test(line));
@@ -103,8 +126,18 @@ export function parseContractDelta(source: string): ParsedContractDelta {
       closeElement();
       continue;
     }
+    /*
+     * The empty assertion is checked before the element body, not after it.
+     *
+     * Checked after, `(none)` only registered when it preceded the first `### Element:` -- so the
+     * natural order, element blocks written above the `(none)` the outline left behind, swallowed
+     * the line into the last block's content. That cost two things: the contradiction between
+     * "(none)" and a declared element could not be reported for the ordering people actually write,
+     * and the literal text was copied verbatim into the merged baseline, because an element's body
+     * is carried across as-is.
+     */
+    if (section && EMPTY_ASSERTION.test(line)) { section.assertedEmpty = true; continue; }
     if (element) { elementLines.push(line); continue; }
-    if (section && EMPTY_ASSERTION.test(line)) section.assertedEmpty = true;
   }
   closeSection();
   return { sections, orphanElements };
@@ -182,6 +215,16 @@ export function validateContractDeltaSource(source: string, filePath: string): D
         ));
         continue;
       }
+      if (element.id.length > ELEMENT_ID_MAX) {
+        diagnostics.push(diagnostic(
+          'XFORGE_CONTRACT_DELTA_ELEMENT_ID_INVALID',
+          `A contract element id in ${section.operation} Contract Elements is ${element.id.length} characters long, over the ${ELEMENT_ID_MAX}-character ceiling. The id becomes a heading in the baseline and a line in every report that names it.`,
+          filePath,
+          'error',
+          { operation: section.operation, line: element.line, length: element.id.length },
+        ));
+        continue;
+      }
       if (!ELEMENT_ID.test(element.id)) {
         diagnostics.push(diagnostic(
           'XFORGE_CONTRACT_DELTA_ELEMENT_ID_INVALID',
@@ -232,8 +275,13 @@ export function contractDeltaIsValid(source: string): boolean {
  * The first branch is what keeps this and `isSpecDeltaArtifact` from ever both claiming the same
  * Artifact: an explicit validator answers for itself, so a `spec-delta` under `contracts/` is a Spec
  * delta and nothing here disagrees.
+ *
+ * Takes the two fields it reads rather than the whole `ArtifactDefinition`, because a Stage Flow's
+ * artifacts are the same document without `requires` and this question is the same question about
+ * them. Asking for more than it reads would have meant a cast at the one call site that has the
+ * other shape, and a cast is how a type stops being checked.
  */
-export function isContractDeltaArtifact(artifact: ArtifactDefinition): boolean {
+export function isContractDeltaArtifact(artifact: Pick<ArtifactDefinition, 'validator' | 'generates'>): boolean {
   if (artifact.validator) return artifact.validator === 'contract-delta';
   const generates = artifact.generates.replaceAll('\\', '/');
   return generates.startsWith('contracts/') && generates.endsWith('.md');
@@ -245,9 +293,37 @@ export async function validateChangeContractDeltas(project: ProjectContext, chan
     cwd: changeDirectory, onlyFiles: true, followSymbolicLinks: false, dot: false, unique: true,
   })).sort();
   const diagnostics: Diagnostic[] = [];
+  /*
+   * Ids are compared across the Change's files, not only within each one.
+   *
+   * A contract element id is a global address -- it is what a `refs` entry resolves through and what
+   * a later Change's MODIFIED block names -- while a domain file is only where the record of it
+   * happens to live. Validating each file alone let one Change declare the same id in two domains,
+   * and archive then wrote it into two baseline records: `contract list` shows it twice, and a later
+   * MODIFIED reaches whichever domain it names, leaving the other copy stale with nothing saying so.
+   *
+   * This is where the Spec side and this side legitimately differ. A Requirement's merge key is a
+   * heading scoped to its capability; an element id is not scoped to anything.
+   */
+  const seen = new Map<string, string>();
   for (const relative of deltaPaths) {
+    const reported = `${project.changesPath}/${changeId}/${relative}`;
     const source = await readFile(await safeResolve(changeDirectory, relative), 'utf8');
-    diagnostics.push(...validateContractDeltaSource(source, `${project.changesPath}/${changeId}/${relative}`));
+    diagnostics.push(...validateContractDeltaSource(source, reported));
+    for (const section of parseContractDelta(source).sections) {
+      for (const element of section.elements) {
+        const first = seen.get(element.id);
+        if (first === undefined) { seen.set(element.id, relative); continue; }
+        if (first === relative) continue;
+        diagnostics.push(diagnostic(
+          'XFORGE_CONTRACT_DELTA_ELEMENT_DUPLICATE',
+          `"${element.id}" is declared in both ${first} and ${relative}. A contract element id addresses one element, and archive would record it in two baseline domains, after which a later Change modifying it would reach only one of them.`,
+          reported,
+          'error',
+          { element: element.id, files: [first, relative], line: element.line },
+        ));
+      }
+    }
   }
   return diagnostics;
 }

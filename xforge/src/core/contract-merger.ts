@@ -100,6 +100,26 @@ function convertNewDelta(delta: string, relative: string, raise: ConflictSink): 
 }
 
 function mergeExisting(record: string, delta: string, relative: string, raise: ConflictSink): string | null {
+  const operations = [...deltaSection(delta, 'ADDED'), ...deltaSection(delta, 'MODIFIED'), ...deltaSection(delta, 'REMOVED')];
+  /*
+   * A delta that declares nothing plans nothing, decided before the merge rather than after it.
+   *
+   * Two things went wrong when this was left to the comparison at the end. `null` means "this delta
+   * removed the last element, delete the record", and a record that was already empty reaches the
+   * same zero by a different route -- so the ordinary Change, the one whose delta says "(none)" in
+   * every section, deleted a governed file it had just declared it was not touching. And re-rendering
+   * normalises whitespace, so a baseline a person wrote came back as a `modify` from a Change that
+   * changed nothing, which reaches the archive's change list, `data.contracts`, and every other
+   * in-flight Change as "code moved since".
+   *
+   * Returning the record verbatim is what the caller already reads as "nothing to do".
+   *
+   * It also returns before the duplicate-id check below, so a baseline that records one id twice is
+   * not reported to a Change that merges nothing into it. That is the intended reading: a Change
+   * declaring no interface change should not be blocked by a defect in a file it is not touching,
+   * and the next Change that does merge into that domain still meets it.
+   */
+  if (operations.length === 0) return record;
   const parts = recordParts(record);
   const active = new Map<string, ElementBlock>();
   for (const block of parts.blocks) {

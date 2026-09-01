@@ -9,6 +9,10 @@ policy:
   eligibleWhen:
     risk: [low, medium]
     criticalImpacts: forbidden
+    # No Stage here produces a contract delta, so a Change that says it moves a module interface has
+    # nowhere to declare what it moved and nothing that would merge it. `solid-contract` is the Flow
+    # that carries one; this refuses the claim rather than accepting it and governing nothing.
+    contractImpact: forbidden
 artifacts:
   - id: proposal
     generates: proposal.md

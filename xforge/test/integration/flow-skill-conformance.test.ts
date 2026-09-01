@@ -37,6 +37,7 @@ const CONFORMANCE = [
   'XFORGE_FLOW_SKILL_ARTIFACT_UNNAMED',
   'XFORGE_FLOW_SKILL_DECLARED_GATE_UNCOVERED',
   'XFORGE_FLOW_SKILL_CONDITION_UNNAMED',
+  'XFORGE_FLOW_CONTRACT_DELTA_UNMERGED',
 ];
 
 describe('Flow/Skill gate conformance', () => {
@@ -163,5 +164,36 @@ describe('Flow/Skill gate conformance', () => {
     const strict = await runCli(root, ['doctor', '--strict']);
     expect(strict.code).toBe(1);
     expect(strict.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_DOCTOR_STRICT');
+  });
+});
+
+describe('a Flow that collects contract deltas and never merges them', () => {
+  it('is reported, because both halves are valid on their own', async () => {
+    /*
+     * The same defect as the three above, one level out: a reference that resolves while the thing
+     * it resolves to does not cover the job. Declaring the Artifact makes an Agent write an interface
+     * delta every Change; omitting `syncContracts` throws every one of them away at archive. The
+     * baseline never advances, each Change re-declares what the last already said, and nothing says
+     * why — because neither half is wrong by itself.
+     */
+    const root = await fixture();
+    const flowPath = path.join(root, 'xforge', 'flows', 'solid.yaml');
+    const flow = await readFile(flowPath, 'utf8');
+    await write(root, 'xforge/flows/solid.yaml', flow.replace('  - id: check-report\n', [
+      '  - id: contract-delta',
+      '    generates: contracts/**/*.md',
+      '    validator: contract-delta',
+      '    description: Declare the interface delta',
+      '    instruction: List every contract element this Change adds, modifies or removes.',
+      '    outline: |',
+      '      ## ADDED Contract Elements',
+      '  - id: check-report\n',
+    ].join('\n')).replace('    produces: [design]', '    produces: [design, contract-delta]'));
+
+    expect(await doctorCodes(root)).toContain('XFORGE_FLOW_CONTRACT_DELTA_UNMERGED');
+
+    /* And silent once the Flow merges what it collects. */
+    await write(root, 'xforge/flows/solid.yaml', (await readFile(flowPath, 'utf8')).replace('    syncSpecs: true', '    syncSpecs: true\n    syncContracts: true'));
+    expect(await doctorCodes(root)).not.toContain('XFORGE_FLOW_CONTRACT_DELTA_UNMERGED');
   });
 });

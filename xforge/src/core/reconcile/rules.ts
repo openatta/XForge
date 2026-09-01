@@ -331,6 +331,18 @@ export function reconcileConstitutionReferences(
  * no interface, and a rule that spoke about all of them would be the permanent unactionable finding
  * this codebase refuses elsewhere.
  */
+/**
+ * The ids a summary names, capped, with the count carrying the rest.
+ *
+ * `refs` already holds the full set and is the channel a tool reads; the summary is the sentence a
+ * person reads. The worst case is not exotic -- the first Change after adoption declares the whole
+ * extracted surface at once, which is the one-time cost this design is most often criticised for --
+ * and an `info` line naming three hundred ids is one nobody finishes.
+ */
+function named(ids: string[], limit = 8): string {
+  return ids.length <= limit ? ids.join(', ') : `${ids.slice(0, limit).join(', ')}, and ${ids.length - limit} more`;
+}
+
 export function reconcileContractImpact(
   elements: ContractElement[],
   declared: boolean,
@@ -342,14 +354,14 @@ export function reconcileContractImpact(
   const claimed = classification.moduleContract === true;
 
   if (elements.length > 0 && !claimed) {
-    const named = [...new Set(elements.map((element) => element.id))].sort();
+    const ids = [...new Set(elements.map((element) => element.id))].sort();
     observations.push({
       id: 'RC-7:classification',
       rule: 'RC-7',
       code: 'XFORGE_RECONCILE_CONTRACT_IMPACT_UNDECLARED',
       provenance: 'computed',
-      summary: `This Change's contract delta declares ${named.length} contract element(s) — ${named.join(', ')} — and its change.yaml classification does not set moduleContract. The classification is what decides which Flow may carry this Change, and it currently says no interface moves.`,
-      refs: named,
+      summary: `This Change's contract delta declares ${ids.length} contract element(s) — ${named(ids)} — and its change.yaml classification does not set moduleContract. The classification is what decides which Flow may carry this Change, and it currently says no interface moves.`,
+      refs: ids,
     });
   }
   if (elements.length === 0 && claimed) {
@@ -381,7 +393,7 @@ export function reconcileContractImpact(
       rule: 'RC-7',
       code: 'XFORGE_RECONCILE_CONTRACT_MODULE_OUT_OF_SCOPE',
       provenance: 'computed',
-      summary: `The contract delta says module ${module} owns ${affected.join(', ')}, and this Change's scope.modules does not list ${module}. Work-package write boundaries are derived from scope.modules, so they would be drawn without it.`,
+      summary: `The contract delta says module ${module} owns ${named(affected)}, and this Change's scope.modules does not list ${module}. Work-package write boundaries are derived from scope.modules, so they would be drawn without it.`,
       refs: affected,
     });
   }

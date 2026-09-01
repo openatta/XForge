@@ -1,4 +1,4 @@
-import { access, readFile, readdir, rm } from 'node:fs/promises';
+import { access, mkdir, readFile, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { advanceSolidToReadyToArchive, approvalTestEnv, createCompleteSolidChange, fixture, runCli, updateYaml, write } from '../helpers.js';
@@ -17,6 +17,13 @@ async function tree(directory: string, prefix = ''): Promise<string[]> {
   return result;
 }
 
+/*
+ * @red-first coverage-only: the contract rollback case asserts a property that already held rather
+ * than one this change repaired. Contract mutations were put into the same list the Spec merge uses,
+ * so the existing transaction covered them from the moment they existed -- and "covered by
+ * construction" is exactly the claim this suite exists to stop anyone making without a test. It is
+ * here so that a later change splitting the two lists goes red instead of quiet.
+ */
 describe('archive transaction', () => {
   it('keeps dry-run at zero writes, then gates, syncs, and moves atomically', async () => {
     const root = await fixture();
@@ -96,6 +103,55 @@ describe('archive transaction', () => {
     const baseline = await readFile(path.join(root, 'xforge', 'contracts', 'http.md'), 'utf8');
     expect(baseline).toContain('### Element: openapi:paths./orders.get');
     expect(baseline).toContain('### Element: openapi:paths./orders.post');
+  });
+
+  it('rolls the Spec merge back when the contract merge fails, and leaves the Change where it was', async () => {
+    /*
+     * The property the single mutation list exists for, proved rather than reasoned about.
+     *
+     * Spec mutations are written before contract ones, so a contract write that fails is the case
+     * where a Spec merge has already touched the disk. If the two ran as separate transactions the
+     * repository would be left having merged half of one Change -- a canonical Spec that says the
+     * Change happened beside a contract baseline that says it did not -- and the Change directory
+     * gone from `changes/` with no way to retry.
+     *
+     * The failure is injected by making the contract destination a directory, so `atomicWrite`'s
+     * rename cannot land on it. That is a real filesystem error rather than a stubbed one, which is
+     * the only kind this transaction has to survive.
+     */
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await updateYaml(root, 'xforge/scaffold/gates/unit-tests.yaml', (gate) => { gate.spec.command = [process.execPath, '-e', 'process.exit(0)']; delete gate.spec.builtin; });
+    await updateYaml(root, 'xforge/flows/solid.yaml', (flow: any) => {
+      flow.artifacts.push({
+        id: 'contract-delta',
+        generates: 'contracts/**/*.md',
+        validator: 'contract-delta',
+        description: 'Declare this Change\'s delta to the module interface baseline',
+        instruction: 'List every contract element this Change adds, modifies or removes.',
+        outline: '## ADDED Contract Elements\n',
+      });
+      flow.stages.find((stage: any) => stage.id === 'design').produces.push('contract-delta');
+      flow.terminal.archive.syncContracts = true;
+    });
+    await write(root, 'xforge/changes/add-feature/contracts/http.md', '## ADDED Contract Elements\n\n### Element: openapi:paths./orders.post\n\n- module: api\n');
+    expect((await runCli(root, ['install'])).code).toBe(0);
+    await advanceSolidToReadyToArchive(root);
+
+    /* Planned as a create, so nothing exists at the destination until the write -- and a directory
+       there is what makes that write fail. */
+    await mkdir(path.join(root, 'xforge', 'contracts', 'http.md'), { recursive: true });
+    const specPath = path.join(root, 'xforge', 'specs', 'widget', 'spec.md');
+    const specBefore = await exists(specPath);
+
+    const archived = await runCli(root, ['archive', '--change', 'add-feature'], approvalTestEnv);
+    expect(archived.code).not.toBe(0);
+    /* The Spec merge is undone: it either never existed and still does not, or held its old bytes. */
+    expect(await exists(specPath)).toBe(specBefore);
+    /* And the Change is still where it was, so the whole archive can be retried once the cause is
+       fixed. A moved Change with a half-applied merge is the state that has no way back. */
+    expect(await exists(path.join(root, 'xforge', 'changes', 'add-feature'))).toBe(true);
+    expect(await exists(path.join(root, 'xforge', 'changes', 'archive'))).toBe(false);
   });
 
   it('refuses at check, before an approval is given, when the contract delta cannot merge', async () => {

@@ -4,7 +4,7 @@ import fg from 'fast-glob';
 import type { ProjectContext, StageFlow, StageFlowArtifact } from '../../types.js';
 import { CHECK_FINDINGS_PATH } from '../check-findings.js';
 import { CONSTITUTION_CHECK_PATH } from '../constitution-check.js';
-import { parseContractDelta } from '../contract-delta.js';
+import { moduleOf, parseContractDelta } from '../contract-delta.js';
 import { parseSpecDelta } from '../spec-delta.js';
 
 import { flowArtifacts } from '../flow-resolver.js';
@@ -191,7 +191,7 @@ export async function readContractElements(
         elements.push({
           id: element.id,
           operation: section.operation,
-          module: /^[ \t]*[-*+][ \t]+module:[ \t]*(\S.*)$/m.exec(element.content)?.[1]?.trim() ?? '',
+          module: moduleOf(element.content),
           file: `${relative}/${file}`,
           line: element.line,
         });

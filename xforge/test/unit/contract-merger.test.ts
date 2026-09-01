@@ -58,6 +58,45 @@ describe('contract baseline merge planning', () => {
     expect(await planContractMutations(await loadProject(root), 'quiet')).toEqual([]);
   });
 
+  it('leaves a record that already held nothing alone, instead of deleting it', async () => {
+    /*
+     * The delete branch means "this delta removed the last element", and a record that was already
+     * empty reaches the same zero by a completely different route. Collapsing the two made the
+     * ordinary Change -- the one whose delta says "(none)" in every section, which is most of them --
+     * delete a governed file it had just declared it was not touching.
+     *
+     * A seeded-but-empty domain file is how a project starts one before its first element exists,
+     * so this is reachable on the first Change after adoption rather than in some corner.
+     */
+    const root = await fixture();
+    await write(root, 'xforge/contracts/http.md', '# http\n\n## Purpose\n\nSeeded, records nothing yet.\n\n## Elements\n\n');
+    await write(root, 'xforge/changes/quiet/change.yaml', changeYaml('solid'));
+    await write(root, 'xforge/changes/quiet/contracts/http.md', delta(
+      '## ADDED Contract Elements', '', '(none)', '',
+      '## MODIFIED Contract Elements', '', '(none)', '',
+      '## REMOVED Contract Elements', '', '(none)', '',
+    ));
+    expect(await planContractMutations(await loadProject(root), 'quiet')).toEqual([]);
+  });
+
+  it('leaves a hand-written record byte-identical when the delta declares nothing', async () => {
+    /*
+     * A delta that declares nothing must plan nothing, not plan a rewrite to the same meaning.
+     *
+     * Re-rendering normalises whitespace, so a baseline a person wrote -- an extra blank line, no
+     * trailing newline -- came back as a `modify` from a Change that had said it touched no
+     * interface. That shows up in the archive's own change list, in `data.contracts`, and, because
+     * the contract root is not a self-written prefix, as "code moved since" against every other
+     * Change in flight.
+     */
+    const root = await fixture();
+    const handWritten = '# http\n\n## Elements\n\n\n### Element: openapi:paths./orders.get\n\n- module: api\n\n\n';
+    await write(root, 'xforge/contracts/http.md', handWritten);
+    await write(root, 'xforge/changes/quiet/change.yaml', changeYaml('solid'));
+    await write(root, 'xforge/changes/quiet/contracts/http.md', delta('## ADDED Contract Elements', '', '(none)', ''));
+    expect(await planContractMutations(await loadProject(root), 'quiet')).toEqual([]);
+  });
+
   it('deletes the record when the last element is removed', async () => {
     const root = await fixture();
     await write(root, 'xforge/contracts/http.md', '# http\n\n## Elements\n\n### Element: openapi:paths./orders.get\n\n- module: api\n');

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  contractDeltaIsValid, isContractDeltaArtifact, parseContractDelta, validateContractDeltaSource,
+  contractDeltaIsValid, isContractDeltaArtifact, moduleOf, parseContractDelta, validateContractDeltaSource,
 } from '../../src/core/contract-delta.js';
 import type { ArtifactDefinition } from '../../src/types.js';
 
@@ -77,6 +77,14 @@ describe('contract delta structure validation', () => {
     );
   });
 
+  it('refuses an id too long to be readable where it will appear', () => {
+    /* The selector is the dialect's address space and this layer does not constrain its shape, only
+       that the id stays usable as a heading and as a line in a report somebody reads. */
+    const long = `## ADDED Contract Elements\n\n### Element: openapi:${'x'.repeat(600)}\n`;
+    expect(codes(long)).toEqual(['XFORGE_CONTRACT_DELTA_ELEMENT_ID_INVALID']);
+    expect(codes(`## ADDED Contract Elements\n\n### Element: openapi:${'x'.repeat(400)}\n`)).toEqual([]);
+  });
+
   it('refuses the same element twice, in one section or across two', () => {
     const twice = '## ADDED Contract Elements\n\n### Element: a:b\n\n### Element: a:b\n';
     expect(codes(twice)).toEqual(['XFORGE_CONTRACT_DELTA_ELEMENT_DUPLICATE']);
@@ -112,5 +120,41 @@ describe('which Artifacts are contract deltas', () => {
     expect(isContractDeltaArtifact(artifact({ generates: 'contracts/http.md' }))).toBe(true);
     expect(isContractDeltaArtifact(artifact({ generates: 'specs/orders.md' }))).toBe(false);
     expect(isContractDeltaArtifact(artifact({ generates: 'design.md' }))).toBe(false);
+  });
+});
+
+describe('the "(none)" assertion wherever it is written', () => {
+  it('registers after the element blocks, which is the order people actually write', () => {
+    /*
+     * The outline puts the heading down and the author fills in above the `(none)` it left behind.
+     * Checked after the element body, that line was swallowed into the last block's content — so the
+     * contradiction went unreported for the common ordering, and the literal text was copied into
+     * the merged baseline, because an element's body is carried across verbatim.
+     */
+    const after = [
+      '## ADDED Contract Elements', '', '### Element: a:b', '', '- module: core', '', '(none)', '',
+    ].join('\n');
+    expect(validateContractDeltaSource(after, 'd.md').map((item) => item.code))
+      .toEqual(['XFORGE_CONTRACT_DELTA_SECTION_CONTRADICTORY']);
+
+    const clean = ['## ADDED Contract Elements', '', '### Element: a:b', '', '- module: core', ''].join('\n');
+    const [element] = parseContractDelta(clean).sections[0]!.elements;
+    expect(element!.content).not.toContain('(none)');
+  });
+});
+
+describe('reading the owning module a block names', () => {
+  it('takes the token and tolerates the decoration around it', () => {
+    /*
+     * `- module:` is a convention an Artifact instruction asks for, not a schema, so a person will
+     * write it with a backtick or a trailing note. Capturing the rest of the line turned those into
+     * a module name no scope could contain, and RC-7 then reported a module the Change does own as
+     * out of scope — a finding with no fix, which is the one kind this codebase refuses to emit.
+     */
+    expect(moduleOf('- module: api')).toBe('api');
+    expect(moduleOf('- module: `api`')).toBe('api');
+    expect(moduleOf('- module: api  # the orders API')).toBe('api');
+    expect(moduleOf('- module:   api   ')).toBe('api');
+    expect(moduleOf('- breaking: false')).toBe('');
   });
 });

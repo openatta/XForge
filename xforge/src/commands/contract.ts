@@ -3,6 +3,8 @@ import path from 'node:path';
 import fg from 'fast-glob';
 import type { Diagnostic, ProjectContext } from '../types.js';
 import { parseContractDelta } from '../core/contract-delta.js';
+import { diagnostic } from '../core/errors.js';
+import { moduleOf } from '../core/contract-delta.js';
 import { safeResolve } from '../core/path-safety.js';
 
 /**
@@ -32,6 +34,35 @@ interface ContractListResult {
   diagnostics: Diagnostic[];
 }
 
+/**
+ * The `## Elements` body of a baseline record, or the whole file when it has no such section.
+ *
+ * Named once and shared, because two readings of the same file is how the list and the merge came to
+ * disagree about which ids exist.
+ */
+function elementsSection(source: string): string {
+  const header = /^## Elements\s*$/m.exec(source);
+  if (!header || header.index === undefined) return source;
+  const bodyStart = source.indexOf('\n', header.index + header[0].length);
+  const remainder = bodyStart < 0 ? '' : source.slice(bodyStart + 1);
+  const next = /^## /m.exec(remainder);
+  return next?.index === undefined ? remainder : remainder.slice(0, next.index);
+}
+
+/**
+ * Diagnostics for a read that failed, never an empty list.
+ *
+ * An `XForgeError` already carries what to say. Anything else is a raw filesystem error, and the
+ * caller's envelope derives `ok` from the diagnostics -- so returning none turns a failure into a
+ * confident "nothing here".
+ */
+function unreadable(error: unknown, path: string, summary: string): Diagnostic[] {
+  const carried = (error as { diagnostics?: Diagnostic[] }).diagnostics;
+  if (carried?.length) return carried;
+  const reason = error instanceof Error ? error.message : String(error);
+  return [diagnostic('XFORGE_CONTRACT_READ_FAILED', `${summary}: ${reason}`, path)];
+}
+
 /** `openapi:paths./orders.post` -> `openapi`. Empty for an id the baseline stored without one. */
 function kindOf(id: string): string {
   const index = id.indexOf(':');
@@ -48,24 +79,56 @@ export async function executeContractList(
   try {
     directory = await safeResolve(project.root, project.contractsPath);
   } catch (error) {
-    return { ok: false, data: { contractsPath: project.contractsPath, domains: [], elementCount: 0 }, diagnostics: (error as { diagnostics?: Diagnostic[] }).diagnostics ?? [] };
+    /*
+     * A read that failed must not answer as a read that found nothing.
+     *
+     * `safeResolve` rethrows a raw Node error for anything that is not a missing path -- EACCES on
+     * the tree or a parent, a broken mount -- and those carry no `diagnostics`. Taking `?? []` there
+     * produced an empty diagnostics array, and the envelope derives `ok` from the diagnostics, so an
+     * unreadable baseline printed "No contract baseline" and exited 0. The Skills send the design
+     * Agent here to read the ids it must address; that answer would have it declare every element as
+     * ADDED against a baseline that already records them, and find out at archive.
+     */
+    return {
+      ok: false,
+      data: { contractsPath: project.contractsPath, domains: [], elementCount: 0 },
+      diagnostics: unreadable(error, project.contractsPath, 'The contract baseline could not be read'),
+    };
   }
   /* An absent directory is not an error and not an empty answer dressed as one: a project that has
      never archived a contract delta has no baseline, which is the ordinary state of most projects. */
   const files = (await fg('**/*.md', { cwd: directory, onlyFiles: true, followSymbolicLinks: false })).sort();
   let elementCount = 0;
   for (const file of files) {
-    const content = await readFile(path.join(directory, file), 'utf8');
+    let content: string;
+    try {
+      content = await readFile(path.join(directory, file), 'utf8');
+    } catch (error) {
+      /* One unreadable domain does not make the others unreportable, and it does not get to pass as
+         a domain that records nothing either. The listing continues and says which one it lost. */
+      diagnostics.push(...unreadable(error, `${project.contractsPath}/${file}`, 'A contract baseline domain could not be read'));
+      continue;
+    }
     const elements: Array<{ id: string; kind: string; module: string }> = [];
-    const headers = [...content.matchAll(/^### Element:\s*(.+?)\s*$/gm)];
+    /*
+     * The `## Elements` section only, which is the same reading `core/contract-merger.ts` uses.
+     *
+     * Scanning the whole file found headings the merger does not: one left outside the section by a
+     * hand-seeded baseline, or carried in a trailing `## ` section. Those listed here as addressable
+     * ids, and a MODIFIED delta written against one was refused at merge with "the baseline does not
+     * record it" -- on the archive path, after the closing approval, which is the exact route
+     * `validateContractMergeFeasibility` exists to close.
+     */
+    const headers = [...elementsSection(content).matchAll(/^### Element:\s*(.+?)\s*$/gm)];
     for (const [index, match] of headers.entries()) {
       const id = match[1]!.trim();
       if (options.kind && kindOf(id) !== options.kind) continue;
-      const body = content.slice(match.index!, headers[index + 1]?.index ?? content.length);
+      const section = elementsSection(content);
+      const body = section.slice(match.index!, headers[index + 1]?.index ?? section.length);
       elements.push({
         id,
         kind: kindOf(id),
-        module: /^[ \t]*[-*+][ \t]+module:[ \t]*(\S.*)$/m.exec(body)?.[1]?.trim() ?? '',
+        module: moduleOf(body),
       });
     }
     elementCount += elements.length;
@@ -130,11 +193,18 @@ interface ContractStatusResult {
 }
 
 export async function executeContractStatus(project: ProjectContext): Promise<ContractStatusResult> {
+  const diagnostics: Diagnostic[] = [];
   let changesRoot: string;
   try {
     changesRoot = await safeResolve(project.root, project.changesPath);
   } catch (error) {
-    return { ok: false, data: { changes: [], overlaps: [] }, diagnostics: (error as { diagnostics?: Diagnostic[] }).diagnostics ?? [] };
+    /* Same shape, and the stakes are the same: "no Change in flight declares a contract delta" is
+       the sentence an operator reads to conclude that nothing collides. */
+    return {
+      ok: false,
+      data: { changes: [], overlaps: [] },
+      diagnostics: unreadable(error, project.changesPath, 'The Changes directory could not be read'),
+    };
   }
   /* The same reading `state` uses for "in flight": every directory that is not the archive and not
      a dotfile. An archived Change has already merged and is not competing for anything. */
@@ -154,13 +224,21 @@ export async function executeContractStatus(project: ProjectContext): Promise<Co
     if (files.length === 0) continue;
     const elements: Array<{ id: string; operation: string; module: string }> = [];
     for (const file of files) {
-      const content = await readFile(path.join(directory, file), 'utf8');
+      let content: string;
+      try {
+        content = await readFile(path.join(directory, file), 'utf8');
+      } catch (error) {
+        /* Same reading as the listing: a delta that could not be opened is reported, never counted
+           as a Change that claims nothing -- which is the answer this command exists to give. */
+        diagnostics.push(...unreadable(error, `${project.changesPath}/${id}/contracts/${file}`, 'A contract delta could not be read'));
+        continue;
+      }
       for (const section of parseContractDelta(content).sections) {
         for (const element of section.elements) {
           elements.push({
             id: element.id,
             operation: section.operation,
-            module: /^[ \t]*[-*+][ \t]+module:[ \t]*(\S.*)$/m.exec(element.content)?.[1]?.trim() ?? '',
+            module: moduleOf(element.content),
           });
           claims.set(element.id, [...(claims.get(element.id) ?? []), { change: id, operation: section.operation }]);
         }
@@ -171,12 +249,15 @@ export async function executeContractStatus(project: ProjectContext): Promise<Co
     changes.push({ change: id, elements });
   }
 
+  /* Counted by distinct Change, not by claim. One Change naming an id in two of its own domain files
+     appended twice, and the result announced "claimed by more than one Change" about one Change --
+     a statement that is false about the only fact this command exists to report. */
   const overlaps = [...claims.entries()]
-    .filter(([, entries]) => entries.length > 1)
+    .filter(([, entries]) => new Set(entries.map((entry) => entry.change)).size > 1)
     .map(([id, entries]) => ({ id, claims: entries }))
     .sort((left, right) => left.id.localeCompare(right.id));
 
-  return { ok: true, data: { changes, overlaps }, diagnostics: [] };
+  return { ok: diagnostics.length === 0, data: { changes, overlaps }, diagnostics };
 }
 
 export function renderContractStatusText(result: ContractStatusResult): string {
