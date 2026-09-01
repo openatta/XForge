@@ -118,22 +118,48 @@ function declaredIn(changeId) {
   return sections;
 }
 
+/*
+ * What compat can honestly decide, given when it runs.
+ *
+ * It is a check-Stage Gate, and check comes before apply -- so the implementation has not moved yet
+ * and cannot be expected to. Requiring every declared ADDED element to be present in it made the
+ * Gate impossible to pass for any Change that adds one: the delta is written at design, the code is
+ * written at apply, and compat sits between them. A live run found this, and the Check Agent's
+ * finding named it more precisely than the script did: "the declared-but-not-implemented direction
+ * fails at check, before apply can implement the element".
+ *
+ * Two questions are decidable here, and they are the two worth asking before implementation starts:
+ *
+ *   1. Does the declared delta merge into the recorded baseline? An ADDED id must not already be
+ *      recorded, and a MODIFIED or REMOVED id must be. This is the archive-time merge, asked early,
+ *      where the answer still costs nothing.
+ *   2. Has the implementation already moved without anyone declaring it? That direction *is*
+ *      answerable now -- an element the implementation exposes that the baseline does not record and
+ *      the delta does not mention is exactly the case this whole arrangement exists to catch.
+ *
+ * The other direction -- the implementation catching up with what was declared -- is contract-drift's
+ * job at verify, after apply has had its turn.
+ */
 function reconcile(changeId) {
   const declared = declaredIn(changeId);
   if (!declared) return [`No contract delta under xforge/changes/${changeId}/contracts/.`];
+  const recorded = new Set(baselineElements().map((element) => element.id));
   const actual = membershipDiff(baselineElements(), implementationElements());
+  const claimed = new Set([...declared.ADDED, ...declared.MODIFIED, ...declared.REMOVED]);
   const problems = [];
-  const known = new Set(implementationElements().map((element) => element.id));
-  for (const [section, ids] of [['ADDED', actual.added], ['REMOVED', actual.removed]]) {
-    for (const id of ids) {
-      if (!declared[section].includes(id)) problems.push(`${id} actually ${section.toLowerCase()}, and the contract delta does not declare it under ## ${section} Contract Elements.`);
-    }
+
+  for (const id of declared.ADDED) {
+    if (recorded.has(id)) problems.push(`The contract delta declares ${id} as ADDED, and the baseline already records it. Declare it under ## MODIFIED Contract Elements if this Change changes it.`);
+  }
+  for (const section of ['MODIFIED', 'REMOVED']) {
     for (const id of declared[section]) {
-      if (!ids.includes(id)) problems.push(`The contract delta declares ${id} under ## ${section} Contract Elements, and the implementation does not show it there.`);
+      if (!recorded.has(id)) problems.push(`The contract delta declares ${id} as ${section}, and the baseline does not record it. Declare it under ## ADDED Contract Elements if this Change introduces it.`);
     }
   }
-  for (const id of declared.MODIFIED) {
-    if (!known.has(id)) problems.push(`The contract delta declares ${id} as MODIFIED, and the implementation exposes no such element.`);
+  for (const [section, ids] of [['ADDED', actual.added], ['REMOVED', actual.removed]]) {
+    for (const id of ids) {
+      if (!claimed.has(id)) problems.push(`${id} is already ${section.toLowerCase()} in the implementation and no section of the contract delta declares it.`);
+    }
   }
   return problems;
 }
