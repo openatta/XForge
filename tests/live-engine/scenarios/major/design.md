@@ -26,7 +26,7 @@ wrapper). The package has the eight canonical fields: `id`, `goal`,
 `depends_on`, `inputs`, `write_paths`, `skills`, `verify`, and `done_when`.
 Its ID is `T001`, write path is `src/**`, inputs include the delta Spec,
 Clarifications, and Design, skill is `xforge-apply`, and verify is the
-one-element array `[npm test]` (`verify` is a list of commands, not a
+array `[["npm","test"]]` (`verify` is a list of argv arrays, not a
 single string). Every path inside the plan is project-relative, exactly as
 `xforge state` prints it — `xforge/changes/credential-store/design.md`, never
 `design.md`.

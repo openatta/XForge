@@ -20,8 +20,9 @@ Also create `work-packages.yaml` **inside the Change directory** that
 wrapper). The package has the eight canonical fields: `id`, `goal`,
 `depends_on`, `inputs`, `write_paths`, `skills`, `verify`, and `done_when`.
 Its ID is `T001`, write path is `src/**`, inputs include the delta Spec and
-Design, skill is `xforge-apply`, and verify is the one-element array
-`[npm test]` (`verify` is a list of commands, not a single string). Every path
+Design, skill is `xforge-apply`, and verify is `[["npm","test"]]` (`verify` is a
+list of argv arrays: the outer list holds the commands, and `["npm","test"]`
+is one of them -- a bare string is the deprecated form and the CLI says so). Every path
 inside the plan is project-relative, exactly as `xforge state` prints it —
 `xforge/changes/task-ledger/design.md`, never `design.md`.
 

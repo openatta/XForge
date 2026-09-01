@@ -18,9 +18,13 @@ the migration requirement were both honored, and discusses completeness,
 correctness, coherence, residual security risk, and findings. Write it before
 the receipt: it is an Artifact, so it moves the content revision the receipt
 has to name. Then run `xforge check` to produce
-current-revision Machine Gate Evidence, and create
-`evidence/verification-receipt.yaml` recording passed status, current
-Flow/Stage, `contentRevision` from `xforge state`, Git HEAD, and test command.
+current-revision Machine Gate Evidence, and file the receipt with
+`xforge verification finalize --change <id> --status passed --by <person>`.
+Do not hand-assemble `evidence/verification-receipt.yaml`: the CLI already
+holds the contentRevision, the gitHead and the cited Gate set, and both the
+`xforge-verify` Skill and the CLI's own nextActions say not to transcribe
+them. `--status` and `--by` are the two it will not compute; if nobody has
+told you a name, stop and say so rather than signing for them.
 Its `gates` list carries exactly the Gates this Stage declares and nothing else
 — the existing work-package delivery is not one of them, and belongs under
 `workPackageDeliveries`. The receipt is review/verification metadata, not
