@@ -141,7 +141,7 @@ async function evaluate(
     if (refPaths.length === 0) problems.push(`${relative}: finding ${label} cites no artifact; a finding nobody can locate cannot be acted on.`);
     for (const ref of refPaths) {
       if (!(await refExists(project, changeId, ref, requirements))) {
-        warnings.push(`${relative}: finding ${label} refs "${ref}", which is neither a Requirement this Change declares nor a path that exists.`);
+        warnings.push(`${relative}: finding ${label} refs "${ref}", which is neither a Requirement this Change declares nor a path that exists.${/^gate:/i.test(ref) ? ' `gate:<name>` is a Constitution citation, not a finding ref: that ledger cites evidence a principle holds, and a Gate is such evidence; a finding cites where a problem is, and a Gate is not a place. Point at the Artifact or Requirement the Gate is complaining about.' : ''}`);
       }
     }
 

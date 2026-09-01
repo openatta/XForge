@@ -667,7 +667,7 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
     if (carried.length === 0 || result.status !== 'passed') continue;
     diagnostics.push(diagnostic(
       'XFORGE_GATE_PASSED_WITH_WARNINGS',
-      `Gate ${result.id} passed and reported ${carried.length} warning(s), which live in its Evidence and reach no other output: ${carried.map((line) => line.slice('warning: '.length)).join(' ')}`,
+      `Gate ${result.id} passed and reported ${carried.length} warning(s), which its status does not carry and which would otherwise stay inside its Evidence file: ${carried.map((line) => line.slice('warning: '.length)).join(' ')}`,
       result.evidencePath ?? 'xforge/manifest.yaml',
       'warning',
     ));

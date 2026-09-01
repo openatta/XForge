@@ -23,11 +23,11 @@ holds the contentRevision, the gitHead and the cited Gate set, and both the
 `xforge-verify` Skill and the CLI's own nextActions say not to transcribe
 them. `--status` and `--by` are the two it will not compute. Sign it
 `--by "project owner"`: `TEST_REQUEST.md` stands in for the owner in this
-project, exactly as it does for the Gate command above, and the CLI records
-that a role is not a Git author with
-`XFORGE_VERIFICATION_DECLARER_UNATTESTED` — that warning is the record being
-honest about itself. Outside a fixture, a name nobody gave you is a name you
-do not write.
+project, exactly as it does for the Gate command above. Expect
+`XFORGE_VERIFICATION_DECLARER_UNATTESTED` on both calls — a role is not a Git
+author, the CLI records the name as written and says so, and that warning is
+the record being honest about itself. Outside a fixture, a name nobody gave
+you is a name you do not write.
 Its `gates` list carries exactly the Gates this Stage declares and nothing else
 — the existing work-package delivery is not one of them, and belongs under
 `workPackageDeliveries`. The receipt is review/verification metadata, not

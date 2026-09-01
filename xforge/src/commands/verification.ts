@@ -535,7 +535,7 @@ export async function executeVerificationDraftReceipt(project: ProjectContext, o
        */
       supply: [
         'status: passed — your assertion that this Stage verified the work. XForge will not write it for you.',
-        'by: <person> — who is making that assertion. Not a role and not this Agent; the receipt records a name.',
+        'by: <person> — who is making that assertion. A role rather than a person is recorded as written and reported unattested; this Agent is never the answer.',
       ],
       receipt: facts.receipt,
     },
@@ -632,6 +632,23 @@ export async function executeVerificationFinalize(
   }
   if (refusals.length > 0) throw new XForgeError(refusals, { root: project.root });
 
+  /*
+   * The receipt's signer is attested on the same terms as a declaration's, and for a stronger
+   * reason. `declare` records who chose a command; this records who asserts the Stage verified the
+   * work, and it is the artifact that carries that assertion into the archive. It went the other
+   * way round: `declare` reported an unattestable name and `finalize` took one in silence, so the
+   * heavier claim was the one nobody could check. A live run met exactly that -- the prompt told it
+   * the CLI would say so, the CLI said nothing, and the receipt on disk read `finalizedBy: project
+   * owner` with no mark against it.
+   *
+   * Reported, not refused, for the reason `unattestedDeclarer` gives: a person who has not committed
+   * here yet is still a person, and refusing would trade a silent record for a blocked one.
+   */
+  const unattested = await unattestedDeclarer(project.root, options.by);
+  const signerNotes = unattested
+    ? [diagnostic('XFORGE_VERIFICATION_DECLARER_UNATTESTED', unattested, `${project.changesPath}/${options.change}/${VERIFICATION_RECEIPT_PATH}`, 'warning')]
+    : [];
+
   const relative = `${project.changesPath}/${options.change}/${VERIFICATION_RECEIPT_PATH}`;
   const content = dumpYaml({
     change: options.change,
@@ -660,7 +677,7 @@ export async function executeVerificationFinalize(
       /* Named so the answer to "what did it actually check" is in the output, not only in the code. */
       confirmedGates: cited.map((citation) => citation.gate),
     },
-    diagnostics: facts.carried,
+    diagnostics: [...facts.carried, ...signerNotes],
     changes: [{ action: existed ? 'modify' : 'create', path: relative, digest: sha256(content), source: 'verification:finalize' }],
   };
 }
