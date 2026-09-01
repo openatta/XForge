@@ -483,7 +483,17 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
      need the governance revision, and resolving the control plane twice in one `check` is the kind
      of cost this command is already criticised for. */
   let control: Awaited<ReturnType<typeof resolveControlPlane>> | null = null;
-  if (options.change && structure.change && !diagnostics.some((item) => item.severity === 'error')) {
+  /*
+   * `hasStructureErrors` rather than "any error so far", because the Gates above have already run
+   * by this point and a failing one pushes an error of its own. Reading that as a reason not to
+   * resolve the control plane switched off everything downstream of it -- the delivery audit, the
+   * staleness notice, the reconciliation rules, and the `answer-finding` actions that carry the
+   * open questions to a person -- on exactly the runs where a Change is in trouble. A hand-driven
+   * run of all four Flows saw reconciliation output at some Stages and silence at others and could
+   * not tell why; this is why. A Gate that ran and failed is the normal answer this command exists
+   * to give, and it says nothing about whether the Change's own records can be read.
+   */
+  if (options.change && structure.change && !hasStructureErrors) {
     const resolved = await resolveChangeState(project, options.change);
     if (isStageFlow(resolved.flow) && resolved.flow.governance) {
       control = await resolveControlPlane(project, options.change, resolved.flow, resolved.state, structure.resources, resolved.config, { workPackages: structure.workPackages ?? undefined });

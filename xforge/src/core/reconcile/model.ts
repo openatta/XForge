@@ -16,7 +16,7 @@ export function requirementAnchor(heading: string): string {
   return first && ID_SHAPED.test(first) ? first : heading.trim();
 }
 
-type ReconciliationRule = 'RC-1' | 'RC-2' | 'RC-3' | 'RC-4' | 'RC-5' | 'RC-6' | 'RC-7';
+type ReconciliationRule = 'RC-1' | 'RC-2' | 'RC-3' | 'RC-4' | 'RC-5' | 'RC-6' | 'RC-7' | 'RC-8';
 
 /**
  * The rows reconciliation is computed from, named once so the readers and the rules cannot

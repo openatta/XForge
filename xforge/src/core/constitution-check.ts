@@ -194,7 +194,7 @@ async function resolveReference(
 }
 
 /** The observability principle names automated verification; `unit-tests` is the Gate that proves it. */
-function isObservabilityPrinciple(principle: string): boolean {
+export function isObservabilityPrinciple(principle: string): boolean {
   return /observab|automated verification|test/i.test(principle);
 }
 
@@ -351,7 +351,18 @@ export async function evaluateConstitutionCheck(
         if (unitTests && unitTests !== 'passed') {
           problems.push(`${relative}: principle "${principle}" is answered compliant, but this Change's unit-tests Gate Evidence records status "${unitTests}". Automated verification that does not pass does not establish compliance.`);
         } else if (!unitTests) {
-          warnings.push(`${relative}: principle "${principle}" could not be cross-checked — this Change has no unit-tests Gate Evidence yet. It will be checked again once the Gate has run.`);
+          /*
+           * "It will be checked again once the Gate has run" is what this used to say, and no Stage
+           * did. This Gate runs at Check; `unit-tests` runs at Verify, after it; nothing re-runs a
+           * Check-Stage Gate, and archive's mandatory set is the Verify Stage's. So the cross-check
+           * the comment above promises had never once been performed on a Solid or Major Change --
+           * every one of them archived with this warning standing and the answer never taken.
+           *
+           * RC-8 performs it, from the reconciliation pass that runs at every Stage including
+           * Verify, where the Evidence finally exists. Said here so a reader of this warning knows
+           * where the answer arrives rather than waiting for a re-run that never comes.
+           */
+          warnings.push(`${relative}: principle "${principle}" cannot be cross-checked at this Stage — this Change has no unit-tests Gate Evidence yet, and this Gate runs before the Stage that produces it. The reconciliation pass re-checks it as RC-8 once the Gate has run.`);
         }
       }
     }
