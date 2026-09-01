@@ -3,6 +3,7 @@ import path from 'node:path';
 import fg from 'fast-glob';
 import type { Diagnostic, ProjectContext } from '../types.js';
 import { parseContractDelta } from '../core/contract-delta.js';
+import { maskFencedCode } from '../core/markdown-fences.js';
 import { diagnostic } from '../core/errors.js';
 import { moduleOf } from '../core/contract-delta.js';
 import { safeResolve } from '../core/path-safety.js';
@@ -41,13 +42,27 @@ interface ContractListResult {
  * Named once and shared, because two readings of the same file is how the list and the merge came to
  * disagree about which ids exist.
  */
-function elementsSection(source: string): string {
-  const header = /^## Elements\s*$/m.exec(source);
-  if (!header || header.index === undefined) return source;
+/**
+ * The `## Elements` body, and a fence-masked copy of it that indexes identically.
+ *
+ * Both are needed because the caller slices one and scans the other: an element that documents a
+ * payload by showing it carries `## ` and `### ` lines inside its fence, and a bare scan read the
+ * first of them as the end of the section. A three-element baseline listed one, and the two it
+ * dropped were then unmodifiable -- the merger said "the baseline does not record it" about
+ * elements plainly in the file, and its own remedy (declare them under ADDED) was accepted, which
+ * writes a second block for an id the baseline already held.
+ */
+function elementsSection(source: string): { text: string; masked: string } {
+  const masked = maskFencedCode(source);
+  const header = /^## Elements\s*$/m.exec(masked);
+  if (!header || header.index === undefined) return { text: source, masked };
   const bodyStart = source.indexOf('\n', header.index + header[0].length);
-  const remainder = bodyStart < 0 ? '' : source.slice(bodyStart + 1);
-  const next = /^## /m.exec(remainder);
-  return next?.index === undefined ? remainder : remainder.slice(0, next.index);
+  if (bodyStart < 0) return { text: '', masked: '' };
+  const remainder = source.slice(bodyStart + 1);
+  const maskedRemainder = masked.slice(bodyStart + 1);
+  const next = /^## /m.exec(maskedRemainder);
+  if (next?.index === undefined) return { text: remainder, masked: maskedRemainder };
+  return { text: remainder.slice(0, next.index), masked: maskedRemainder.slice(0, next.index) };
 }
 
 /**
@@ -120,12 +135,12 @@ export async function executeContractList(
      * record it" -- on the archive path, after the closing approval, which is the exact route
      * `validateContractMergeFeasibility` exists to close.
      */
-    const headers = [...elementsSection(content).matchAll(/^### Element:\s*(.+?)\s*$/gm)];
+    const section = elementsSection(content);
+    const headers = [...section.masked.matchAll(/^### Element:\s*(.+?)\s*$/gm)];
     for (const [index, match] of headers.entries()) {
       const id = match[1]!.trim();
       if (options.kind && kindOf(id) !== options.kind) continue;
-      const section = elementsSection(content);
-      const body = section.slice(match.index!, headers[index + 1]?.index ?? section.length);
+      const body = section.text.slice(match.index!, headers[index + 1]?.index ?? section.text.length);
       elements.push({
         id,
         kind: kindOf(id),

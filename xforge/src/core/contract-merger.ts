@@ -7,6 +7,7 @@ import { sha256 } from './hash.js';
 import { safeResolve } from './path-safety.js';
 import { hasContractDeltaSections, parseContractDelta } from './contract-delta.js';
 import { exists } from './files.js';
+import { maskFencedCode } from './markdown-fences.js';
 
 /**
  * The contract baseline is a record, not a dialect document.
@@ -46,8 +47,10 @@ type ConflictSink = (item: Diagnostic) => void;
 
 const THROW_ON_CONFLICT: ConflictSink = (item) => { throw new XForgeError(item); };
 
-function elementBlocks(source: string): ElementBlock[] {
-  const headers = [...source.matchAll(/^### Element:\s*(.+?)\s*$/gm)];
+function elementBlocks(source: string, masked = maskFencedCode(source)): ElementBlock[] {
+  /* Scanned on the mask, sliced from the source: an element that documents a payload by showing it
+     has `### ` lines of its own inside the fence, and each one used to start a new element. */
+  const headers = [...masked.matchAll(/^### Element:\s*(.+?)\s*$/gm)];
   return headers.map((match, index) => {
     const start = match.index!;
     const end = headers[index + 1]?.index ?? source.length;
@@ -57,15 +60,19 @@ function elementBlocks(source: string): ElementBlock[] {
 
 /** The `## Elements` body of a baseline record, plus whatever surrounds it. */
 function recordParts(source: string): { before: string; after: string; blocks: ElementBlock[] } {
-  const match = /^## Elements\s*$/m.exec(source);
+  /* The mask indexes identically to the source, so every boundary found in one slices the other. */
+  const masked = maskFencedCode(source);
+  const match = /^## Elements\s*$/m.exec(masked);
   if (!match || match.index === undefined) return { before: source.trimEnd(), after: '', blocks: [] };
   const bodyStart = source.indexOf('\n', match.index + match[0].length);
   const remainderStart = bodyStart < 0 ? source.length : bodyStart + 1;
   const remainder = source.slice(remainderStart);
-  const next = /^## /m.exec(remainder);
+  const maskedRemainder = masked.slice(remainderStart);
+  const next = /^## /m.exec(maskedRemainder);
   const body = next?.index === undefined ? remainder : remainder.slice(0, next.index);
+  const maskedBody = next?.index === undefined ? maskedRemainder : maskedRemainder.slice(0, next.index);
   const after = next?.index === undefined ? '' : remainder.slice(next.index).trim();
-  return { before: source.slice(0, match.index).trimEnd(), after, blocks: elementBlocks(body) };
+  return { before: source.slice(0, match.index).trimEnd(), after, blocks: elementBlocks(body, maskedBody) };
 }
 
 /** The elements one operation section of a delta names. */

@@ -2,7 +2,7 @@ import { readdir } from 'node:fs/promises';
 import type { ProjectContext } from '../types.js';
 import { safeResolve } from './path-safety.js';
 
-export interface ChangeDirectoryListing {
+interface ChangeDirectoryListing {
   /** The Changes in flight: every directory that is not `archive` and not a dotfile. */
   ids: string[];
   /**

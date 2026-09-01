@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import fg from 'fast-glob';
 import type { ArtifactDefinition, Diagnostic, ProjectContext } from '../types.js';
 import { diagnostic } from './errors.js';
+import { maskFencedCode } from './markdown-fences.js';
 import { safeResolve } from './path-safety.js';
 
 type DeltaOperation = 'ADDED' | 'MODIFIED' | 'REMOVED';
@@ -77,7 +78,7 @@ export function moduleOf(body: string): string {
 }
 
 export function hasContractDeltaSections(source: string): boolean {
-  return source.split(/\r?\n/).some((line) => SECTION_HEADER.test(line));
+  return maskFencedCode(source).split(/\r?\n/).some((line) => SECTION_HEADER.test(line));
 }
 
 export function parseContractDelta(source: string): ParsedContractDelta {
@@ -101,28 +102,36 @@ export function parseContractDelta(source: string): ParsedContractDelta {
     section = null;
   };
 
-  for (const [index, line] of source.split(/\r?\n/).entries()) {
+  /*
+   * Structure is decided on the mask and content is taken from the source. An element that
+   * documents a payload by showing it carries `## ` and `### ` lines inside its fence, and reading
+   * those as headings ended the section there -- silently, because an element has no mandatory
+   * sub-block whose absence would have been reported.
+   */
+  const sourceLines = source.split(/\r?\n/);
+  for (const [index, masked] of maskFencedCode(source).split(/\r?\n/).entries()) {
+    const line = sourceLines[index] ?? masked;
     const number = index + 1;
-    const sectionMatch = SECTION_HEADER.exec(line);
+    const sectionMatch = SECTION_HEADER.exec(masked);
     if (sectionMatch) {
       closeSection();
       section = { operation: sectionMatch[1] as DeltaOperation, line: number, elements: [], assertedEmpty: false };
       continue;
     }
-    if (OTHER_SECTION_HEADER.test(line)) {
+    if (OTHER_SECTION_HEADER.test(masked)) {
       /* A section this document does not own -- `## Breaking Changes`, `## Consumer Impact`. It ends
          the operation section without becoming one, so its prose is never read as an element. */
       closeSection();
       continue;
     }
-    const elementMatch = ELEMENT_HEADER.exec(line);
+    const elementMatch = ELEMENT_HEADER.exec(masked);
     if (elementMatch) {
       closeElement();
       element = { id: elementMatch[1]!.trim(), line: number, content: '' };
       elementLines = [line];
       continue;
     }
-    if (OTHER_ELEMENT_HEADER.test(line)) {
+    if (OTHER_ELEMENT_HEADER.test(masked)) {
       closeElement();
       continue;
     }
@@ -136,7 +145,7 @@ export function parseContractDelta(source: string): ParsedContractDelta {
      * and the literal text was copied verbatim into the merged baseline, because an element's body
      * is carried across as-is.
      */
-    if (section && EMPTY_ASSERTION.test(line)) { section.assertedEmpty = true; continue; }
+    if (section && EMPTY_ASSERTION.test(masked)) { section.assertedEmpty = true; continue; }
     if (element) { elementLines.push(line); continue; }
   }
   closeSection();
