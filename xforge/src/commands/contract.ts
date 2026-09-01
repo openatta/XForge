@@ -1,4 +1,4 @@
-import { readFile, readdir } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import fg from 'fast-glob';
 import type { Diagnostic, ProjectContext } from '../types.js';
@@ -6,6 +6,7 @@ import { parseContractDelta } from '../core/contract-delta.js';
 import { diagnostic } from '../core/errors.js';
 import { moduleOf } from '../core/contract-delta.js';
 import { safeResolve } from '../core/path-safety.js';
+import { listChangeDirectories } from '../core/change-directories.js';
 
 /**
  * What the contract baseline currently records, read back.
@@ -194,27 +195,27 @@ interface ContractStatusResult {
 
 export async function executeContractStatus(project: ProjectContext): Promise<ContractStatusResult> {
   const diagnostics: Diagnostic[] = [];
-  let changesRoot: string;
-  try {
-    changesRoot = await safeResolve(project.root, project.changesPath);
-  } catch (error) {
-    /* Same shape, and the stakes are the same: "no Change in flight declares a contract delta" is
-       the sentence an operator reads to conclude that nothing collides. */
+  /*
+   * The same reading `state` uses for "in flight": every directory that is not the archive and not
+   * a dotfile. An archived Change has already merged and is not competing for anything.
+   *
+   * An empty `changes` list is this command's whole answer -- "no Change in flight declares a
+   * contract delta" is the sentence an operator reads to conclude that nothing collides. A
+   * directory that could not be read must not be allowed to produce it.
+   */
+  const inFlight = await listChangeDirectories(project);
+  if (inFlight.unreadable) {
     return {
       ok: false,
       data: { changes: [], overlaps: [] },
-      diagnostics: unreadable(error, project.changesPath, 'The Changes directory could not be read'),
+      diagnostics: [diagnostic(
+        'XFORGE_CHANGES_DIRECTORY_UNREADABLE',
+        `The Changes directory could not be read (${inFlight.unreadable}), so no claim on the baseline can be reported. This is not "no conflicts".`,
+        project.changesPath,
+      )],
     };
   }
-  /* The same reading `state` uses for "in flight": every directory that is not the archive and not
-     a dotfile. An archived Change has already merged and is not competing for anything. */
-  let ids: string[] = [];
-  try {
-    ids = (await readdir(changesRoot, { withFileTypes: true }))
-      .filter((entry) => entry.isDirectory() && entry.name !== 'archive' && !entry.name.startsWith('.'))
-      .map((entry) => entry.name)
-      .sort();
-  } catch { /* No Changes directory at all is an empty answer, not a failure. */ }
+  const ids = inFlight.ids;
 
   const changes: ContractStatusResult['data']['changes'] = [];
   const claims = new Map<string, Array<{ change: string; operation: string }>>();

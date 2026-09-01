@@ -1,4 +1,4 @@
-import { readFile, readdir } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import fg from 'fast-glob';
 import path from 'node:path';
 import type { Diagnostic, FileChange, ProjectContext, StageFlow } from '../types.js';
@@ -6,6 +6,7 @@ import { checkStructure } from '../core/checker.js';
 import { diagnostic } from '../core/errors.js';
 import { assertManaged } from '../core/project-loader.js';
 import { flowArchiveOperation, isStageFlow, loadFlows, stageGateReferences } from '../core/flow-resolver.js';
+import { listChangeDirectories } from '../core/change-directories.js';
 import { loadBundledScaffold } from '../core/bundled-scaffold.js';
 import { CLI_NAME, CLI_VERSION } from '../constants.js';
 import { flowSkillConformanceDiagnostics } from '../core/flow-skill-conformance.js';
@@ -85,17 +86,7 @@ const DANGLING_CODE_SCOPE: Record<string, DoctorScope> = {
   XFORGE_FLOW_SKILL_CONDITION_UNNAMED: 'skills',
 };
 
-async function activeChangeDirectories(project: ProjectContext): Promise<string[]> {
-  const absolute = await safeResolve(project.root, project.changesPath);
-  try {
-    return (await readdir(absolute, { withFileTypes: true }))
-      .filter((entry) => entry.isDirectory() && entry.name !== 'archive' && !entry.name.startsWith('.'))
-      .map((entry) => entry.name)
-      .sort();
-  } catch {
-    return [];
-  }
-}
+
 
 /**
  * Every Gate this Flow names anywhere. `stageGateReferences` in `core/flow-resolver.ts` is the one
@@ -267,7 +258,19 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
     });
   }
 
-  const changeDirectories = await activeChangeDirectories(project);
+  const changes = await listChangeDirectories(project);
+  /* `unusedFlows` below is derived by walking these directories, so an unreadable one does not make
+     the answer empty -- it makes it unknown, and reporting every Flow but the default as dead code
+     on the strength of a failed read is the accusation this stops. */
+  if (changes.unreadable) {
+    diagnostics.push(diagnostic(
+      'XFORGE_CHANGES_DIRECTORY_UNREADABLE',
+      `The Changes directory could not be read (${changes.unreadable}), so this report cannot tell an unused Flow from one whose Changes it could not see. Every finding below that counts Changes is suspect until it reads.`,
+      project.changesPath,
+      'warning',
+    ));
+  }
+  const changeDirectories = changes.ids;
   const usedFlows = new Set<string>([project.manifest.flow]);
   for (const changeId of changeDirectories) {
     const changePath = `${project.changesPath}/${changeId}/change.yaml`;

@@ -8,7 +8,6 @@ import { sha256 } from '../core/hash.js';
 import { assertManaged, loadProject, writeScaffoldVersion } from '../core/project-loader.js';
 import { executeProjection } from './projection.js';
 import { installedTargets, readOwnership } from '../install/ownership.js';
-import { safeResolve } from '../core/path-safety.js';
 import { loadBundledScaffold } from '../core/bundled-scaffold.js';
 import {
   LEGACY_SNAPSHOT_DIRECTORY, LEGACY_SNAPSHOT_ROOT, LEGACY_STAGED_DIRECTORY, LEGACY_UPGRADE_STATE,
@@ -17,6 +16,7 @@ import {
   type RollbackManifest, type UpgradePlan,
 } from '../core/upgrade.js';
 import { UPGRADE_SENTINEL, neverTouchPaths } from '../core/ownership-zones.js';
+import { listChangeDirectories } from '../core/change-directories.js';
 import type { StagedUpgrade } from '../core/upgrade-sentinel.js';
 
 /**
@@ -190,15 +190,7 @@ function trackedAt(root: string, head: string, candidates: string[]): string[] {
  * true record of what happened — but the Change's remaining Stages would then run under rules its
  * Design never considered. That is a decision about the work, so it stops and names them.
  */
-async function activeChanges(project: ProjectContext): Promise<string[]> {
-  try {
-    const absolute = await safeResolve(project.root, project.changesPath);
-    return (await readdir(absolute, { withFileTypes: true }))
-      .filter((entry) => entry.isDirectory() && entry.name !== 'archive' && !entry.name.startsWith('.'))
-      .map((entry) => entry.name)
-      .sort();
-  } catch { return []; }
-}
+
 
 /** One upgrade in flight: what was recorded, and where the two directories holding it actually are. */
 interface StagedState {
@@ -348,7 +340,22 @@ async function stage(project: ProjectContext, options: UpgradeOptions): Promise<
     ));
   }
 
-  const active = await activeChanges(project);
+  const openChanges = await listChangeDirectories(project);
+  /*
+   * Reading the directory is part of the guard, not a step before it. Returning "no open Changes"
+   * for a directory that could not be read let the upgrade run past the one check that exists to
+   * stop it -- and silently, because the accepted-anyway warning below is also keyed on the count.
+   * `--with-active-changes` cannot stand in for this: it accepts a named list of Changes, and there
+   * is no list here to accept.
+   */
+  if (openChanges.unreadable) {
+    throw new XForgeError(diagnostic(
+      'XFORGE_CHANGES_DIRECTORY_UNREADABLE',
+      `The Changes directory could not be read (${openChanges.unreadable}), so whether any Change is still open is unknown. An upgrade cannot be told it is safe by a directory nobody could list; repair the path and run this again.`,
+      project.changesPath,
+    ));
+  }
+  const active = openChanges.ids;
   if (active.length > 0 && !options.withActiveChanges) {
     throw new XForgeError(diagnostic(
       'XFORGE_UPGRADE_ACTIVE_CHANGES',

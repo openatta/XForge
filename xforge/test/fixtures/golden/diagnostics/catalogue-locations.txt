@@ -71,6 +71,9 @@ XFORGE_CHANGE_NOT_FOUND  src/core/archiver.ts
 XFORGE_CHANGE_NOT_FOUND  src/core/flow-resolver.ts
 XFORGE_CHANGE_REQUIRED  src/cli.ts
 XFORGE_CHANGE_REQUIRED  src/commands/check.ts
+XFORGE_CHANGES_DIRECTORY_UNREADABLE  src/commands/contract.ts
+XFORGE_CHANGES_DIRECTORY_UNREADABLE  src/commands/doctor.ts
+XFORGE_CHANGES_DIRECTORY_UNREADABLE  src/commands/upgrade.ts
 XFORGE_CHECK_NO_GATES_AT_STAGE  src/commands/check.ts
 XFORGE_CHECK_PASSED_WITH_WARNINGS  src/commands/check.ts
 XFORGE_CHECK_STAGE_UNKNOWN  src/commands/check.ts
