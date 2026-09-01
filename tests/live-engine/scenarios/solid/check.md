@@ -10,7 +10,8 @@ is a ready Check Action before writing anything.
 
 Produce `check-report.md` with exactly the `##` sections the Flow's check-report
 outline defines — Completeness, Consistency, Testability, Feasibility and risk,
-Rework — reviewing those dimensions across the Proposal, delta Spec, and Design.
+Gates and evidence, Rework — reviewing those dimensions across the Proposal,
+delta Spec, and Design.
 Do not add or omit a section. Specifically
 verify that every requirement in the delta Spec has a corresponding decision
 in the Design, that the Design introduces no behavior the delta Spec does not

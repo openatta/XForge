@@ -71,7 +71,7 @@ describe('Flow artifact graph', () => {
    * `design requires check` is acyclic, so the DFS says nothing. But a Change moves through
    * `stages` in array order, so `check` cannot have run when `design` is reached: every Artifact
    * `design` produces stays blocked on an output that never arrives, `nextArtifact` skips them, and
-   * `apply.ready` can never become true. No Gate, condition or approval is involved, so the author
+   * `apply.artifactsReady` can never become true. No Gate, condition or approval is involved, so the author
    * sees a Change that stops advancing and not one diagnostic anywhere.
    */
   it('reports a stage that requires a stage declared after it', async () => {
@@ -142,14 +142,14 @@ describe('Flow artifact graph', () => {
     await write(root, `${base}/specs/fix/spec.md`, deltaSpec('Fix'));
     const planned = (await resolveChangeState(project, 'tiny-fix')).state;
     expect(planned.nextArtifact).toBeNull();
-    expect(planned.apply.ready).toBe(true);
-    expect(planned.archive.ready).toBe(false);
+    expect(planned.apply.artifactsReady).toBe(true);
+    expect(planned.archive.artifactsReady).toBe(false);
     await write(root, `${base}/assurance.md`, '## Completeness\nPassed\n');
     /* Quick answers the Constitution ledger at Verify (it has no Check Stage), and the verification
        receipt is no longer an Artifact — it is a Stage exit condition evaluated against real Gate
        Evidence, which artifact readiness deliberately does not consider. */
     await write(root, `${base}/${CONSTITUTION_CHECK_PATH}`, await constitutionLedger(root));
-    expect((await resolveChangeState(project, 'tiny-fix')).state.archive.ready).toBe(true);
+    expect((await resolveChangeState(project, 'tiny-fix')).state.archive.artifactsReady).toBe(true);
   });
 
   it('returns Change schema diagnostics before resolving malformed scope data', async () => {
@@ -210,8 +210,8 @@ describe('Flow artifact graph', () => {
     await write(root, `${base}/${CONSTITUTION_CHECK_PATH}`, await constitutionLedger(root));
     const ready = (await resolveChangeState(project, 'major-release')).state;
     expect(ready.nextArtifact).toBeNull();
-    expect(ready.apply.ready).toBe(true);
-    expect(ready.archive.ready).toBe(false);
+    expect(ready.apply.artifactsReady).toBe(true);
+    expect(ready.archive.artifactsReady).toBe(false);
   });
 
   it('keeps v1alpha1 Artifact Flow projects readable during migration', async () => {
@@ -225,7 +225,7 @@ describe('Flow artifact graph', () => {
     const project = await loadProject(root);
     const state = (await resolveChangeState(project, 'legacy-fix')).state;
     expect(state.nextArtifact?.id).toBe('tasks');
-    expect(state.apply.ready).toBe(false);
+    expect(state.apply.artifactsReady).toBe(false);
     expect(state.apply.tracks).toBe('tasks.md');
   });
 });
@@ -262,17 +262,17 @@ describe('Artifact completion', () => {
     await write(root, `${base}/specs/fix/spec.md`, '## ADDED Requirements\n\n### Requirement: Fix\n');
     const noScenario = (await resolveChangeState(project, 'tiny-fix')).state;
     expect(noScenario.artifacts.find((item) => item.id === 'delta-specs')?.status).toBe('ready');
-    expect(noScenario.apply.ready).toBe(false);
+    expect(noScenario.apply.artifactsReady).toBe(false);
 
     // One valid and one invalid delta Spec still leaves the Artifact unfinished.
     await write(root, `${base}/specs/fix/spec.md`, deltaSpec('Fix'));
     await write(root, `${base}/specs/other/spec.md`, '## ADDED Requirements\n\n### Requirement: Other\n');
-    expect((await resolveChangeState(project, 'tiny-fix')).state.apply.ready).toBe(false);
+    expect((await resolveChangeState(project, 'tiny-fix')).state.apply.artifactsReady).toBe(false);
 
     await write(root, `${base}/specs/other/spec.md`, deltaSpec('Other'));
     const valid = (await resolveChangeState(project, 'tiny-fix')).state;
     expect(valid.artifacts.find((item) => item.id === 'delta-specs')?.status).toBe('done');
-    expect(valid.apply.ready).toBe(true);
+    expect(valid.apply.artifactsReady).toBe(true);
   });
 });
 

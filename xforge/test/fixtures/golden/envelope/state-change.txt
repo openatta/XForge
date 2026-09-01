@@ -458,7 +458,7 @@ exit: 0
       ],
       "nextArtifact": null,
       "apply": {
-        "ready": true,
+        "artifactsReady": true,
         "requires": [
           "check-report",
           "check-findings",
@@ -467,7 +467,7 @@ exit: 0
         "tracks": null
       },
       "archive": {
-        "ready": true,
+        "artifactsReady": true,
         "requires": [
           "assurance"
         ],

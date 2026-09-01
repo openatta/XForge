@@ -142,7 +142,7 @@ async function planArchive(project: ProjectContext, changeId: string, options: P
   }
   if (!structure.change) diagnostics.push(diagnostic('XFORGE_CHANGE_NOT_FOUND', `Active Change not found: ${changeId}`));
   else {
-    if (!structure.change.archive.ready) {
+    if (!structure.change.archive.artifactsReady) {
       const incomplete = structure.change.artifacts.filter((item) => structure.change!.archive.requires.includes(item.id) && item.status !== 'done').map((item) => item.id);
       diagnostics.push(diagnostic('XFORGE_ARCHIVE_ARTIFACTS_INCOMPLETE', `Archive prerequisites are incomplete: ${incomplete.join(', ')}`, `${project.changesPath}/${changeId}`));
     }

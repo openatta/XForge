@@ -191,7 +191,7 @@ function stageGraphDiagnostics(flow: StageFlow, filePath: string): Diagnostic[] 
      * offers the next index plus `reworkTo` and nothing else — so B has not run when A is reached and
      * never will have. `flowArtifacts` then hands every Artifact A produces a dependency on B's
      * output, and those Artifacts sit at `blocked` for the life of the Change: `nextArtifact` skips
-     * them, `apply.ready` cannot become true, and no Gate, condition or approval is involved in any
+     * them, `apply.artifactsReady` cannot become true, and no Gate, condition or approval is involved in any
      * of it. The Flow author sees a Change that stops advancing and no diagnostic anywhere, because
      * every check that exists is satisfied. This is the one that says which way the arrow points.
      */
@@ -428,9 +428,13 @@ export async function resolveChangeState(
     scope: config.scope,
     artifacts: artifactStates,
     nextArtifact: artifactStates.find((item) => planningIds.has(item.id) && item.status === 'ready') ?? null,
-    apply: { ready: applyReady, requires: apply.requires, tracks: apply.tracks },
+    /* `artifactsReady`, not `ready`: it answers whether the Artifacts this operation requires
+       exist, and nothing about Gates, conditions or approvals. Three separate live runs read a bare
+       `ready: true` beside a blocked `readyTransitions` entry as a contradiction; it was two
+       questions sharing one word. */
+    apply: { artifactsReady: applyReady, requires: apply.requires, tracks: apply.tracks },
     archive: {
-      ready: archiveReady,
+      artifactsReady: archiveReady,
       requires: archive.requires,
       mandatoryGates: archive.mandatoryGates,
       syncSpecs: archive.syncSpecs,

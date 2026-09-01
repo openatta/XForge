@@ -168,7 +168,23 @@ function resolveField(data: unknown, path: string): { found: true; value: unknow
        contain, which is the exact failure this option exists to remove. */
     if (!Object.prototype.hasOwnProperty.call(container, segment)) {
       const available = Object.keys(container).slice(0, 12);
-      return { found: false, reason: `${walked.length ? walked.join('.') : 'data'} has no "${segment}"${available.length ? ` (it has: ${available.join(', ')})` : ''}.` };
+      /*
+       * Where the name *does* live, when it lives one level down.
+       *
+       * Two live runs asked for `mandatoryGateEvidence` and got "data has no mandatoryGateEvidence
+       * (it has: project, scaffold, …, change)" -- true, and one level short of useful: it is
+       * `change.mandatoryGateEvidence`, and the key list printed the container it is inside. The
+       * all-or-nothing rule means that guess costs every other field asked for in the same call, so
+       * the round trip is not free. One level only: past that the search stops being a correction
+       * and starts being a different question.
+       */
+      const nested = Object.keys(container).find((key) => {
+        const child = container[key];
+        return child !== null && typeof child === 'object'
+          && Object.prototype.hasOwnProperty.call(child as object, segment);
+      });
+      const hint = nested ? ` Did you mean ${[...walked, nested, segment].join('.')}?` : '';
+      return { found: false, reason: `${walked.length ? walked.join('.') : 'data'} has no "${segment}"${available.length ? ` (it has: ${available.join(', ')})` : ''}.${hint}` };
     }
     current = container[segment];
     walked.push(segment);

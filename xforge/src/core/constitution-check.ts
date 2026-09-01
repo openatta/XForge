@@ -125,7 +125,16 @@ async function readGateEvidence(project: ProjectContext, changeId: string): Prom
   return gates;
 }
 
-async function readRequirements(project: ProjectContext, changeId: string): Promise<Set<string>> {
+/**
+ * The Requirement ids this Change can cite, shared with `core/check-findings.ts`.
+ *
+ * Both ledgers are written in the same Stage by the same Skill, and a finding that says a
+ * Requirement has no automated verification has that Requirement as its most natural citation --
+ * two live runs reached for one and were told it "does not exist in this Change". Exported rather
+ * than copied: a second reader of the same Specs is how the two ledgers came to disagree about
+ * paths in the first place.
+ */
+export async function readRequirements(project: ProjectContext, changeId: string): Promise<Set<string>> {
   const requirements = new Set<string>();
   const roots = [`${project.changesPath}/${changeId}/specs`, project.specsPath];
   for (const relative of roots) {

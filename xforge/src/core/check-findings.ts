@@ -3,6 +3,7 @@ import type { ProjectContext } from '../types.js';
 import { knownIdentities, unknownIdentityReason, unverifiableIdentityWarning, type KnownIdentities } from './ledger-identity.js';
 import { unknownKeyWarnings, verdict, type LedgerVerdict } from './ledger.js';
 import { safeResolve } from './path-safety.js';
+import { readRequirements } from './constitution-check.js';
 import { loadYaml, trimmedText } from './yaml.js';
 
 /**
@@ -72,7 +73,22 @@ const FINDING_KEYS = ['id', 'severity', 'summary', 'refs', 'status', 'reworkTo',
  * neither reachable Change-relative. Both runs had to reword findings to point somewhere weaker, or
  * accept a warning on the citation that carried the point.
  */
-async function refExists(project: ProjectContext, changeId: string, ref: string): Promise<boolean> {
+async function refExists(project: ProjectContext, changeId: string, ref: string, requirements: Set<string>): Promise<boolean> {
+  /*
+   * A Requirement id counts, on the same terms the neighbouring ledger already gives it.
+   *
+   * `xforge-check` step 5 says a finding carries an "Artifact/Requirement location" and the
+   * `constitution-check` outline spells `<Requirement id | existing path | gate:<name>>`, but this
+   * one took paths alone. Two hand-driven runs reached for the Requirement a finding was *about* --
+   * "REQ-CRED-001 has no automated verification" -- and were told it "does not exist in this
+   * Change", so both reworded the finding to point at something weaker.
+   *
+   * `gate:<name>` is deliberately not accepted here, and the difference is worth stating rather
+   * than erasing: a Constitution entry cites evidence that a principle holds, and a passing Gate is
+   * such evidence; a finding cites where a problem *is*, which is an Artifact, a Spec, or a
+   * Requirement. A Gate is neither.
+   */
+  if (requirements.has(ref.trim().toLowerCase())) return true;
   for (const candidate of [`${project.changesPath}/${changeId}/${ref}`, ref]) {
     try {
       await access(await safeResolve(project.root, candidate));
@@ -89,6 +105,7 @@ async function evaluate(
   relative: string,
   known: KnownIdentities,
 ): Promise<CheckFindingsResult> {
+  const requirements = await readRequirements(project, changeId);
   const counts: Record<FindingSeverity, number> = { blocker: 0, warning: 0, suggestion: 0 };
   const problems: string[] = [];
   const warnings: string[] = [];
@@ -123,8 +140,8 @@ async function evaluate(
     const refPaths = Array.isArray(finding.refs) ? finding.refs.map(trimmedText).filter(Boolean) : [];
     if (refPaths.length === 0) problems.push(`${relative}: finding ${label} cites no artifact; a finding nobody can locate cannot be acted on.`);
     for (const ref of refPaths) {
-      if (!(await refExists(project, changeId, ref))) {
-        warnings.push(`${relative}: finding ${label} refs "${ref}", which does not exist in this Change.`);
+      if (!(await refExists(project, changeId, ref, requirements))) {
+        warnings.push(`${relative}: finding ${label} refs "${ref}", which is neither a Requirement this Change declares nor a path that exists.`);
       }
     }
 

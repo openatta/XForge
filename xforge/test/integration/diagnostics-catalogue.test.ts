@@ -30,16 +30,17 @@ describe('diagnostic catalogue', () => {
     expect(direct.length).toBeGreaterThan(180);
     expect(direct.every((site) => site.message.length > 0 && site.file.startsWith('src/'))).toBe(true);
     /*
-     * Eight call sites choose their code at runtime — `cli.ts`'s unknown-versus-missing command, the
+     * Nine call sites choose their code at runtime — `cli.ts`'s unknown-versus-missing command, the
      * Gate runner forwarding a declared Gate's own refusal, four remedy diagnostics that carry a
-     * code decided by what they are remedying, and the two in `core/reconcile.ts`: one forwards the
-     * code a reconciliation rule decided, the other the code the reader of an unreadable source
-     * produced. They are legitimate and invisible to the wording rules below, so the fingerprint
+     * code decided by what they are remedying, the two in `core/reconcile.ts` (one forwards the code
+     * a reconciliation rule decided, the other the code the reader of an unreadable source
+     * produced), and `resolveControlPlane` forwarding `blockRemedy`'s answer so a blocked transition
+     * names its route out where the block is *read* and not only where it is hit. They are legitimate and invisible to the wording rules below, so the fingerprint
      * records them as `(dynamic)`: a ninth appearing shows up as a diff there rather than as a
      * silent gap in the catalogue. The count is asserted here so it cannot grow by way of a golden
      * update that nobody reads.
      */
-    expect(sites.filter((site) => site.code === null).length).toBe(8);
+    expect(sites.filter((site) => site.code === null).length).toBe(9);
 
     /*
      * And the indirect ones, counted so they cannot quietly grow either. Forty-five declarations carrying thirty-five distinct codes reached

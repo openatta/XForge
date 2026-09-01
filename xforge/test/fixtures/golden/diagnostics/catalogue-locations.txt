@@ -2,6 +2,7 @@
 (dynamic)  src/commands/doctor.ts
 (dynamic)  src/commands/transition.ts
 (dynamic)  src/core/archiver.ts
+(dynamic)  src/core/control-plane.ts
 (dynamic)  src/core/reconcile.ts
 (dynamic)  src/runners/gate.ts
 XFORGE_ADAPTER_PROJECTION_MISSING  src/install/planner.ts

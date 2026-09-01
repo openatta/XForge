@@ -47,7 +47,10 @@ question, never an answer.
 
 `TEST_REQUEST.md` states the command this project's acceptance is measured by,
 and there is no human at this terminal, so it stands in for the project owner's
-answer. Declare it with the CLI, never by hand:
+answer. Declare it with the CLI, never by hand. `--by` names who chose the
+command; `"project owner"` is a role rather than a person, so the CLI records it
+and says so with `XFORGE_VERIFICATION_DECLARER_UNATTESTED` — that warning is the
+record being honest about itself, not something to work around:
 
 ```
 xforge verification declare --gate-name unit-tests --command '["npm","test"]' --by "project owner"
