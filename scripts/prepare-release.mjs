@@ -115,10 +115,12 @@ function assertNoStaleVersion(previousVersion) {
      * Two kinds, and both recur at every release rather than being about this one:
      *
      * - **Worked examples of version *precedence*.** `compareVersions` is explained and tested with
-     *   concrete strings — `0.8.0-rc.1 < 0.8.0` — and the point of the example is the relationship
-     *   between the two, not the number. Substituting the current release into them leaves prose and
-     *   assertions that no longer demonstrate what they were written to demonstrate. They also match
-     *   only because the search is a substring one: `0.8.0-rc.1` contains `0.8.0`.
+     *   concrete strings — a release candidate sorting below its own GA — and the point of the
+     *   example is the relationship between the two, not the number. Substituting the current
+     *   release into them leaves prose and assertions that no longer demonstrate what they were
+     *   written to demonstrate. They also match only because the search is a substring one: an
+     *   `-rc.N` suffix contains the GA version it precedes. (Spelled without a literal version on
+     *   purpose: this file would otherwise report itself.)
      * - **Records of work done at a particular version.** A plan and a pilot report describe what
      *   was true when they were written. Moving their version number forward would make them claim
      *   to describe a release they predate.
