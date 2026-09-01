@@ -102,6 +102,22 @@ export function flowArchiveOperation(flow: Flow): {
   };
 }
 
+/**
+ * Every Gate a Stage names, paired with the Stage naming it.
+ *
+ * `flowArchiveOperation().mandatoryGates` answers a different question -- which Gates archive
+ * demands -- and its answer is the verify Stage's `gates` alone. Validating a Flow's Gate
+ * references against that list checks one Stage out of however many the Flow has, so a Gate named
+ * at propose, design or check was never checked to exist at all: `doctor` reported `dangling: 0`,
+ * `xforge check` passed, `transition` passed, and the Flow failed only once a Stage actually
+ * reached the Gate, with XFORGE_GATE_NOT_FOUND and no earlier warning of any kind.
+ */
+export function stageGateReferences(flow: StageFlow): Array<{ stage: string; gate: string }> {
+  return flow.stages.flatMap((stage) =>
+    [...new Set([...(stage.gates ?? []), ...(stage.exit?.gates ?? [])])].map((gate) => ({ stage: stage.id, gate })),
+  );
+}
+
 /** The keys that make a stage `exit` legible to the control plane. Mirrors `structuredExit`. */
 const STRUCTURED_EXIT_KEYS = ['conditions', 'gates', 'approvals', 'auditEvents'] as const;
 

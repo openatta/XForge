@@ -5,7 +5,7 @@ import type { Diagnostic, FileChange, ProjectContext, StageFlow } from '../types
 import { checkStructure } from '../core/checker.js';
 import { diagnostic } from '../core/errors.js';
 import { assertManaged } from '../core/project-loader.js';
-import { flowArchiveOperation, isStageFlow, loadFlows } from '../core/flow-resolver.js';
+import { flowArchiveOperation, isStageFlow, loadFlows, stageGateReferences } from '../core/flow-resolver.js';
 import { loadBundledScaffold } from '../core/bundled-scaffold.js';
 import { CLI_NAME, CLI_VERSION } from '../constants.js';
 import { flowSkillConformanceDiagnostics } from '../core/flow-skill-conformance.js';
@@ -97,9 +97,14 @@ async function activeChangeDirectories(project: ProjectContext): Promise<string[
   }
 }
 
-function stageGateReferences(flow: StageFlow): string[] {
+/**
+ * Every Gate this Flow names anywhere. `stageGateReferences` in `core/flow-resolver.ts` is the one
+ * reading of "what Stages name", shared with `checkStructure` so the two commands cannot drift --
+ * they did, and `check` was the one missing every Stage but verify.
+ */
+function allGateReferences(flow: StageFlow): string[] {
   return [
-    ...flow.stages.flatMap((stage) => [...(stage.gates ?? []), ...(stage.exit?.gates ?? [])]),
+    ...stageGateReferences(flow).map((reference) => reference.gate),
     ...flowArchiveOperation(flow).mandatoryGates,
   ];
 }
@@ -180,7 +185,7 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
   for (const [name, flow] of flowResult.flows) {
     const filePath = `xforge/flows/${name}.yaml`;
     if (isStageFlow(flow)) {
-      for (const gate of stageGateReferences(flow)) referencedGates.add(gate);
+      for (const gate of allGateReferences(flow)) referencedGates.add(gate);
       for (const stage of flow.stages) referencedSkills.add(stage.skill);
       referencedSkills.add(flow.terminal.archive.handler);
       const declaredApprovals = new Set((flow.governance?.approvalPolicies ?? []).map((policy) => policy.id));
