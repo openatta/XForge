@@ -172,7 +172,7 @@ governance:
   # It now gates the check exit instead, which is the last moment before implementation begins and
   # the same moment Major collects `implementation-major`. Collecting it one Stage earlier meant the
   # approver signed before the two ledgers that decide whether the planning holds — `check-findings`
-  # and `constitution-check` — had been written at all, so `xforge brief`'s reconciliation section
+  # and `constitution-check` — had been written at all, so the reconciliation section
   # had nothing to compare and rendered "(no differences found)", which reads exactly like a clean
   # review. Both Flows now take that decision where the evidence for it exists.
   approvalPolicies:

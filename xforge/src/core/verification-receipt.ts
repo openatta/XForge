@@ -30,8 +30,9 @@ import { unknownKeyWarnings, verdict, type LedgerVerdict } from './ledger.js';
  *   `contentRevision` above is the binding that carries the weight, and it is commit-independent.
  *
  * One thing this file cannot fix on its own, and the reason it does not compare against a
- * self-declared revision: while `evidence/verification-receipt.yaml` is a declared Flow Artifact,
- * its own bytes feed `contentRevision` (`core/revision.ts` digests every Artifact output). A file
+ * self-declared revision: wherever `evidence/verification-receipt.yaml` is declared as a Flow
+ * Artifact -- no shipped Flow does today -- its own bytes feed `contentRevision`
+ * (`core/revision.ts` digests every Artifact output). A file
  * that has to state the digest of a set it belongs to has no fixed point, and writing it would make
  * every Gate that just passed `stale`. The Flow must therefore stop treating the receipt as a
  * content-governing Artifact and declare it as this exit condition instead; see the wiring note in
