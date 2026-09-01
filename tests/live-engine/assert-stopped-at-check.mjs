@@ -10,8 +10,30 @@
  * of defect is invisible inside a 1700-line script and obvious in a file a test can import.
  */
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { readFile, writeFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { parse } from '../../xforge/node_modules/yaml/dist/index.js';
 import path from 'node:path';
+
+/**
+ * This directory, for spawning the sibling scripts.
+ *
+ * Derived rather than passed: these helpers were lifted out of `run-matrix.mjs` and kept reading
+ * names that only existed in its module scope -- `scriptsRoot`, `commit`, `changeId`,
+ * `scenarioName`. Nothing type-checks these files and nothing in the static suite imports them, so
+ * every one of those was a `ReferenceError` waiting for somebody to pay for a run.
+ */
+const scriptsRoot = path.dirname(fileURLToPath(import.meta.url));
+
+/** Commits the whole Change directory, or does nothing when it is already clean. */
+function commit(projectRoot, message) {
+  spawnSync('git', ['add', '.'], { cwd: projectRoot, encoding: 'utf8' });
+  const status = spawnSync('git', ['status', '--porcelain'], { cwd: projectRoot, encoding: 'utf8' }).stdout.trim();
+  if (!status) return;
+  const done = spawnSync('git', ['commit', '--quiet', '-m', message], { cwd: projectRoot, encoding: 'utf8' });
+  if (done.status !== 0) throw new Error(`git commit failed in ${projectRoot}: ${done.stderr || done.stdout}`);
+}
 
 /** Project-relative path of something inside a Change directory. */
 function changePath(changeId, generates) {
@@ -154,7 +176,7 @@ export function assertStoppedAtCheck({ projectRoot, changeId, flowDefinition, ch
  * infer a plausible one, so a run that guesses correctly has still demonstrated the behaviour that
  * put an empty Gate into production in the first place.
  */
-function assertStoppedAwaitingDeclaration(projectRoot, stage, moved) {
+export function assertStoppedAwaitingDeclaration(projectRoot, stage, moved, changeId, scenarioName) {
   const problems = [];
   const blocks = (moved.diagnostics ?? []).map((item) => `${item.code}: ${item.message}`).join('\n');
 
@@ -209,7 +231,7 @@ export async function contradictTaskLedgerDesign(projectRoot) {
   commit(projectRoot, 'Planted Design/acceptance-suite contradiction for the rework scenario');
 }
 
-async function runApprovals({ projectRoot, policyIds, transition, changeId, simulateRejectionFor }) {
+export async function runApprovals({ projectRoot, policyIds, transition, changeId, simulateRejectionFor }) {
   for (const policyId of policyIds) {
     const args = [
       '--root', projectRoot, '--change', changeId, '--transition', transition, '--policy', policyId,

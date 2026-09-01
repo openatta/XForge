@@ -9,7 +9,9 @@ import { assertLiveEnginePolicy, createLiveEnginePolicy, resetLiveEngineStageAtt
 import { stoppedAwaitingDeclaration as stoppedAwaitingDeclarationHere } from './outcome.mjs';
 import { SCENARIO_IDS } from './scenario-catalogue.mjs';
 import { assertContractBaselineAdvanced } from './assert-contract-baseline.mjs';
-import { assertStoppedAtCheck, contradictTaskLedgerDesign } from './assert-stopped-at-check.mjs';
+import {
+  assertStoppedAtCheck, assertStoppedAwaitingDeclaration, contradictTaskLedgerDesign, runApprovals,
+} from './assert-stopped-at-check.mjs';
 
 /**
  * Data-driven live-engine matrix runner. For a Flow scenario (quick/solid/major), this reads
@@ -1091,7 +1093,7 @@ for (let index = 0; index < stages.length; ) {
     const stalled = artifactExists ? null : tryXforgeJson(projectRoot, ['check', '--change', changeId]);
     if (stoppedAwaitingDeclarationHere({ artifactExists, allowedOutcomes, diagnostics: stalled?.diagnostics })) {
       outcome = 'stopped-awaiting-declaration';
-      stoppedAwaitingDeclaration = assertStoppedAwaitingDeclaration(projectRoot, stage, stalled);
+      stoppedAwaitingDeclaration = assertStoppedAwaitingDeclaration(projectRoot, stage, stalled, changeId, scenarioName);
       stoppedInStage = true;
       break;
     }
@@ -1342,7 +1344,7 @@ if (outcome === 'archived' && allowedOutcomes.includes('stopped-awaiting-declara
   const refused = (finalCheck?.diagnostics ?? []).some((item) => item.code === 'XFORGE_VERIFICATION_NOT_DECLARED');
   if (refused) {
     outcome = 'stopped-awaiting-declaration';
-    stoppedAwaitingDeclaration = assertStoppedAwaitingDeclaration(projectRoot, stages.at(-1), finalCheck);
+    stoppedAwaitingDeclaration = assertStoppedAwaitingDeclaration(projectRoot, stages.at(-1), finalCheck, changeId, scenarioName);
   }
 }
 
