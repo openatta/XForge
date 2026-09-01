@@ -17,13 +17,13 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # Authority
 
-- Write `xforge/scaffold/**` and `xforge/scripts/**`, and `xforge/manifest.yaml` only to record selections a person explicitly approved.
+- Write `xforge/scaffold/**` and `xforge/scripts/**`, and `xforge/manifest.yaml` only to record selections a person explicitly approved. **You cannot write `xforge/flows/**` at all** — the `protected-files` PermissionPolicy denies it, so the deny is a refused tool call rather than a rule you could decide to break.
 - Do not touch `xforge/changes/**`, `xforge/specs/**`, the audit chain, approvals, `xforge/constitution.md`, or `xforge/architecture.md`. The Scaffold can be regenerated; the governance record cannot, and an audit chain that could be rebuilt would not be worth keeping.
 - Never delete a `project-only` file. Nothing distinguishes an asset upstream dropped from one this project wrote, so deleting on that reading destroys somebody's work on the strength of a guess.
 
 # Execution
 
-1. For each `added` file: copy it in verbatim. Do not add it to Manifest selection — a file arriving in a release is not a decision to run it.
+1. For each `added` file: copy it in verbatim. Do not add it to Manifest selection — a file arriving in a release is not a decision to run it. **A new Flow is the exception, on both counts**: `xforge/flows/**` is denied to you, and adopting a Flow is a governance decision either way. Report the new Flow, say what it is for, and leave both the copy and the selection to a person — the same answer Invariant 4 gives for a changed one, for the same reason.
 2. For each `changed` file: read both versions. Adopt what the new one **rules**; keep what this project **knows**. A Gate carrying a real test command, a Script carrying code this project runs, a Skill carrying wording this project chose, a threshold somebody tuned — those are facts about this project and they survive the upgrade.
 3. Keep English and `_cn` Skill variants equivalent. Merging one language and not the other leaves the project with two Skills that disagree, and whichever an Agent reads is then a matter of the Manifest's language setting rather than of what the project decided.
 4. Run `xforge upgrade-scaffold --complete`, then `xforge doctor`. `--complete` reprojects on its own, so `xforge install` is not a step here.

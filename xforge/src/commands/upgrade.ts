@@ -849,6 +849,21 @@ function renderMergePrompt(plan: UpgradePlan, staged: string, snapshot: string):
     `Copy them in verbatim. Do **not** add them to \`xforge/manifest.yaml\`: a file arriving is not a`,
     `decision to run it. Report them instead.`,
     ``,
+    /*
+     * The Flow paragraph above sits under `changed`, and a new Flow is not a changed one. "Copy them
+     * in verbatim" then read as an instruction to write `xforge/flows/**` -- which `protected-files`
+     * denies, so the Agent is told to do something its next tool call refuses. It is also not in the
+     * "Never" list below, because that list is derived from `inTransaction !== 'full'` and a Flow is
+     * staged and diffed like everything else in its zone. Named here, where the instruction is.
+     */
+    ...(added.some((relative) => relative.startsWith('xforge/flows/')) ? [
+      `**Except a new Flow.** ${added.filter((relative) => relative.startsWith('xforge/flows/')).map((relative) => `\`${relative}\``).join(', ')} `
+      + `arrived in this release, and \`xforge/flows/**\` is denied to you by \`protected-files\` —`,
+      `copying it in is a refused tool call, not a rule you can decide to break. Report it, say what`,
+      `it governs, and leave both the copy and the selection to a person, for the reason the changed`,
+      `case gives above.`,
+      ``,
+    ] : []),
     ...(plan.unselected.length > 0 ? [
       `## Shipped and not selected`,
       ``,
