@@ -46,10 +46,14 @@ describe('diagnostic catalogue', () => {
      * readers without ever appearing here: the fingerprint claimed to be every diagnostic this
      * product can emit and was missing a tenth of them, and the untested-code list below is built
      * from this catalogue — so it could not owe anything for a code it had never heard of.
+     *
+     * Fifty now, over forty codes: the contract work added the reconciliation rules, whose
+     * observations carry their own code and reach a reader through the one forwarding site in
+     * `core/reconcile.ts`. That is the shape this count exists to keep visible.
      */
     const indirect = sites.filter((site) => site.severity === 'indirect');
-    expect(indirect.length).toBe(45);
-    expect(new Set(indirect.map((site) => site.code)).size).toBe(35);
+    expect(indirect.length).toBe(50);
+    expect(new Set(indirect.map((site) => site.code)).size).toBe(40);
   });
 
   it('splits arguments at top-level commas only', () => {

@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { Diagnostic, StageFlow } from '../types.js';
+import { isContractDeltaArtifact } from './contract-delta.js';
 import { diagnostic } from './errors.js';
 import type { SelectedResources } from './resource-loader.js';
 
@@ -138,6 +139,29 @@ export async function flowSkillConformanceDiagnostics(
         'warning',
       ));
     }
+  }
+
+  /*
+   * R4 — a Flow that collects contract deltas and throws them away.
+   *
+   * Not about a Skill, and it lives here because it is the same defect the other three are: a
+   * reference that resolves while the thing it resolves to does not cover the job. A Flow that
+   * declares a `contract-delta` Artifact makes an Agent write one every Change, and a Flow whose
+   * archive omits `syncContracts` never merges any of them — so the baseline those deltas describe
+   * never advances, every Change re-declares what the last one already said, and nothing anywhere
+   * says why. Both halves are individually valid, which is exactly why nothing caught it.
+   *
+   * One string comparison, on a fact with no legitimate reading: there is no reason to collect a
+   * delta whose whole purpose is to be merged and then not merge it.
+   */
+  const collectsDeltas = flow.artifacts.some((artifact) => isContractDeltaArtifact(artifact));
+  if (collectsDeltas && !flow.terminal.archive.syncContracts) {
+    diagnostics.push(diagnostic(
+      'XFORGE_FLOW_CONTRACT_DELTA_UNMERGED',
+      `Flow ${flow.metadata.name} declares a contract-delta Artifact and its archive does not set syncContracts, so every interface delta it collects is discarded rather than merged into the contract baseline. The baseline never advances, and each Change re-declares what the one before it already did. Set \`terminal.archive.syncContracts: true\`, or drop the Artifact if this Flow is not meant to govern interfaces. ${SKILL_FIX_ROUTE}`,
+      flowPath,
+      'warning',
+    ));
   }
   return diagnostics;
 }

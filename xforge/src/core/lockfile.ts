@@ -87,7 +87,7 @@ export async function resolvedLock(project: ProjectContext, resources: SelectedR
     protocol: PROTOCOL_VERSION,
     scaffold: { version: project.manifest.scaffold.version, source: project.manifest.scaffold.source, language: project.manifest.scaffold.language },
     xforge: { ...project.manifest.xforge, integrity: runtimeCliIntegrity() },
-    paths: { specs: project.specsPath, changes: project.changesPath },
+    paths: { specs: project.specsPath, changes: project.changesPath, contracts: project.contractsPath },
     resources: entries,
     targets: project.manifest.targets,
     generatedProtocol: PROTOCOL_VERSION,

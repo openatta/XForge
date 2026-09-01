@@ -25,6 +25,10 @@ exit: 0
         "changes": {
           "value": "xforge/changes",
           "source": "manifest"
+        },
+        "contracts": {
+          "value": "xforge/contracts",
+          "source": "default"
         }
       },
       "compatibility": {
@@ -98,7 +102,8 @@ exit: 0
               "medium",
               "high"
             ],
-            "criticalImpacts": "allowed"
+            "criticalImpacts": "allowed",
+            "contractImpact": "forbidden"
           },
           "requiredWhen": {
             "risk": [
@@ -132,6 +137,7 @@ exit: 0
               "low"
             ],
             "criticalImpacts": "forbidden",
+            "contractImpact": "forbidden",
             "maxModules": 1
           }
         },
@@ -152,7 +158,8 @@ exit: 0
               "low",
               "medium"
             ],
-            "criticalImpacts": "forbidden"
+            "criticalImpacts": "forbidden",
+            "contractImpact": "forbidden"
           }
         },
         "stages": [

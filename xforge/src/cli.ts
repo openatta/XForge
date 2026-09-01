@@ -11,6 +11,7 @@ import { executeApprove, type ApprovalTerminal } from './commands/approve.js';
 import { executeAudit } from './commands/audit.js';
 import { executeCheck } from './commands/check.js';
 import { executeStageBundle, renderStageBundleText } from './commands/stage-bundle.js';
+import { executeContractList, executeContractStatus, renderContractListText, renderContractStatusText } from './commands/contract.js';
 import { executeExplain, renderExplainText } from './commands/explain.js';
 import { executeFindingsResolve } from './commands/findings.js';
 import { executeVerificationDeclare, executeVerificationDraftReceipt, executeVerificationFinalize, executeVerificationRetire } from './commands/verification.js';
@@ -35,7 +36,7 @@ import { detectScaffoldLanguage, parseScaffoldLanguage } from './core/language.j
 import { envelope, present } from './protocol/envelope.js';
 import type { Diagnostic, Envelope, FlowAuthority, NextAction, ScaffoldLanguage } from './types.js';
 
-type CommandName = 'help' | 'version' | 'init' | 'state' | 'install' | 'sync' | 'update' | 'uninstall' | 'check' | 'stage-bundle' | 'explain' | 'verification' | 'transition' | 'approve' | 'audit' | 'work-package' | 'hook' | 'archive' | 'doctor' | 'upgrade-scaffold' | 'review' | 'findings';
+type CommandName = 'help' | 'version' | 'init' | 'state' | 'install' | 'sync' | 'update' | 'uninstall' | 'check' | 'stage-bundle' | 'explain' | 'verification' | 'transition' | 'approve' | 'audit' | 'work-package' | 'hook' | 'archive' | 'doctor' | 'upgrade-scaffold' | 'review' | 'findings' | 'contract';
 
 interface ParsedArguments {
   command: string;
@@ -59,6 +60,8 @@ interface ParsedArguments {
   subcommand?: string;
   change?: string;
   kind?: 'skills' | 'agents' | 'rules' | 'policies' | 'hooks' | 'gates' | 'scripts' | 'mcp-servers';
+  /** `contract list --kind`: a contract dialect, which is an open set and not the one above. */
+  contractKind?: string;
   target?: TargetId;
   gate?: string;
   to?: string;
@@ -107,9 +110,9 @@ interface ParsedArguments {
  * reader up a level to find the usage by hand. A group's help already covers every subcommand it
  * has, so the leaf resolves to it rather than being refused.
  */
-const GROUP_COMMANDS = new Set<string>(['audit', 'hook', 'work-package', 'verification', 'transition', 'review', 'findings']);
+const GROUP_COMMANDS = new Set<string>(['audit', 'hook', 'work-package', 'verification', 'transition', 'review', 'findings', 'contract']);
 
-const COMMANDS: CommandName[] = ['help', 'version', 'init', 'state', 'install', 'sync', 'update', 'uninstall', 'check', 'stage-bundle', 'explain', 'verification', 'transition', 'approve', 'audit', 'work-package', 'hook', 'archive', 'doctor', 'upgrade-scaffold', 'review', 'findings'];
+const COMMANDS: CommandName[] = ['help', 'version', 'init', 'state', 'install', 'sync', 'update', 'uninstall', 'check', 'stage-bundle', 'explain', 'verification', 'transition', 'approve', 'audit', 'work-package', 'hook', 'archive', 'doctor', 'upgrade-scaffold', 'review', 'findings', 'contract'];
 /*
  * `flows` and `approvals` are gone from this list because they were never in it in any working
  * sense. `--kind` filters `data.resources`, whose keys come from `SelectedResources`, and that type
@@ -247,6 +250,11 @@ const HELP: Record<CommandName, { usage: string; description: string; options: s
   approve: { usage: 'xforge [--root <path>] approve --change <id> --for <transition-id|archive> [--policy <id>] [--provider <mcp-provider-id> | local fields] [--dry-run] [--text]', description: 'Record an interactive human approval at the terminal, or submit/poll an mcp provider. There is no other approval mechanism. --for takes the id of the transition the approval unlocks (the value xforge state reports in nextActions[].command), not a literal word.', options: ['--root', '--change', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--provider', '--dry-run', '--text'] },
   audit: { usage: 'xforge [--root <path>] audit <status|verify|export|retry|prune> [--change <id>] [--output <path>] [--text]', description: 'Inspect, verify, export, redeliver, or prune the append-only audit chain. --field takes one value out of the result and prints nothing else, addressed as a dotted path through data; repeat it to read several in one call.', options: ['--root', '--change', '--output', '--text', '--field'] },
   'work-package': { usage: 'xforge [--root <path>] work-package <dispatch|draft|acknowledge> --change <id> --package <id> [--as <integrator|reviewer> --evidence <path> [--scope <text>]] [--dry-run] [--text]', description: 'Dispatch a work package, draft its delivery record from what XForge already knows, or acknowledge integration/review evidence. --scope records what the acknowledgement actually covered, in the acknowledger\'s own words; it is optional and never inferred, so an absent scope means nobody said. --field takes one value out of the result and prints nothing else, addressed as a dotted path through data; repeat it to read several in one call.', options: ['--root', '--change', '--package', '--as', '--evidence', '--scope', '--dry-run', '--text', '--field'] },
+  contract: {
+    usage: 'xforge [--root <path>] contract list [--kind <kind>] [--text] [--field <path>]...\n       xforge [--root <path>] contract status [--text] [--field <path>]...',
+    description: 'list: what the contract baseline records — every contract element, by the `<kind>:<selector>` id a delta has to address it by, and the module each one belongs to. Read-only, and there is no command beside it that writes an element: the baseline advances by a merged contract delta and by nothing else, so a second writer would undo the one property it has. --kind filters to one dialect and still lists a domain that matches nothing, because "records no element of this kind" and "does not exist" are different answers. status: what every Change in flight declares it will do to that baseline, and which elements more than one of them claims — the question no Gate can answer, because a content revision is computed per Change and a Gate runs inside one. It reports and never blocks: an expand half and a contract half of one migration look exactly like a collision, and whichever Change archives second is the one that would otherwise find out at merge time.',
+    options: ['--root', '--kind', '--text', '--field'],
+  },
   hook: { usage: 'xforge hook dispatch --target <target> --event <event>', description: 'Internal platform Hook dispatcher.', options: ['--root', '--target', '--event'] },
   archive: { usage: 'xforge [--root <path>] archive --change <id> [--dry-run] [--text]', description: 'Verify, merge Specs, and atomically archive a Change. --field takes one value out of the result and prints nothing else, addressed as a dotted path through data; repeat it to read several in one call.', options: ['--root', '--change', '--dry-run', '--text', '--field'] },
   'upgrade-scaffold': {
@@ -357,21 +365,13 @@ function parseArguments(argv: string[]): ParsedArguments {
     }
     if (token === '--kind') {
       /*
-       * The kinds are plural, and the Skills that tell an Agent to run this say `--kind <resource>`,
-       * which invites the singular. A live run typed `--kind skill`, got "Unknown resource kind" with
-       * no list of what would have worked, and abandoned the flag. Accepting the singular costs
-       * nothing and removes the whole class; the message now names the alternatives either way.
+       * Stored raw and resolved after the command is known, because two commands take `--kind` over
+       * two universes and this loop runs before `parsed.command` is assigned. `state` filters the
+       * resource listing, a closed set the CLI can name alternatives from; `contract list` filters
+       * by contract dialect, which is whatever a project's own adapters print. Validating the second
+       * against the first is what produced "Unknown resource kind: sql".
        */
-      const canonical = VALID_KINDS.find((kind) => kind === value || kind === `${value}s`);
-      if (!canonical) {
-        /* `flows` and `approvals` used to be accepted here and answer with nothing, so a caller
-           who learned them from an older Skill is sent to the option that does answer. */
-        const redirect = ['flows', 'flow', 'approvals', 'approval'].includes(value)
-          ? ` ${value.replace(/s$/, '')}s are not a resource kind — use \`xforge state --include flows\`.`
-          : '';
-        throw new XForgeError(diagnostic('XFORGE_KIND_UNKNOWN', `Unknown resource kind: ${value}. Valid kinds are ${VALID_KINDS.join(', ')}.${redirect}`));
-      }
-      parsed.kind = canonical as ParsedArguments['kind'];
+      parsed.contractKind = value;
     }
     if (token === '--target') {
       if (!TARGETS.includes(value as TargetId)) throw new XForgeError(diagnostic('XFORGE_TARGET_UNKNOWN', `Unknown target: ${value}`));
@@ -408,6 +408,26 @@ function parseArguments(argv: string[]): ParsedArguments {
     parsed.text = true;
   } else {
     parsed.command = positionals[0] ?? '';
+    /*
+     * `--kind` resolved now that the universe is known. Anything but `contract` means the resource
+     * listing, and the singular is accepted: the Skills that tell an Agent to run this say
+     * `--kind <resource>`, a live run typed `--kind skill`, got "Unknown resource kind" with no list
+     * of what would have worked, and abandoned the flag.
+     */
+    if (parsed.contractKind !== undefined && parsed.command !== 'contract') {
+      const value = parsed.contractKind;
+      const canonical = VALID_KINDS.find((kind) => kind === value || kind === `${value}s`);
+      if (!canonical) {
+        /* `flows` and `approvals` used to be accepted here and answer with nothing, so a caller
+           who learned them from an older Skill is sent to the option that does answer. */
+        const redirect = ['flows', 'flow', 'approvals', 'approval'].includes(value)
+          ? ` ${value.replace(/s$/, '')}s are not a resource kind — use \`xforge state --include flows\`.`
+          : '';
+        throw new XForgeError(diagnostic('XFORGE_KIND_UNKNOWN', `Unknown resource kind: ${value}. Valid kinds are ${VALID_KINDS.join(', ')}.${redirect}`));
+      }
+      parsed.kind = canonical as ParsedArguments['kind'];
+      parsed.contractKind = undefined;
+    }
     if (parsed.command === 'help') {
       parsed.helpCommand = positionals[1];
       const leafHelp = positionals.length === 3 && GROUP_COMMANDS.has(positionals[1] ?? '');
@@ -703,6 +723,17 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
     });
   }
   const command = parsed.command as Exclude<CommandName, 'help' | 'version' | 'init'>;
+  if (command === 'contract') {
+    if (parsed.subcommand === 'list') {
+      const result = await executeContractList(project, { kind: parsed.contractKind });
+      return envelope({ command: 'contract', root: project.root, data: result.data, diagnostics: result.diagnostics });
+    }
+    if (parsed.subcommand === 'status') {
+      const result = await executeContractStatus(project);
+      return envelope({ command: 'contract', root: project.root, data: result.data, diagnostics: result.diagnostics });
+    }
+    throw new XForgeError(diagnostic('XFORGE_SUBCOMMAND_UNKNOWN', `Unknown contract subcommand: ${parsed.subcommand ?? '(none)'}. They are \`list\` and \`status\`.`));
+  }
   if (command === 'state') {
     const result = await executeState(project, { change: parsed.change, kind: parsed.kind, target: parsed.target, include: parsed.include });
     const nextActions: NextAction[] = [];
@@ -1032,6 +1063,12 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
   let render: ((data: unknown) => string) | undefined;
   if (parsed?.command === 'explain' && result.ok) {
     render = (data: unknown) => renderExplainText(data as Record<string, unknown>);
+  } else if (parsed?.command === 'contract' && result.ok) {
+    /* A list of ids is what a person came for; as JSON it is the same list behind two levels of
+       nesting, and the ids are what gets copied into a delta by hand. */
+    render = parsed.subcommand === 'status'
+      ? (data: unknown) => renderContractStatusText({ ok: true, data, diagnostics: [] } as Parameters<typeof renderContractStatusText>[0])
+      : (data: unknown) => renderContractListText({ ok: true, data, diagnostics: [] } as Parameters<typeof renderContractListText>[0]);
   } else if (parsed?.command === 'stage-bundle' && result.ok) {
     /* The reading plan is the entire output; as JSON it is a list of paths nobody scans. */
     render = (data: unknown) => renderStageBundleText(data as Parameters<typeof renderStageBundleText>[0]);

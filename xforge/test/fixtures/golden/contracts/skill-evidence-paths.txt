@@ -20,6 +20,8 @@ evidence/conditions/architectureDeltas.yaml  <- xforge-architect/SKILL.md
 evidence/conditions/architectureDeltas.yaml  <- xforge-architect/SKILL_cn.md
 evidence/conditions/architectureDeltas.yaml  <- xforge-design/SKILL.md
 evidence/conditions/architectureDeltas.yaml  <- xforge-design/SKILL_cn.md
+evidence/conditions/contractDecisions.yaml  <- xforge-check/SKILL.md
+evidence/conditions/contractDecisions.yaml  <- xforge-check/SKILL_cn.md
 evidence/conditions/materialQuestions.yaml  <- xforge-clarify/SKILL.md
 evidence/conditions/materialQuestions.yaml  <- xforge-clarify/SKILL_cn.md
 evidence/constitution-check.yaml  <- xforge-check/SKILL.md

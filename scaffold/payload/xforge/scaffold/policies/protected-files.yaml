@@ -44,6 +44,7 @@ spec:
     paths:
       - xforge/constitution.md
       - xforge/specs/**
+      - xforge/contracts/**
       - xforge/lock.yaml
       - xforge/flows/**
       - xforge/.audit/**
@@ -53,4 +54,6 @@ spec:
   reason: >-
     Shared governance files may be written only by the Integrator, an explicit XForge transaction,
     or the CLI itself. Flow definitions, the audit chain, the upgrade restore point and its
-    in-flight marker are CLI-owned; no Skill authors them.
+    in-flight marker are CLI-owned; no Skill authors them. The canonical Specs and the contract
+    baseline are owned by the archive that merges a reviewed delta into them, which is why neither
+    is edited in place even by the Change that changes what they say.

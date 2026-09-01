@@ -3,6 +3,7 @@ generatedProtocol: "2"
 kind: Lock
 paths:
   changes: xforge/changes
+  contracts: xforge/contracts
   specs: xforge/specs
 protocol: "2"
 resources:
@@ -46,7 +47,7 @@ resources:
     kind: gate
     license: project
     version: 4
-  - digest: ffb1cca8b4476a664f4736c73463c9845fe032226815ad51acae23003f6ccb2e
+  - digest: 112a767acd39c736087dcb62d73b68a4392364503efdc5d2605e917a47962685
     id: protected-files
     kind: permission-policy
     license: project
@@ -66,7 +67,7 @@ resources:
     kind: rule
     license: project
     version: 1
-  - digest: ec7057935a0715eadcf0b6e76d8696496b9900f94dc9e5a752da995d237c42ea
+  - digest: 86c3a46185dc02dc3729a5f582f98ede3d175b3913de7ed9d445b7db63ff68e0
     id: governance-assets-are-integrator-only
     kind: rule
     license: project
@@ -96,7 +97,7 @@ resources:
     kind: skill
     license: project
     version: "1"
-  - digest: 1b12a94fa032b742e9c948ba54c0b8bd8f127e418497711acc183d97971a65c6
+  - digest: 817d3b797f73e6cef6d83db15d46ce0d8d53a872b766dbf806b0ed38269bf06e
     id: xforge-check
     kind: skill
     license: project
@@ -106,7 +107,7 @@ resources:
     kind: skill
     license: project
     version: "1"
-  - digest: c67c0e20a6ab07022a6685d421f7be87dee6ef0ee3dff3dee3c3bdab348c7188
+  - digest: aea9cfac62208ec8b2967ef7fda3ab290a0bcb2126f91239ecac68fc9d082d37
     id: xforge-design
     kind: skill
     license: project
@@ -131,7 +132,7 @@ resources:
     kind: skill
     license: project
     version: "1"
-  - digest: b5d87f277bb38b9e3c79a618037200a049203455544415e1e982a907b9fd755d
+  - digest: d8b728179c9843acebca14156b09d6c5357a273d923b208acdfd3a8fd8cc0db5
     id: xforge-status
     kind: skill
     license: project
@@ -141,7 +142,7 @@ resources:
     kind: skill
     license: project
     version: "1"
-  - digest: a18d415cf7e87445a0c679c36c5ef14ac5b5b0e17fa5158625d907afc25aed24
+  - digest: f968d9b1b6d0af8ce7845bac3a0093434299fbda1ce82f9b00825b7e40608487
     id: xforge-verify
     kind: skill
     license: project
@@ -160,7 +161,7 @@ targets:
   - opencode
   - github-copilot
 xforge:
-  integrity: sha256:7e869551f3efa549fd234dfc81d8bdbeec5e8c388029de8dbb1f5f8895626698
+  integrity: sha256:7bf4622093510c00f7b7502d5ba918eec55b1b44563b3ff82784aa32e356f9b1
   package: "@xforge/cli"
   protocol: "2"
   source: npm

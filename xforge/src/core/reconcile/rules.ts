@@ -1,5 +1,5 @@
 import { documentSections as sections, markerOccurrences } from '../artifact-markers.js';
-import type { ArtifactSource, LedgerFinding, LedgerPrinciple, MaterialDecision, ReconciliationObservation, SpecRequirement } from './model.js';
+import type { ArtifactSource, ContractElement, LedgerFinding, LedgerPrinciple, MaterialDecision, ReconciliationObservation, SpecRequirement } from './model.js';
 
 /**
  * Differences between what a record claims and what the files contain.
@@ -311,3 +311,91 @@ export function reconcileConstitutionReferences(
   return observations;
 }
 
+
+/**
+ * RC-7 -- the contract delta against what the Change says about itself.
+ *
+ * `eligibleWhen.contractImpact` acts on `classification.moduleContract`, and the classification is a
+ * self-report: it decides which Flow a Change may run on, and nothing compares it with anything.
+ * That leaves a shape where both records are individually valid and cannot both be right -- a
+ * classification saying no interface moves, and a contract delta in the same directory naming three
+ * elements that do.
+ *
+ * Stated, never judged, like every rule in this file. A delta written before the classification was
+ * updated and a classification written before the interface moved are the same observation seen from
+ * opposite ends, and nothing here can tell which end it is looking at. The `info` that comes out
+ * says what the two records say; a person decides which one to change.
+ *
+ * Silence is deliberate for the Change that holds no contract delta at all. `declared` is false
+ * there, and an absent document is not a record that disagrees with anything -- most Changes touch
+ * no interface, and a rule that spoke about all of them would be the permanent unactionable finding
+ * this codebase refuses elsewhere.
+ */
+/**
+ * The ids a summary names, capped, with the count carrying the rest.
+ *
+ * `refs` already holds the full set and is the channel a tool reads; the summary is the sentence a
+ * person reads. The worst case is not exotic -- the first Change after adoption declares the whole
+ * extracted surface at once, which is the one-time cost this design is most often criticised for --
+ * and an `info` line naming three hundred ids is one nobody finishes.
+ */
+function named(ids: string[], limit = 8): string {
+  return ids.length <= limit ? ids.join(', ') : `${ids.slice(0, limit).join(', ')}, and ${ids.length - limit} more`;
+}
+
+export function reconcileContractImpact(
+  elements: ContractElement[],
+  declared: boolean,
+  classification: { moduleContract?: boolean },
+  scopeModules: string[],
+): ReconciliationObservation[] {
+  if (!declared) return [];
+  const observations: ReconciliationObservation[] = [];
+  const claimed = classification.moduleContract === true;
+
+  if (elements.length > 0 && !claimed) {
+    const ids = [...new Set(elements.map((element) => element.id))].sort();
+    observations.push({
+      id: 'RC-7:classification',
+      rule: 'RC-7',
+      code: 'XFORGE_RECONCILE_CONTRACT_IMPACT_UNDECLARED',
+      provenance: 'computed',
+      summary: `This Change's contract delta declares ${ids.length} contract element(s) — ${named(ids)} — and its change.yaml classification does not set moduleContract. The classification is what decides which Flow may carry this Change, and it currently says no interface moves.`,
+      refs: ids,
+    });
+  }
+  if (elements.length === 0 && claimed) {
+    observations.push({
+      id: 'RC-7:empty-delta',
+      rule: 'RC-7',
+      code: 'XFORGE_RECONCILE_CONTRACT_DELTA_EMPTY',
+      provenance: 'computed',
+      summary: 'This Change classifies itself as moving a module contract, and its contract delta asserts that every section is empty. One of the two records is out of date.',
+      refs: [],
+    });
+  }
+
+  /*
+   * The owning module against the Change's declared scope.
+   *
+   * `scope.modules` is what the Change says it touches, and the work-package write boundaries are
+   * derived from it -- so an element owned by a module outside that scope means the packages will be
+   * bounded by the narrower of two disagreeing statements. Only elements whose block actually names
+   * a module are compared: `- module:` is a convention the Artifact instruction asks for rather than
+   * a schema, and an absent convention is not a disagreement.
+   */
+  const inScope = new Set(scopeModules);
+  const outside = [...new Set(elements.filter((element) => element.module && !inScope.has(element.module)).map((element) => element.module))].sort();
+  for (const module of outside) {
+    const affected = elements.filter((element) => element.module === module).map((element) => element.id).sort();
+    observations.push({
+      id: `RC-7:module:${module}`,
+      rule: 'RC-7',
+      code: 'XFORGE_RECONCILE_CONTRACT_MODULE_OUT_OF_SCOPE',
+      provenance: 'computed',
+      summary: `The contract delta says module ${module} owns ${named(affected)}, and this Change's scope.modules does not list ${module}. Work-package write boundaries are derived from scope.modules, so they would be drawn without it.`,
+      refs: affected,
+    });
+  }
+  return observations;
+}

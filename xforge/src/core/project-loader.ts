@@ -4,6 +4,7 @@ import {
   CLI_NAME,
   CLI_VERSION,
   DEFAULT_CHANGES_PATH,
+  DEFAULT_CONTRACTS_PATH,
   DEFAULT_SPECS_PATH,
   PROTOCOL_VERSION,
 } from '../constants.js';
@@ -134,9 +135,11 @@ export async function loadProject(start = process.cwd(), options: { exactRoot?: 
 
   const specsPath = normalizeRelative(manifest.project.paths?.specs ?? DEFAULT_SPECS_PATH, 'project.paths.specs');
   const changesPath = normalizeRelative(manifest.project.paths?.changes ?? DEFAULT_CHANGES_PATH, 'project.paths.changes');
-  assertLogicalPaths(specsPath, changesPath);
+  const contractsPath = normalizeRelative(manifest.project.paths?.contracts ?? DEFAULT_CONTRACTS_PATH, 'project.paths.contracts');
+  assertLogicalPaths(specsPath, changesPath, contractsPath);
   await safeResolve(root, specsPath);
   await safeResolve(root, changesPath);
+  await safeResolve(root, contractsPath);
 
   const moduleIds = new Set<string>();
   for (const module of manifest.project.modules) {
@@ -169,7 +172,15 @@ export async function loadProject(start = process.cwd(), options: { exactRoot?: 
   if (lock?.paths) {
     const lockedSpecs = lock.paths.specs ? normalizeRelative(lock.paths.specs) : null;
     const lockedChanges = lock.paths.changes ? normalizeRelative(lock.paths.changes) : null;
-    if (lockedSpecs !== specsPath || lockedChanges !== changesPath) {
+    /*
+     * An absent `contracts` is not a mismatch. A lockfile written before this key existed says
+     * nothing about the contract root, and reporting that silence as a difference would put a
+     * warning nobody can act on into every project that took a new CLI without reinstalling -- the
+     * permanent unactionable finding this codebase refuses to ship. It is recorded from the next
+     * `install`, and only then is worth comparing.
+     */
+    const lockedContracts = lock.paths.contracts ? normalizeRelative(lock.paths.contracts) : null;
+    if (lockedSpecs !== specsPath || lockedChanges !== changesPath || (lockedContracts !== null && lockedContracts !== contractsPath)) {
       diagnostics.push(diagnostic('XFORGE_LOCK_PATHS_MISMATCH', 'Lockfile logical paths differ from the Manifest resolution.', 'xforge/lock.yaml', 'warning'));
     }
   }
@@ -182,8 +193,10 @@ export async function loadProject(start = process.cwd(), options: { exactRoot?: 
     lock,
     specsPath,
     changesPath,
+    contractsPath,
     specsPathSource: manifest.project.paths?.specs ? 'manifest' : 'default',
     changesPathSource: manifest.project.paths?.changes ? 'manifest' : 'default',
+    contractsPathSource: manifest.project.paths?.contracts ? 'manifest' : 'default',
     constitution,
     compatibility: compatibility.value,
     diagnostics,

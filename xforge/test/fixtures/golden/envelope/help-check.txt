@@ -29,7 +29,8 @@ exit: 0
       "doctor",
       "upgrade-scaffold",
       "review",
-      "findings"
+      "findings",
+      "contract"
     ],
     "globalOptions": {
       "--root <path>": "Use an exact project root.",

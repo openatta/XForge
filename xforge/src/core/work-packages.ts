@@ -230,6 +230,16 @@ function protectedWritePaths(project: ProjectContext, changeId: string, config: 
     'xforge/lock.yaml',
     'xforge/constitution.md',
     `${project.specsPath}/**`,
+    /*
+     * Both canonical records, and both read from the project rather than written as a literal.
+     *
+     * The `protected-files` policy names `xforge/contracts/**` and is picked up by the loop below,
+     * which covers a project on the default path and only that one: a project that relocates
+     * `project.paths.contracts` moves the tree out from under the glob, and the write boundary that
+     * refuses a package writing the baseline goes with it. Specs was never exposed to that because
+     * it has always been resolved here; contracts is now resolved the same way.
+     */
+    `${project.contractsPath}/**`,
     `${changeRoot}/**`,
   ]);
   for (const rule of resources.rules.values()) {

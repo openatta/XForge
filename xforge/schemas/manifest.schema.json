@@ -50,6 +50,9 @@
             },
             "changes": {
               "$ref": "#/$defs/path"
+            },
+            "contracts": {
+              "$ref": "#/$defs/path"
             }
           }
         },

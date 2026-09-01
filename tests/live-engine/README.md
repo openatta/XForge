@@ -73,6 +73,11 @@ tests/live-engine/scenarios/
                 the quick project with the answer removed: nothing says how it runs its
                 tests and nobody is there to ask, so stopping is the pass
   solid/        propose -> design -> check -> apply -> verify (task-ledger)
+  solid-contract/
+                the same Stage graph on the solid-contract Flow (order-ledger): a two-module
+                project whose interface between them is governed by a contract baseline, so the
+                run has to declare an interface delta, record four declared Gate commands, and
+                leave the baseline advanced
   major/        propose -> clarify -> design -> check -> apply -> verify (credential-store:
                 risk high, security + dataMigration impact, a deliberately unresolved
                 material question for Clarify to formally resolve)
@@ -105,6 +110,7 @@ once.
 | `quick-undeclared` | quick | fail-closed | **stopped at verify**, `verification.unit-tests` still absent — inventing a command fails even if it is right |
 | `solid` | solid | happy-path | archived, **exactly 0 reworks** |
 | `solid-rework` | solid | rework | archived, **exactly 1 rework** |
+| `solid-contract` | solid-contract | contract-governance | archived, **exactly 0 reworks**, and `xforge/contracts/` records every element the delta declared |
 | `major` | major | adversarial | archived **or** `stopped-at-check` |
 | `standalone-scaffold` | — | authoring | a project-owned Rule written **and** registered in the Manifest |
 | `standalone-architect` | — | authoring | `xforge/architecture.md` written with real sections |
@@ -127,6 +133,24 @@ planted Design says it exits 0). Check is expected to find that contradiction,
 block, and send the work back to `design`, which is what `check.reworkTo` lists
 it for — and the second pass must clear it. Unlike Major's, this rework is
 constructed, so the expectation can be exact.
+
+### A seed may select resources, and adopt a Flow that ships as a template
+
+`project-seed/manifest-patch.yaml` is merged into the Manifest `xforge init` produced rather than
+replacing it: list-valued keys under `scaffold` are appended without duplicating, scalars are
+replaced, everything else is left alone. A seed shipping a whole Manifest would pin the Scaffold
+version, the CLI version and the target list into a fixture with no business knowing any of them,
+and it would go stale silently, because the file stays valid as they move.
+
+When the patch selects a Flow that is not in `xforge/flows/`, `setup.mjs` copies it from
+`xforge/scaffold/flows/` — the same copy that Flow's own header documents as step one of adopting
+it — and then runs `xforge install` so the lockfile and every projection reconcile. That way the
+harness exercises the documented adoption route instead of carrying a duplicate of a shipped Flow
+that would drift from it, invisibly, until a run failed for a reason unrelated to the run.
+
+`solid-contract` is the only scenario using this today. Adoption itself is not what it tests: the
+seed arrives already adopted, and whether an Agent can perform the adoption unaided is a separate
+scenario nobody has written yet.
 
 ### Major's expected outcome: often stops at Check, and that is a pass, not a failure
 

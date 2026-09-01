@@ -110,16 +110,78 @@ async function enableApprovalHarness(projectRoot) {
   }
 }
 
+/**
+ * A seed's changes to the Manifest, merged rather than copied.
+ *
+ * A scenario that needs a resource selected -- a Gate, a Rule, a different Flow -- has to say so in
+ * `xforge/manifest.yaml`, and shipping a whole Manifest in the seed would pin the Scaffold version,
+ * the CLI version and the target list into a fixture that has no business knowing any of them. They
+ * would go stale the first time one moved, and silently: the file is valid either way.
+ *
+ * So a seed states only its additions. List-valued keys under `scaffold` are appended without
+ * duplicating, scalars are replaced, and everything `init` decided is left alone.
+ */
+async function applyManifestPatch(projectRoot, patchPath) {
+  const manifestPath = path.join(projectRoot, 'xforge', 'manifest.yaml');
+  const manifest = parseYaml(await readFile(manifestPath, 'utf8'));
+  const patch = parseYaml(await readFile(patchPath, 'utf8'));
+
+  const merge = (target, source) => {
+    for (const [key, value] of Object.entries(source)) {
+      if (Array.isArray(value)) {
+        const existing = Array.isArray(target[key]) ? target[key] : [];
+        target[key] = [...existing, ...value.filter((item) => !existing.includes(item))];
+      } else if (value && typeof value === 'object') {
+        target[key] = merge(target[key] && typeof target[key] === 'object' ? target[key] : {}, value);
+      } else {
+        target[key] = value;
+      }
+    }
+    return target;
+  };
+
+  merge(manifest, patch);
+  await writeFile(manifestPath, stringifyYaml(manifest));
+  return manifest;
+}
+
+/**
+ * Adopting a Flow that ships as a template, the way its own header documents.
+ *
+ * `xforge/scaffold/flows/` holds Flows that ship unselected, because `xforge/flows/` is read by
+ * listing it and a Flow placed there is one the project runs. Adoption is a copy, and the harness
+ * performs that copy rather than carrying a second copy of the file in a seed -- a fixture holding
+ * its own duplicate of a shipped Flow drifts from it, and the drift is invisible until a run fails
+ * for a reason that has nothing to do with the run.
+ */
+async function adoptTemplateFlows(projectRoot, manifest) {
+  const templateRoot = path.join(projectRoot, 'xforge', 'scaffold', 'flows');
+  const adopted = [];
+  for (const name of manifest.scaffold?.flows ?? []) {
+    const active = path.join(projectRoot, 'xforge', 'flows', `${name}.yaml`);
+    if (await exists(active)) continue;
+    const template = path.join(templateRoot, `${name}.yaml`);
+    if (!await exists(template)) throw new Error(`Manifest selects Flow "${name}", which is neither active nor a template under xforge/scaffold/flows/.`);
+    await cp(template, active);
+    adopted.push(name);
+  }
+  return adopted;
+}
+
 async function overlaySeed(projectRoot, seedRoot) {
-  if (!await exists(seedRoot)) return;
+  if (!await exists(seedRoot)) return { adoptedFlows: [] };
   const packageJsonSeed = path.join(seedRoot, 'package.json');
   if (await exists(packageJsonSeed)) await mergePackageJson(projectRoot, packageJsonSeed);
   const gitignoreSeed = path.join(seedRoot, '.gitignore');
   if (await exists(gitignoreSeed)) await mergeGitignore(projectRoot, gitignoreSeed);
   for (const entry of await readdir(seedRoot)) {
-    if (entry === 'package.json' || entry === '.gitignore') continue;
+    if (entry === 'package.json' || entry === '.gitignore' || entry === 'manifest-patch.yaml') continue;
     await cp(path.join(seedRoot, entry), path.join(projectRoot, entry), { recursive: true, force: true });
   }
+  const patchPath = path.join(seedRoot, 'manifest-patch.yaml');
+  if (!await exists(patchPath)) return { adoptedFlows: [] };
+  const manifest = await applyManifestPatch(projectRoot, patchPath);
+  return { adoptedFlows: await adoptTemplateFlows(projectRoot, manifest) };
 }
 
 const selected = options(process.argv.slice(2));
@@ -153,7 +215,16 @@ const cliEnv = { ...process.env, PATH: `${cli.binDirectory}${path.delimiter}${pr
 runWithEnv('xforge', ['--root', projectRoot, 'init', '--language', 'en', '--target', 'claude'], projectRoot, cliEnv);
 await enableApprovalHarness(projectRoot);
 
-await overlaySeed(projectRoot, path.join(scenarioRoot, 'project-seed'));
+const seeded = await overlaySeed(projectRoot, path.join(scenarioRoot, 'project-seed'));
+/*
+ * Reconciled after the seed, not before it. Selecting a resource changes what the lockfile records
+ * and what each target's projection contains, and a project left unreconciled greets its first
+ * `xforge state` with XFORGE_LOCK_RESOURCES_MISMATCH -- a warning about the harness that the Agent
+ * would reasonably spend a turn on.
+ */
+if (seeded.adoptedFlows.length > 0) {
+  runWithEnv('xforge', ['--root', projectRoot, 'install'], projectRoot, cliEnv);
+}
 
 run('git', ['init', '--quiet', '--initial-branch=main'], projectRoot);
 run('git', ['config', 'user.name', 'XForge Live E2E'], projectRoot);
@@ -168,4 +239,5 @@ process.stdout.write(`${JSON.stringify({
   cliSource: cli.source,
   cliVersion: cli.version,
   cliBin: cli.binDirectory,
+  adoptedFlows: seeded.adoptedFlows,
 })}\n`);

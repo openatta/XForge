@@ -9,6 +9,7 @@ description: >
 entries:
   - skill: xforge-propose
     scenarios:
+      - { scenario: solid-contract, flow: solid-contract, stage: propose }
       - { scenario: quick, flow: quick, stage: propose }
       - { scenario: quick-python, flow: quick, stage: propose }
       - { scenario: quick-undeclared, flow: quick, stage: propose }
@@ -19,14 +20,17 @@ entries:
       - { scenario: major, flow: major, stage: clarify }
   - skill: xforge-design
     scenarios:
+      - { scenario: solid-contract, flow: solid-contract, stage: design }
       - { scenario: solid, flow: solid, stage: design }
       - { scenario: major, flow: major, stage: design }
   - skill: xforge-check
     scenarios:
+      - { scenario: solid-contract, flow: solid-contract, stage: check }
       - { scenario: solid, flow: solid, stage: check }
       - { scenario: major, flow: major, stage: check }
   - skill: xforge-apply
     scenarios:
+      - { scenario: solid-contract, flow: solid-contract, stage: apply }
       - { scenario: quick, flow: quick, stage: apply }
       - { scenario: quick-python, flow: quick, stage: apply }
       - { scenario: quick-undeclared, flow: quick, stage: apply }
@@ -34,6 +38,7 @@ entries:
       - { scenario: major, flow: major, stage: apply }
   - skill: xforge-verify
     scenarios:
+      - { scenario: solid-contract, flow: solid-contract, stage: verify }
       - { scenario: quick, flow: quick, stage: verify }
       - { scenario: quick-python, flow: quick, stage: verify }
       - { scenario: quick-undeclared, flow: quick, stage: verify }

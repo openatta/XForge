@@ -13,6 +13,7 @@ import type {
 } from '../types.js';
 import { XForgeError, diagnostic } from './errors.js';
 import { assertResourceId, normalizeRelative, safeResolve, toProjectPath } from './path-safety.js';
+import { contractDeltaIsValid, isContractDeltaArtifact } from './contract-delta.js';
 import { isSpecDeltaArtifact, specDeltaIsValid } from './spec-delta.js';
 import { validateSchema } from './validator.js';
 import { loadYaml } from './yaml.js';
@@ -86,13 +87,17 @@ export function flowApplyOperation(flow: Flow): { requires: string[]; tracks: st
 export function flowArchiveOperation(flow: Flow): {
   requires: string[];
   syncSpecs: boolean;
+  syncContracts: boolean;
   mandatoryGates: string[];
 } {
-  if (!isStageFlow(flow)) return flow.operations.archive;
+  /* `syncContracts` is optional in both schemas, so a Flow written before contracts existed reads
+     as false here rather than as undefined -- archive branches on it directly. */
+  if (!isStageFlow(flow)) return { ...flow.operations.archive, syncContracts: flow.operations.archive.syncContracts ?? false };
   const verify = flow.stages.find((stage) => stage.id === 'verify');
   return {
     requires: artifactsForStages(flow, flow.terminal.archive.requires),
     syncSpecs: flow.terminal.archive.syncSpecs,
+    syncContracts: flow.terminal.archive.syncContracts ?? false,
     mandatoryGates: [...new Set(verify?.gates ?? [])],
   };
 }
@@ -313,6 +318,9 @@ async function outputsSatisfyArtifact(
 ): Promise<boolean> {
   if (outputs.length === 0) return false;
   const validateDelta = isSpecDeltaArtifact(artifact);
+  /* Never both: `isContractDeltaArtifact` defers to an explicit `validator`, and by convention the
+     two live under different subtrees, so an Artifact answers to one validator or to neither. */
+  const validateContract = isContractDeltaArtifact(artifact);
   for (const output of outputs) {
     let content: string;
     try {
@@ -322,6 +330,7 @@ async function outputsSatisfyArtifact(
     }
     if (content.trim().length === 0) return false;
     if (validateDelta && !specDeltaIsValid(content)) return false;
+    if (validateContract && !contractDeltaIsValid(content)) return false;
   }
   return true;
 }
@@ -409,6 +418,7 @@ export async function resolveChangeState(
       requires: archive.requires,
       mandatoryGates: archive.mandatoryGates,
       syncSpecs: archive.syncSpecs,
+      syncContracts: archive.syncContracts,
     },
     workPackages: null,
   };

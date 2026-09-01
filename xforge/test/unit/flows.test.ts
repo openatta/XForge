@@ -308,6 +308,83 @@ describe('Flow eligibility', () => {
     expect(codes).not.toContain('XFORGE_FLOW_REQUIRED_POLICY');
   });
 
+  it('refuses a Change that says it moves an interface on a Flow that forbids it', async () => {
+    /*
+     * Quick has no design Stage, so it has nowhere to write a contract delta and no Gate that would
+     * read one. A Change that moves an interface on Quick is therefore not a Change that skipped a
+     * step -- it is one the Flow has no step for, which is what `contractImpact: forbidden` says.
+     *
+     * Self-reported, like every other classification key. The classification is what the Change says
+     * about itself and nothing compares it with the diff; what this buys is that a Change which
+     * *does* say so cannot proceed on a Flow that cannot govern it.
+     */
+    const root = await fixture();
+    const base = 'xforge/changes/quick-interface';
+    await write(root, `${base}/change.yaml`, changeYaml('quick', {
+      classification: { risk: 'low', security: false, privacy: false, publicApi: false, dataMigration: false, moduleContract: true },
+    }));
+    await write(root, `${base}/proposal.md`, '## Why\nA one-line fix that also moves an interface.\n');
+    await write(root, `${base}/specs/fix/spec.md`, deltaSpec('Fix'));
+    expect((await runCli(root, ['install'])).code).toBe(0);
+
+    const transition = await runCli(root, ['transition', '--change', 'quick-interface', '--to', 'apply', '--dry-run']);
+    expect(transition.code).toBe(1);
+    const tooWeak = transition.json.diagnostics.find((item: any) => item.code === 'XFORGE_FLOW_TOO_WEAK');
+    expect(tooWeak.message).toContain('module contract');
+  });
+
+  it('refuses a module contract on the shipped Flows that have nowhere to declare one', async () => {
+    /*
+     * `quick` was the obvious case and it was not the only one. What decides whether a Flow can carry
+     * an interface change is not whether it has a design Stage -- `solid` and `major` both do -- but
+     * whether it declares a contract-delta Artifact and merges it. None of the three shipped Flows
+     * does either, so a Change classifying itself as moving a module contract on any of them was
+     * accepted, collected no delta, merged nothing, and nobody was told.
+     *
+     * `solid-contract` is the Flow that carries one, and it says so with `contractImpact: allowed`.
+     */
+    for (const flow of ['quick', 'solid', 'major'] as const) {
+      const root = await fixture();
+      const base = `xforge/changes/claims-${flow}`;
+      await write(root, `${base}/change.yaml`, changeYaml(flow, {
+        classification: { risk: 'low', security: false, privacy: false, publicApi: false, dataMigration: false, moduleContract: true },
+      }));
+      await write(root, `${base}/proposal.md`, '## Why\nSays it moves an interface.\n');
+      await write(root, `${base}/specs/fix/spec.md`, deltaSpec('Fix'));
+      const result = await checkStructure(await loadProject(root), `claims-${flow}`);
+      const tooWeak = result.diagnostics.find((item) => item.code === 'XFORGE_FLOW_TOO_WEAK');
+      expect(tooWeak, `${flow} accepted a module contract it cannot govern`).toBeTruthy();
+      expect(tooWeak!.message).toContain('module contract');
+    }
+  });
+
+  it('does not make a module contract a critical impact, so a contract Flow can still carry one', async () => {
+    /*
+     * The trap this arrangement exists to avoid. Folding `moduleContract` into the critical-impact
+     * set would have made all three checks fire from one edit -- and one of them wrongly: every
+     * contract-governed Flow shipped so far declares `criticalImpacts: forbidden`, so the Flow
+     * written specifically to govern interface changes would have been the first thing made
+     * ineligible to carry one.
+     *
+     * They are two questions with two keys. This fixture is the shape `solid-contract` has: critical
+     * impacts refused, a module contract allowed, and both statements true at once.
+     */
+    const root = await fixture();
+    await updateYaml(root, 'xforge/flows/solid.yaml', (flow: any) => { flow.policy.eligibleWhen.contractImpact = 'allowed'; });
+    const base = 'xforge/changes/solid-interface';
+    await write(root, `${base}/change.yaml`, changeYaml('solid', {
+      classification: { risk: 'medium', security: false, privacy: false, publicApi: false, dataMigration: false, moduleContract: true },
+    }));
+    await write(root, `${base}/proposal.md`, '## Why\nAn interface change on the Flow that governs them.\n');
+    await write(root, `${base}/specs/fix/spec.md`, deltaSpec('Fix'));
+    expect((await runCli(root, ['install'])).code).toBe(0);
+
+    const result = await checkStructure(await loadProject(root), 'solid-interface');
+    const codes = result.diagnostics.map((item) => item.code);
+    expect(codes).not.toContain('XFORGE_FLOW_TOO_WEAK');
+    expect(codes).not.toContain('XFORGE_FLOW_REQUIRED_POLICY');
+  });
+
   it('derives the escalation target from Flow policy on the legacy Artifact Flow path', async () => {
     const root = await fixture();
     const legacyQuick = await readFile(path.join(xforgeRoot, 'test', 'fixtures', 'minimal-project', 'xforge', 'flows', 'quick.yaml'), 'utf8');

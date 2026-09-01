@@ -17,6 +17,8 @@ export interface ChangeConfig {
     privacy: boolean;
     publicApi: boolean;
     dataMigration: boolean;
+    /* Optional, so a change.yaml written before contracts existed still satisfies this type. */
+    moduleContract?: boolean;
   };
   scope: { modules: string[]; paths: string[] };
 }
@@ -44,7 +46,7 @@ export interface ChangeState {
   artifacts: ArtifactState[];
   nextArtifact: ArtifactState | null;
   apply: { ready: boolean; requires: string[]; tracks: string | null };
-  archive: { ready: boolean; requires: string[]; mandatoryGates: string[]; syncSpecs: boolean };
+  archive: { ready: boolean; requires: string[]; mandatoryGates: string[]; syncSpecs: boolean; syncContracts: boolean };
   workPackages: WorkPackagePlanState | null;
   governance?: GovernanceState;
   /**

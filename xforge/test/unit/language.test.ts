@@ -52,12 +52,37 @@ describe('Scaffold language resolution', () => {
       expect(defaultFile.startsWith('agents/') || defaultFile.startsWith('skills/')).toBe(true);
     }
 
-    const englishOnlyFiles = files.filter((file) => !/_cn\.(?:md|yaml)$/.test(file));
+    /*
+     * A Flow template is a Flow, and a Flow carries the marker patterns an Agent's own prose has to
+     * match -- `solid.yaml` already ships `['**Rejected alternative:', '**被否决的替代方案：']`,
+     * because a Chinese-language project writes the Chinese heading and the marker has to find it.
+     * Those live in `xforge/flows/`, which this scan does not reach; a template of the same kind
+     * under `xforge/scaffold/flows/` is the same file waiting to be copied there, and holding it to
+     * a rule its destination does not have would ship a template that stops working on arrival.
+     *
+     * The exemption is the pattern list and nothing else: the rest of a template is English like
+     * every other asset here.
+     */
+    const englishOnlyFiles = files
+      .filter((file) => !/_cn\.(?:md|yaml)$/.test(file))
+      .filter((file) => !/^flows\/[^/]+\.yaml$/.test(file));
     const nonEnglish = [];
     for (const file of englishOnlyFiles) {
       const content = await readFile(path.join(scaffoldRoot, file), 'utf8');
       if (/\p{Script=Han}/u.test(content)) nonEnglish.push(file);
     }
     expect(nonEnglish).toEqual([]);
+
+    /* And the templates themselves, held to the narrower rule: Han characters only inside a marker
+       `pattern:` list, never in an instruction, description or comment a reader depends on. */
+    const templates = files.filter((file) => /^flows\/[^/]+\.yaml$/.test(file));
+    expect(templates.length).toBeGreaterThan(0);
+    for (const file of templates) {
+      const offending = (await readFile(path.join(scaffoldRoot, file), 'utf8'))
+        .split('\n')
+        .filter((line) => /\p{Script=Han}/u.test(line))
+        .filter((line) => !/^\s*(?:-\s*)?pattern:\s*\[/.test(line));
+      expect(offending, `${file} has Han characters outside a marker pattern list`).toEqual([]);
+    }
   });
 });

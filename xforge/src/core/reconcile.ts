@@ -5,17 +5,19 @@ import { safeResolve } from './path-safety.js';
 import { gateBlockReason, readGateEvidence, type ResolvedControlPlane } from './control-plane.js';
 import type { ReconciliationObservation } from './reconcile/model.js';
 import {
-  readArtifactSources, readFindings, readMaterialDecisions, readPrinciples, readSpecRequirements,
+  readArtifactSources, readContractElements, readFindings, readMaterialDecisions, readPrinciples,
+  readSpecRequirements,
 } from './reconcile/sources.js';
 import {
-  reconcileConstitutionReferences, reconcileCoverageSections, reconcileDeclaredGaps,
-  reconcileMaterialDecisions, reconcileRequirementAnchors, reconcileResolvedFindings,
+  reconcileConstitutionReferences, reconcileContractImpact, reconcileCoverageSections,
+  reconcileDeclaredGaps, reconcileMaterialDecisions, reconcileRequirementAnchors,
+  reconcileResolvedFindings,
 } from './reconcile/rules.js';
 
 /**
  * Differences between what a Change's records claim and what its files contain.
  *
- * These six rules were a section of `xforge brief`. The brief is gone — it grew into a
+ * These rules were a section of `xforge brief`. The brief is gone — it grew into a
  * thirty-six-kilobyte document that had to be relayed verbatim through a model's context to reach a
  * person, which is neither what it was designed for (one screen, once per turn) nor something a
  * model should be carrying. What it printed was mostly EXTRACTED: whole Artifacts quoted back.
@@ -50,6 +52,7 @@ export async function reconcileChange(
   const artifactResult = await readArtifactSources(project, changeId, flow, stage);
   const specResult = await readSpecRequirements(project, changeId);
   const principlesResult = await readPrinciples(project, changeId);
+  const contractResult = await readContractElements(project, changeId);
 
   /*
    * A source that could not be read is reported rather than skipped.
@@ -59,7 +62,7 @@ export async function reconcileChange(
    * was missing — the difference between "these records agree" and "one of them could not be
    * opened", which is the whole reason the readers carry the list.
    */
-  for (const entry of [...findingsResult.unavailable, ...artifactResult.unavailable, ...specResult.unavailable, ...principlesResult.unavailable]) {
+  for (const entry of [...findingsResult.unavailable, ...artifactResult.unavailable, ...specResult.unavailable, ...principlesResult.unavailable, ...contractResult.unavailable]) {
     diagnostics.push(diagnostic(entry.code, `${entry.section}: ${entry.reason}`, `${project.changesPath}/${changeId}`, 'warning'));
   }
 
@@ -127,6 +130,12 @@ export async function reconcileChange(
       gateRecorded,
     ),
     ...reconcileMaterialDecisions(await readMaterialDecisions(project, changeId), sources),
+    ...reconcileContractImpact(
+      contractResult.elements,
+      contractResult.declared,
+      control.state.classification,
+      control.state.scope.modules,
+    ),
   ];
 
   for (const observation of observations) {

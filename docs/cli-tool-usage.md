@@ -94,8 +94,9 @@ npx --no-install xforge <command>    # 项目本地安装（可执行文件在 n
 | `approve` | 写 | 交互式本地审批或 mcp provider 审批 |
 | `review` | 写 | 无工作包计划时记录 Change 级复核 |
 | `work-package` | 写 | 派工 / 起草交付 / 确认集成或复核 |
+| `contract` | 读 | 读回契约基线记录了什么；以及在途的几个 Change 各自打算怎么改它 |
 | `audit` | 读 / 有条件写 | 审计链的检视、校验、导出、重投递、修剪 |
-| `archive` | 写 | 校验、合并 Specs、原子归档 |
+| `archive` | 写 | 校验、合并 Specs 与 contract-delta、原子归档 |
 | `upgrade-scaffold` | 写 | 暂存并分类新版受管树供人合并；完成 / 回滚时自己重新投影 |
 | `doctor` | 读 | 报告未被引用与悬空的扩展资源 |
 | `hook` | 内部 | 平台 Hook 分发器 |
@@ -539,6 +540,31 @@ xforge [--root <path>] work-package acknowledge --change <id> --package <id> \
 可选，且绝不推断——不写就等于没人说过。
 `independentReview` 只问「有没有复核」，一份「我全面复核了这个包」和一份
 「我只验了上面列的五条修法」在回执上本来无法区分，而它们的证据强度差很多。
+
+### `contract`
+
+```sh
+xforge contract list   [--kind <dialect>]   # 基线记录了哪些契约元素
+xforge contract status                       # 在途的 Change 各自打算怎么改它
+```
+
+**都是只读的，而且旁边刻意没有一个写元素的命令。** 基线只通过归档一份被审阅过的 contract-delta
+前进；第二个写入者会毁掉这份记录唯一的性质。
+
+`list` 存在的理由很具体：contract-delta 必须用基线**已经在用的** id 去寻址元素，而看不到基线怎么拼
+这个 id 的人，就会凭记忆重打一遍。重打错的 id 不会报错——它会作为一个新元素被合并到你本想修改的
+那个旁边，基线于是多出一个近似重复项，而没有任何东西会去比对它们。
+
+`--kind` 在这里是**契约方言**，不是 `state --kind` 的资源类型。后者是一个封闭集合，CLI 可以在你打错时
+列出候选；方言是项目自己的适配器打印出来的，是开放集合——把内置一份方言清单当成校验依据，正是
+declared Gate 整套设计要避开的耦合。
+
+`status` 回答的是控制面**结构上答不出**的那个问题。`contentRevision` 是按 Change 算的，所以两个
+Change 可以各自合规、各自拿到审批，却对同一个接口说了两件不同的事，而没有任何一处会去比对它们；
+Gate 也堵不上——一个 Gate 跑在一个 Change 里，看见的也只有那一个 Change。
+
+它**只报告，从不阻断**：一次迁移的 expand 与 contract 两半，从这里看过去和一次真正的冲突完全一样，
+而 CLI 看不见哪一种才是真的。它能做的是让后归档的那个 Change 不必等到合并时才发现。
 
 ### `archive`
 

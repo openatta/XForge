@@ -10,6 +10,8 @@ import { resolveChangeState } from './flow-resolver.js';
 import { resolveWorkPackages, type WorkPackageResolution } from './work-packages.js';
 import { normalizeRule } from './governance.js';
 import { loadTransitionReceipts } from './control-plane.js';
+import { validateChangeContractDeltas } from './contract-delta.js';
+import { validateContractMergeFeasibility } from './contract-merger.js';
 import { validateChangeSpecDeltas } from './spec-delta.js';
 import { validateSpecMergeFeasibility } from './spec-merger.js';
 import { validateArtifactMarkers } from './artifact-markers.js';
@@ -28,10 +30,36 @@ interface StructureResult {
   workPackages: WorkPackageResolution | null;
 }
 
+/**
+ * The impacts that make a Change too consequential for a weaker Flow.
+ *
+ * `moduleContract` is deliberately not one of them, and the distinction is load bearing rather than
+ * fussy. Folding it in would have made all three checks fire from a single edit -- `activeImpacts`,
+ * `criticalImpacts: forbidden` and `requiredWhen.anyImpact` -- and two of those wrongly: `quick` and
+ * `solid` both declare `criticalImpacts: forbidden`, so the Flow written specifically to govern
+ * interface changes would have been the first thing made ineligible to carry one.
+ *
+ * "Is this one of the impacts that demand the strongest Flow" and "does this Change move an
+ * interface" are two questions with different answers, and they get two eligibility keys.
+ */
 const IMPACT_KEYS = ['security', 'privacy', 'publicApi', 'dataMigration'] as const;
+
+/** What `requiredWhen.anyImpact` may name: the critical impacts, and the contract one beside them. */
+const REQUIRABLE_IMPACT_KEYS = [...IMPACT_KEYS, 'moduleContract'] as const;
 
 function activeImpacts(classification: ChangeConfig['classification']): Array<(typeof IMPACT_KEYS)[number]> {
   return IMPACT_KEYS.filter((key) => classification[key]);
+}
+
+/**
+ * Every impact a Flow may escalate on, including the contract one.
+ *
+ * Separate from `activeImpacts` because that answers the critical-impact question, and `requiredWhen`
+ * asks a wider one: a project may want any interface change routed to Major without also declaring
+ * that interface changes are critical impacts everywhere else.
+ */
+function requirableImpacts(classification: ChangeConfig['classification']): string[] {
+  return REQUIRABLE_IMPACT_KEYS.filter((key) => classification[key]);
 }
 
 /**
@@ -67,7 +95,7 @@ function requiredPolicyMatches(flow: StageFlow, classification: ChangeConfig['cl
   const required = flow.policy.requiredWhen;
   if (!required) return false;
   const riskMatches = required.risk?.includes(classification.risk) ?? false;
-  const impacts = activeImpacts(classification);
+  const impacts = requirableImpacts(classification);
   const impactMatches = required.anyImpact?.some((impact) => impacts.includes(impact)) ?? false;
   return riskMatches || impactMatches;
 }
@@ -77,6 +105,11 @@ function eligibilityProblems(flow: StageFlow, config: ChangeConfig): string[] {
   const eligible = flow.policy.eligibleWhen;
   if (!eligible.risk.includes(config.classification.risk)) problems.push(`risk ${config.classification.risk} is not eligible`);
   if (eligible.criticalImpacts === 'forbidden' && activeImpacts(config.classification).length > 0) problems.push('critical impacts are forbidden');
+  /* Named in full rather than as a key, because this string reaches an operator inside
+     XFORGE_FLOW_TOO_WEAK and "contractImpact is forbidden" says nothing about what to do next. */
+  if (eligible.contractImpact === 'forbidden' && config.classification.moduleContract) {
+    problems.push('a Change that moves a module contract needs a Flow with a Stage that declares the interface delta, and this Flow has none');
+  }
   if (eligible.maxModules !== undefined && config.scope.modules.length > eligible.maxModules) problems.push(`module count exceeds ${eligible.maxModules}`);
   return problems;
 }
@@ -223,6 +256,11 @@ export async function checkStructure(project: ProjectContext, changeId?: string)
      * unavailable until after the closing approval had been given.
      */
     if (resolved.state.archive.syncSpecs) diagnostics.push(...await validateSpecMergeFeasibility(project, changeId));
+    /* The same pair for contracts, and the same reasoning. An element block is well-formed and still
+       unmergeable when it says ADDED about an id the baseline already records — which is the shape a
+       second Change takes after the first one archived the same element. */
+    diagnostics.push(...await validateChangeContractDeltas(project, changeId));
+    if (resolved.state.archive.syncContracts) diagnostics.push(...await validateContractMergeFeasibility(project, changeId));
     diagnostics.push(...await validateArtifactMarkers(project, changeId));
     for (const module of resolved.config.scope.modules) {
       if (!moduleIds.has(module)) diagnostics.push(diagnostic('XFORGE_CHANGE_MODULE_UNKNOWN', `Change references unknown module ${module}.`, `${project.changesPath}/${changeId}/change.yaml`));
