@@ -199,7 +199,7 @@ function assertStoppedAwaitingDeclaration(projectRoot, stage, moved) {
  * outline is a contract the harness asserts elsewhere; a stray `##` would fail the run for the wrong
  * reason.
  */
-async function contradictTaskLedgerDesign(projectRoot) {
+export async function contradictTaskLedgerDesign(projectRoot) {
   const designPath = path.join(projectRoot, changePath('task-ledger', 'design.md'));
   const current = await readFile(designPath, 'utf8');
   const contradiction = '\n**Corrupt store handling (revised):** when the store file cannot be parsed, the CLI'

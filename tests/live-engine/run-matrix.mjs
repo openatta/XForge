@@ -9,7 +9,7 @@ import { assertLiveEnginePolicy, createLiveEnginePolicy, resetLiveEngineStageAtt
 import { stoppedAwaitingDeclaration as stoppedAwaitingDeclarationHere } from './outcome.mjs';
 import { SCENARIO_IDS } from './scenario-catalogue.mjs';
 import { assertContractBaselineAdvanced } from './assert-contract-baseline.mjs';
-import { assertStoppedAtCheck } from './assert-stopped-at-check.mjs';
+import { assertStoppedAtCheck, contradictTaskLedgerDesign } from './assert-stopped-at-check.mjs';
 
 /**
  * Data-driven live-engine matrix runner. For a Flow scenario (quick/solid/major), this reads

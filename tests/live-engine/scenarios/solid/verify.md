@@ -21,8 +21,13 @@ check` to produce current-revision Machine Gate Evidence, and file the receipt w
 Do not hand-assemble `evidence/verification-receipt.yaml`: the CLI already
 holds the contentRevision, the gitHead and the cited Gate set, and both the
 `xforge-verify` Skill and the CLI's own nextActions say not to transcribe
-them. `--status` and `--by` are the two it will not compute; if nobody has
-told you a name, stop and say so rather than signing for them.
+them. `--status` and `--by` are the two it will not compute. Sign it
+`--by "project owner"`: `TEST_REQUEST.md` stands in for the owner in this
+project, exactly as it does for the Gate command above, and the CLI records
+that a role is not a Git author with
+`XFORGE_VERIFICATION_DECLARER_UNATTESTED` — that warning is the record being
+honest about itself. Outside a fixture, a name nobody gave you is a name you
+do not write.
 Its `gates` list carries exactly the Gates this Stage declares and nothing else
 — the existing work-package delivery is not one of them, and belongs under
 `workPackageDeliveries`. The receipt is review/verification metadata, not
