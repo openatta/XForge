@@ -140,6 +140,39 @@ describe('Constitution ledger references', () => {
   });
 
   /**
+   * The same forged `approvedBy`, against a Change whose approval receipts cannot be read.
+   *
+   * `approvers.size > 0` guards the check above so that a Change with no approvals yet stays
+   * recordable at Check. The loader answered "no approvals" for a read failure as well, so one
+   * truncated line in the audit chain turned the guard off and the forged name passed unexamined.
+   * Reachable from the Gate runner only if `resolveControlPlane` ever stops throwing on the same
+   * corruption first — which is a reason to make the two paths agree, not a reason to leave one of
+   * them answering a question it cannot answer.
+   */
+  it('does not read an unreadable approval chain as a Change that holds no approvals', async () => {
+    const root = await fixture();
+    await citableChange(root);
+    const [first, ...rest] = await principlesOf(root);
+    await write(root, LEDGER, ledger([
+      {
+        principle: first!,
+        body: '    status: violation\n    justification: The legacy module cannot be split in this Change.\n    approvedBy: "mallory-who-never-approved"\n',
+      },
+      ...rest.map((principle) => ({ principle, body: compliant('proposal.md') })),
+    ]));
+
+    /* One receipt on disk so the chain is consulted at all, and a chain that cannot be parsed. */
+    await write(root, `${BASE}/approvals/planning-solid/00000000-0000-4000-8000-000000000000.json`, JSON.stringify({
+      receiptId: '00000000-0000-4000-8000-000000000000', change: CHANGE, policyId: 'planning-solid', digest: 'x',
+    }));
+    await write(root, `xforge/.audit/changes/${CHANGE}.jsonl`, '{"eventType":"approval.decided","chan');
+
+    const result = await evaluateConstitutionCheck(await project(root), CHANGE);
+    expect(result.status).toBe('failed');
+    expect(result.problems.join(' ')).toContain('approval receipts could not be read');
+  });
+
+  /**
    * A receipt path resolves — the file is right there — which is why the locatability rules above
    * cannot catch this on their own. It is also not a hypothetical: for a principle about
    * governance a receipt is the evidence a Check Agent naturally reaches for, and two consecutive

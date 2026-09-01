@@ -311,7 +311,7 @@ export async function runGate(
   } else if (gate.spec.builtin === 'constitution-check') {
     /* The Constitution is documented as the first governance layer; this is what makes it one. */
     const known = await knownIdentities(project, changeId, approvals);
-    const constitution = await evaluateConstitutionCheck(project, changeId, known);
+    const constitution = await evaluateConstitutionCheck(project, changeId, known, { approvals });
     result = {
       command: ['builtin:constitution-check'],
       shell: false,

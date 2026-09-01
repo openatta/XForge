@@ -222,7 +222,12 @@ function citesApprovalReceipt(name: string, approvers: Set<string>): boolean {
 interface ConstitutionCheckOptions {
   /**
    * Approval receipts this Change holds. Supplied by callers that already loaded them; when
-   * omitted the receipts are read from disk, so the Gate behaves the same either way.
+   * omitted they are read from disk.
+   *
+   * "The Gate behaves the same either way" is what this said, and it was true only because the
+   * lazy read happens to be unreachable from the Gate runner: `resolveGateContext` loads the
+   * control plane first, and a corrupt audit chain throws there. Passing what the caller already
+   * has means the two paths cannot come apart if that ever stops being true.
    */
   approvals?: ApprovalReceipt[];
 }
@@ -286,8 +291,18 @@ export async function evaluateConstitutionCheck(
     declaredGates: new Set(project.manifest.scaffold.gates ?? []),
     requirements: await readRequirements(project, changeId),
   };
-  const approvals = options.approvals ?? (await loadReceipts(project, changeId));
-  const approvers = receiptApprovers(approvals);
+  const loaded = options.approvals ? { receipts: options.approvals, unreadable: null } : await loadReceipts(project, changeId);
+  const approvers = receiptApprovers(loaded.receipts);
+  /*
+   * An empty approver set means one of two things and the check below can only act on one of them:
+   * "this Change holds no approval yet", which is the normal state at Check and must not block, and
+   * "the receipts could not be read", which is not a state anything may certify against. Collapsing
+   * the second into the first turns a corrupt audit chain into a pass for an exception attributed
+   * to somebody who approved nothing.
+   */
+  if (loaded.unreadable) {
+    problems.push(`${relative}: this Change's approval receipts could not be read (${loaded.unreadable}), so no approvedBy in this ledger can be checked against an actual approval. The audit chain is what makes an approval verifiable; repair it before this Gate is asked to certify anything.`);
+  }
   let citedAnything = false;
 
   for (const principle of principles) {
@@ -392,11 +407,17 @@ export async function evaluateConstitutionCheck(
  * Imported lazily so this module stays usable from the Gate runner without pulling the whole
  * control plane into every caller's module graph.
  */
-async function loadReceipts(project: ProjectContext, changeId: string): Promise<ApprovalReceipt[]> {
+async function loadReceipts(
+  project: ProjectContext,
+  changeId: string,
+): Promise<{ receipts: ApprovalReceipt[]; unreadable: string | null }> {
   try {
     const { loadApprovalReceipts } = await import('./control-plane.js');
-    return (await loadApprovalReceipts(project, changeId)).receipts;
-  } catch {
-    return [];
+    return { receipts: (await loadApprovalReceipts(project, changeId)).receipts, unreadable: null };
+  } catch (error) {
+    /* `loadApprovalReceipts` returns an empty list for a Change with no approvals directory, so it
+       does not throw for "none". Anything that does reach here is a failure to read, and the caller
+       has to be able to tell the two apart. */
+    return { receipts: [], unreadable: error instanceof Error ? error.message : String(error) };
   }
 }

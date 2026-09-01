@@ -179,7 +179,18 @@ export async function loadApprovalReceipts(
         continue;
       }
       const receiptDiagnostics = await validateSchema('approval-receipt', receipt, relative);
-      receiptDiagnostics.push(...verifyApprovalReceipt(project, receipt).map((item) => ({ ...item, path: relative })));
+      /*
+       * Only when the shape held. `verifyApprovalReceipt` reads `receipt.approver.provider`
+       * directly, and a receipt that just failed its schema is exactly the one that may carry no
+       * `approver` at all -- so the validation was computed, ignored, and then crashed on what it
+       * had already found. One hand-placed receipt file took `xforge state` down for the whole
+       * Change with XFORGE_INTERNAL_ERROR and no path naming the file, and `state` is the command
+       * every Skill runs first. Nothing is lost by stopping here: a receipt carrying an error
+       * diagnostic is dropped below either way.
+       */
+      if (!receiptDiagnostics.some((item) => item.severity === 'error')) {
+        receiptDiagnostics.push(...verifyApprovalReceipt(project, receipt).map((item) => ({ ...item, path: relative })));
+      }
       if (receipt.change !== changeId || receipt.policyId !== policy) receiptDiagnostics.push(diagnostic('XFORGE_APPROVAL_RECEIPT_SUBJECT_MISMATCH', 'Approval receipt path does not match its subject.', relative));
       /*
        * Neither `local` nor `mcp` receipts carry a signature, so `verifyApprovalReceipt` above is
