@@ -339,11 +339,33 @@ export async function resolveControlPlane(
   for (const gateId of undeclared) {
     diagnostics.push(diagnostic(
       'XFORGE_VERIFICATION_GATE_UNDECLARED',
-      `Flow ${flow.metadata.name} requires Gate ${gateId}, which runs whatever this project declares under manifest.verification.${gateId} — currently nothing. It will refuse the first time a Change reaches the Stage that runs it, which on this Flow is after an approval has been collected. Answer it now with \`xforge verification declare --gate-name ${gateId} --command '["cargo","test"]' --by <person>\`, substituting the command this project actually verifies itself with. Do not answer it with whatever command happens to exist: a test command on a repository with no tests passes this Gate while asserting nothing.`,
+      `Flow ${flow.metadata.name} requires Gate ${gateId}, which runs whatever this project declares under manifest.verification.${gateId} — currently nothing. It will refuse the first time a Change reaches the Stage that runs it, ${whenItBites(flow, gateId)}. Answer it now with \`xforge verification declare --gate-name ${gateId} --command '["cargo","test"]' --by <person>\`, substituting the command this project actually verifies itself with. Do not answer it with whatever command happens to exist: a test command on a repository with no tests passes this Gate while asserting nothing.`,
       'xforge/manifest.yaml',
       'info',
     ));
   }
+
+/**
+ * When an undeclared Gate actually bites, said per Gate rather than asserted once.
+ *
+ * This sentence used to read "which on this Flow is after an approval has been collected" in a
+ * message that names the Flow in its first clause — and it is false for most of them. Quick runs
+ * `unit-tests` at verify and collects its only approval at archive, after it; a contract-governed
+ * Flow runs `contract-lint` at design, two Stages before `planning-solid`. Two separate live runs
+ * met the wrong half of it. A reader who checks a claim like this once and finds it untrue stops
+ * checking the rest of the message, which is where the part that matters is.
+ */
+function whenItBites(flow: StageFlow, gateId: string): string {
+  const index = flow.stages.findIndex((stage) => [...(stage.gates ?? []), ...(stage.exit?.gates ?? [])].includes(gateId));
+  if (index < 0) return 'which on this Flow is the archive it is mandatory for';
+  const stage = flow.stages[index]!;
+  const approvalBefore = flow.stages
+    .slice(0, index)
+    .some((earlier) => (earlier.exit?.approvals ?? []).length > 0);
+  return approvalBefore
+    ? `which on this Flow is the ${stage.id} Stage, after an approval has already been collected`
+    : `which on this Flow is the ${stage.id} Stage, before any approval is collected`;
+}
 
   const governance: GovernanceState = {
     currentStage, transitionHead, transitions: transitions.receipts, revision,

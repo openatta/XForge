@@ -42,8 +42,56 @@ exit: 1
       "severity": "error",
       "message": "Selected Gate does not exist or is not enabled: no-such-gate",
       "path": "xforge/manifest.yaml"
+    },
+    {
+      "code": "XFORGE_RECONCILE_REQUIREMENT_UNANCHORED",
+      "severity": "info",
+      "message": "RC-2: Widget works is declared in xforge/changes/add-feature/specs/widget/spec.md and is referenced by none of this Change's other Artifacts.",
+      "path": "xforge/changes/add-feature",
+      "details": {
+        "rule": "RC-2",
+        "refs": [
+          "Widget works",
+          "xforge/changes/add-feature/specs/widget/spec.md"
+        ]
+      }
+    },
+    {
+      "code": "XFORGE_RECONCILE_REQUIREMENT_UNCOVERED",
+      "severity": "info",
+      "message": "RC-3: Widget works is not named in the \"Completeness\" section of xforge/changes/add-feature/assurance.md.",
+      "path": "xforge/changes/add-feature",
+      "details": {
+        "rule": "RC-3",
+        "refs": [
+          "Widget works",
+          "xforge/changes/add-feature/assurance.md"
+        ]
+      }
     }
   ],
   "changes": [],
-  "nextActions": []
+  "nextActions": [
+    {
+      "action": "answer-finding",
+      "type": "governance",
+      "actor": "human",
+      "status": "ready",
+      "id": "CHK-001",
+      "reason": "Finding CHK-001 is awaiting your answer: Should the retry budget be configurable?",
+      "command": [
+        "xforge",
+        "findings",
+        "resolve",
+        "--change",
+        "add-feature",
+        "--id",
+        "CHK-001",
+        "--answer",
+        "<what you decided>",
+        "--by",
+        "<you>"
+      ]
+    }
+  ]
 }

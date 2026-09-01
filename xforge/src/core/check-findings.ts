@@ -55,14 +55,31 @@ const SEVERITIES: FindingSeverity[] = ['blocker', 'warning', 'suggestion'];
 const FINDING_KEYS = ['id', 'severity', 'summary', 'refs', 'status', 'reworkTo', 'resolvedBy', 'resolvedAt', 'answer'] as const;
 
 /** Resolves a `refs` entry the same way other Change-relative Artifact paths are resolved. */
+/**
+ * Change-relative first, then project-relative -- the same two spellings `constitution-check`
+ * accepts, and for the same reason.
+ *
+ * This tried one spelling. The two ledgers are written in the same Stage, by the same Skill, and
+ * only the permissive one is written down: `xforge-check` says of the Constitution's `references`
+ * that a path is "any path in the repository ... Do not confine yourself to Change-local paths",
+ * and says nothing about this one. So a finding that cited `xforge/changes/<id>/design.md` -- the
+ * form `xforge state` prints, and the form the work-package plan is *required* to use -- was told
+ * it "does not exist in this Change" about a file plainly sitting there. Two separate hand-driven
+ * runs hit it, and both ran the experiment before believing the message.
+ *
+ * The cost was not the warning. A finding must cite what motivated it, and the files that motivate
+ * a coverage or gate-declaration finding are the immutable acceptance suite and the Manifest --
+ * neither reachable Change-relative. Both runs had to reword findings to point somewhere weaker, or
+ * accept a warning on the citation that carried the point.
+ */
 async function refExists(project: ProjectContext, changeId: string, ref: string): Promise<boolean> {
-  try {
-    const absolute = await safeResolve(project.root, `${project.changesPath}/${changeId}/${ref}`);
-    await access(absolute);
-    return true;
-  } catch {
-    return false;
+  for (const candidate of [`${project.changesPath}/${changeId}/${ref}`, ref]) {
+    try {
+      await access(await safeResolve(project.root, candidate));
+      return true;
+    } catch { /* try the next spelling */ }
   }
+  return false;
 }
 
 async function evaluate(

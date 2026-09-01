@@ -46,6 +46,36 @@ describe('Skill and classification contract', () => {
   });
 
   /**
+   * A `##` section the Skill names that the Flow's outline does not declare.
+   *
+   * Step 4 said "write Why, Scope, Non-goals, Actors, Success criteria". Only Major's proposal
+   * outline has `## Actors`; on Quick and Solid an Agent following the Skill writes a section its
+   * Flow never asked for, and nothing rejects it — `artifact-markers.ts` reports a section that is
+   * missing and has no diagnostic for one that is extra. So the Artifact silently diverges from the
+   * outline the same Skill calls the contract.
+   */
+  it('does not name a proposal section only one Flow declares', async () => {
+    const flows = ['quick', 'solid', 'major'];
+    const outlines = await Promise.all(flows.map(async (flow) => ({
+      flow,
+      source: await readFile(path.join(scaffoldPayload, 'xforge', 'flows', `${flow}.yaml`), 'utf8'),
+    })));
+    const universal = ['## Why', '## Scope', '## Non-goals'];
+    for (const heading of universal) {
+      expect(outlines.every((entry) => entry.source.includes(heading)), `${heading} is not in every proposal outline`).toBe(true);
+    }
+    /* The section that made this a defect: present in one outline, named unconditionally. */
+    expect(outlines.filter((entry) => entry.source.includes('## Actors')).map((entry) => entry.flow)).toEqual(['major']);
+
+    for (const file of SKILLS) {
+      const source = await readFile(path.join(scaffoldPayload, 'xforge', 'scaffold', 'skills', 'xforge-propose', file), 'utf8');
+      const prose = source.replace(/```yaml\n[\s\S]*?```/g, '');
+      expect(prose, `xforge-propose/${file}: names Actors, which only Major's proposal outline declares`)
+        .not.toMatch(/Non-goals[^.\n]*Actors/);
+    }
+  });
+
+  /**
    * A key the template carries but the Skill never explains is a key an Agent fills in with the
    * template's own placeholder value. `moduleContract` is the one that has to be reasoned about
    * rather than copied: answering it wrongly is the only way an interface move reaches a Flow with

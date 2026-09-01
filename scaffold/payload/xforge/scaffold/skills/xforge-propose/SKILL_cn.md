@@ -46,7 +46,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
    任何机制拿这个字段和实际 diff 比对，所以在这里答 false 是接口变更进入无法治理它的 Flow 的唯一途径。
 
    只处理 State 返回给 Propose 的 ready Artifact/Action；Schema 诊断未清零前不得继续写 Artifact。
-4. 从磁盘重读依赖，写 Why、Scope、Non-goals、Actors、Success criteria，并生成带稳定 Requirement ID 的成功、失败、边界和兼容性场景。不可把来源未声明的精确契约猜测写成规范事实；已有不可修改的验收测试定义了字段、输出形状或退出行为时必须逐项保持一致，测试与需求冲突则作为材料性歧义停止。
+4. 从磁盘重读依赖，写出该 Flow 的 `proposal` outline 声明的每一个 `##` 段落——这个集合各 Flow 不同，只有 Major 带 `## Actors`——并生成带稳定 Requirement ID 的成功、失败、边界和兼容性场景。不可把来源未声明的精确契约猜测写成规范事实；已有不可修改的验收测试定义了字段、输出形状或退出行为时必须逐项保持一致，测试与需求冲突则作为材料性歧义停止。
 5. 每完成一个 Artifact 都刷新 State；当下一 Action 属于 Clarify、Design、Apply 或其他 Skill 时停止。
 6. 运行 `xforge check --change <id>`，修复本 Stage 的结构问题，不把提示性文本称为已通过 Gate；只在 CLI 返回 ready Transition 时调用 `xforge transition --change <id> --to <stage>`。
 

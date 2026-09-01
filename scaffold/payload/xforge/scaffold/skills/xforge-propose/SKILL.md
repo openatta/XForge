@@ -48,7 +48,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
    so a false answer here is the one way an interface move reaches a Flow that cannot govern it.
 
    Continue only with ready Propose Artifacts/Actions and clear all schema diagnostics first.
-4. Reread dependencies from disk; write Why, Scope, Non-goals, Actors, Success criteria, and stable Requirement IDs with success, failure, boundary, and compatibility scenarios. Do not guess an unstated precise contract into a Spec fact; where an immutable acceptance test already fixes a field, output shape, or exit behavior, match it exactly, and stop as material ambiguity on any test/Requirement conflict.
+4. Reread dependencies from disk; write every `##` section its Flow's `proposal` outline declares -- the set differs by Flow, and only Major's carries `## Actors` -- and stable Requirement IDs with success, failure, boundary, and compatibility scenarios. Do not guess an unstated precise contract into a Spec fact; where an immutable acceptance test already fixes a field, output shape, or exit behavior, match it exactly, and stop as material ambiguity on any test/Requirement conflict.
 5. Refresh State after each Artifact and stop when the next Action belongs to another Skill.
 6. Run `xforge check --change <id>`, fix only Propose-stage structural issues, and do not call advisory text a passed Gate; run `xforge transition --change <id> --to <stage>` only when the CLI returns that Transition as ready.
 
