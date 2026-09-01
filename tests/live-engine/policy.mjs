@@ -171,7 +171,26 @@ export function completeLiveEngineAttempt(policy, {
   }
   const numericCost = Number(costUsd);
   const knownCost = costUsd !== null && costUsd !== undefined && Number.isFinite(numericCost) && numericCost >= 0;
-  if (knownCost) policy.spentUsd = rounded(policy.spentUsd + numericCost);
+  /*
+   * A *timed-out* attempt is charged the budget it reserved; any other missing cost still fails closed.
+   *
+   * A killed call reports no usage -- `timedOut: true`, exit 143, `tokens: null` -- which is every
+   * timeout there is. Recording that as "cost unknown" set `budgetAccountingComplete` false, and
+   * `reserveLiveEngineAttempt` then refused the next call, so the retry `maxAttemptsPerStage` exists
+   * for could never run after a timeout. That is the one case the RUNBOOK says *is* re-runnable,
+   * because a timeout produced no conclusion to keep. The retry was unreachable code.
+   *
+   * The bound is what reconciles the two intents. A killed call ran until its own deadline, so it
+   * cannot have cost more than the budget reserved for it; charging that ceiling over-states the
+   * spend and never under-states it, which is the direction a guardrail should err in, and the suite
+   * budget still stops the run.
+   *
+   * Deliberately not extended to every missing cost. A call that *completed* while reporting no usage
+   * is a provider whose accounting cannot be trusted, and there is no ceiling to reason from -- that
+   * is the unaccountable case this guard was written for, and it keeps failing closed.
+   */
+  const chargedUsd = knownCost ? numericCost : (timedOut ? run.budgetUsd : null);
+  if (chargedUsd !== null) policy.spentUsd = rounded(policy.spentUsd + chargedUsd);
   else policy.budgetAccountingComplete = false;
   /* Cost still drives the budget stop — that is the guardrail — but tokens are what a reader can
      actually compare, since the dollar figure depends on whichever engine and rate card produced
@@ -184,7 +203,9 @@ export function completeLiveEngineAttempt(policy, {
   }
   Object.assign(run, {
     status: exitCode === 0 && !timedOut ? 'completed' : 'failed',
-    costUsd: knownCost ? numericCost : null,
+    costUsd: chargedUsd,
+    /* Marks a ceiling rather than a measurement, so a reader is never shown a bound as a reading. */
+    costEstimated: !knownCost && chargedUsd !== null,
     tokens: tokens ?? null,
     exitCode,
     timedOut,

@@ -38,19 +38,56 @@ describe('live-engine suite policy', () => {
     })).toThrow(expect.objectContaining({ code: 'LIVE_RETRY_LIMIT' }));
   });
 
-  it('fails closed when a provider result has no cost accounting', () => {
+  it('fails closed when a call completes and reports no cost', () => {
+    /*
+     * The unaccountable case: the provider answered, and cannot say what it charged. There is no
+     * ceiling to reason from, so continuing would be spending against a number nobody has.
+     */
     const policy = createLiveEnginePolicy({ stages: ['apply', 'verify'] });
     const reserved = reserveLiveEngineAttempt(policy, {
       stage: 'apply', requestedBudgetUsd: 3, isolation: 'behavioral', startedAt: '2026-08-09T00:00:00.000Z',
     });
     completeLiveEngineAttempt(policy, {
-      stage: 'apply', attempt: reserved.attempt, costUsd: null, exitCode: 1, timedOut: true,
-      classification: 'environment_blocked', output: 'apply.json', finishedAt: '2026-08-09T00:01:00.000Z',
+      stage: 'apply', attempt: reserved.attempt, costUsd: null, exitCode: 1, timedOut: false,
+      classification: 'model_behavior_failure', output: 'apply.json', finishedAt: '2026-08-09T00:01:00.000Z',
     });
     expect(policy.budgetAccountingComplete).toBe(false);
     expect(() => reserveLiveEngineAttempt(policy, {
       stage: 'verify', requestedBudgetUsd: 3, isolation: 'behavioral', startedAt: '2026-08-09T00:02:00.000Z',
     })).toThrow(expect.objectContaining({ code: 'LIVE_BUDGET_UNKNOWN' }));
+  });
+
+  it('charges a timed-out attempt its reserved budget, so the retry it is entitled to can run', () => {
+    /*
+     * A killed call reports no usage — that is every timeout there is — so treating "no cost" as
+     * unaccountable made `maxAttemptsPerStage` unreachable for the one classification the RUNBOOK
+     * says is re-runnable. A live `solid-contract` run died exactly here: design timed out at the
+     * ceiling, attempt 2 was refused by the budget guard, and the scenario ended having concluded
+     * nothing.
+     *
+     * The ceiling is the bound: the call ran until its own deadline, so it cannot have cost more than
+     * the budget reserved for it. Over-stating is the safe direction, and the suite budget still stops
+     * the run.
+     */
+    const policy = createLiveEnginePolicy({ stages: ['design', 'verify'], suiteBudgetUsd: 9, maxAttemptsPerStage: 2, timeoutSeconds: 900 });
+    const reserved = reserveLiveEngineAttempt(policy, {
+      stage: 'design', requestedBudgetUsd: 3, isolation: 'behavioral', startedAt: '2026-08-09T00:00:00.000Z',
+    });
+    const settled = completeLiveEngineAttempt(policy, {
+      stage: 'design', attempt: reserved.attempt, costUsd: null, tokens: null, exitCode: 143, timedOut: true,
+      classification: 'environment_blocked', output: 'design.json', finishedAt: '2026-08-09T00:15:00.000Z',
+    });
+    expect(settled.budgetAccountingComplete).toBe(true);
+    expect(settled.spentUsd).toBe(3);
+    const run = policy.stages.design.runs.at(-1);
+    expect(run.costUsd).toBe(3);
+    /* Recorded as a ceiling, never presented as a measurement. */
+    expect(run.costEstimated).toBe(true);
+
+    const retry = reserveLiveEngineAttempt(policy, {
+      stage: 'design', requestedBudgetUsd: 3, isolation: 'behavioral', startedAt: '2026-08-09T00:16:00.000Z',
+    });
+    expect(retry.attempt).toBe(2);
   });
 
   it('takes whatever stage list the Flow graph actually has', () => {

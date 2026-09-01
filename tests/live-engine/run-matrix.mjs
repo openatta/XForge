@@ -156,6 +156,14 @@ const SCENARIOS = {
     changeId: 'order-cancel',
     intent: 'contract-governance',
     expect: { reworks: 0, outcome: 'archived' },
+    /*
+     * Its design Stage does more in one call than any other scenario's: two Artifacts, a declared
+     * Gate's command recorded, and the Stage's Gates run after the last write. The first live run of
+     * it spent eighteen minutes there and was killed at the fifteen-minute default, having produced
+     * nothing. The latency probe cannot see this coming -- it times a trivial call, which says how
+     * slow the provider is and nothing about how much the Stage has to do.
+     */
+    limits: { timeoutSeconds: 2700 },
   },
   major: {
     flow: 'major',
@@ -1086,6 +1094,24 @@ const timeoutScale = timeoutScaleForLatency(probedLatencyMs);
 if (timeoutScale > 1) {
   selected['timeout-seconds'] = String(Number(selected['timeout-seconds']) * timeoutScale);
 }
+/*
+ * A scenario that knows it has a heavy Stage may raise its own floor.
+ *
+ * The latency probe scales the ceiling by how long a *trivial* call takes, which predicts a provider
+ * being slow and predicts nothing about a Stage having a lot to do. `solid-contract`'s design Stage
+ * writes two Artifacts, records a declared Gate's command and runs the Stage's Gates in one call; on
+ * an endpoint fast enough to scale by one, it ran eighteen minutes into a fifteen-minute ceiling and
+ * was killed having produced nothing.
+ *
+ * A floor rather than a replacement, and never over an explicit flag: an operator who passed
+ * `--timeout-seconds` is not second-guessed, and a probe that already scaled higher keeps its number.
+ * `limits.scenarioFloorSeconds` records that a scenario asked, so a pass at a raised ceiling never
+ * reads as a pass at the shipped default.
+ */
+const scenarioFloorSeconds = scenarioConfig.limits?.timeoutSeconds ?? null;
+if (scenarioFloorSeconds && !selected.explicit.has('timeout-seconds') && Number(selected['timeout-seconds']) < scenarioFloorSeconds) {
+  selected['timeout-seconds'] = String(scenarioFloorSeconds);
+}
 
 /**
  * The limits this run actually ran under, carried beside its verdict.
@@ -1111,6 +1137,7 @@ const limits = {
   explicit: [...selected.explicit].filter((key) => key in OPTION_DEFAULTS).sort(),
   probedLatencyMs,
   timeoutScale,
+  scenarioFloorSeconds,
 };
 limits.atDefaults = ['timeoutSeconds', 'maxAttemptsPerStage', 'suiteBudgetUsd', 'stageBudgetUsd']
   .every((key) => limits[key] === limits.defaults[key]);
