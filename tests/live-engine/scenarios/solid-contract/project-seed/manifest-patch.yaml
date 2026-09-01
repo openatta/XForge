@@ -1,0 +1,22 @@
+# What this scenario selects on top of what `xforge init` produced.
+#
+# Only the additions. The Scaffold version, the CLI pin and the target list are init's to decide, and
+# a seed that shipped a whole Manifest would freeze all three into a fixture with no business knowing
+# them — silently, because the file stays valid as they move.
+#
+# `solid-contract` ships as a template under xforge/scaffold/flows/; naming it here is what makes the
+# harness adopt it, by the same copy its own header documents.
+project:
+  layout: monorepo
+  modules:
+    - id: store
+      path: src/store
+      kind: library
+    - id: api
+      path: src/api
+      kind: service
+scaffold:
+  flows: [solid-contract]
+  gates: [contract-lint, contract-compat, contract-drift, module-boundaries]
+  rules: [interfaces-are-contract-governed]
+flow: solid-contract

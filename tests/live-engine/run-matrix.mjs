@@ -132,6 +132,31 @@ const SCENARIOS = {
     },
     mutate: { afterStage: 'design', apply: contradictTaskLedgerDesign },
   },
+  /*
+   * Contract governance, driven end to end by a real model.
+   *
+   * The Flow is `solid-contract`, which ships as a template rather than active -- `xforge/flows/` is
+   * read by listing it, so a Flow placed there is one the project runs. The seed selects it in the
+   * Manifest and `setup.mjs` performs the same copy the template's own header documents, so the
+   * harness exercises the adoption route instead of carrying a second copy that would drift from it.
+   *
+   * What only a live run can decide here is the part no static test reaches: whether an Agent reading
+   * the shipped Skills writes an interface delta addressed by ids it *read* rather than ids it
+   * remembered, records four declared Gate commands instead of inventing them, and leaves the
+   * decision ledger's `decidedBy` to the person `TEST_REQUEST.md` names. Each of those is a
+   * sentence in a Skill; none of them is checkable by anything that does not run a model.
+   *
+   * Archived with zero reworks is the bar, and `assertContractBaselineAdvanced` is what makes that
+   * bar mean something: the run must leave `xforge/contracts/http.md` recording the elements the
+   * delta declared. A Change can reach archive with a delta nobody merged -- that was a real defect
+   * on this branch -- so reaching archive is not by itself evidence the record moved.
+   */
+  'solid-contract': {
+    flow: 'solid-contract',
+    changeId: 'order-cancel',
+    intent: 'contract-governance',
+    expect: { reworks: 0, outcome: 'archived' },
+  },
   major: {
     flow: 'major',
     changeId: 'credential-store',
@@ -862,6 +887,57 @@ function assertStoppedAtCheck(projectRoot, flowDefinition, checkStage) {
  * infer a plausible one, so a run that guesses correctly has still demonstrated the behaviour that
  * put an empty Gate into production in the first place.
  */
+/**
+ * The contract baseline moved, and moved to what the delta said.
+ *
+ * Reaching archive is not evidence of this. A Flow can declare a contract-delta Artifact, collect one
+ * every Change, and merge none of them -- both halves individually valid, the baseline never
+ * advancing, every Change re-declaring what the last already said. That was a real defect on this
+ * branch, found by reading rather than by running, and it is invisible to an outcome check because
+ * the Change archives perfectly either way.
+ *
+ * So the assertion is on the record: every element id the Change declared as ADDED has to be in the
+ * baseline afterwards, and the delta itself has to have travelled into the archive rather than
+ * vanishing. Read out of the archived Change's own delta, not out of a list this file holds, because
+ * a fixture that names the ids stops testing whether the Agent addressed them correctly.
+ */
+function assertContractBaselineAdvanced(projectRoot, archivedChangeDirectory) {
+  const problems = [];
+  const deltaRoot = path.join(archivedChangeDirectory, 'contracts');
+  let deltaFiles = [];
+  try { deltaFiles = readdirSync(deltaRoot).filter((name) => name.endsWith('.md')); }
+  catch { problems.push(`The archived Change carries no contracts/ directory at ${deltaRoot}, so no interface delta travelled with it.`); }
+
+  const declaredAdds = [];
+  for (const file of deltaFiles) {
+    let section = null;
+    for (const line of readFileSync(path.join(deltaRoot, file), 'utf8').split('\n')) {
+      const header = /^## (ADDED|MODIFIED|REMOVED) Contract Elements[ \t]*$/.exec(line);
+      if (header) { section = header[1]; continue; }
+      if (/^## /.test(line)) { section = null; continue; }
+      const element = /^### Element:\s*(.+?)\s*$/.exec(line);
+      if (section === 'ADDED' && element) declaredAdds.push(element[1].trim());
+    }
+  }
+  if (deltaFiles.length > 0 && declaredAdds.length === 0) {
+    problems.push('The interface delta declares no ADDED element, so this run proves nothing about a baseline advancing.');
+  }
+
+  const baselineRoot = path.join(projectRoot, 'xforge', 'contracts');
+  let recorded = new Set();
+  try {
+    for (const file of readdirSync(baselineRoot).filter((name) => name.endsWith('.md'))) {
+      const source = readFileSync(path.join(baselineRoot, file), 'utf8');
+      for (const match of source.matchAll(/^### Element:\s*(.+?)\s*$/gm)) recorded.add(match[1].trim());
+    }
+  } catch { problems.push(`The contract baseline is missing or unreadable at ${baselineRoot}.`); }
+
+  for (const id of declaredAdds) {
+    if (!recorded.has(id)) problems.push(`The delta declared "${id}" as ADDED and the baseline does not record it after archive, so syncContracts did not merge.`);
+  }
+  return { problems, declaredAdds, recorded: [...recorded].sort() };
+}
+
 function assertStoppedAwaitingDeclaration(projectRoot, stage, moved) {
   const problems = [];
   const blocks = (moved.diagnostics ?? []).map((item) => `${item.code}: ${item.message}`).join('\n');
@@ -1208,6 +1284,8 @@ let steps = 0;
 let injected = false;
 let mutated = false;
 const allowedOutcomes = [scenarioConfig.expect?.outcome ?? 'archived'].flat();
+/** Set only where the Flow merges a contract delta; reported so a reader sees what the record became. */
+let contractBaseline = null;
 let outcome = 'archived';
 let stoppedAtCheck = null;
 let stoppedAwaitingDeclaration = null;
@@ -1554,6 +1632,19 @@ const canonicalSpecs = (archivedState.data.specs ?? []).length;
 if (stillActive || canonicalSpecs === 0) {
   throw new Error(`Archive did not complete for ${scenarioName}:${changeId} (stillActive=${stillActive}, canonicalSpecs=${canonicalSpecs}).`);
 }
+
+/* Only where the Flow actually merges one. Asking this of `quick` or `solid` would be asserting a
+   mechanism they do not declare, which is how a check becomes noise nobody can act on. */
+if (flowDefinition.terminal?.archive?.syncContracts) {
+  const archivedRoot = path.join(projectRoot, 'xforge', 'changes', 'archive');
+  const archivedChange = readdirSync(archivedRoot).find((name) => name.endsWith(changeId));
+  if (!archivedChange) throw new Error(`No archived directory for ${changeId} under ${archivedRoot}.`);
+  const baseline = assertContractBaselineAdvanced(projectRoot, path.join(archivedRoot, archivedChange));
+  if (baseline.problems.length > 0) {
+    throw new Error(`${scenarioName} archived without advancing the contract baseline:\n  ${baseline.problems.join('\n  ')}`);
+  }
+  contractBaseline = baseline;
+}
 }
 
 /*
@@ -1622,6 +1713,10 @@ process.stdout.write(`${JSON.stringify({
   /* What a cold run did differently, kept as a result rather than a crash. Empty for guided runs,
      which fail on the same deviation instead of recording it. */
   outlineObservations,
+  /* Null unless the Flow merges a contract delta. Reported rather than left implicit in a pass: the
+     ids the Agent chose to declare are the interesting part of this scenario, and a reader deciding
+     whether the run proved anything wants to see them beside the verdict. */
+  contractBaseline,
   stoppedAtCheck,
   stoppedAwaitingDeclaration,
   project: projectRoot,

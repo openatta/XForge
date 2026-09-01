@@ -21,6 +21,7 @@ export const FLOW_SCENARIO_IDS = [
   'quick-undeclared',
   'solid',
   'solid-rework',
+  'solid-contract',
   'major',
   'major-cold',
 ];
