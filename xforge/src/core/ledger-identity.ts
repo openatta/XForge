@@ -99,6 +99,34 @@ async function transitionActors(project: ProjectContext, changeId: string): Prom
  * nothing yet existed that could say they were bad. Callers surface this so a reader can tell those
  * two states apart before, rather than after, building on one.
  */
+/**
+ * Whether the repository has ever seen this name, for a record that belongs to the project rather
+ * than to one Change.
+ *
+ * `knownIdentities` answers the Change-scoped question and is the right bar for `decidedBy`,
+ * `resolvedBy` and `approvedBy`. `xforge verification declare` writes no Change: it records who
+ * decided how this project verifies itself, into the governed Manifest, and every later Gate run
+ * trusts that command. It took any string at all and said nothing — a live run recorded
+ * `--by 'Nobody Who Exists'` and got `ok: true` with an empty diagnostics list, while the ledger
+ * written in the same Stage refused a `decidedBy` the repository could not attest.
+ *
+ * Reported rather than refused, and the distinction is deliberate. A legitimate declaration is
+ * routinely attributed to somebody with no commits here — a role a person answered as, an owner
+ * named in a request document, someone new. Refusing those would trade a silent record for a
+ * blocked one. What was wrong was the silence: the Manifest now carries the name either way, and a
+ * reader is told which names the repository can stand behind.
+ */
+export async function unattestedDeclarer(root: string, name: string): Promise<string | null> {
+  const normalized = name.trim().toLowerCase();
+  if (!normalized) return null;
+  const authors = new Set(await commitAuthors(root, []));
+  if (authors.size === 0) return null;
+  if (authors.has(normalized)) return null;
+  const match = /^(.*?)\s*<(.+)>$/.exec(normalized);
+  if (match && (authors.has(match[1]!.trim()) || authors.has(match[2]!.trim()))) return null;
+  return `"${name.trim()}" is not a Git author of this repository, so the record of who decided this cannot be checked against anything. It is kept as written; a reader should know it is unattested.`;
+}
+
 export function unverifiableIdentityWarning(known: KnownIdentities): string | null {
   if (!known.empty) return null;
   return 'this Change records no approvers and has no commits yet, so the names in it could not be checked against anything; they will be checked after the first commit, and a name that does not match a Git author or approver then will fail this Gate';

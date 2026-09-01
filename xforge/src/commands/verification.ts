@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { Diagnostic, FileChange, ProjectContext, VerificationEntry } from '../types.js';
 import { isRetired, isVerificationRun } from '../types.js';
 import { XForgeError, diagnostic } from '../core/errors.js';
+import { unattestedDeclarer } from '../core/ledger-identity.js';
 import { atomicWrite } from '../core/files.js';
 import { sha256 } from '../core/hash.js';
 import { assertManaged } from '../core/project-loader.js';
@@ -302,6 +303,9 @@ export async function executeVerificationDeclare(
     ));
   }
 
+  /* Recorded either way; the point is that it stops being silent. See `unattestedDeclarer`. */
+  const unattested = await unattestedDeclarer(project.root, options.by);
+
   const declaredAt = new Date().toISOString();
   const entry: VerificationEntry = options.command
     ? {
@@ -356,6 +360,7 @@ export async function executeVerificationDeclare(
    * does not say the marker is wrong.
    */
   const diagnostics: Diagnostic[] = [];
+  if (unattested) diagnostics.push(diagnostic('XFORGE_VERIFICATION_DECLARER_UNATTESTED', unattested, 'xforge/manifest.yaml', 'warning'));
   if (options.notApplicable) {
     const { detected } = await resolveVerificationPlan(project, options.gate);
     if (!detected.some((marker) => marker.marker === options.notApplicable)) {
