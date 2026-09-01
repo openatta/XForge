@@ -1,7 +1,7 @@
 XForge state: OK
 Protocol: 2
 Root: <ROOT>
-Project: xforge-project (single) — scaffold 0.8.0 en
+Project: xforge-project (single) — scaffold 0.8.1 en
   Specs: xforge/specs    Changes: xforge/changes    Compatibility: managed
   Active Changes: add-feature — solid/verify (medium)
   Selected resources:

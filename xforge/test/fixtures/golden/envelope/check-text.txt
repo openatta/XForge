@@ -29,7 +29,7 @@ Data: {
         "inputDigest": "<sha256>",
         "runner": {
           "name": "@xforge/cli",
-          "version": "0.8.0",
+          "version": "0.8.1",
           "integrity": "sha256:<sha256>"
         },
         "command": [
@@ -68,7 +68,7 @@ Data: {
         "inputDigest": "<sha256>",
         "runner": {
           "name": "@xforge/cli",
-          "version": "0.8.0",
+          "version": "0.8.1",
           "integrity": "sha256:<sha256>"
         },
         "command": [
