@@ -137,6 +137,22 @@ export function reconcileDeclaredGaps(
            against prose. */
         const subjects = [...occurrence.text.matchAll(/`([^`]+)`/g)].map((match) => match[1]!);
         if (subjects.length > 0 && subjects.some((subject) => cited.has(subject))) continue;
+        /*
+         * Or the Artifact the deferral is written in.
+         *
+         * "Backticked tokens are what a finding could cite back" assumed authors backtick locations.
+         * They backtick subjects: a live run deferred `test/**` and
+         * `observable-requirements-are-tested` -- a glob and a Rule id -- and neither is a thing
+         * `check-findings` will resolve. Citing them cleared this rule and drew two "not a
+         * Requirement, not a path" warnings from the Gate; citing `design.md` cleared the Gate and
+         * brought this rule straight back. The run reported it as no ref set satisfying both, and
+         * it was right.
+         *
+         * A finding that names the Artifact holding the deferral has answered the question this
+         * rule asks -- somebody looked at that gap -- and it names a location both mechanisms
+         * accept.
+         */
+        if (cited.has(source.path) || cited.has(source.path.split('/').pop() ?? '')) continue;
         observations.push({
           id: `RC-4:${source.id}:${occurrence.line}`,
           rule: 'RC-4',

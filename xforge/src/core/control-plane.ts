@@ -546,7 +546,7 @@ export function blockRemedy(
     const commands = unreviewedPackages.map((id) => `\`xforge work-package acknowledge --change ${changeId} --package ${id} --as reviewer --evidence <path>\``).join(', ');
     return {
       code: 'XFORGE_INDEPENDENT_REVIEW_REMEDY',
-      message: `This Flow requires every delivered work package to carry a Reviewer acknowledgement before Verify closes. The Reviewer is read-only and cannot write its own evidence: transcribe its returned result verbatim to \`<change>/evidence/agents/<package>/review-<execution>.yaml\`, then record it — ${commands}.`,
+      message: `This Flow requires every delivered work package to carry a Reviewer acknowledgement before Verify closes. The Reviewer is read-only and cannot write its own evidence: transcribe its returned result verbatim to \`<change>/evidence/agents/<package>/review/<execution>.md\` -- the \`review/\` subdirectory and the \`.md\` are both load-bearing, because \`evidence/agents/<package>/*.yaml\` is where delivery records live and a transcript written there is read as one -- then record it — ${commands}.`,
     };
   }
   if (blocks.includes('condition:independentReview:review-missing') || blocks.includes('condition:independentReview:review-stale')) {
