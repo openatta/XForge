@@ -367,6 +367,34 @@ function whenItBites(flow: StageFlow, gateId: string): string {
     : `which on this Flow is the ${stage.id} Stage, before any approval is collected`;
 }
 
+  /*
+   * The route out of a blocked transition, said where the block is read and not only where it is hit.
+   *
+   * `blockRemedy` is called from `transition` and `archive` -- you get the remedy when you try the
+   * thing. But `XFORGE.md` tells an Agent to treat `state` as the authoritative account of what to
+   * do next, and `state` carried the block as a bare token: `condition:materialQuestions:stale-Q1`
+   * and nothing else. `xforge explain` does not take it either, because it is not a diagnostic code.
+   *
+   * A live run met exactly that and said so: the message alone was not enough to work out what had
+   * gone stale or why, and it only knew that re-dating the entry is forbidden because the Skill
+   * carries a bullet about it. Its own words -- someone working from CLI output alone "would very
+   * plausibly have bumped the timestamp", which is the one move the field exists to prevent. The
+   * same run met XFORGE_GATE_EVIDENCE_STALE, which names the Gate, the binding and the exact
+   * command, and called that one sufficient without the Skill. Same mechanism, two ledgers, and the
+   * difference was entirely in what the CLI said.
+   *
+   * Deduplicated by code: several transitions are usually blocked by the same thing, and repeating
+   * one remedy per target is how a reader learns to skip the section.
+   */
+  const remedied = new Set<string>();
+  for (const transition of readyTransitions) {
+    if (transition.blockedBy.length === 0) continue;
+    const remedy = blockRemedy(transition.blockedBy, changeId);
+    if (!remedy || remedied.has(remedy.code)) continue;
+    remedied.add(remedy.code);
+    diagnostics.push(diagnostic(remedy.code, remedy.message, `${project.changesPath}/${changeId}`, 'info'));
+  }
+
   const governance: GovernanceState = {
     currentStage, transitionHead, transitions: transitions.receipts, revision,
     pendingApprovals: pendingApprovals.filter((item, index, all) => index === all.findIndex((candidate) => candidate.policyId === item.policyId && candidate.transition === item.transition)),

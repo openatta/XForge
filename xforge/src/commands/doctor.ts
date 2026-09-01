@@ -7,6 +7,7 @@ import { diagnostic } from '../core/errors.js';
 import { assertManaged } from '../core/project-loader.js';
 import { flowArchiveOperation, isStageFlow, loadFlows, stageGateReferences } from '../core/flow-resolver.js';
 import { listChangeDirectories } from '../core/change-directories.js';
+import { unattestedDeclarer } from '../core/ledger-identity.js';
 import { loadBundledScaffold } from '../core/bundled-scaffold.js';
 import { CLI_NAME, CLI_VERSION } from '../constants.js';
 import { flowSkillConformanceDiagnostics } from '../core/flow-skill-conformance.js';
@@ -442,6 +443,38 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
       path: 'xforge/manifest.yaml',
       severity: 'info',
     });
+  }
+
+  /*
+   * Who this project's recorded verification commands are attributed to, checked against the
+   * repository rather than taken on trust.
+   *
+   * `verification declare` warns when the name cannot be attested, and that warning fires once, at
+   * the moment of declaring, and reaches nobody afterwards: the Manifest keeps `declaredBy` with no
+   * marker that it was unverified, and a live run observed exactly that -- "it does not persist
+   * anywhere... only whoever ran the command ever knows". A record of who decided how this project
+   * verifies itself is read long after the person who wrote it has gone, which is precisely when
+   * the caveat matters. So it is re-derived here, where a reader asks what is off about the
+   * project, rather than stored -- a stored flag would go stale the moment somebody commits.
+   *
+   * A suggestion, on the same terms as the declaration itself: an unattested name is recorded and
+   * kept, not refused.
+   */
+  for (const [gateId, entries] of Object.entries(project.manifest.verification ?? {})) {
+    for (const entry of entries) {
+      const declaredBy = (entry as { declaredBy?: string }).declaredBy;
+      if (!declaredBy) continue;
+      const unattested = await unattestedDeclarer(project.root, declaredBy);
+      if (!unattested) continue;
+      suggestions.push({
+        scope: 'gates',
+        code: 'XFORGE_DOCTOR_VERIFICATION_DECLARER_UNATTESTED',
+        id: gateId,
+        message: `manifest.verification.${gateId} records ${unattested} The command still runs; what is unverified is the record of who chose it.`,
+        path: 'xforge/manifest.yaml',
+        severity: 'info',
+      });
+    }
   }
 
   /*

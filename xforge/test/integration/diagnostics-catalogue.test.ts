@@ -47,14 +47,14 @@ describe('diagnostic catalogue', () => {
      * product can emit and was missing a tenth of them, and the untested-code list below is built
      * from this catalogue — so it could not owe anything for a code it had never heard of.
      *
-     * Fifty-one now, over forty-one codes: the contract work added the reconciliation rules, whose
+     * Fifty-two now, over forty-two codes: the contract work added the reconciliation rules, whose
      * observations carry their own code and reach a reader through the one forwarding site in
-     * `core/reconcile.ts`, and RC-8 added one more. That is the shape this count exists to keep
-     * visible.
+     * `core/reconcile.ts`; RC-8 added one, and `doctor`'s suggestions reach a reader the same
+     * indirect way. That is the shape this count exists to keep visible.
      */
     const indirect = sites.filter((site) => site.severity === 'indirect');
-    expect(indirect.length).toBe(51);
-    expect(new Set(indirect.map((site) => site.code)).size).toBe(41);
+    expect(indirect.length).toBe(52);
+    expect(new Set(indirect.map((site) => site.code)).size).toBe(42);
   });
 
   it('splits arguments at top-level commas only', () => {

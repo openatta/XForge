@@ -10,7 +10,8 @@ exit: 0
     "change": "add-feature",
     "target": "xforge/changes/add-feature/evidence/verification-receipt.yaml",
     "supply": [
-      "status: passed — your assertion that this Stage verified the work. XForge will not write it for you."
+      "status: passed — your assertion that this Stage verified the work. XForge will not write it for you.",
+      "by: <person> — who is making that assertion. Not a role and not this Agent; the receipt records a name."
     ],
     "receipt": {
       "change": "add-feature",

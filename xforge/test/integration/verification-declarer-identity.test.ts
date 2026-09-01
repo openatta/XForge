@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
-import { advanceSolidToApply, createCompleteSolidChange, fixture, runCli } from '../helpers.js';
+import { advanceSolidToApply, clearVerification, createCompleteSolidChange, fixture, runCli } from '../helpers.js';
 
 /**
  * Who says how this project verifies itself, and whether the repository has ever seen them.
@@ -55,6 +55,43 @@ describe('who declared a verification command', () => {
    * receipt, read `supply` as the authoritative list of what it owed — which is what the field name
    * promises — and met XFORGE_VERIFICATION_ARGUMENTS_REQUIRED a command later.
    */
+  /**
+   * The caveat has to outlive the command that raised it.
+   *
+   * `declare` warns once, at the moment of declaring, and the Manifest then keeps `declaredBy` with
+   * no marker that it was unverified. A live run put it exactly: "it does not persist anywhere —
+   * only whoever ran the command ever knows." A record of who chose how this project verifies
+   * itself is read long after that person has gone, which is when the caveat matters most.
+   *
+   * Re-derived rather than stored: a stored flag would go stale the first time somebody commits.
+   */
+  it('is still reported by doctor long after the declaration', async () => {
+    const root = await committed();
+    /* The fixture ships declarations of its own; this test is about the one it makes. */
+    await clearVerification(root);
+    await runCli(root, ['verification', 'declare', '--gate-name', 'unit-tests',
+      '--command', '["npm","test"]', '--by', 'Nobody Who Exists']);
+
+    const doctored = await runCli(root, ['doctor']);
+    const found = (doctored.json.data as any).suggestions
+      .filter((item: any) => item.code === 'XFORGE_DOCTOR_VERIFICATION_DECLARER_UNATTESTED');
+    expect(found.length, JSON.stringify((doctored.json.data as any).suggestions.map((i: any) => i.code))).toBe(1);
+    expect(found[0].message).toContain('Nobody Who Exists');
+    /* The command is not in doubt — only the record of who chose it. */
+    expect(found[0].message).toContain('The command still runs');
+  });
+
+  it('says nothing in doctor when the declarer is a Git author', async () => {
+    const root = await committed();
+    /* The fixture ships declarations of its own; this test is about the one it makes. */
+    await clearVerification(root);
+    await runCli(root, ['verification', 'declare', '--gate-name', 'unit-tests',
+      '--command', '["npm","test"]', '--by', AUTHOR]);
+    const doctored = await runCli(root, ['doctor']);
+    expect(((doctored.json.data as any).suggestions as any[]).map((item) => item.code))
+      .not.toContain('XFORGE_DOCTOR_VERIFICATION_DECLARER_UNATTESTED');
+  });
+
   it('names both fields a person must supply, not just the status', async () => {
     const root = await committed();
     await createCompleteSolidChange(root, 'add-feature');

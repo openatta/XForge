@@ -110,6 +110,7 @@ XFORGE_DOCTOR_RULE_SCOPE_EMPTY  src/commands/doctor.ts
 XFORGE_DOCTOR_STRICT  src/commands/doctor.ts
 XFORGE_DOCTOR_UNCITED  src/commands/doctor.ts
 XFORGE_DOCTOR_UNUSED_FLOW  src/commands/doctor.ts
+XFORGE_DOCTOR_VERIFICATION_DECLARER_UNATTESTED  src/commands/doctor.ts
 XFORGE_DOCTOR_VERIFICATION_UNDECLARED  src/commands/doctor.ts
 XFORGE_EVIDENCE_CONFLICT  src/runners/gate.ts
 XFORGE_EXPLAIN_CATALOGUE_MISSING  src/commands/explain.ts
