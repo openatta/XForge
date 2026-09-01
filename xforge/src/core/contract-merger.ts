@@ -47,6 +47,17 @@ type ConflictSink = (item: Diagnostic) => void;
 
 const THROW_ON_CONFLICT: ConflictSink = (item) => { throw new XForgeError(item); };
 
+/**
+ * Advisory, never a refusal -- and so never routed through `ConflictSink`, which throws at archive.
+ *
+ * A note states something a person should decide about a merge that is otherwise legal. Dropped on
+ * the archive path on purpose: by then the approvals that would have answered the question are
+ * already signed, and raising it there can only block work nobody can now reconsider.
+ */
+type NoteSink = (item: Diagnostic) => void;
+
+const IGNORE_NOTES: NoteSink = () => {};
+
 function elementBlocks(source: string, masked = maskFencedCode(source)): ElementBlock[] {
   /* Scanned on the mask, sliced from the source: an element that documents a payload by showing it
      has `### ` lines of its own inside the fence, and each one used to start a new element. */
@@ -106,7 +117,7 @@ function convertNewDelta(delta: string, relative: string, raise: ConflictSink): 
   return render(`# ${domain.replace(/-/g, ' ')}\n\n## Purpose\n\nEstablished by archived XForge Changes.`, '', added);
 }
 
-function mergeExisting(record: string, delta: string, relative: string, raise: ConflictSink): string | null {
+function mergeExisting(record: string, delta: string, relative: string, raise: ConflictSink, note: NoteSink = IGNORE_NOTES): string | null {
   const operations = [...deltaSection(delta, 'ADDED'), ...deltaSection(delta, 'MODIFIED'), ...deltaSection(delta, 'REMOVED')];
   /*
    * A delta that declares nothing plans nothing, decided before the merge rather than after it.
@@ -137,6 +148,35 @@ function mergeExisting(record: string, delta: string, relative: string, raise: C
     active.set(block.id, block);
   }
 
+  /*
+   * An element this delta changes whose *recorded ancestor* it leaves alone.
+   *
+   * XForge understands no dialect, so it cannot know that `...schemas.Order.properties.status` is
+   * part of `...schemas.Order`; what it can see is that the baseline records both and this delta
+   * names only one. That is enough to ask the question, and asking is all this does -- leaving the
+   * ancestor alone is very often right, and whether it is right is a judgement about the interface
+   * rather than about the record.
+   *
+   * The gap is real and was measured: a live Change widened an enum on a child element, the parent's
+   * own canonical digest moved with it, and neither `contract-compat` nor `contract-drift` could see
+   * it -- both are membership arithmetic and the parent is a member before and after. The Agent
+   * noticed and wrote the reasoning into its delta unprompted. Nothing prompted it, and nothing
+   * would have caught it had it not.
+   */
+  const declaredIds = new Set(operations.map((operation) => operation.id));
+  for (const id of [...declaredIds].sort()) {
+    const ancestors = [...active.keys()]
+      .filter((candidate) => candidate !== id && id.startsWith(`${candidate}.`) && !declaredIds.has(candidate))
+      .sort();
+    if (ancestors.length === 0) continue;
+    note(diagnostic(
+      'XFORGE_CONTRACT_ANCESTOR_UNDECLARED',
+      `This delta declares "${id}" and the baseline also records ${ancestors.map((entry) => `"${entry}"`).join(', ')}, which contains it and which this delta does not mention. Leaving the ancestor as recorded is often right; nothing here can decide that, because the baseline is a list of ids and the containment is the project's own naming. Say in the delta why the ancestor is unchanged, or declare it too.`,
+      relative,
+      'warning',
+    ));
+  }
+
   for (const block of deltaSection(delta, 'ADDED')) {
     if (active.has(block.id)) {
       raise(conflict(`Cannot add "${block.id}": the baseline already records it. Declare it under MODIFIED Contract Elements if this Change changes it.`, relative));
@@ -161,7 +201,7 @@ function mergeExisting(record: string, delta: string, relative: string, raise: C
   return render(parts.before, parts.after, [...active.values()]);
 }
 
-async function planContractMutationsWith(project: ProjectContext, changeId: string, raise: ConflictSink): Promise<ContractMutation[]> {
+async function planContractMutationsWith(project: ProjectContext, changeId: string, raise: ConflictSink, note: NoteSink = IGNORE_NOTES): Promise<ContractMutation[]> {
   const changeDirectory = await safeResolve(project.root, `${project.changesPath}/${changeId}`);
   const deltaPaths = (await fg('contracts/**/*.md', {
     cwd: changeDirectory, onlyFiles: true, followSymbolicLinks: false, dot: false, unique: true,
@@ -191,7 +231,7 @@ async function planContractMutationsWith(project: ProjectContext, changeId: stri
       if (content === null) continue;
     } else {
       const record = await readFile(destination, 'utf8');
-      content = mergeExisting(record, delta, reported, raiseHere);
+      content = mergeExisting(record, delta, reported, raiseHere, note);
       if (content === record) continue;
     }
     if (conflicted) continue;
@@ -223,7 +263,9 @@ export async function planContractMutations(project: ProjectContext, changeId: s
 export async function validateContractMergeFeasibility(project: ProjectContext, changeId: string): Promise<Diagnostic[]> {
   const diagnostics: Diagnostic[] = [];
   try {
-    await planContractMutationsWith(project, changeId, (item) => { diagnostics.push(item); });
+    /* Notes travel with the conflicts here and nowhere else: `check` is where a question about the
+       merge can still change what gets merged. `planContractMutations` leaves them dropped. */
+    await planContractMutationsWith(project, changeId, (item) => { diagnostics.push(item); }, (item) => { diagnostics.push(item); });
   } catch (error) {
     /* Anything still thrown is a failure of the read itself, not a merge conflict. Reported rather
        than swallowed: a validation that returns "no conflicts" because it could not run is the worst

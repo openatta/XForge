@@ -86,6 +86,7 @@ XFORGE_CONSTITUTION_MISSING  src/core/constitution.ts
 XFORGE_CONSTITUTION_RULE_CONFLICT  src/core/resource-loader.ts
 XFORGE_CONSTITUTION_SECTION_MISSING  src/core/constitution.ts
 XFORGE_CONSTITUTION_VERSION_INVALID  src/core/constitution.ts
+XFORGE_CONTRACT_ANCESTOR_UNDECLARED  src/core/contract-merger.ts
 XFORGE_CONTRACT_DELTA_ELEMENT_DUPLICATE  src/core/contract-delta.ts
 XFORGE_CONTRACT_DELTA_ELEMENT_ID_INVALID  src/core/contract-delta.ts
 XFORGE_CONTRACT_DELTA_ELEMENT_ORPHAN  src/core/contract-delta.ts
