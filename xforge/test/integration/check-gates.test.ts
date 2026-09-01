@@ -85,6 +85,39 @@ function verifyLabel(argv: string[]): string {
 }
 
 describe('check and Gate evidence', () => {
+  /**
+   * A Gate a Stage names but the project does not have, reported before the Stage runs.
+   *
+   * `checkStructure` validated Gate references against `flowArchiveOperation().mandatoryGates`,
+   * which for a Stage Flow is the verify Stage's `gates` and nothing else. A Gate named at propose,
+   * design or check therefore had no reference check at all: `xforge check` passed, `xforge state`
+   * reported no diagnostic, `transition` passed, and the Flow failed only when a Stage reached the
+   * Gate -- `XFORGE_GATE_NOT_FOUND`, several Stages after the Flow could have said so.
+   *
+   * `doctor` already collected every Stage's Gates for the opposite direction (dead code), so the
+   * two commands disagreed about the same Flow. Asserted against both here, because the value is
+   * that they answer alike, not that either one answers.
+   */
+  it('reports a Gate a non-verify Stage names but the project does not have, in check as well as doctor', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await updateYaml(root, 'xforge/flows/solid.yaml', (flow: any) => {
+      const design = flow.stages.find((stage: any) => stage.id === 'design');
+      design.gates = [...(design.gates ?? []), 'ghost-design-gate'];
+    });
+
+    const checked = await runCli(root, ['check', '--change', 'add-feature']);
+    const dangling = (checked.json.diagnostics as any[]).filter((item) => item.code === 'XFORGE_FLOW_GATE_DISABLED');
+    expect(dangling.map((item) => item.message).join('\n')).toContain('ghost-design-gate');
+    /* Named with the Stage that references it: "solid requires ghost-design-gate" would send the
+       reader to the archive terminal, which is not where the reference is. */
+    expect(dangling[0].message).toContain('Stage design');
+
+    const doctored = await runCli(root, ['doctor']);
+    const reported = (doctored.json.data.danglingReferences as any[]).filter((item) => item.scope === 'gates');
+    expect(reported.map((item) => item.message).join('\n')).toContain('ghost-design-gate');
+  });
+
   it('runs only the current Stage Gates, not the verify Stage set', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);

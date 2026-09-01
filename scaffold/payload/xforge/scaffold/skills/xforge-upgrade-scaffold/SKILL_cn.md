@@ -17,13 +17,13 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # 权限
 
-- 可写 `xforge/scaffold/**` 与 `xforge/scripts/**`；`xforge/manifest.yaml` 仅在记录人**明确批准过**的选择时可写。
+- 可写 `xforge/scaffold/**` 与 `xforge/scripts/**`；`xforge/manifest.yaml` 仅在记录人**明确批准过**的选择时可写。**`xforge/flows/**` 你根本写不了**——`protected-files` PermissionPolicy 会拒绝，所以那是一次被拒的工具调用，不是一条你可以决定要不要违反的规矩。
 - 不得触碰 `xforge/changes/**`、`xforge/specs/**`、审计链、审批、`xforge/constitution.md`、`xforge/architecture.md`。脚手架可以重新生成，治理记录不能——一条能被重建的审计链，本来就不值得保留。
 - **绝不删除 `project-only` 文件。** 没有任何依据能区分"上游删掉的资产"和"本项目自己写的资产"，按前一种理解去删，就是凭猜测销毁别人的工作。
 
 # 执行
 
-1. 每个 `added` 文件：逐字拷入。**不要**把它加进 Manifest 选择——文件随发行版到达，不等于决定要运行它。
+1. 每个 `added` 文件：逐字拷入。**不要**把它加进 Manifest 选择——文件随发行版到达，不等于决定要运行它。**新增的 Flow 是例外，而且两头都是例外**：`xforge/flows/**` 对你是拒绝的，而采纳一个 Flow 本来就是治理决定。报告这个新 Flow、说明它是干什么的，把「拷入」和「选用」都留给人——和不变式 4 对「变更过的 Flow」给出的是同一个答案，理由也一样。
 2. 每个 `changed` 文件：两份都读。吸收新版**规定**的东西，保住本项目**知道**的东西。一个带着真实测试命令的 Gate、一份本项目在跑的 Script 代码、一段本项目选定的 Skill 措辞、一个有人调过的阈值——那些是关于这个项目的事实，要活过升级。
 3. 英文与 `_cn` 两份 Skill 必须保持等价。只合并一种语言，会让项目留下两份互相矛盾的 Skill，而 Agent 读到哪一份就变成了 Manifest 语言设置的问题，而不是项目决定的问题。
 4. 运行 `xforge upgrade-scaffold --complete`，然后 `xforge doctor`。`--complete` 会自行重新投射，所以这里没有 `xforge install` 这一步。

@@ -1,2 +1,6 @@
+XFORGE_CONDITION_LEDGER_STALE_REMEDY src/core/control-plane.ts
+XFORGE_DOCTOR_APPROVALS_INTERACTIVE_ONLY src/commands/doctor.ts
+XFORGE_DOCTOR_ARCHITECTURE_ABSENT src/commands/doctor.ts
+XFORGE_INDEPENDENT_REVIEW_REMEDY src/core/control-plane.ts
 XFORGE_PROJECT_NOT_FOUND src/core/project-loader.ts
 XFORGE_ROOT_NOT_FOUND src/core/project-loader.ts

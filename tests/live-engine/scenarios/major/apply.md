@@ -7,8 +7,15 @@ or commit.
 Read `AGENTS.md`, `TEST_REQUEST.md`, the active `credential-store` Change, the
 installed `xforge-apply` Skill, the latest Transition receipt, and the T001
 dispatch receipt. Confirm they show the Apply stage and a bound dispatch. Do
-not run `xforge` in this phase because external Approval
-verification is kept outside the model environment. Implement only `src/**`
+not
+
+What is yours and what is the harness's: implementation is yours, and so is every
+`xforge` call the `xforge-apply` Skill prescribes — `state`, `work-package dispatch`,
+`work-package draft`, `check`, `transition`. What is never yours is an Approval: external
+Approval verification is kept outside the model environment, and `xforge approve` will
+refuse here, which is correct rather than a fault. A run driven by hand has no separate
+harness process to make the CLI calls for it, so leaving them undone strands the Change at
+Apply with no delivery and no route to Verify. Implement only `src/**`
 so the pre-existing black-box acceptance suite passes: secrets stored only as
 salted `scrypt` hashes, rotation invalidates the old secret immediately (no
 grace period), and v1 store files are migrated to v2 in place on first read

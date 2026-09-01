@@ -1,11 +1,13 @@
-import { readFile, readdir } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import fg from 'fast-glob';
 import path from 'node:path';
 import type { Diagnostic, FileChange, ProjectContext, StageFlow } from '../types.js';
 import { checkStructure } from '../core/checker.js';
 import { diagnostic } from '../core/errors.js';
 import { assertManaged } from '../core/project-loader.js';
-import { flowArchiveOperation, isStageFlow, loadFlows } from '../core/flow-resolver.js';
+import { flowArchiveOperation, isStageFlow, loadFlows, stageGateReferences } from '../core/flow-resolver.js';
+import { listChangeDirectories } from '../core/change-directories.js';
+import { unattestedDeclarer } from '../core/ledger-identity.js';
 import { loadBundledScaffold } from '../core/bundled-scaffold.js';
 import { CLI_NAME, CLI_VERSION } from '../constants.js';
 import { flowSkillConformanceDiagnostics } from '../core/flow-skill-conformance.js';
@@ -85,21 +87,16 @@ const DANGLING_CODE_SCOPE: Record<string, DoctorScope> = {
   XFORGE_FLOW_SKILL_CONDITION_UNNAMED: 'skills',
 };
 
-async function activeChangeDirectories(project: ProjectContext): Promise<string[]> {
-  const absolute = await safeResolve(project.root, project.changesPath);
-  try {
-    return (await readdir(absolute, { withFileTypes: true }))
-      .filter((entry) => entry.isDirectory() && entry.name !== 'archive' && !entry.name.startsWith('.'))
-      .map((entry) => entry.name)
-      .sort();
-  } catch {
-    return [];
-  }
-}
 
-function stageGateReferences(flow: StageFlow): string[] {
+
+/**
+ * Every Gate this Flow names anywhere. `stageGateReferences` in `core/flow-resolver.ts` is the one
+ * reading of "what Stages name", shared with `checkStructure` so the two commands cannot drift --
+ * they did, and `check` was the one missing every Stage but verify.
+ */
+function allGateReferences(flow: StageFlow): string[] {
   return [
-    ...flow.stages.flatMap((stage) => [...(stage.gates ?? []), ...(stage.exit?.gates ?? [])]),
+    ...stageGateReferences(flow).map((reference) => reference.gate),
     ...flowArchiveOperation(flow).mandatoryGates,
   ];
 }
@@ -180,7 +177,7 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
   for (const [name, flow] of flowResult.flows) {
     const filePath = `xforge/flows/${name}.yaml`;
     if (isStageFlow(flow)) {
-      for (const gate of stageGateReferences(flow)) referencedGates.add(gate);
+      for (const gate of allGateReferences(flow)) referencedGates.add(gate);
       for (const stage of flow.stages) referencedSkills.add(stage.skill);
       referencedSkills.add(flow.terminal.archive.handler);
       const declaredApprovals = new Set((flow.governance?.approvalPolicies ?? []).map((policy) => policy.id));
@@ -262,7 +259,19 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
     });
   }
 
-  const changeDirectories = await activeChangeDirectories(project);
+  const changes = await listChangeDirectories(project);
+  /* `unusedFlows` below is derived by walking these directories, so an unreadable one does not make
+     the answer empty -- it makes it unknown, and reporting every Flow but the default as dead code
+     on the strength of a failed read is the accusation this stops. */
+  if (changes.unreadable) {
+    diagnostics.push(diagnostic(
+      'XFORGE_CHANGES_DIRECTORY_UNREADABLE',
+      `The Changes directory could not be read (${changes.unreadable}), so this report cannot tell an unused Flow from one whose Changes it could not see. Every finding below that counts Changes is suspect until it reads.`,
+      project.changesPath,
+      'warning',
+    ));
+  }
+  const changeDirectories = changes.ids;
   const usedFlows = new Set<string>([project.manifest.flow]);
   for (const changeId of changeDirectories) {
     const changePath = `${project.changesPath}/${changeId}/change.yaml`;
@@ -434,6 +443,38 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
       path: 'xforge/manifest.yaml',
       severity: 'info',
     });
+  }
+
+  /*
+   * Who this project's recorded verification commands are attributed to, checked against the
+   * repository rather than taken on trust.
+   *
+   * `verification declare` warns when the name cannot be attested, and that warning fires once, at
+   * the moment of declaring, and reaches nobody afterwards: the Manifest keeps `declaredBy` with no
+   * marker that it was unverified, and a live run observed exactly that -- "it does not persist
+   * anywhere... only whoever ran the command ever knows". A record of who decided how this project
+   * verifies itself is read long after the person who wrote it has gone, which is precisely when
+   * the caveat matters. So it is re-derived here, where a reader asks what is off about the
+   * project, rather than stored -- a stored flag would go stale the moment somebody commits.
+   *
+   * A suggestion, on the same terms as the declaration itself: an unattested name is recorded and
+   * kept, not refused.
+   */
+  for (const [gateId, entries] of Object.entries(project.manifest.verification ?? {})) {
+    for (const entry of entries) {
+      const declaredBy = (entry as { declaredBy?: string }).declaredBy;
+      if (!declaredBy) continue;
+      const unattested = await unattestedDeclarer(project.root, declaredBy);
+      if (!unattested) continue;
+      suggestions.push({
+        scope: 'gates',
+        code: 'XFORGE_DOCTOR_VERIFICATION_DECLARER_UNATTESTED',
+        id: gateId,
+        message: `manifest.verification.${gateId} records ${unattested} The command still runs; what is unverified is the record of who chose it.`,
+        path: 'xforge/manifest.yaml',
+        severity: 'info',
+      });
+    }
   }
 
   /*

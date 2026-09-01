@@ -202,12 +202,40 @@ function indirectCodes(source: string, file: string): DiagnosticSite[] {
       code: match[1]!,
       severity: 'indirect',
       hasPath: false,
-      message: '',
+      /*
+       * The `summary` beside it, which is the sentence the reader will actually meet.
+       *
+       * This was the empty string, and `xforge explain` prints what the catalogue holds -- so every
+       * one of these codes explained itself as nothing at all, against the `xforge-apply` Skill's
+       * promise that explain "gives that code's severity and every message it can carry". A live run
+       * asked about one and got a blank. The text is a template with `${...}` still in it, because
+       * the values are computed; a reader learns far more from the shape than from silence, and the
+       * interpolations are where the specifics go.
+       */
+      message: nearbySummary(source, match.index! + match[0].length),
       file,
       line: source.slice(0, match.index!).split('\n').length,
     });
   }
   return found;
+}
+
+/**
+ * The `summary:` template that follows a `code:` in the same object literal.
+ *
+ * Bounded to the next few hundred characters and to a single template literal: past that the search
+ * leaves the observation it started in and reports a neighbour's sentence, which is worse than
+ * reporting none.
+ */
+function nearbySummary(source: string, from: number): string {
+  const window = source.slice(from, from + 900);
+  /* `summary` in a reconciliation observation, `message` everywhere else -- both name the sentence
+     the reader meets, and quoting either is a template literal or a plain string. */
+  /* `(?:[^`\\]|\\.)*` rather than `[^`]*`: these messages quote CLI syntax with escaped backticks
+     inside them, and stopping at the first one returned a fragment or nothing at all. */
+  const match = /\b(?:summary|message):\s*(`(?:[^`\\]|\\.)*`|'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*")/.exec(window);
+  if (!match) return '';
+  return match[1]!.slice(1, -1).replace(/\\`/g, '`').replace(/\s*\n\s*/g, ' ').trim();
 }
 
 export async function readDiagnosticCatalogue(xforgeRoot: string): Promise<DiagnosticSite[]> {

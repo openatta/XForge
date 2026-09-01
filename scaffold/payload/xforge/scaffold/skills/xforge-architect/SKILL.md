@@ -6,7 +6,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # Invariants
 
-- `xforge/architecture.md` is a durable project asset, not a Change Artifact. It does not archive, it has no delta semantics, and it is the only file this Skill writes.
+- `xforge/architecture.md` is a durable project asset, not a Change Artifact. It does not archive, it has no delta semantics, and it is the only *project* asset this Skill writes. The one file it writes inside a Change is the `architectureDeltas` ledger named in Authority below, and that is a decision record, not an architecture.
 - **This Skill is the sole writer.** A Change may propose an architecture change; only this Skill merges one in, and only when a person asks it to.
 - Requirements are merged automatically at archive because they have delta semantics. Architecture does not: it is one map that has to stay internally consistent, so merging it is a deliberate act, not a side effect of closing a Change.
 - Absence is a legitimate state. A project without this file is not broken — nothing blocks, and Changes proceed normally. Offer to create it; never require it.
@@ -14,8 +14,9 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # Authority
 
-- Write only `xforge/architecture.md`.
-- Do not modify Specs, Changes, product code, the Constitution, Flows, or any Scaffold asset. An architecture decision that belongs in the Constitution is a Constitution amendment, and that is a governed Change, not this.
+- Write `xforge/architecture.md`, and inside a Change exactly one file: `evidence/conditions/architectureDeltas.yaml`, and only to record a decision a person has just given you. Nothing else under a Change, ever.
+- That single exception is why this Skill exists in the loop at all. `xforge-design` writes an architecture proposal and stops, because the ledger entry names a `decidedBy` and an Agent that fills in its own `decidedBy` has written its own authorisation. Somebody has to carry the answer back, and it is the Skill whose whole job is asking a person.
+- Do not modify Specs, a Change's Artifacts, product code, the Constitution, Flows, or any Scaffold asset. An architecture decision that belongs in the Constitution is a Constitution amendment, and that is a governed Change, not this.
 - Never invent an architecture. Every decision here is the user's; this Skill proposes candidates and records what the user chose.
 
 # Execution

@@ -79,6 +79,31 @@ describe('staging an upgrade that changes a Flow', () => {
     expect(await readFile(flowPath, 'utf8')).toContain('  version: 1');
   });
 
+  /**
+   * A Flow that arrives as `added` rather than `changed`, which is the case the prompt did not cover.
+   *
+   * The Flow paragraph sits under the `changed` heading, and the `added` heading says "copy them in
+   * verbatim" with no exception. `xforge/flows/**` is denied to an Agent by `protected-files`, so
+   * that instruction resolves to a refused tool call -- and the `Never` list cannot rescue it,
+   * because that list is derived from `inTransaction !== 'full'` and a Flow is staged and diffed
+   * like everything else in its zone. Concrete trigger: any release that ships a new Flow.
+   */
+  it('does not tell an Agent to copy in a new Flow it is denied from writing', async () => {
+    const root = await fixture();
+    await rm(path.join(root, 'xforge', 'flows', 'major.yaml'), { force: true });
+
+    const staged = await runCli(root, ['upgrade-scaffold']);
+    expect(staged.code, JSON.stringify(staged.json?.diagnostics)).toBe(0);
+    const entry = (staged.json.data.plan.entries as any[]).find((item) => item.path === 'xforge/flows/major.yaml');
+    expect(entry?.disposition, 'the Flow was not classified as new').toBe('added');
+
+    const prompt = await readFile(path.join(root, 'xforge', '.upgrade', 'MERGE.md'), 'utf8');
+    const newSection = prompt.slice(prompt.indexOf('file(s) are new'));
+    expect(newSection).toContain('xforge/flows/major.yaml');
+    /* Named in the section that carries the instruction, not only in the one about changed files. */
+    expect(newSection.slice(0, newSection.indexOf('## Never'))).toContain('protected-files');
+  });
+
   it('reports a Flow the project does not declare rather than adopting it', async () => {
     const root = await fixture();
     await updateYaml(root, 'xforge/manifest.yaml', (manifest: any) => {

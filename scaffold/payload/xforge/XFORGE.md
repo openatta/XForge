@@ -32,7 +32,7 @@ Reading the same thing twice is cheap for XForge and expensive for you — not b
 re-reads it, but because every answer it prints stays in your context for the rest of the session.
 So ask for what you are about to act on. `--field <path>` takes one value out of the Envelope and
 prints nothing else, and repeats: `xforge state --change <id> --field nextActions --field change`
-is one call returning two values. Five sections are left out of `state` until `--include` asks for
+is one call returning two values. Six sections are left out of `state` until `--include` asks for
 them, and each says so where it would have been.
 
 `check` takes `--field` too. Its reply carries the structure report, the resolved Change, the Gate
@@ -44,8 +44,12 @@ read `[]` as "nothing to say" and was one call away from transitioning on stale 
 entry in `gates` carries its own Evidence — the verify command's whole stdout, the digests, the
 timestamps — so this narrows the reply to the part you act on rather than making it small.
 
-A refusal answers the same way, narrowed to what you asked for plus why it failed, so
-`--field diagnostics` after one is a few lines rather than the whole project.
+A refusal narrows differently, and a reader built for the success shape breaks on it.
+On `ok: true` the requested paths are the whole reply, at the top level. On a
+refusal the envelope stays — `ok` is false, every diagnostic is kept, the exit
+code is 1 — and only `data` narrows, so what you asked for sits under `data`
+rather than beside it. That asymmetry is deliberate: a refusal must never read
+like a success. Parse both shapes, or read `data` on the failing branch.
 
 `--field` takes a dotted path, not only a top-level name: `--field change.governance.currentStage`
 prints one string. And it is all or nothing — one name that does not resolve fails the call and
@@ -69,6 +73,11 @@ attempting to satisfy it.
 Use XForge `quick` when delivery speed is the priority and the Change is low
 risk, bounded, and reversible; use `solid` for stable routine delivery; use
 `major` for significant, high-risk, cross-system, or critical-impact changes.
+None of the three can carry a Change that moves an interface between modules:
+set `classification.moduleContract` truthfully and all three refuse it with
+`XFORGE_FLOW_TOO_WEAK`, naming an eligible Flow if this project has adopted
+one. The refusal is the key working — answering `false` to clear it is the one
+move that puts an interface change on a Flow with no step for it.
 When the active Change has two or more dependency-ready work packages
 with non-overlapping `write_paths`, follow the Constitution's Parallel
 Development principle and the `work-packages.yaml` DAG. Main Agent assigns a

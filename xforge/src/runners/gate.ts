@@ -304,14 +304,19 @@ export async function runGate(
       timedOut: false,
       outputTruncated: false,
       ...ledgerReport(
-        `Check findings ledger accepted: ${findings.counts.blocker} blocker(s) all resolved, ${findings.counts.warning} warning(s), ${findings.counts.suggestion} suggestion(s).`,
+        /* "0 blocker(s) all resolved" describes a review that raised blockers and closed them, which
+           is not the same record as one that raised none -- and this line is the permanent Evidence
+           a later reader has. A live run said it could not tell the two apart from the file. */
+        `Check findings ledger accepted: ${findings.counts.blocker === 0
+          ? 'no blocker was raised'
+          : `${findings.counts.blocker} blocker(s), all resolved`}, ${findings.counts.warning} warning(s), ${findings.counts.suggestion} suggestion(s).`,
         findings,
       ),
     };
   } else if (gate.spec.builtin === 'constitution-check') {
     /* The Constitution is documented as the first governance layer; this is what makes it one. */
     const known = await knownIdentities(project, changeId, approvals);
-    const constitution = await evaluateConstitutionCheck(project, changeId, known);
+    const constitution = await evaluateConstitutionCheck(project, changeId, known, { approvals });
     result = {
       command: ['builtin:constitution-check'],
       shell: false,

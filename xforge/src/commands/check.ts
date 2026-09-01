@@ -483,7 +483,17 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
      need the governance revision, and resolving the control plane twice in one `check` is the kind
      of cost this command is already criticised for. */
   let control: Awaited<ReturnType<typeof resolveControlPlane>> | null = null;
-  if (options.change && structure.change && !diagnostics.some((item) => item.severity === 'error')) {
+  /*
+   * `hasStructureErrors` rather than "any error so far", because the Gates above have already run
+   * by this point and a failing one pushes an error of its own. Reading that as a reason not to
+   * resolve the control plane switched off everything downstream of it -- the delivery audit, the
+   * staleness notice, the reconciliation rules, and the `answer-finding` actions that carry the
+   * open questions to a person -- on exactly the runs where a Change is in trouble. A hand-driven
+   * run of all four Flows saw reconciliation output at some Stages and silence at others and could
+   * not tell why; this is why. A Gate that ran and failed is the normal answer this command exists
+   * to give, and it says nothing about whether the Change's own records can be read.
+   */
+  if (options.change && structure.change && !hasStructureErrors) {
     const resolved = await resolveChangeState(project, options.change);
     if (isStageFlow(resolved.flow) && resolved.flow.governance) {
       control = await resolveControlPlane(project, options.change, resolved.flow, resolved.state, structure.resources, resolved.config, { workPackages: structure.workPackages ?? undefined });
@@ -567,7 +577,7 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
     if (staleGates.length > 0) {
       diagnostics.push(diagnostic(
         'XFORGE_GATE_EVIDENCE_STALE',
-        `${staleGates.length} Gate(s) hold Evidence that passed against an earlier content revision and no longer bind the current one: ${staleGates.join(', ')}. Gate Evidence binds to the Change's content at the moment the Gate runs, so writing any declared Artifact after a Gate passes stales it — which is why the Stage order is write the assurance first, then run \`xforge check --change ${options.change}\`, then finish the verification receipt — \`xforge verification finalize\` writes it from the Evidence in one step, or \`draft-receipt\` computes the facts for you to record by hand. Re-run these Gates before attempting the transition; nothing else about them is wrong.`,
+        `${staleGates.length} Gate(s) hold Evidence that passed against an earlier content revision and no longer bind the current one: ${staleGates.join(', ')}. Gate Evidence binds to the Change's content at the moment the Gate runs, so writing any declared Artifact after a Gate passes stales it — which is why the Stage order is write the assurance first, then run \`xforge check --change ${options.change}\`, then finish the verification receipt — \`xforge verification finalize\` writes it from the Evidence in one step, or \`draft-receipt\` computes the facts for you to record by hand. Re-run these Gates before attempting the transition; nothing else about them is wrong. Name them: \`xforge check --change ${options.change} ${staleGates.map((id) => `--gate ${id}`).join(' ')}\`. A plain \`xforge check\` runs the Gates the *current* Stage declares, and a Stage that declares none — clarify and design both do — refreshes nothing while reporting this same notice again.`,
         `${project.changesPath}/${options.change}`,
         'warning',
         { gates: staleGates },
@@ -637,6 +647,31 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
    * see, which is the failure the notice exists to prevent.
    */
   const changeRoot = options.change ? `${project.changesPath}/${options.change}` : null;
+  /*
+   * A Gate that passed and had something to say.
+   *
+   * `core/ledger.ts`'s `ledgerReport` is the one renderer for a ledger Gate's output, and it prefixes
+   * every warning with `warning: ` -- on a pass it goes to stdout, which lands in Evidence and
+   * nowhere else. So `constitution-check` could pass while printing "principle X cannot be
+   * cross-checked" into its own Evidence, and the envelope reported `diagnostics: []` and no
+   * XFORGE_CHECK_PASSED_WITH_WARNINGS -- the notice whose whole sentence is "a passing Gate is not a
+   * clean check" was blind to the case it names. Three hand-driven runs found these only by opening
+   * the Evidence files, and each said so as a finding.
+   *
+   * Lifted into diagnostics rather than counted privately: a reader who never opens
+   * `evidence/*.json` is the reader this is for, and being an advisory is what makes the notice
+   * below see it.
+   */
+  for (const result of gateResults) {
+    const carried = (result.evidence?.stdout ?? '').split('\n').filter((line) => line.startsWith('warning: '));
+    if (carried.length === 0 || result.status !== 'passed') continue;
+    diagnostics.push(diagnostic(
+      'XFORGE_GATE_PASSED_WITH_WARNINGS',
+      `Gate ${result.id} passed and reported ${carried.length} warning(s), which live in its Evidence and reach no other output: ${carried.map((line) => line.slice('warning: '.length)).join(' ')}`,
+      result.evidencePath ?? 'xforge/manifest.yaml',
+      'warning',
+    ));
+  }
   const advisories = diagnostics.filter((item) => item.severity === 'warning'
     && changeRoot !== null && item.path !== undefined
     && (item.path === changeRoot || item.path.startsWith(`${changeRoot}/`)));

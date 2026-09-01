@@ -102,6 +102,22 @@ export function flowArchiveOperation(flow: Flow): {
   };
 }
 
+/**
+ * Every Gate a Stage names, paired with the Stage naming it.
+ *
+ * `flowArchiveOperation().mandatoryGates` answers a different question -- which Gates archive
+ * demands -- and its answer is the verify Stage's `gates` alone. Validating a Flow's Gate
+ * references against that list checks one Stage out of however many the Flow has, so a Gate named
+ * at propose, design or check was never checked to exist at all: `doctor` reported `dangling: 0`,
+ * `xforge check` passed, `transition` passed, and the Flow failed only once a Stage actually
+ * reached the Gate, with XFORGE_GATE_NOT_FOUND and no earlier warning of any kind.
+ */
+export function stageGateReferences(flow: StageFlow): Array<{ stage: string; gate: string }> {
+  return flow.stages.flatMap((stage) =>
+    [...new Set([...(stage.gates ?? []), ...(stage.exit?.gates ?? [])])].map((gate) => ({ stage: stage.id, gate })),
+  );
+}
+
 /** The keys that make a stage `exit` legible to the control plane. Mirrors `structuredExit`. */
 const STRUCTURED_EXIT_KEYS = ['conditions', 'gates', 'approvals', 'auditEvents'] as const;
 
@@ -175,7 +191,7 @@ function stageGraphDiagnostics(flow: StageFlow, filePath: string): Diagnostic[] 
      * offers the next index plus `reworkTo` and nothing else — so B has not run when A is reached and
      * never will have. `flowArtifacts` then hands every Artifact A produces a dependency on B's
      * output, and those Artifacts sit at `blocked` for the life of the Change: `nextArtifact` skips
-     * them, `apply.ready` cannot become true, and no Gate, condition or approval is involved in any
+     * them, `apply.artifactsReady` cannot become true, and no Gate, condition or approval is involved in any
      * of it. The Flow author sees a Change that stops advancing and no diagnostic anywhere, because
      * every check that exists is satisfied. This is the one that says which way the arrow points.
      */
@@ -412,9 +428,13 @@ export async function resolveChangeState(
     scope: config.scope,
     artifacts: artifactStates,
     nextArtifact: artifactStates.find((item) => planningIds.has(item.id) && item.status === 'ready') ?? null,
-    apply: { ready: applyReady, requires: apply.requires, tracks: apply.tracks },
+    /* `artifactsReady`, not `ready`: it answers whether the Artifacts this operation requires
+       exist, and nothing about Gates, conditions or approvals. Three separate live runs read a bare
+       `ready: true` beside a blocked `readyTransitions` entry as a contradiction; it was two
+       questions sharing one word. */
+    apply: { artifactsReady: applyReady, requires: apply.requires, tracks: apply.tracks },
     archive: {
-      ready: archiveReady,
+      artifactsReady: archiveReady,
       requires: archive.requires,
       mandatoryGates: archive.mandatoryGates,
       syncSpecs: archive.syncSpecs,

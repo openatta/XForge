@@ -14,9 +14,13 @@ document the failure and stop without changing implementation or tests.
 If it passes, create a complete `assurance.md` that maps every Requirement ID
 to real test evidence and discusses completeness, correctness, coherence,
 risk and findings. Write it before the receipt: it is an Artifact, so it moves
-the content revision the receipt has to name. Then run `xforge check` to produce current-revision Machine Gate Evidence, and create
-`evidence/verification-receipt.yaml` recording passed status, current
-Flow/Stage, `contentRevision` from `xforge state`, Git HEAD, and test command.
+the content revision the receipt has to name. Then run `xforge check` to produce current-revision Machine Gate Evidence, and file the receipt with
+`xforge verification finalize --change <id> --status passed --by <person>`.
+Do not hand-assemble `evidence/verification-receipt.yaml`: the CLI already
+holds the contentRevision, the gitHead and the cited Gate set, and both the
+`xforge-verify` Skill and the CLI's own nextActions say not to transcribe
+them. `--status` and `--by` are the two it will not compute; if nobody has
+told you a name, stop and say so rather than signing for them.
 Its `gates` list carries exactly the Gates this Stage declares and nothing else;
 Quick has no work packages, so `workPackageDeliveries` does not appear at all.
 The receipt is review/verification metadata, not Machine Gate Evidence, and

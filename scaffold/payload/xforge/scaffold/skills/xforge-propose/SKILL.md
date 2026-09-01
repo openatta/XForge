@@ -22,7 +22,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 0. **When the idea is still vague, narrow it before creating anything.** Read the code, Specs, and constraints needed to state one objective, its boundaries, and what would make it done. Investigation itself needs no Skill — use ordinary reading and search. What this step owes the user is a decision: one bounded objective, or an explicit report that the idea is not yet separable into one. **Do not create a Change to hold an idea you cannot yet bound** — an unbounded Change costs more to unwind than a question costs to ask.
 1. Resolve one objective and check whether an active Change already covers it.
-2. Set `flow` to the State-resolved manifest default unless the user explicitly requests a different Flow. Only deviate on your own initiative when classification (risk/security/privacy/publicApi/dataMigration) plainly conflicts with that default per Invariant 3 — then escalate or request a decision rather than silently overriding. Complete classification, modules, and a bounded project-relative path scope; note the Flow choice in the Proposal only when it was overridden or escalated, not when it simply inherited the default.
+2. Set `flow` to the State-resolved manifest default unless the user explicitly requests a different Flow. Only deviate on your own initiative when classification (risk/security/privacy/publicApi/dataMigration/moduleContract) plainly conflicts with that default per Invariant 3 — then escalate or request a decision rather than silently overriding. Complete classification, modules, and a bounded project-relative path scope; `## Flow choice` is a section every Flow's proposal outline declares, so it is always written; what changes is what it says. On an override or an escalation, give the reason. On a plain inherit, say that -- "inherited the manifest default" is the honest content, not an omission.
 3. Create the minimum `change.yaml`, then run `xforge state --change <id>`. Preserve this unwrapped shape and replace values from project facts:
 
    ```yaml
@@ -33,13 +33,22 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
      privacy: false
      publicApi: false
      dataMigration: false
+     moduleContract: false
    scope:
      modules: [root]
      paths: [src/**]
    ```
 
+   `moduleContract` is true when this Change moves an interface **between modules** — a signature, an
+   endpoint, a stored shape another module reads. It is not `publicApi`, which is about what leaves
+   the project; a rename behind a module boundary is neither. Setting it true makes `quick`, `solid`
+   and `major` refuse the Change with `XFORGE_FLOW_TOO_WEAK`, because none of them has a Stage that
+   declares an interface delta, and the refusal names the Flow that does. **That refusal is the key
+   working, not an error to clear by setting it false** — nothing compares this field with the diff,
+   so a false answer here is the one way an interface move reaches a Flow that cannot govern it.
+
    Continue only with ready Propose Artifacts/Actions and clear all schema diagnostics first.
-4. Reread dependencies from disk; write Why, Scope, Non-goals, Actors, Success criteria, and stable Requirement IDs with success, failure, boundary, and compatibility scenarios. Do not guess an unstated precise contract into a Spec fact; where an immutable acceptance test already fixes a field, output shape, or exit behavior, match it exactly, and stop as material ambiguity on any test/Requirement conflict.
+4. Reread dependencies from disk; write every `##` section its Flow's `proposal` outline declares -- the set differs by Flow, and only Major's carries `## Actors` -- and stable Requirement IDs with success, failure, boundary, and compatibility scenarios. Do not guess an unstated precise contract into a Spec fact; where an immutable acceptance test already fixes a field, output shape, or exit behavior, match it exactly, and stop as material ambiguity on any test/Requirement conflict.
 5. Refresh State after each Artifact and stop when the next Action belongs to another Skill.
 6. Run `xforge check --change <id>`, fix only Propose-stage structural issues, and do not call advisory text a passed Gate; run `xforge transition --change <id> --to <stage>` only when the CLI returns that Transition as ready.
 

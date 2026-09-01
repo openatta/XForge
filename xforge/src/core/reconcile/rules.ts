@@ -1,5 +1,6 @@
 import { documentSections as sections, markerOccurrences } from '../artifact-markers.js';
 import type { ArtifactSource, ContractElement, LedgerFinding, LedgerPrinciple, MaterialDecision, ReconciliationObservation, SpecRequirement } from './model.js';
+import { isObservabilityPrinciple } from '../constitution-check.js';
 
 /**
  * Differences between what a record claims and what the files contain.
@@ -341,6 +342,40 @@ export function reconcileConstitutionReferences(
  */
 function named(ids: string[], limit = 8): string {
   return ids.length <= limit ? ids.join(', ') : `${ids.slice(0, limit).join(', ')}, and ${ids.length - limit} more`;
+}
+
+/**
+ * The observability cross-check the Constitution Gate defers, performed where the Evidence exists.
+ *
+ * `constitution-check` refuses to take an Agent's word that a principle about automated
+ * verification is satisfied: it reads the `unit-tests` Gate Evidence and fails a `compliant` answer
+ * the Evidence contradicts. On every shipped Flow that check is structurally impossible where it
+ * lives -- the Gate runs at the Check Stage, `unit-tests` runs at Verify after it, nothing re-runs
+ * a Check-Stage Gate, and archive's mandatory set is the Verify Stage's. So the Gate emitted "it
+ * will be checked again once the Gate has run" and no Stage ever did. A live run of all four Flows
+ * found it by reading the Evidence file, because that warning never reaches `diagnostics` either.
+ *
+ * The reconciliation pass runs at every Stage, so at Verify it holds both halves at once: the
+ * ledger's answer, and what the Gate recorded. `info`, like every rule here -- it states the
+ * difference and leaves the judgement to the approver reading it, which is the same standing RC-5
+ * has, and RC-5 is the rule that forced a Gate re-run rather than an archive.
+ */
+export function reconcileObservabilityCrossCheck(
+  principles: LedgerPrinciple[],
+  gateRecorded: Map<string, string>,
+): ReconciliationObservation[] {
+  const recorded = gateRecorded.get('unit-tests');
+  if (!recorded || recorded === 'passed') return [];
+  return principles
+    .filter((entry) => entry.status === 'compliant' && isObservabilityPrinciple(entry.principle))
+    .map((entry) => ({
+      id: `RC-8:${entry.principle}`,
+      rule: 'RC-8',
+      code: 'XFORGE_RECONCILE_OBSERVABILITY_UNVERIFIED',
+      provenance: 'computed' as const,
+      summary: `The Constitution ledger answers "${entry.principle}" compliant, and this Change's unit-tests Gate Evidence now records status "${recorded}". The Gate that reads this pair runs at the Check Stage, before unit-tests has run, so it could not check it there and nothing re-runs it. Automated verification that does not pass does not establish compliance.`,
+      refs: [`gate:unit-tests`],
+    }));
 }
 
 export function reconcileContractImpact(

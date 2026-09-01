@@ -1,6 +1,6 @@
 import type { ChangeConfig, ChangeState, Diagnostic, Flow, ProjectContext, StageFlow } from '../types.js';
 import { diagnostic } from './errors.js';
-import { flowArchiveOperation, isStageFlow, loadFlows } from './flow-resolver.js';
+import { flowArchiveOperation, isStageFlow, loadFlows, stageGateReferences } from './flow-resolver.js';
 import { INDEPENDENT_REVIEW_CONDITION } from './control-plane.js';
 import { resolvedResourceEntries } from './lockfile.js';
 import { stableStringify } from './hash.js';
@@ -119,6 +119,26 @@ function eligibilityProblems(flow: StageFlow, config: ChangeConfig): string[] {
  * itself. Shared by checkStructure and commands/transition.ts so a mismatched Flow is refused at
  * the first Stage transition instead of surfacing only at archive.
  */
+/**
+ * Where a Change refused by its Flow can actually go.
+ *
+ * `quick.yaml` says of `contractImpact` that "the escalation names the Flow that can", and it did
+ * not: the refusal stated the problem and stopped, leaving an Agent to guess which of the project's
+ * Flows to try — or to clear the classification key instead, which is the one move that defeats the
+ * check. Naming nothing is also an answer worth giving, and a different one: a project holding no
+ * eligible Flow needs a person to adopt one, not another attempt.
+ */
+function escalationRoute(flow: Flow, config: ChangeConfig, flows: readonly Flow[]): string {
+  const eligible = flows
+    .filter(isStageFlow)
+    .filter((candidate) => candidate.metadata.name !== flow.metadata.name)
+    .filter((candidate) => eligibilityProblems(candidate, config).length === 0)
+    .map((candidate) => candidate.metadata.name)
+    .sort();
+  if (eligible.length > 0) return ` This project's ${eligible.join(', ')} ${eligible.length === 1 ? 'is' : 'are'} eligible for it.`;
+  return ' No Flow this project has is eligible for it; adopting one is a decision for a person, not a classification to restate.';
+}
+
 export function flowEligibilityDiagnostics(
   flow: Flow,
   config: ChangeConfig,
@@ -127,7 +147,10 @@ export function flowEligibilityDiagnostics(
 ): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
   const classification = config.classification;
-  const requiredFlows = [...flows].filter(isStageFlow).filter((candidate) => requiredPolicyMatches(candidate, classification));
+  /* Materialised once: callers pass `flows.values()`, and a Map iterator is spent by its first
+     spread -- a second reader would silently see an empty project. */
+  const candidates: readonly Flow[] = [...flows];
+  const requiredFlows = candidates.filter(isStageFlow).filter((candidate) => requiredPolicyMatches(candidate, classification));
   const satisfiesRequired = requiredFlows.some((candidate) => candidate.metadata.name === flow.metadata.name);
   const requiredPolicyDiagnostic = diagnostic(
     'XFORGE_FLOW_REQUIRED_POLICY',
@@ -139,7 +162,7 @@ export function flowEligibilityDiagnostics(
     const problems = eligibilityProblems(flow, config);
     if (problems.length > 0) diagnostics.push(diagnostic(
       'XFORGE_FLOW_TOO_WEAK',
-      `Flow ${flow.metadata.name} is not eligible for this Change: ${problems.join('; ')}.`,
+      `Flow ${flow.metadata.name} is not eligible for this Change: ${problems.join('; ')}.${escalationRoute(flow, config, candidates)}`,
       changePath,
     ));
     if (requiredFlows.length > 0 && !satisfiesRequired) diagnostics.push(requiredPolicyDiagnostic);
@@ -169,11 +192,15 @@ export async function checkStructure(project: ProjectContext, changeId?: string)
   }
 
   for (const flow of flowResult.flows.values()) {
-    for (const gate of flowArchiveOperation(flow).mandatoryGates) {
-      if (!project.manifest.scaffold.gates.includes(gate)) {
-        diagnostics.push(diagnostic('XFORGE_FLOW_GATE_DISABLED', `Flow ${flow.metadata.name} requires non-enabled Gate ${gate}.`, `xforge/flows/${flow.metadata.name}.yaml`));
-      } else if (!resources.gates.has(gate)) {
-        diagnostics.push(diagnostic('XFORGE_FLOW_GATE_MISSING', `Flow ${flow.metadata.name} requires missing Gate ${gate}.`, `xforge/flows/${flow.metadata.name}.yaml`));
+    /* A Stage Flow's mandatory Gates are its verify Stage's `gates`, which the per-Stage loop below
+       already reads -- checking both would report the same broken reference twice. */
+    if (!isStageFlow(flow)) {
+      for (const gate of flowArchiveOperation(flow).mandatoryGates) {
+        if (!project.manifest.scaffold.gates.includes(gate)) {
+          diagnostics.push(diagnostic('XFORGE_FLOW_GATE_DISABLED', `Flow ${flow.metadata.name} requires non-enabled Gate ${gate}.`, `xforge/flows/${flow.metadata.name}.yaml`));
+        } else if (!resources.gates.has(gate)) {
+          diagnostics.push(diagnostic('XFORGE_FLOW_GATE_MISSING', `Flow ${flow.metadata.name} requires missing Gate ${gate}.`, `xforge/flows/${flow.metadata.name}.yaml`));
+        }
       }
     }
     if (isStageFlow(flow)) {
@@ -190,6 +217,21 @@ export async function checkStructure(project: ProjectContext, changeId?: string)
           diagnostics.push(diagnostic('XFORGE_FLOW_SKILL_DISABLED', `Flow ${flow.metadata.name} Stage ${stage.id} references non-enabled Skill ${stage.skill}.`, `xforge/flows/${flow.metadata.name}.yaml`));
         } else if (!resources.skills.has(stage.skill)) {
           diagnostics.push(diagnostic('XFORGE_FLOW_SKILL_MISSING', `Flow ${flow.metadata.name} Stage ${stage.id} references missing Skill ${stage.skill}.`, `xforge/flows/${flow.metadata.name}.yaml`));
+        }
+      }
+      /*
+       * The Gates every Stage names, on the same terms as the Skills above. The loop over
+       * `mandatoryGates` further up reads the verify Stage alone, which is the right list for "what
+       * archive demands" and the wrong list for "does every Gate this Flow names exist" -- a Gate
+       * referenced at propose, design or check reached `check` unmentioned and failed at the Stage
+       * that ran it. `doctor` has always collected all of them; this is the same reading, in the
+       * command an Agent actually walks through.
+       */
+      for (const { stage, gate } of stageGateReferences(flow)) {
+        if (!project.manifest.scaffold.gates.includes(gate)) {
+          diagnostics.push(diagnostic('XFORGE_FLOW_GATE_DISABLED', `Flow ${flow.metadata.name} Stage ${stage} references non-enabled Gate ${gate}.`, `xforge/flows/${flow.metadata.name}.yaml`));
+        } else if (!resources.gates.has(gate)) {
+          diagnostics.push(diagnostic('XFORGE_FLOW_GATE_MISSING', `Flow ${flow.metadata.name} Stage ${stage} references missing Gate ${gate}.`, `xforge/flows/${flow.metadata.name}.yaml`));
         }
       }
       if (!project.manifest.scaffold.skills.includes(flow.terminal.archive.handler)) {

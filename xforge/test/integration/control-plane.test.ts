@@ -108,6 +108,34 @@ describe('Protocol 2 control plane', () => {
     expect(approvalsForPolicy([expired], policy, 'apply', binding).missing).toBe(1);
   });
 
+  /**
+   * One malformed receipt file, and every command that resolves the control plane for that Change.
+   *
+   * `loadApprovalReceipts` validates each receipt against its schema and then, on the very next
+   * line, called `verifyApprovalReceipt`, which reads `receipt.approver.provider` directly. A
+   * receipt that just failed its schema is exactly the one that may carry no `approver` -- so the
+   * validation was computed, ignored, and crashed on what it had already found. What reached the
+   * operator was `XFORGE_INTERNAL_ERROR: Cannot read properties of undefined (reading 'provider')`
+   * with no path, from `xforge state`, which is the first command every Skill runs.
+   *
+   * The receipt was going to be dropped for the same error either way. All that was missing was
+   * saying so instead of dereferencing it.
+   */
+  it('names a malformed approval receipt instead of crashing every command that reads it', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const receipt = 'xforge/changes/add-feature/approvals/planning-solid/00000000-0000-4000-8000-000000000000.json';
+    await write(root, receipt, JSON.stringify({
+      receiptId: '00000000-0000-4000-8000-000000000000', change: 'add-feature', policyId: 'planning-solid', digest: 'x',
+    }));
+
+    const result = await runCli(root, ['state', '--change', 'add-feature']);
+    const diagnostics = result.json.diagnostics as any[];
+    expect(diagnostics.map((item) => item.code)).not.toContain('XFORGE_INTERNAL_ERROR');
+    /* And it has to name the file, or the operator is told a Change is broken with nowhere to look. */
+    expect(diagnostics.filter((item) => item.path === receipt).length).toBeGreaterThan(0);
+  });
+
   it('requires Machine Gate and a current signed Approval for transitions', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);

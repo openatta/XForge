@@ -10,8 +10,8 @@ import {
 } from './reconcile/sources.js';
 import {
   reconcileConstitutionReferences, reconcileContractImpact, reconcileCoverageSections,
-  reconcileDeclaredGaps, reconcileMaterialDecisions, reconcileRequirementAnchors,
-  reconcileResolvedFindings,
+  reconcileDeclaredGaps, reconcileMaterialDecisions, reconcileObservabilityCrossCheck,
+  reconcileRequirementAnchors, reconcileResolvedFindings,
 } from './reconcile/rules.js';
 
 /**
@@ -129,6 +129,7 @@ export async function reconcileChange(
       new Set(project.manifest.scaffold.gates ?? []),
       gateRecorded,
     ),
+    ...reconcileObservabilityCrossCheck(principlesResult.principles, gateRecorded),
     ...reconcileMaterialDecisions(await readMaterialDecisions(project, changeId), sources),
     ...reconcileContractImpact(
       contractResult.elements,

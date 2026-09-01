@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { Diagnostic, FileChange, ProjectContext, VerificationEntry } from '../types.js';
 import { isRetired, isVerificationRun } from '../types.js';
 import { XForgeError, diagnostic } from '../core/errors.js';
+import { unattestedDeclarer } from '../core/ledger-identity.js';
 import { atomicWrite } from '../core/files.js';
 import { sha256 } from '../core/hash.js';
 import { assertManaged } from '../core/project-loader.js';
@@ -302,6 +303,9 @@ export async function executeVerificationDeclare(
     ));
   }
 
+  /* Recorded either way; the point is that it stops being silent. See `unattestedDeclarer`. */
+  const unattested = await unattestedDeclarer(project.root, options.by);
+
   const declaredAt = new Date().toISOString();
   const entry: VerificationEntry = options.command
     ? {
@@ -356,6 +360,7 @@ export async function executeVerificationDeclare(
    * does not say the marker is wrong.
    */
   const diagnostics: Diagnostic[] = [];
+  if (unattested) diagnostics.push(diagnostic('XFORGE_VERIFICATION_DECLARER_UNATTESTED', unattested, 'xforge/manifest.yaml', 'warning'));
   if (options.notApplicable) {
     const { detected } = await resolveVerificationPlan(project, options.gate);
     if (!detected.some((marker) => marker.marker === options.notApplicable)) {
@@ -522,8 +527,16 @@ export async function executeVerificationDraftReceipt(project: ProjectContext, o
     data: {
       change: options.change,
       target: `${project.changesPath}/${options.change}/${VERIFICATION_RECEIPT_PATH}`,
-      /* Named rather than implied: the one field a person supplies, and what it means. */
-      supply: ['status: passed — your assertion that this Stage verified the work. XForge will not write it for you.'],
+      /*
+       * Both fields a person supplies, named rather than implied. This listed `status` alone while
+       * `finalize` refuses without `--by` as well, and a live run followed it: it drafted, read
+       * `supply` as the authoritative list of what it owed, and met XFORGE_VERIFICATION_ARGUMENTS_REQUIRED
+       * a command later. `state`'s nextActions and the Skill both name `--by`; only this did not.
+       */
+      supply: [
+        'status: passed — your assertion that this Stage verified the work. XForge will not write it for you.',
+        'by: <person> — who is making that assertion. Not a role and not this Agent; the receipt records a name.',
+      ],
       receipt: facts.receipt,
     },
     diagnostics,

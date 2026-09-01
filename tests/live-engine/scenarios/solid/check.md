@@ -10,7 +10,8 @@ is a ready Check Action before writing anything.
 
 Produce `check-report.md` with exactly the `##` sections the Flow's check-report
 outline defines — Completeness, Consistency, Testability, Feasibility and risk,
-Rework — reviewing those dimensions across the Proposal, delta Spec, and Design.
+Gates and evidence, Rework — reviewing those dimensions across the Proposal,
+delta Spec, and Design.
 Do not add or omit a section. Specifically
 verify that every requirement in the delta Spec has a corresponding decision
 in the Design, that the Design introduces no behavior the delta Spec does not
@@ -34,10 +35,12 @@ worth knowing and does NOT hold the Change back; only a `blocker` whose status
 is still open does. Recording real warnings and then advancing is the correct
 outcome, not a contradiction.
 
-Run the structure, check-findings, and constitution-check Gates. Then run
-`xforge transition --change task-ledger --to apply` yourself
-once the CLI reports that transition ready — this Stage has no human approval
-step, so nothing else will advance it for you. Run `xforge state --change task-ledger` at
-the end and confirm the current Stage is Apply. Do not commit. In your final
+Run the structure, check-findings, and constitution-check Gates. This Stage's
+exit collects the `planning-solid` approval — a human's, and not yours to
+supply — so the transition into Apply will be blocked by
+`approval:planning-solid:missing-1` until somebody grants it. Take the Gates
+to green, then run `xforge state --change task-ledger` and report that block
+as the Stage's honest end. Do not run `xforge approve` and do not invent an
+`--actor`. Do not commit. In your final
 response report the check findings, which Constitution principles you answered
 and how, the current Stage, blockers, and no claim unsupported by CLI output.

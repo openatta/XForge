@@ -6,7 +6,7 @@ allowed-tools: Read, Grep, Glob, Write, Bash(git:*), Bash(node:*)
 
 # Invariants
 
-- This Skill is read-only project reporting, independent of Change/Flow/Gate lifecycle state; never query `xforge state --change <id>` or touch `xforge/changes`, `xforge/specs`, Evidence, or Approvals for it. The bundled script may call `xforge state --field project.modules` only to read the modules for grouping, and degrades to a single implicit module when that is unavailable — this is project-structure lookup, not Change/Flow/Gate governance.
+- This Skill is read-only project reporting, independent of Change/Flow/Gate lifecycle state; never query `xforge state --change <id>` or touch `xforge/changes`, `xforge/specs`, Evidence, or Approvals for it. The bundled script may call `xforge state` only to read `project.modules` for grouping (it reads the field out of the full payload rather than asking for it), and degrades to a single implicit module when that is unavailable — this is project-structure lookup, not Change/Flow/Gate governance.
 - Treat `git log` (and, for module grouping, `xforge state --field project.modules`) as the only sources of truth. Never invent commits, authors, dates, counts, or module boundaries not produced by the bundled script.
 - Run `scripts/git-activity.mjs` to extract data; never hand-count from a partial `git log` read or from memory.
 - Group contributors by email, not display name — the same person may commit under multiple names (the script does this; do not re-group by name yourself).

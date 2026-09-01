@@ -6,7 +6,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # 不变量
 
-- `xforge/architecture.md` 是项目的长期资产，不是 Change 的 Artifact。它不随 Change 归档，没有 delta 语义，也是本 Skill 唯一写入的文件。
+- `xforge/architecture.md` 是项目的长期资产，不是 Change 的 Artifact。它不随 Change 归档，没有 delta 语义，也是本 Skill 唯一写入的*项目*资产。它在 Change 内部写的唯一文件是下面「权限」里点名的 `architectureDeltas` 账本，那是一份决定记录，不是架构。
 - **本 Skill 是唯一写者。** Change 可以提出架构变更；只有本 Skill 能把它合并进来，而且只在人明确要求时。
 - 需求之所以在归档时自动合并，是因为它有 delta 语义。架构没有：它是一张必须整体自洽的图，所以合并是一次有意的动作，而不是关闭 Change 的副作用。
 - 文件不存在是合法状态。没有这个文件的项目并没有坏——什么都不会被阻断，Change 照常推进。可以主动提议创建，但绝不强制。
@@ -14,8 +14,9 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # 权限
 
-- 只写 `xforge/architecture.md`。
-- 不得修改 Specs、Changes、产品代码、Constitution、Flows 或任何 Scaffold 资产。属于宪法层面的架构决策就是一次宪法修订，那是受治理的 Change，不是这里。
+- 写 `xforge/architecture.md`；在 Change 内部只写一个文件：`evidence/conditions/architectureDeltas.yaml`，且只用于记录某个人刚刚给出的决定。Change 下的其他任何东西都不写。
+- 这唯一的例外正是本 Skill 要出现在这条链路里的原因。`xforge-design` 写完架构提议就停下，因为账本条目要填 `decidedBy`，而一个自己填 `decidedBy` 的 Agent 是在给自己写授权。总得有人把答复带回来，而带回来的应该是那个以「问人」为全部职责的 Skill。
+- 不得修改 Specs、Change 的 Artifact、产品代码、Constitution、Flows 或任何 Scaffold 资产。属于宪法层面的架构决策就是一次宪法修订，那是受治理的 Change，不是这里。
 - 绝不臆造架构。这里的每一条决策都是用户的；本 Skill 只提出候选，并记录用户选了什么。
 
 # 执行

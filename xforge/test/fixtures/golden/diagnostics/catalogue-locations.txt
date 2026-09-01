@@ -2,6 +2,7 @@
 (dynamic)  src/commands/doctor.ts
 (dynamic)  src/commands/transition.ts
 (dynamic)  src/core/archiver.ts
+(dynamic)  src/core/control-plane.ts
 (dynamic)  src/core/reconcile.ts
 (dynamic)  src/runners/gate.ts
 XFORGE_ADAPTER_PROJECTION_MISSING  src/install/planner.ts
@@ -71,6 +72,9 @@ XFORGE_CHANGE_NOT_FOUND  src/core/archiver.ts
 XFORGE_CHANGE_NOT_FOUND  src/core/flow-resolver.ts
 XFORGE_CHANGE_REQUIRED  src/cli.ts
 XFORGE_CHANGE_REQUIRED  src/commands/check.ts
+XFORGE_CHANGES_DIRECTORY_UNREADABLE  src/commands/contract.ts
+XFORGE_CHANGES_DIRECTORY_UNREADABLE  src/commands/doctor.ts
+XFORGE_CHANGES_DIRECTORY_UNREADABLE  src/commands/upgrade.ts
 XFORGE_CHECK_NO_GATES_AT_STAGE  src/commands/check.ts
 XFORGE_CHECK_PASSED_WITH_WARNINGS  src/commands/check.ts
 XFORGE_CHECK_STAGE_UNKNOWN  src/commands/check.ts
@@ -83,6 +87,7 @@ XFORGE_CONSTITUTION_MISSING  src/core/constitution.ts
 XFORGE_CONSTITUTION_RULE_CONFLICT  src/core/resource-loader.ts
 XFORGE_CONSTITUTION_SECTION_MISSING  src/core/constitution.ts
 XFORGE_CONSTITUTION_VERSION_INVALID  src/core/constitution.ts
+XFORGE_CONTRACT_ANCESTOR_UNDECLARED  src/core/contract-merger.ts
 XFORGE_CONTRACT_DELTA_ELEMENT_DUPLICATE  src/core/contract-delta.ts
 XFORGE_CONTRACT_DELTA_ELEMENT_ID_INVALID  src/core/contract-delta.ts
 XFORGE_CONTRACT_DELTA_ELEMENT_ORPHAN  src/core/contract-delta.ts
@@ -106,6 +111,7 @@ XFORGE_DOCTOR_RULE_SCOPE_EMPTY  src/commands/doctor.ts
 XFORGE_DOCTOR_STRICT  src/commands/doctor.ts
 XFORGE_DOCTOR_UNCITED  src/commands/doctor.ts
 XFORGE_DOCTOR_UNUSED_FLOW  src/commands/doctor.ts
+XFORGE_DOCTOR_VERIFICATION_DECLARER_UNATTESTED  src/commands/doctor.ts
 XFORGE_DOCTOR_VERIFICATION_UNDECLARED  src/commands/doctor.ts
 XFORGE_EVIDENCE_CONFLICT  src/runners/gate.ts
 XFORGE_EXPLAIN_CATALOGUE_MISSING  src/commands/explain.ts
@@ -159,6 +165,7 @@ XFORGE_GATE_EVIDENCE_STALE  src/commands/check.ts
 XFORGE_GATE_EVIDENCE_STALE_REMEDY  src/core/control-plane.ts
 XFORGE_GATE_FAILED  src/runners/gate.ts
 XFORGE_GATE_NOT_FOUND  src/commands/check.ts
+XFORGE_GATE_PASSED_WITH_WARNINGS  src/commands/check.ts
 XFORGE_GENERATED_PATH_COLLISION  src/install/planner.ts
 XFORGE_GOVERNANCE_FLOW_REQUIRED  src/commands/approve.ts
 XFORGE_GOVERNANCE_FLOW_REQUIRED  src/commands/review.ts
@@ -226,6 +233,7 @@ XFORGE_RECONCILE_COVERAGE_SECTION_MISSING  src/core/reconcile/rules.ts
 XFORGE_RECONCILE_DECISION_NOT_WRITTEN_BACK  src/core/reconcile/rules.ts
 XFORGE_RECONCILE_DECLARED_GAP_UNRESOLVED  src/core/reconcile/rules.ts
 XFORGE_RECONCILE_FINDINGS_UNREADABLE  src/core/reconcile/sources.ts
+XFORGE_RECONCILE_OBSERVABILITY_UNVERIFIED  src/core/reconcile/rules.ts
 XFORGE_RECONCILE_REFERENCE_UNRESOLVABLE  src/core/reconcile/rules.ts
 XFORGE_RECONCILE_REQUIREMENT_UNANCHORED  src/core/reconcile/rules.ts
 XFORGE_RECONCILE_REQUIREMENT_UNCOVERED  src/core/reconcile/rules.ts
@@ -339,6 +347,7 @@ XFORGE_VERIFICATION_ACTION_REQUIRED  src/cli.ts
 XFORGE_VERIFICATION_ARGUMENTS_REQUIRED  src/cli.ts
 XFORGE_VERIFICATION_ARGUMENTS_REQUIRED  src/commands/verification.ts
 XFORGE_VERIFICATION_COMMAND_INVALID  src/commands/verification.ts
+XFORGE_VERIFICATION_DECLARER_UNATTESTED  src/commands/verification.ts
 XFORGE_VERIFICATION_DISMISSAL_UNMATCHED  src/commands/verification.ts
 XFORGE_VERIFICATION_DRAFT_GATE_UNAVAILABLE  src/commands/verification.ts
 XFORGE_VERIFICATION_FINALIZE_GATE_UNCONFIRMED  src/commands/verification.ts
