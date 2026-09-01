@@ -647,6 +647,31 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
    * see, which is the failure the notice exists to prevent.
    */
   const changeRoot = options.change ? `${project.changesPath}/${options.change}` : null;
+  /*
+   * A Gate that passed and had something to say.
+   *
+   * `core/ledger.ts`'s `ledgerReport` is the one renderer for a ledger Gate's output, and it prefixes
+   * every warning with `warning: ` -- on a pass it goes to stdout, which lands in Evidence and
+   * nowhere else. So `constitution-check` could pass while printing "principle X cannot be
+   * cross-checked" into its own Evidence, and the envelope reported `diagnostics: []` and no
+   * XFORGE_CHECK_PASSED_WITH_WARNINGS -- the notice whose whole sentence is "a passing Gate is not a
+   * clean check" was blind to the case it names. Three hand-driven runs found these only by opening
+   * the Evidence files, and each said so as a finding.
+   *
+   * Lifted into diagnostics rather than counted privately: a reader who never opens
+   * `evidence/*.json` is the reader this is for, and being an advisory is what makes the notice
+   * below see it.
+   */
+  for (const result of gateResults) {
+    const carried = (result.evidence?.stdout ?? '').split('\n').filter((line) => line.startsWith('warning: '));
+    if (carried.length === 0 || result.status !== 'passed') continue;
+    diagnostics.push(diagnostic(
+      'XFORGE_GATE_PASSED_WITH_WARNINGS',
+      `Gate ${result.id} passed and reported ${carried.length} warning(s), which live in its Evidence and reach no other output: ${carried.map((line) => line.slice('warning: '.length)).join(' ')}`,
+      result.evidencePath ?? 'xforge/manifest.yaml',
+      'warning',
+    ));
+  }
   const advisories = diagnostics.filter((item) => item.severity === 'warning'
     && changeRoot !== null && item.path !== undefined
     && (item.path === changeRoot || item.path.startsWith(`${changeRoot}/`)));

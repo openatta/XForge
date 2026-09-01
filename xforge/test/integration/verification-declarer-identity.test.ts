@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
-import { fixture, runCli } from '../helpers.js';
+import { advanceSolidToApply, createCompleteSolidChange, fixture, runCli } from '../helpers.js';
 
 /**
  * Who says how this project verifies itself, and whether the repository has ever seen them.
@@ -45,6 +45,27 @@ describe('who declared a verification command', () => {
     /* Recorded rather than refused: the name is kept and the reader is told it is unchecked. */
     expect(warned[0].severity).toBe('warning');
     expect(result.json.ok).toBe(true);
+  });
+
+  /**
+   * `draft-receipt` names what a person still owes, and it named one of two.
+   *
+   * `finalize` refuses without `--status` and `--by`. `supply` listed `status` alone, while
+   * `state`'s nextActions and the `xforge-verify` Skill both name `--by`. A live run drafted the
+   * receipt, read `supply` as the authoritative list of what it owed — which is what the field name
+   * promises — and met XFORGE_VERIFICATION_ARGUMENTS_REQUIRED a command later.
+   */
+  it('names both fields a person must supply, not just the status', async () => {
+    const root = await committed();
+    await createCompleteSolidChange(root, 'add-feature');
+    /* draft-receipt only answers at the Stage that declares the receipt condition. */
+    await advanceSolidToApply(root, 'add-feature');
+    await runCli(root, ['transition', '--change', 'add-feature', '--to', 'verify']);
+    const result = await runCli(root, ['verification', 'draft-receipt', '--change', 'add-feature']);
+    const supply = ((result.json.data as any)?.supply ?? []) as string[];
+    expect(supply.length, JSON.stringify(result.json.data ?? result.json.diagnostics)).toBe(2);
+    expect(supply.join(' ')).toContain('status:');
+    expect(supply.join(' ')).toContain('by:');
   });
 
   it('says nothing when the name is a Git author of the repository', async () => {

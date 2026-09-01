@@ -44,8 +44,12 @@ read `[]` as "nothing to say" and was one call away from transitioning on stale 
 entry in `gates` carries its own Evidence — the verify command's whole stdout, the digests, the
 timestamps — so this narrows the reply to the part you act on rather than making it small.
 
-A refusal answers the same way, narrowed to what you asked for plus why it failed, so
-`--field diagnostics` after one is a few lines rather than the whole project.
+A refusal narrows differently, and a reader built for the success shape breaks on it.
+On `ok: true` the requested paths are the whole reply, at the top level. On a
+refusal the envelope stays — `ok` is false, every diagnostic is kept, the exit
+code is 1 — and only `data` narrows, so what you asked for sits under `data`
+rather than beside it. That asymmetry is deliberate: a refusal must never read
+like a success. Parse both shapes, or read `data` on the failing branch.
 
 `--field` takes a dotted path, not only a top-level name: `--field change.governance.currentStage`
 prints one string. And it is all or nothing — one name that does not resolve fails the call and

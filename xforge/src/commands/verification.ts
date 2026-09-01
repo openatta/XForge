@@ -527,8 +527,16 @@ export async function executeVerificationDraftReceipt(project: ProjectContext, o
     data: {
       change: options.change,
       target: `${project.changesPath}/${options.change}/${VERIFICATION_RECEIPT_PATH}`,
-      /* Named rather than implied: the one field a person supplies, and what it means. */
-      supply: ['status: passed — your assertion that this Stage verified the work. XForge will not write it for you.'],
+      /*
+       * Both fields a person supplies, named rather than implied. This listed `status` alone while
+       * `finalize` refuses without `--by` as well, and a live run followed it: it drafted, read
+       * `supply` as the authoritative list of what it owed, and met XFORGE_VERIFICATION_ARGUMENTS_REQUIRED
+       * a command later. `state`'s nextActions and the Skill both name `--by`; only this did not.
+       */
+      supply: [
+        'status: passed — your assertion that this Stage verified the work. XForge will not write it for you.',
+        'by: <person> — who is making that assertion. Not a role and not this Agent; the receipt records a name.',
+      ],
       receipt: facts.receipt,
     },
     diagnostics,

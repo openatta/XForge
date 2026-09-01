@@ -20,7 +20,7 @@ artifacts:
   - id: proposal
     generates: proposal.md
     description: Explain the governed change reason, boundaries, and success criteria
-    instruction: Describe Why, Scope, Non-goals, Actors, Success criteria, critical impacts, Flow choice, and rollback boundary.
+    instruction: Describe Why, Scope, Non-goals, Actors and success criteria, critical impacts, Flow choice, and rollback boundary. The `##` headings are the outline below, exactly -- this sentence names the subjects, not the section set.
     outline: |
       ## Why
       ## Scope

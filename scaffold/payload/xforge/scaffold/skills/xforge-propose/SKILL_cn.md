@@ -22,7 +22,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 0. **想法仍然模糊时，先把它收敛，再创建任何东西。** 读代码、Spec 与约束，直到能陈述一个目标、它的边界、以及"做完"的判据。**调查本身不需要 Skill**，用普通的阅读与检索即可。这一步欠用户的是一个结论：要么给出一个有边界的目标，要么明确报告这个想法尚不可分离成一个目标。**不要为一个还界定不了的想法创建 Change**——一个没有边界的 Change，拆解它的代价远高于问一个问题的代价。
 1. 解析唯一目标；若要新建 Change，检查是否已有覆盖同一问题的 active Change。
-2. 将 `flow` 设为 State 解析出的 manifest 默认值，除非用户明确要求使用其他 Flow。仅当 classification（risk/security/privacy/publicApi/dataMigration/moduleContract）与该默认值明显冲突时才可主动偏离——此时应升级或请求决定，而不是静默改写。完整填写 classification、modules 和有边界的项目相对 path scope；仅当 Flow 被覆盖或被升级处理时才在 Proposal 中说明 Flow 选择，单纯继承默认值时无需说明。
+2. 将 `flow` 设为 State 解析出的 manifest 默认值，除非用户明确要求使用其他 Flow。仅当 classification（risk/security/privacy/publicApi/dataMigration/moduleContract）与该默认值明显冲突时才可主动偏离——此时应升级或请求决定，而不是静默改写。完整填写 classification、modules 和有边界的项目相对 path scope；`## Flow choice` 是每个 Flow 的 proposal outline 都声明的段落，所以它总是要写；变的是里面写什么。被覆盖或被升级处理时，写明理由；单纯继承默认值时，就照实写「继承了 manifest 默认值」——那是诚实的内容，不是可以省略的理由。
 3. 创建最小 `change.yaml` 后运行 `xforge state --change <id>`；该文件使用下列无包装对象结构，字段名和层级必须保持一致，再按项目事实替换值：
 
    ```yaml

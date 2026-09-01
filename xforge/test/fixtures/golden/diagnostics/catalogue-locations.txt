@@ -163,6 +163,7 @@ XFORGE_GATE_EVIDENCE_STALE  src/commands/check.ts
 XFORGE_GATE_EVIDENCE_STALE_REMEDY  src/core/control-plane.ts
 XFORGE_GATE_FAILED  src/runners/gate.ts
 XFORGE_GATE_NOT_FOUND  src/commands/check.ts
+XFORGE_GATE_PASSED_WITH_WARNINGS  src/commands/check.ts
 XFORGE_GENERATED_PATH_COLLISION  src/install/planner.ts
 XFORGE_GOVERNANCE_FLOW_REQUIRED  src/commands/approve.ts
 XFORGE_GOVERNANCE_FLOW_REQUIRED  src/commands/review.ts
