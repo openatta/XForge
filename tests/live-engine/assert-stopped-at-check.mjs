@@ -146,17 +146,39 @@ export function assertStoppedAtCheck({ projectRoot, changeId, flowDefinition, ch
       .filter((finding) => finding?.severity === 'blocker' && finding?.status === 'open');
   } catch { problems.push('check-findings.yaml is missing or unreadable.'); }
   if (blockers.length === 0) problems.push('No open blocker: the Flow stopped at Check without a finding that explains why.');
+  /*
+   * Whether a blocker cites something real is a question the Gate has already answered.
+   *
+   * This used to answer it again, by `existsSync` on two spellings of the ref. That made a second
+   * copy of "what counts as a citation", and the copies drifted the moment the first one moved: the
+   * CLI now also accepts a Requirement id this Change declares -- because two hand-driven runs
+   * reached for the Requirement a finding was *about* and were refused -- and this still took paths
+   * alone. A live Major run then cited REQ-CRED-001…005, which the Gate accepted without a murmur,
+   * and died here on five "does not exist" problems about Requirements that plainly exist.
+   *
+   * So it asks the Gate instead. `core/check-findings.ts` reports an unresolvable ref as a
+   * `warning:` line naming the finding, and `core/ledger.ts`'s `ledgerReport` is the one renderer
+   * for those -- stdout on a pass, stderr on a failure, the prefix fixed in a single place. One
+   * source of truth, and the next time the CLI widens what a ref may be, this follows without
+   * anybody remembering to change it.
+   */
+  const gateEvidencePath = path.join(projectRoot, changePath(changeId, 'evidence/check-findings.json'));
+  let refWarnings = null;
+  try {
+    const evidence = JSON.parse(readFileSync(gateEvidencePath, 'utf8'));
+    refWarnings = `${evidence.stdout ?? ''}\n${evidence.stderr ?? ''}`
+      .split('\n')
+      .filter((line) => line.startsWith('warning: ') && line.includes(' refs '));
+  } catch {
+    /* Reported rather than skipped: this runs after the Check Stage's Gates, so Evidence that is
+       not there means the Gate did not run, and a criterion that silently passes for want of the
+       thing it reads is worse than one that fails. */
+    problems.push(`The check-findings Gate left no Evidence at ${gateEvidencePath}, so nothing decided whether the blockers cite anything real.`);
+  }
   for (const blocker of blockers) {
-    const refs = blocker.refs ?? [];
-    if (refs.length === 0) { problems.push(`Blocker ${blocker.id} cites nothing.`); continue; }
-    /* Refs are written relative to the Change or to the project; a blocker that resolves under
-       either is citing something real, which is all this point is asking. */
-    for (const ref of refs) {
-      const asProject = path.join(projectRoot, ref);
-      const asChange = path.join(projectRoot, changePath(changeId, ref));
-      if (!existsSync(asProject) && !existsSync(asChange)) {
-        problems.push(`Blocker ${blocker.id} cites ${ref}, which does not exist.`);
-      }
+    if ((blocker.refs ?? []).length === 0) { problems.push(`Blocker ${blocker.id} cites nothing.`); continue; }
+    for (const line of refWarnings ?? []) {
+      if (line.includes(`finding ${blocker.id} refs `)) problems.push(`Blocker ${blocker.id}: ${line.slice('warning: '.length)}`);
     }
   }
 
