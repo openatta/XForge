@@ -319,7 +319,7 @@ export async function resolveControlPlane(
   if (outOfScope.length > 0) {
     diagnostics.push(diagnostic(
       'XFORGE_RULE_OUT_OF_CHANGE_SCOPE',
-      `${outOfScope.length} severity-must Rule(s) do not reach this Change: ${outOfScope.map((rule) => rule.id).join(', ')}. A Rule's scope.paths is matched against the paths change.yaml declares, never against the repository. \`xforge doctor\` lists each scope.`,
+      `${outOfScope.length} severity-must Rule(s) do not reach this Change: ${outOfScope.map((rule) => rule.id).join(', ')}. A Rule's scope.paths is compared with the paths change.yaml declares, never with the repository. \`xforge doctor\` lists each scope.`,
       `${project.changesPath}/${changeId}/change.yaml`,
       'info',
     ));
