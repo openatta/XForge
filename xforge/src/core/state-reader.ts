@@ -245,7 +245,7 @@ export async function readState(project: ProjectContext, options: StateOptions):
     selectedChange.workPackages = workPackages.state;
     let contentRevision: string | null = null;
     if (isStageFlow(resolved.flow) && resolved.flow.governance) {
-      const control = await resolveControlPlane(project, options.change, resolved.flow, selectedChange, resources, resolved.config, { workPackages });
+      const control = await resolveControlPlane(project, options.change, resolved.flow, selectedChange, resources, resolved.config, { workPackages, projectFacts: true });
       diagnostics.push(...control.diagnostics);
       /*
        * The chain is trimmed here and nowhere earlier. `resolveControlPlane` decides against the

@@ -354,9 +354,27 @@ async function assertEnforceableResources(project: ProjectContext, resources: Se
  */
 export { platformOutput as hookPlatformOutput };
 
+/**
+ * When the running CLI is not the one the project declares, say that and nothing else.
+ *
+ * A CLI too old for a project validates its files against its own older schemas, so the first thing
+ * it reports is that `lock.yaml` has fields it does not recognise. That describes the reader's
+ * ignorance, not the project's state -- and as a hook's deny reason it sends an operator to edit a
+ * governance file that is not wrong. A live run met exactly that: a 0.7.20 binary on PATH against a
+ * 0.8.1 project, every tool call denied, and the stated cause `/paths must NOT have additional
+ * properties` on `xforge/lock.yaml`.
+ *
+ * The identity mismatch is in the same diagnostic set and is the fact that explains all the others,
+ * so it is what a refusal should carry.
+ */
+function staleCliReason(reason?: string): string | undefined {
+  if (!reason?.includes('does not match running CLI')) return undefined;
+  return `${reason.trim()} Everything else this run said about the project was read with the wrong version's schemas, so fix this first. Install the declared CLI, or run \`xforge update\` to move the pin deliberately.`;
+}
+
 export function hookFailureOutput(target: TargetId, event: string, reason?: string): Record<string, unknown> {
   if (!event.includes('before') && !event.includes('permission')) return {};
-  const detail = reason?.trim();
+  const detail = staleCliReason(reason) ?? reason?.trim();
   return platformOutput(target, event, 'deny', detail
     ? `XForge governance dispatcher failed closed: ${detail}`
     : 'XForge governance dispatcher failed closed.');

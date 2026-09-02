@@ -1059,7 +1059,17 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
     /* The deny is all the host renders, so the diagnostic's own message — which names the file at
        fault and the command that fixes it — has to ride along. Dropping it is what turns a
        one-command configuration problem into "every tool call is refused and nobody knows why". */
-    const reason = result.diagnostics.find((item) => item.severity === 'error')?.message
+    /*
+     * A CLI too old for the project explains every other complaint it makes, so it goes first.
+     *
+     * An older build validates the project's files against its own older schemas, so the first
+     * error it finds is that `lock.yaml` carries fields it does not know. That describes the
+     * reader, not the project -- and as a hook's deny reason it sends an operator to edit a
+     * governance file that is not wrong. A live run met it: a 0.7.20 binary on PATH against a 0.8.1
+     * project, every tool call denied, cause given as `/paths must NOT have additional properties`.
+     */
+    const reason = result.diagnostics.find((item) => item.code === 'XFORGE_CLI_IDENTITY_MISMATCH')?.message
+      ?? result.diagnostics.find((item) => item.severity === 'error')?.message
       ?? result.diagnostics[0]?.message;
     process.stdout.write(`${JSON.stringify(hookFailureOutput(target, event, reason))}\n`);
     return event.includes('after') ? 0 : 2;

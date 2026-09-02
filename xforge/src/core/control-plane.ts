@@ -139,7 +139,7 @@ export async function resolveControlPlane(
   changeState: ChangeState,
   resources: SelectedResources,
   config: ChangeConfig,
-  options: { workPackages?: WorkPackageResolution } = {},
+  options: { workPackages?: WorkPackageResolution; projectFacts?: boolean } = {},
 ): Promise<ResolvedControlPlane> {
   const diagnostics: Diagnostic[] = [];
   const workPackages = options.workPackages ?? await resolveWorkPackages(project, changeId, config, resources);
@@ -297,13 +297,29 @@ export async function resolveControlPlane(
    * One `info` for the whole set, because non-application is often right: a docs-only Change should
    * not be told about a testing Rule. What was missing was any way to notice when it is wrong.
    */
-  const outOfScope = [...resources.rules.values()]
-    .map((item) => normalizeRule(item.value))
-    .filter((rule) => rule.severity === 'must' && rule.paths.length > 0 && !ruleApplies(rule, config, currentStage));
+  /*
+   * Reported where somebody asks what the situation is, and not on every call.
+   *
+   * This is a fact about the project's configuration, identical on every invocation for a given
+   * Change -- and it was emitted by all of them. A live run counted it more than twenty times in one
+   * scenario and said it "trains an agent to skim diagnostics", which is the opposite of what the
+   * diagnostics next to it need. `state` is where a reader asks what is going on; `check` asks
+   * whether something passed and `transition` whether it may move, and neither question is answered
+   * by this.
+   *
+   * Kept on the call path rather than moved to `doctor`, which was the other candidate: the defect
+   * this exists to catch is that nobody noticed a Rule had gone silent, and a command people run
+   * rarely is where not noticing happens.
+   */
+  const outOfScope = options.projectFacts
+    ? [...resources.rules.values()]
+      .map((item) => normalizeRule(item.value))
+      .filter((rule) => rule.severity === 'must' && rule.paths.length > 0 && !ruleApplies(rule, config, currentStage))
+    : [];
   if (outOfScope.length > 0) {
     diagnostics.push(diagnostic(
       'XFORGE_RULE_OUT_OF_CHANGE_SCOPE',
-      `${outOfScope.length} severity-must Rule(s) do not apply to this Change and are not in its instruction context: ${outOfScope.map((rule) => `${rule.id} (scope ${rule.paths.join(', ')})`).join('; ')}. A Rule's scope.paths is compared with the paths this Change declares in change.yaml, never with the repository, so a Rule reaches this Change only when the two share a root. If one of these was meant to apply, widen the Change's scope.paths or correct the Rule's.`,
+      `${outOfScope.length} severity-must Rule(s) do not reach this Change: ${outOfScope.map((rule) => rule.id).join(', ')}. A Rule's scope.paths is matched against the paths change.yaml declares, never against the repository. \`xforge doctor\` lists each scope.`,
       `${project.changesPath}/${changeId}/change.yaml`,
       'info',
     ));

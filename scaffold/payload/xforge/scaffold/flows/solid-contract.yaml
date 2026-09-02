@@ -133,7 +133,7 @@ artifacts:
         - id: <finding-id>
           severity: <blocker|warning|suggestion>
           summary: <what is wrong>
-          refs: [<Requirement id | artifact or spec path>]
+          refs: [<Requirement id | artifact or spec path>]   # where the problem is. `gate:<name>` belongs to constitution-check, which cites evidence rather than a location.
           status: <open|resolved>
           reworkTo: <stage id, required while a blocker is open>
           resolvedBy: <name or email, required once status is resolved for a blocker; must match a known approver or Git author>
