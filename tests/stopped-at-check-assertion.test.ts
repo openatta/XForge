@@ -32,7 +32,7 @@ const FLOW = {
   governance: { approvalPolicies: [{ id: 'implementation-major', minApprovers: 1, roles: ['owner'] }] },
 };
 
-function project(options: { spec?: boolean; receipt?: boolean; findingPath?: string } = {}): string {
+function project(options: { spec?: boolean; receipt?: boolean; findingPath?: string; gateStdout?: string } = {}): string {
   const root = mkdtempSync(path.join(tmpdir(), 'stopped-at-check-'));
   const change = path.join(root, 'xforge', 'changes', 'credential-store');
   mkdirSync(change, { recursive: true });
@@ -54,6 +54,19 @@ function project(options: { spec?: boolean; receipt?: boolean; findingPath?: str
   const findings = { findings: [{ id: 'F-1', severity: 'blocker', status: 'open', refs: [options.findingPath ?? 'proposal.md'] }] };
   mkdirSync(path.join(change, 'evidence'), { recursive: true });
   writeFileSync(path.join(change, 'evidence', 'check-findings.yaml'), JSON.stringify(findings));
+  /*
+   * The Gate's own Evidence, because the criterion reads it rather than deciding again.
+   *
+   * `assertStoppedAtCheck` asks the check-findings Gate whether a blocker cites something real --
+   * one source of truth for what counts as a citation, instead of a second copy that drifts when
+   * the first widens. It only ever runs after the Check Stage's Gates, so this file exists in every
+   * state it is asked about; a fixture without it modelled a run that cannot happen. `gateStdout`
+   * lets a case plant the warning the Gate would have written.
+   */
+  writeFileSync(path.join(change, 'evidence', 'check-findings.json'), JSON.stringify({
+    gate: 'check-findings', change: 'credential-store', status: 'failed', exitCode: 1,
+    stdout: options.gateStdout ?? '', stderr: 'blocking finding(s) still open.',
+  }));
   return root;
 }
 
@@ -67,6 +80,23 @@ const problemsOf = (root: string): string => {
 };
 
 describe('scoring a Major run that stopped at Check', () => {
+  /**
+   * The criterion reads the Gate's verdict instead of deciding again, so it has to still fail when
+   * the Gate does complain -- otherwise the change traded a wrong answer for no answer.
+   *
+   * A criterion that passes because it stopped looking is worse than one that fails, and this is
+   * the shape that would hide it: the refs check moved from `existsSync` to reading Evidence, and
+   * Evidence that says nothing looks exactly like Evidence that approves.
+   */
+  it('still fails when the Gate says a blocker cites nothing real', () => {
+    const root = project({
+      spec: true,
+      receipt: true,
+      gateStdout: 'warning: evidence/check-findings.yaml: finding F-1 refs "no-such-thing", which is neither a Requirement this Change declares nor a path that exists.',
+    });
+    expect(problemsOf(root)).toContain('no-such-thing');
+  });
+
   it('accepts the intended outcome: every Stage produced its Artifacts and the approval holds', () => {
     expect(run(project()).blockers.map((b: any) => b.id)).toEqual(['F-1']);
   });
