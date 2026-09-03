@@ -1,5 +1,5 @@
 export const CLI_NAME = '@xforge/cli';
-export const CLI_VERSION = '0.8.2';
+export const CLI_VERSION = '0.8.3';
 export const PROTOCOL_VERSION = '2';
 export const TARGETS = [
   'claude',

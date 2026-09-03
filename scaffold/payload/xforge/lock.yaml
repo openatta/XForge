@@ -152,8 +152,8 @@ scaffold:
   source:
     package: "@xforge/cli"
     type: npm
-    version: 0.8.2
-  version: 0.8.2
+    version: 0.8.3
+  version: 0.8.3
 targets:
   - codex
   - claude
@@ -161,8 +161,8 @@ targets:
   - opencode
   - github-copilot
 xforge:
-  integrity: sha256:f58eea8502e080a538a74402805611c1219f124838aec81b333a4c45bde21028
+  integrity: sha256:178934d727231360ae717f63ae939563e98d319bdadaf9682f8e3bf92fd4130e
   package: "@xforge/cli"
   protocol: "2"
   source: npm
-  version: 0.8.2
+  version: 0.8.3

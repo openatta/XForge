@@ -1,6 +1,6 @@
 # XForge 文档
 
-> 对应实现：`@xforge/cli 0.8.2`、File Protocol 2、`xforge.dev/v1alpha2`。
+> 对应实现：`@xforge/cli 0.8.3`、File Protocol 2、`xforge.dev/v1alpha2`。
 > 本目录只维护中文版本。
 
 ---

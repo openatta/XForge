@@ -3,7 +3,7 @@
 > 并行开发的协作协议：Main Agent 如何拆分与调度工作、子 Agent 如何交付、
 > XForge 如何验证边界与证据。
 >
-> 对应实现：`@xforge/cli 0.8.2`，Protocol 2 工作包、dispatch binding、
+> 对应实现：`@xforge/cli 0.8.3`，Protocol 2 工作包、dispatch binding、
 > 交付校验与 Workflow Audit 均已实现。
 
 ---

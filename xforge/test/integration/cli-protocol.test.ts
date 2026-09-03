@@ -53,7 +53,7 @@ describe('CLI protocol', () => {
     expect(help.json.data.commandHelp.usage).toContain('sync');
     const version = await runCli(root, ['version']);
     expect(version.code).toBe(0);
-    expect(version.json.data).toMatchObject({ name: '@xforge/cli', version: '0.8.2', protocolVersion: '2' });
+    expect(version.json.data).toMatchObject({ name: '@xforge/cli', version: '0.8.3', protocolVersion: '2' });
 
     const result = await runCli(root, ['frobnicate']);
     expect(result.code).toBe(1);
@@ -140,9 +140,9 @@ describe('CLI protocol', () => {
 
     const update = await runCli(root, ['update']);
     expect(update.code, JSON.stringify(update.json.diagnostics)).toBe(0);
-    expect(update.json.changes).toContainEqual(expect.objectContaining({ action: 'modify', path: 'xforge/manifest.yaml', source: 'xforge:declared-version-upgrade:0.7.7->0.8.2' }));
+    expect(update.json.changes).toContainEqual(expect.objectContaining({ action: 'modify', path: 'xforge/manifest.yaml', source: 'xforge:declared-version-upgrade:0.7.7->0.8.3' }));
     const manifest = await yamlFile(root, 'xforge/manifest.yaml');
-    expect(manifest.xforge.version).toBe('0.8.2');
+    expect(manifest.xforge.version).toBe('0.8.3');
     /* Only the CLI pin. The Scaffold's version follows the Scaffold's content, which `update` does
        not merge — see reconcileDeclaredCliVersion. Reconciling the CLI must still leave the project
        Managed, which is the point of the state assertion below: the two pins disagreeing is a normal
@@ -546,7 +546,7 @@ describe('verification receipt nextAction', () => {
 /*
  * Every `--field` path this product tells somebody to type, typed.
  *
- * The instruction shipped in 0.8.2 said `--field governance.revision.contentRevision`. That path
+ * The instruction shipped in 0.8.3 said `--field governance.revision.contentRevision`. That path
  * does not resolve — `state` nests it under `change.` — so an Agent following the Skill added to
  * stop it reading the revision by hand got exit 1 instead. Nothing caught it: the test suite used
  * the correct path, the Skill used a wrong one, and no test compared the two. A unit test cannot
@@ -589,7 +589,7 @@ describe('documented --field paths resolve', () => {
        test is passing by looking at an empty list. */
     expect(documented.length).toBeGreaterThan(0);
 
-    /* The check has teeth only if a wrong path fails, so the exact string that shipped in 0.8.2 is
+    /* The check has teeth only if a wrong path fails, so the exact string that shipped in 0.8.3 is
        asserted to fail here. Without this, a resolver that accepted everything would pass silently
        and this whole test would be decoration. */
     const shipped = await runCli(root, ['state', '--change', 'add-feature', '--field', 'governance.revision.contentRevision']);
