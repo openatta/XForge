@@ -6,7 +6,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # 不变量
 
-- **进入**用 `xforge stage --change <id>`。它一次返回：Change 在哪、ready 的 Action 及其 `writes`/`requiredSections`/`instruction`/`outline`、**该 Action `inputs` 的正文**、Constitution 正文，以及诊断。不要再单独去打开那些输入——它们已经到了。每写完一个 Artifact 重跑一次，而不是另外去问「变了什么」。 它同时携带本 Stage 声明了什么——产出、Gate、exit 条件、返工路线——所以**不需要打开 `xforge/flows/*.yaml`**：那个文件 400 行，而你要去那里找的 outline，Action 里已经有了。
+- **进入**用 `xforge stage --change <id>`。它一次返回：Change 在哪、ready 的 Action 及其 `writes`/`requiredSections`，以及 `owes` 下这个 Stage 仍欠的每个 Artifact 及其 `instruction`/`outline`、**该 Action `inputs` 的正文**、Constitution 正文，以及诊断。不要再单独去打开那些输入——它们已经到了。每写完一个 Artifact 重跑一次，而不是另外去问「变了什么」。 它同时携带本 Stage 声明了什么——产出、Gate、exit 条件、返工路线——所以**不需要打开 `xforge/flows/*.yaml`**：那个文件 400 行，而你要去那里找的 outline，Action 里已经有了。
 - `xforge-check` 做语义审查；`xforge check` 提供 schema、路径、Gate 和 Evidence 的确定性输入，二者不能互相替代。
 - 默认只读 governing artifacts；发现问题时报告 rework，不在审查中悄悄改写上游。
 - Check report 是 LLM Review Evidence，不是 Gate Evidence；即使写出 `PASS` 也不能通过 Machine Gate、Transition 或 Approval。
@@ -25,8 +25,8 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 2. 检查 Design 是否覆盖所有 Requirement、约束、trust boundaries、失败场景、兼容性、迁移和回滚。
 3. 核对测试、rollout、monitoring、stop signals、owner、path scope、依赖与并行边界是否匹配重大影响。
 4. 把 `xforge stage` 已经返回的诊断作为证据输入。**不要为了拿诊断去跑 `xforge check`**：不带 Gate 选择时它还会执行每个工作包声明的全部 `verify` 命令——十个包的计划就是几十条外部命令、数分钟墙钟——而且它此刻产出的 Gate 结果本来就没有价值，因为那些 Gate 要读的台账还不存在。本 Stage 真正需要的那次 `check` 在第 9 步，写入之后。
-5. 按 Action 的 `instruction` 与 `outline` 写 `evidence/check-findings.yaml`。字段集合、空列表的写法、`resolvedBy` 身份拿什么去比对，都由那两者给出，本 Skill 不再复述。本 Skill 欠你的是评审本身：这里记下的每一条 blocker 都意味着 Change 要退回某个 Stage，所以只记你愿意为之辩护的，不愿意的就不要记。
-6. 按 Action 的 `instruction` 与 `outline` 写 `evidence/constitution-check.yaml`——每条原则一个条目，每条都要引用机器可定位的东西。依据这个 Change 实际做了什么去回答每一条原则；把 `not-applicable` 当成一个需要论证的主张，而不是绕开一条你还没想清楚的原则的出口。
+5. 按 `owes` 中该 Artifact 的 `instruction` 与 `outline` 写 `evidence/check-findings.yaml`。字段集合、空列表的写法、`resolvedBy` 身份拿什么去比对，都由那两者给出，本 Skill 不再复述。本 Skill 欠你的是评审本身：这里记下的每一条 blocker 都意味着 Change 要退回某个 Stage，所以只记你愿意为之辩护的，不愿意的就不要记。
+6. 按 `owes` 中该 Artifact 的 `instruction` 与 `outline` 写 `evidence/constitution-check.yaml`——每条原则一个条目，每条都要引用机器可定位的东西。依据这个 Change 实际做了什么去回答每一条原则；把 `not-applicable` 当成一个需要论证的主张，而不是绕开一条你还没想清楚的原则的出口。
 7. 在受契约治理的 Flow 上，写 `evidence/conditions/contractDecisions.yaml`：每一处需要人来拍板的接口变更一条——通常就是 `contract-delta` 声明的每个破坏性变更——字段名恰好是 `question`、`decision`、`decidedBy`、`decidedAt` 四个。没有别名：`resolvedBy` 与 `approvedBy` 属于上面两个台账，在这里完全不被读取；而且拼错键是静默的，这个文件不像 findings 台账那样会给出近似拼写提示。`decidedAt` 必须能被解析为日期，`decidedBy` 必须命中本 Change 某份 receipt 上的审批人或它的某个 Git 作者——与上面同一条标准，也同样在两者都还不存在时暂时放行。**不要自己替人做这些决定。** 一条写着某人名字的记录就是那个人的授权，替他写就是记录一份没人给过的授权。把问题交给用户，写下他们的回答。本 Change 没有需要拍板的接口变更时，整份文件就是 `entries: []`，那是一条断言而不是一处遗漏。CLI 会把缺口原样报成 `condition:contractDecisions:<reason>`——`undecided-N` 会点名是哪几条，`ledger-missing-expected-resolved` 表示文件根本不存在。
 8. 受契约治理的 Flow 在 Check Stage 还会跑 `contract-compat`，它是一道 declared Gate：在本项目用 `xforge verification declare --gate-name contract-compat --command '[...]' --by <人>` 记录命令之前，它是拒绝而不是放行。这种拒绝在 `blockedBy` 里表现为 `gate:contract-compat:failed`，与真失败无法区分——看诊断码，不要看阻断词，也绝不要为此手改 `xforge/manifest.yaml`。
 8b. **`check-report.md` 最后写，在两份台账之后。** 它的 `Gates and evidence` 段落记录的是 `xforge check` 实际报告了什么，而 Gate 是对着台账评估的——所以先写报告就必然引用尚不存在的结果，事后订正又会推动 content revision、把它刚引用的 Gate 弄陈旧。会收敛的顺序是：先台账，再一次 `check`，再写引用它的报告，最后第 9 步那次 `check`。四次实测都是靠试错发现这一点的；那次先写报告的运行，花了三轮「改—重跑」才走出来。

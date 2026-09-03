@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { scaffoldPayload, repositoryRoot } from '../helpers.js';
+import { workPackagePlanTemplate } from '../../src/core/work-package-template.js';
 import { changeTemplate } from '../../src/core/change-template.js';
 
 /**
@@ -46,6 +47,39 @@ describe('Skill and classification contract', () => {
        than one that left them blank. */
     expect(template).toContain('flow: solid');
     expect(template).toContain('modules: [root]');
+  });
+
+  /**
+   * The same defect, one file over.
+   *
+   * `work-package.schema.json` is `additionalProperties: false` over `[apiVersion, kind, packages]`,
+   * so a plan missing either header key is refused before any DAG work and `resolveWorkPackages`
+   * reports `unusable`. Neither key appeared anywhere an Agent reads -- not in a Skill, not in a
+   * Flow `instruction` or `outline`, not in `XFORGE.md` -- while `xforge-apply` said a package
+   * contains "only" a list that is the package's fields, not the document's. Every test fixture
+   * wrote the header correctly, so the harness could never fail the way an Agent does.
+   *
+   * This reads the schema and the template together, so a document key added to one and not the
+   * other cannot ship.
+   */
+  it('offers every document key the work-package schema requires in the create-work-packages template', async () => {
+    const schema = JSON.parse(
+      await readFile(path.join(repositoryRoot, 'xforge', 'schemas', 'work-package.schema.json'), 'utf8'),
+    ) as { required: string[]; properties: Record<string, { const?: string }> };
+    expect(schema.required).toContain('apiVersion');
+    expect(schema.required).toContain('kind');
+
+    const template = workPackagePlanTemplate();
+    for (const key of schema.required) {
+      expect(template, `the create-work-packages template omits required document key "${key}", so a plan written from it is refused`).toContain(`${key}:`);
+    }
+    /* The two that are `const` in the schema must match by value, not merely be present: a template
+       naming the right key with the wrong value fails exactly as hard as one omitting it. */
+    for (const key of ['apiVersion', 'kind']) {
+      const literal = schema.properties[key]?.const;
+      expect(literal, `${key} is expected to be a const in the schema`).toBeTruthy();
+      expect(template).toContain(`${key}: ${literal}`);
+    }
   });
 
   /**

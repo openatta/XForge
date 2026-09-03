@@ -7,7 +7,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 # 不变量
 
 - **进入**用 `xforge state --field nextActions --field diagnostics --field constitution --field project --field flows --field changes --field specs`：读取 ready 的 `create-change` Action（它携带 `change.yaml` 模板以及写到哪里）、Constitution 的版本与路径、Changes 路径、项目模块、Specs，以及每个 Flow 及其用于判定 eligibility 的 `policy`。Constitution 按这里报告的路径去读文件：State 只携带它的版本与路径，不携带正文。**本 Stage 用 `state` 进入而不是 `stage`，是因为此时还没有 Change；从第 3 步起，入口是 `xforge stage --change <id>`，它会把 Action 的输入正文一起带来。**
-- `change.yaml` 存在之后，后续每一次读取都是 `xforge stage --change <id>`：它返回 Change 在哪、ready 的 Action 及其 `writes`/`requiredSections`/`instruction`/`outline`、**该 Action `inputs` 的正文**、Constitution 正文，以及诊断。不要再单独去打开那些输入——它们已经到了。
+- `change.yaml` 存在之后，后续每一次读取都是 `xforge stage --change <id>`：它返回 Change 在哪、ready 的 Action 及其 `writes`/`requiredSections`，以及 `owes` 下这个 Stage 仍欠的每个 Artifact 及其 `instruction`/`outline`、**该 Action `inputs` 的正文**、Constitution 正文，以及诊断。不要再单独去打开那些输入——它们已经到了。
 - **命令一律运行 `state.nextActions[].command` 给出的那条，不要自己拼装。** 第 3 步是唯一的例外，因为没有任何 Action 会创建 Change。
 - 只消费 `xforge-propose` 对应的 ready Action；每次写入前从磁盘重读它的 `inputs`。
 - Flow 的选择依据是 State 报告的各 Flow `policy.eligibleWhen`，绝不依据 Flow 的名字或印象。分类与可用 Flow 冲突时，升级或请求决定。
@@ -29,7 +29,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
    每一个 classification 键都依据工作本身回答，绝不依据你更想跑哪个 Flow。`moduleContract` 为真的条件是这个 Change 移动了**模块之间**的接口——一个签名、一个端点、一个别的模块会读的存储结构；它不是 `publicApi`——后者为真的条件是这个 Change 动了外部消费者已经依赖的东西：一个已发布的入口、一个有文档的端点、一个已发行的 CLI 选项。一个仓库之外根本触达不到的导出，无论从内部看多么显眼，都不是 public API；而模块边界之内的重命名，两个键都不是。**为了消除一次拒绝而不诚实地回答某个键，是本 Stage 事后唯一无法发现的失败。** 当 `moduleContract` 为真、而所选 Flow 没有任何 Stage 声明接口 delta 时，会被以 `XFORGE_FLOW_TOO_WEAK` 拒绝——**那次拒绝正是这个键在起作用，不是一个要清掉的错误**：它会点名哪个 Flow 能承载这个 Change，而 `xforge explain XFORGE_FLOW_TOO_WEAK` 会说明为什么答 `false` 不是一道更松的检查，而是另一回事。
 
    只在 Propose 的 Artifact 与 Action 处于 ready 时继续，并先清掉由这个 Change 自己的文件引起的 schema 诊断。**本 Stage 权限之内清不掉的诊断——未声明的验证 Gate、尚无后续 Artifact 锚定的 Requirement——是报告，不是修复。** 为了消掉它而伸手到 Stage 之外，正是本 Skill 的「权限」一节要防的越界。
-4. 写 ready Action 点名的每一个 Artifact：写在它的 `writes` 路径，带上 `requiredSections` 列出的每一个 `##` 标题，并遵循该 Action 的 `instruction` 与 `outline`。标题逐字照抄——不要新增、改名或加限定语，因为 markers 与 reconcile 的取材都按标题原文定位。Requirement 使用稳定 ID，并给出成功、失败、边界与兼容性场景。不可把来源未声明的精确契约猜测写成规范事实；已有不可修改的验收测试定义了字段、输出形状或退出行为时必须逐项保持一致，测试与需求冲突则作为材料性歧义停止。
+4. 写 ready Action 点名的每一个 Artifact：写在它的 `writes` 路径，带上 `requiredSections` 列出的每一个 `##` 标题，并遵循`owes` 中该 Artifact 的 `instruction` 与 `outline`。标题逐字照抄——不要新增、改名或加限定语，因为 markers 与 reconcile 的取材都按标题原文定位。Requirement 使用稳定 ID，并给出成功、失败、边界与兼容性场景。不可把来源未声明的精确契约猜测写成规范事实；已有不可修改的验收测试定义了字段、输出形状或退出行为时必须逐项保持一致，测试与需求冲突则作为材料性歧义停止。
 5. 每完成一个 Artifact 就重跑一次 `xforge stage --change <id>`；当下一个 Artifact Action 属于其他 Skill 时，**停止写 Artifact**。这不是本 Stage 的结束——第 6 步才是，而且要从这里继续走下去。
 6. 运行 `xforge advance --change <id>`：它跑本 Stage 的 Gate，若无拒绝则执行转换。读它报告的内容。Gate 拒绝会阻止转换并点名自己——只修复 Propose 阶段的结构问题，绝不把提示性文本读成已通过的 Gate。当多个转换同时 ready 时它会反问，因为「前进还是返工」不是默认值能定的：用 `--to` 指明。
 

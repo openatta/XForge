@@ -6,7 +6,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # Invariants
 
-- **Enter** with `xforge stage --change <id>`. It returns where the Change stands, the ready Action with its `writes`, `requiredSections`, `instruction` and `outline`, the text of that Action's `inputs`, the Constitution, and the diagnostics — in one reply. Do not open those inputs separately; they arrived. Re-run it after each Artifact rather than asking what changed. It also carries what this Stage declares — what it produces, its Gates, its exit conditions, its rework routes — so `xforge/flows/*.yaml` does not need opening: the Flow file is 400 lines and the Action already holds the outline you would go there for.
+- **Enter** with `xforge stage --change <id>`. It returns where the Change stands, the ready Action with its `writes` and `requiredSections`, and under `owes` every Artifact this Stage still owes with its `instruction` and `outline`, the text of that Action's `inputs`, the Constitution, and the diagnostics — in one reply. Do not open those inputs separately; they arrived. Re-run it after each Artifact rather than asking what changed. It also carries what this Stage declares — what it produces, its Gates, its exit conditions, its rework routes — so `xforge/flows/*.yaml` does not need opening: the Flow file is 400 lines and the Action already holds the outline you would go there for.
 - Resolve facts from code, Specs, Rules, and Proposal first; ask only a small set of project-unanswerable questions that materially affect the result.
 - Keep Clarifications and authorized Proposal/delta Spec updates in one consistent revision. Any unresolved material question remains blocking.
 
@@ -20,7 +20,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 1. Reread all Action inputs and list unknowns that affect scope, compatibility, risk, implementation boundaries, or acceptance.
 2. Investigate project-answerable questions; ask the minimum decision set for the rest.
-3. Write `clarifications.md`, and record the same set as machine-decidable entries in `evidence/conditions/materialQuestions.yaml` exactly as that Action's `instruction` and `outline` define it. **The Stage exits on that ledger, never on the prose.** Then synchronize the confirmed decisions into the Proposal and delta Specs, keeping Requirements and Scenarios testable.
+3. Write `clarifications.md`, and record the same set as machine-decidable entries in `evidence/conditions/materialQuestions.yaml` exactly as that Artifact's `instruction` and `outline` under `owes` define it. **The Stage exits on that ledger, never on the prose.** Then synchronize the confirmed decisions into the Proposal and delta Specs, keeping Requirements and Scenarios testable.
 4. Re-run `xforge stage --change <id>`, confirm `materialQuestions: resolved`, then run `xforge advance --change <id>`: it checks structure and policy and takes the Transition only if nothing refuses. Where more than one Transition is ready it asks; name the one the typed nextAction gives with `--to`.
 
 # Evidence

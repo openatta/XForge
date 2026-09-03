@@ -3,8 +3,8 @@ quick  propose            check              gates=1 next=transition
 quick  propose            audit verify       refused: XFORGE_AUDIT_EVENT_MISSING
 quick  propose            draft-receipt      refused: XFORGE_VERIFICATION_RECEIPT_NOT_REQUIRED
 quick  propose            archive --dry-run  refused: XFORGE_ARCHIVE_GOVERNANCE_BLOCKED
-quick  apply              state              stage=apply specPlan=0 next=transition
-quick  apply              check              gates=0 next=transition
+quick  apply              state              stage=apply specPlan=0 next=create-work-packages|transition
+quick  apply              check              gates=0 next=create-work-packages|transition
 quick  apply              audit verify       refused: XFORGE_AUDIT_EVENT_MISSING
 quick  apply              draft-receipt      refused: XFORGE_VERIFICATION_RECEIPT_NOT_REQUIRED
 quick  apply              archive --dry-run  refused: XFORGE_ARCHIVE_GOVERNANCE_BLOCKED
@@ -33,8 +33,8 @@ solid  check              check              gates=3 next=approve|transition
 solid  check              audit verify       refused: XFORGE_AUDIT_EVENT_MISSING
 solid  check              draft-receipt      refused: XFORGE_VERIFICATION_RECEIPT_NOT_REQUIRED
 solid  check              archive --dry-run  refused: XFORGE_ARCHIVE_GOVERNANCE_BLOCKED
-solid  apply              state              stage=apply specPlan=0 next=transition
-solid  apply              check              gates=0 next=transition
+solid  apply              state              stage=apply specPlan=0 next=create-work-packages|transition
+solid  apply              check              gates=0 next=create-work-packages|transition
 solid  apply              audit verify       remoteDelivery=optional
 solid  apply              draft-receipt      refused: XFORGE_VERIFICATION_RECEIPT_NOT_REQUIRED
 solid  apply              archive --dry-run  refused: XFORGE_ARCHIVE_GOVERNANCE_BLOCKED
@@ -68,8 +68,8 @@ major  check              check              gates=3 next=approve|transition
 major  check              audit verify       refused: XFORGE_AUDIT_EVENT_MISSING
 major  check              draft-receipt      refused: XFORGE_VERIFICATION_RECEIPT_NOT_REQUIRED
 major  check              archive --dry-run  refused: XFORGE_ARCHIVE_GOVERNANCE_BLOCKED
-major  apply              state              stage=apply specPlan=0 next=transition
-major  apply              check              gates=0 next=transition
+major  apply              state              stage=apply specPlan=0 next=create-work-packages|transition
+major  apply              check              gates=0 next=create-work-packages|transition
 major  apply              audit verify       remoteDelivery=optional
 major  apply              draft-receipt      refused: XFORGE_VERIFICATION_RECEIPT_NOT_REQUIRED
 major  apply              archive --dry-run  refused: XFORGE_ARCHIVE_GOVERNANCE_BLOCKED

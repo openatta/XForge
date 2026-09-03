@@ -13,6 +13,7 @@ import { executeAudit } from './commands/audit.js';
 import { executeCheck } from './commands/check.js';
 import { executeStageBundle, renderStageBundleText, renderStageText } from './commands/stage-bundle.js';
 import { CLASSIFICATION_KEYS, changeTemplate } from './core/change-template.js';
+import { WORK_PACKAGE_PLAN_HEADER_KEYS, workPackagePlanTemplate } from './core/work-package-template.js';
 import { knownIdentities } from './core/ledger-identity.js';
 import { executeContractList, executeContractStatus, renderContractListText, renderContractStatusText } from './commands/contract.js';
 import { executeExplain, renderExplainText } from './commands/explain.js';
@@ -754,6 +755,9 @@ async function nextActionsFor(
   changeId: string | undefined,
 ): Promise<NextAction[]> {
   const nextActions: NextAction[] = [];
+  /* Hoisted: both the Change and the work-package plan are written under it, and a second copy of
+     the fallback string is a second thing to keep in step with the Manifest. */
+  const changesPath = (data.project as { paths?: { changes?: { value?: string } } } | undefined)?.paths?.changes?.value ?? 'xforge/changes';
   if (project.compatibility.mode === 'portable') nextActions.push({ action: 'resolve-declared-xforge', reason: 'Managed operations require the exact declared CLI identity.' });
   const stateChange = (data.change ?? null) as {
     flow?: string;
@@ -772,8 +776,7 @@ async function nextActionsFor(
    * Change" is actually asked -- inside a Change, the answer is already yes.
    */
   if (!changeId) {
-    const projectFacts = data.project as { paths?: { changes?: { value?: string } }; modules?: Array<{ id: string }> } | undefined;
-    const changesPath = projectFacts?.paths?.changes?.value ?? 'xforge/changes';
+    const projectFacts = data.project as { modules?: Array<{ id: string }> } | undefined;
     nextActions.push({
       action: 'create-change',
       type: 'artifact',
@@ -873,6 +876,33 @@ async function nextActionsFor(
     /* The dispatch happens in the Stage the Change is in, so that Stage's declared authority is
        the one that applies — `implementation-write` only because the shipped Flows say so. */
     const applyAuthority = stages.find((stage) => stage.id === governance.currentStage)?.authority;
+    /*
+     * The Stage offers a plan before it offers a dispatch.
+     *
+     * `state.workPackages` is null both when no plan exists and when one exists that the schema
+     * refused, and the template is the right answer to both: the second case is overwhelmingly a
+     * plan written without `apiVersion` and `kind`, because those keys were documented nowhere an
+     * Agent reads. An Agent that wrote a headerless plan now gets XFORGE_SCHEMA_INVALID and, beside
+     * it, the shape that satisfies the schema.
+     *
+     * Offered only where a plan is legal to write. A persistent plan is one of two ways to run this
+     * Stage -- direct serial work is the other -- so this is `status: 'pending'`, an Action the
+     * Stage may take rather than one it owes.
+     */
+    if (!(stateChange as any)?.workPackages) {
+      nextActions.push({
+        action: 'create-work-packages', type: 'artifact', actor: 'main', ...(applyAuthority ? { authority: applyAuthority } : {}), status: 'pending',
+        inputs: [],
+        writes: [`${changesPath}/${changeId}/work-packages.yaml`],
+        template: workPackagePlanTemplate(),
+        doneWhen: [
+          `work-packages.yaml carries ${WORK_PACKAGE_PLAN_HEADER_KEYS.join(' and ')} beside packages, and nothing else: the schema is additionalProperties: false and refuses the plan outright without them.`,
+          'Every path a package writes falls inside its own write_paths, and no two packages claim one path.',
+        ],
+        requiredEvidence: ['xforge state --change <id> reports the plan resolved, with a ready set.'],
+        reason: 'This Stage can be run from a persistent plan; no plan is resolvable for this Change.',
+      });
+    }
     for (const packageId of (stateChange as any)?.workPackages?.ready ?? []) {
       const workPackage = stateChange?.workPackages?.packages?.find((item) => item.id === packageId);
       nextActions.push({
@@ -1288,8 +1318,9 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
          *
          * Twenty recorded runs read `xforge/flows/*.yaml` twelve times for 132KB — 12% of every
          * byte that entered context through a file read — to learn an outline or which Gates a
-         * Stage runs. The Action already carries the outline; this carries the rest of what a Stage
-         * is, which is the other half of the question those reads were asking.
+         * Stage runs. `owes` already carries the outline -- the Action does not, and this comment
+         * said it did until an audit read the two against `NextAction`; this carries the rest of
+         * what a Stage is, which is the other half of the question those reads were asking.
          */
         stageDeclares: (() => {
           const definition = flowStages(state.data as Record<string, unknown>, change?.flow).find((entry) => entry.id === bundle.data.stage);

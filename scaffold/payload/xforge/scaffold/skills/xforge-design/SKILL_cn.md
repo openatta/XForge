@@ -6,7 +6,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # 不变量
 
-- **进入**用 `xforge stage --change <id>`。它一次返回：Change 在哪、ready 的 Action 及其 `writes`/`requiredSections`/`instruction`/`outline`、**该 Action `inputs` 的正文**、Constitution 正文，以及诊断。不要再单独去打开那些输入——它们已经到了。每写完一个 Artifact 重跑一次，而不是另外去问「变了什么」。 它同时携带本 Stage 声明了什么——产出、Gate、exit 条件、返工路线——所以**不需要打开 `xforge/flows/*.yaml`**：那个文件 400 行，而你要去那里找的 outline，Action 里已经有了。
+- **进入**用 `xforge stage --change <id>`。它一次返回：Change 在哪、ready 的 Action 及其 `writes`/`requiredSections`，以及 `owes` 下这个 Stage 仍欠的每个 Artifact 及其 `instruction`/`outline`、**该 Action `inputs` 的正文**、Constitution 正文，以及诊断。不要再单独去打开那些输入——它们已经到了。每写完一个 Artifact 重跑一次，而不是另外去问「变了什么」。 它同时携带本 Stage 声明了什么——产出、Gate、exit 条件、返工路线——所以**不需要打开 `xforge/flows/*.yaml`**：那个文件 400 行，而你要去那里找的 outline，Action 里已经有了。
 - Design 解释 HOW、决策与边界，不重复 Proposal，不退化为逐文件任务列表或长期 Plan。
 - Constitution、Rules、现有架构和 Specs 是约束；不把约束原文机械复制进设计。
 
@@ -19,8 +19,8 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 1. 建模当前系统、目标行为、集成点、数据与接口边界。
 2. 记录主要决策、可行替代方案及拒绝理由，覆盖失败模式、兼容性、迁移和回滚。
-3. 严格按照当前 Action 的 Design artifact `instruction` 与 outline 执行——Solid 与 Major 的深度差异（例如 Major 的 trust boundaries、风险与缓解、测试策略、rollout、monitoring、stop signals、owner 和并行边界）已经在其中表达，不要补充或省略 Action 未定义的章节。
-4. 当 Action 列出 `contract-delta` Artifact 时，按该 Action 的 `instruction` 与 `outline` 写——元素 id 的形式、id 从哪里读、空段落意味着什么，都由它们给出。有一件事不在其中，因为它关乎这个项目而不是这个 Artifact：声明了 `contract-lint` 的 Stage，在项目用 `xforge verification declare --gate-name contract-lint --command '[...]' --by <person>` 记录命令之前不可能通过——declared Gate 在没有声明时是拒绝，不是放行。不要为了绕过它去手改 Manifest。
+3. 严格按照`owes` 中 Design Artifact 的 `instruction` 与 outline 执行——Solid 与 Major 的深度差异（例如 Major 的 trust boundaries、风险与缓解、测试策略、rollout、monitoring、stop signals、owner 和并行边界）已经在其中表达，不要补充或省略 Action 未定义的章节。
+4. 当 Action 列出 `contract-delta` Artifact 时，按`owes` 中该 Artifact 的 `instruction` 与 `outline` 写——元素 id 的形式、id 从哪里读、空段落意味着什么，都由它们给出。有一件事不在其中，因为它关乎这个项目而不是这个 Artifact：声明了 `contract-lint` 的 Stage，在项目用 `xforge verification declare --gate-name contract-lint --command '[...]' --by <person>` 记录命令之前不可能通过——declared Gate 在没有声明时是拒绝，不是放行。不要为了绕过它去手改 Manifest。
 5. 刷新 State 并运行 `xforge check --change <id>`；只修复 Design 权限内的结构问题，然后调用 typed nextAction 中通往 Check 的 Transition。所有随附 Flow 都不在 Design 出口收取审批——`planning-solid` 与 `implementation-major` 都改在 Check 出口收取——所以不要在这里等一份没人会发起的 receipt，也不要尝试为本 Stage 审批：`xforge approve` 会拒绝任何策略都不治理的 transition。
 
 # 证据
