@@ -338,8 +338,12 @@ export async function checkStructure(project: ProjectContext, changeId?: string)
       diagnostics.push(...transitions.diagnostics);
       const currentStage = transitions.receipts.at(-1)?.to ?? resolved.flow.stages[0]?.id;
       requireDeliveries = currentStage === 'verify' || currentStage === 'ready-to-archive';
-      /* Located by authority rather than by the name `apply`, so a project that renames or adds an
-         implementing Stage is measured by what the Stage is allowed to write, not by a string. */
+      /* The implementing Stage is located by authority, so a project that renames or adds one is
+         measured by what the Stage is allowed to write. That holds for this lookup only: the two
+         lines around it test `currentStage` against the literals `verify` and `ready-to-archive`,
+         and `flow-resolver.ts` refuses any Flow without Stages named `propose`, `apply` and
+         `verify`. This comment claimed the whole block was name-free until an audit read the
+         three lines together. */
       const implementing = resolved.flow.stages.findIndex((stage) => stage.authority === 'implementation-write');
       const current = resolved.flow.stages.findIndex((stage) => stage.id === currentStage);
       reachedImplementation = implementing >= 0 && (current >= implementing || currentStage === 'ready-to-archive');

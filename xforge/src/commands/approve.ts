@@ -88,7 +88,8 @@ function exitApprovals(flow: any, stageId: string): string[] {
  * Refuses a `--for` that cannot produce a receipt anything will count.
  *
  * An approval is an irreversible draw on a human being. XForge is careful in one direction — the
- * decision may not be constituted by flags, `architectureDeltas` demands a named `decidedBy`, Gate
+ * decision may not be constituted by flags, a condition ledger demands a `decidedBy` the repository
+ * has actually committed as, Gate
  * Evidence is written only by the runner — all of it aimed at an Agent manufacturing an authorisation
  * nobody gave. The opposite direction was unguarded, and it has the same end state: a governance
  * record that disagrees with the governance state.

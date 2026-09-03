@@ -119,7 +119,19 @@ export async function executeTransition(project: ProjectContext, options: { chan
       diagnostic('XFORGE_TRANSITION_INVALID', `Transition ${control.governance.currentStage} -> ${options.to} is not allowed by the Flow.`),
     ]);
   }
-  const diagnostics = [...eligibility, ...resources.diagnostics, ...workPackages.diagnostics, ...control.diagnostics];
+  /*
+   * `resolved.diagnostics` carries what `graphDiagnostics()` found about the Flow itself --
+   * XFORGE_FLOW_STAGE_REQUIRED, XFORGE_FLOW_DUPLICATE, XFORGE_FLOW_FILENAME_MISMATCH. It was
+   * omitted here, and only here: `review`, `verification` and `work-package` all spread the same
+   * four sources with it included. A transition is the one command that writes a receipt, so a
+   * broken Flow graph blocked `check` and `state` while this command advanced the Stage and
+   * recorded that it had advanced legitimately.
+   *
+   * Not `flowsResult.diagnostics` as well -- `resolveChangeState` runs its own `loadFlows` and
+   * already folded those in, so spreading both reports every Flow-graph finding twice. The second
+   * load survives for `flowsResult.flows`, which eligibility needs to name an escalation target.
+   */
+  const diagnostics = [...resolved.diagnostics, ...eligibility, ...resources.diagnostics, ...workPackages.diagnostics, ...control.diagnostics];
   /*
    * Of the four commands that report an open upgrade, this is the one where the hazard is not
    * hypothetical, so it says what it is rather than reusing the general wording.
