@@ -45,6 +45,7 @@ const versionedTextFiles = [
   'docs/concepts-and-architecture.md',
   'docs/index.md',
   'docs/repository-layout.md',
+  'docs/skill-authoring.md',
   'docs/sub-agent-design.md',
   'scaffold/payload/xforge/lock.yaml',
   'scaffold/payload/xforge/manifest.yaml',
@@ -124,6 +125,11 @@ function assertNoStaleVersion(previousVersion) {
      * - **Records of work done at a particular version.** A plan and a pilot report describe what
      *   was true when they were written. Moving their version number forward would make them claim
      *   to describe a release they predate.
+     * - **Records of a version *mismatch* that actually happened.** A live run met a 0.7.20 binary
+     *   on PATH against a project whose Manifest declared a later release, and the identity string
+     *   it produced is now a fixture and the story two comments tell. Both halves of that pair are
+     *   the record: rewriting the project's half at every release would leave a fixture asserting a
+     *   mismatch nobody ever met, and two comments citing a run that never happened.
      *
      * Listed rather than pattern-matched: each entry is a judgement about that file's content, and a
      * pattern would quietly adopt the next file that happened to fit it.
@@ -133,6 +139,9 @@ function assertNoStaleVersion(previousVersion) {
       'xforge/test/unit/version-compare.test.ts',
       'docs/xforge-contract-governance-adoption-plan.md',
       'docs/xforge-contract-governance-m0-pilot.md',
+      'xforge/src/cli.ts',
+      'xforge/src/commands/hook.ts',
+      'xforge/test/integration/stale-cli-deny-reason.test.ts',
     ].includes(file));
   if (remaining.length > 0) {
     fail(`These tracked files still name ${previousVersion} after the rewrite: ${remaining.join(', ')}. Add each to versionedTextFiles, or record here why it keeps the old version.`);
