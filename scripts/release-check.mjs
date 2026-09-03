@@ -112,6 +112,29 @@ const packedFiles = new Set((packed?.files ?? []).map((file) => file.path));
 for (const required of ['README.md', 'dist/LICENSE', 'dist/NOTICE', 'dist/cli.js', 'package.json', 'scaffold/scaffold.yaml', 'scaffold/files.sha256', 'scaffold/payload/xforge/manifest.yaml']) {
   assert(packedFiles.has(required), `Packed npm artifact is missing ${required}.`);
 }
+/*
+ * Every payload file the inventory names has to survive packing.
+ *
+ * `files.sha256` is verified at `init` against the payload as installed, so a file npm drops on the
+ * way into the tarball fails every install with XFORGE_BUNDLED_SCAFFOLD_INVALID -- naming
+ * `files.sha256` as the problem, which is the one file that is right. It happened: a `.gitignore`
+ * added to the payload was silently excluded, because npm applies a payload `.gitignore` as a live
+ * ignore list while packing and it had no `!.gitignore` line to exempt itself. No unit test can see
+ * that; the defect exists only once the package is built.
+ *
+ * A named-file list would have missed it too, since the file was new. This compares the inventory
+ * with the tarball, so the next one is caught whatever it is called.
+ */
+const inventory = readFileSync('scaffold/files.sha256', 'utf8')
+  .split('\n')
+  .map((line) => line.trim())
+  .filter(Boolean)
+  .map((line) => line.split(/\s+/).slice(1).join(' '));
+assert(inventory.length > 0, 'Scaffold inventory is empty.');
+for (const relative of inventory) {
+  assert(packedFiles.has(`scaffold/${relative}`), `Packed npm artifact is missing scaffold/${relative}, which scaffold/files.sha256 lists — every install of this tarball would fail XFORGE_BUNDLED_SCAFFOLD_INVALID.`);
+}
+
 for (const file of packedFiles) {
   assert(!file.startsWith('src/'), `Packed npm artifact unexpectedly includes ${file}.`);
   assert(!file.startsWith('test/'), `Packed npm artifact unexpectedly includes ${file}.`);

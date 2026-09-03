@@ -12,3 +12,11 @@
 # Already tracked it? `git rm --cached xforge/.state.json` once, then commit. The file stays on
 # disk and install keeps maintaining it.
 .state.json
+
+# Why this file un-ignores itself: npm applies a payload `.gitignore` as a live ignore list while
+# packing, to itself included -- so without the negation below, `npm pack` drops this file while
+# `files.sha256` still lists it, and every install then fails XFORGE_BUNDLED_SCAFFOLD_INVALID
+# naming the one file that is right. The sibling `.audit/.gitignore` carries the same line for the
+# same reason. A live run found this; no unit test can, because the defect exists only once the
+# package is built. `scripts/release-check.mjs` now compares the inventory with the tarball.
+!.gitignore
