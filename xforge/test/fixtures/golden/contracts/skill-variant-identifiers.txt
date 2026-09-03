@@ -1,0 +1,15 @@
+xforge-apply  auditCorrelationId  <- SKILL_cn.md only
+xforge-apply  audit_correlation_id  <- SKILL_cn.md only
+xforge-apply  degraded  <- SKILL_cn.md only
+xforge-apply  executionId  <- SKILL_cn.md only
+xforge-apply  native  <- SKILL_cn.md only
+xforge-apply  policy_snapshot_digest  <- SKILL_cn.md only
+xforge-apply  state_revision  <- SKILL_cn.md only
+xforge-apply  unsupported  <- SKILL_cn.md only
+xforge-architect  Rejected  <- SKILL.md only
+xforge-architect  Supersedes  <- SKILL.md only
+xforge-architect  Why  <- SKILL.md only
+xforge-scaffold  PermissionPolicy  <- SKILL_cn.md only
+xforge-scaffold  Rule  <- SKILL_cn.md only
+xforge-verify  apply  <- SKILL_cn.md only
+xforge-verify  resolved  <- SKILL_cn.md only

@@ -65,6 +65,19 @@ describe('Skill and CLI command contract', () => {
     return found;
   };
 
+  /** Each Skill id mapped to its language variants, for the two checks that compare a pair. */
+  async function skillVariants(): Promise<Map<string, Map<string, string>>> {
+    const byId = new Map<string, Map<string, string>>();
+    for (const skill of (await readdir(skillsRoot)).sort()) {
+      for (const file of (await readdir(path.join(skillsRoot, skill))).filter((name) => name === 'SKILL.md' || name === 'SKILL_cn.md').sort()) {
+        const variants = byId.get(skill) ?? new Map<string, string>();
+        variants.set(file === 'SKILL_cn.md' ? 'cn' : 'en', await readFile(path.join(skillsRoot, skill, file), 'utf8'));
+        byId.set(skill, variants);
+      }
+    }
+    return byId;
+  }
+
   async function invocations(): Promise<Invocation[]> {
     const found: Invocation[] = [];
     const documents: Array<{ label: string; source: string }> = [];
@@ -255,6 +268,64 @@ describe('Skill and CLI command contract', () => {
       }
     }
     const { actual, expected } = await golden('contracts/skill-unmentioned-flags.txt', `${rows.sort().join('\n')}\n`);
+    expect(actual).toBe(expected);
+  }, 600_000);
+
+  /**
+   * Both variants must have the same sections, in the same order.
+   *
+   * Headings are translated, so their text cannot be compared -- but their *count* and position can,
+   * and a section added to one language and not the other is a Skill that says different things
+   * depending on which locale installed it. This is the half of bilingual equivalence a machine can
+   * decide without reading either language.
+   */
+  it('keeps both language variants of a Skill carrying the same sections', async () => {
+    const rows: string[] = [];
+    for (const [id, files] of await skillVariants()) {
+      const counts = new Map<string, number>();
+      for (const [variant, body] of files) counts.set(variant, (body.match(/^# /gmu) ?? []).length);
+      const en = counts.get('en');
+      const cn = counts.get('cn');
+      if (en === undefined || cn === undefined) continue;
+      if (en !== cn) rows.push(`${id}: SKILL.md has ${en} sections and SKILL_cn.md has ${cn}`);
+    }
+    expect(rows.sort()).toEqual([]);
+  }, 600_000);
+
+  /**
+   * Identifiers one variant backticks and the other does not, recorded rather than asserted empty.
+   *
+   * A backticked identifier is language-independent by construction, so a divergence is *sometimes*
+   * a Skill telling one audience about a field the other never hears about -- `xforge-apply`'s CN
+   * variant names `executionId`, `state_revision` and `policy_snapshot_digest`, and its English
+   * sibling names none of them. But most of the list is formatting: one variant backticks `Rule` or
+   * `native` as a term where the other writes it as prose. Asserting empty would fail on the second
+   * kind far more often than the first, which is how a check stops being read.
+   *
+   * Recorded, and it may only shrink. Note what this cannot do: a fix applied to one language only
+   * leaves both token sets identical -- the sentence moves, the identifiers do not -- so this is not
+   * the guard against a half-applied edit, and nothing here should be read as if it were.
+   */
+  it('records the identifiers only one language variant backticks, as a list that may only shrink', async () => {
+    const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_.\-/]*$/u;
+    const rows: string[] = [];
+    for (const [id, files] of await skillVariants()) {
+      const sets = new Map<string, Set<string>>();
+      for (const [variant, body] of files) {
+        const found = new Set<string>();
+        for (const [, token] of body.matchAll(/`([^`\n]+)`/gu)) {
+          const value = token.trim();
+          if (IDENTIFIER.test(value)) found.add(value);
+        }
+        sets.set(variant, found);
+      }
+      const en = sets.get('en');
+      const cn = sets.get('cn');
+      if (!en || !cn) continue;
+      for (const token of en) if (!cn.has(token)) rows.push(`${id}  ${token}  <- SKILL.md only`);
+      for (const token of cn) if (!en.has(token)) rows.push(`${id}  ${token}  <- SKILL_cn.md only`);
+    }
+    const { actual, expected } = await golden('contracts/skill-variant-identifiers.txt', `${rows.sort().join('\n')}\n`);
     expect(actual).toBe(expected);
   }, 600_000);
 

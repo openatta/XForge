@@ -1,4 +1,4 @@
-import { rm } from 'node:fs/promises';
+import { readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { changeYaml, clearVerification, createCompleteSolidChange, fixture, runCli, updateYaml, write } from '../helpers.js';
@@ -135,6 +135,41 @@ describe('doctor', () => {
        expectation encoded an empty Rule layer: a policy nobody referenced was the normal state. */
     expect(result.json.data.uncited.map((item: any) => item.id)).not.toContain('protected-files');
     expect(result.json.data.unusedFlows.map((item: any) => item.id).sort()).toEqual(['major', 'quick']);
+  });
+
+  /**
+   * The most ordinary team event there is, and the one `doctor` did not notice.
+   *
+   * `xforge/.state.json` is rewritten in full by every install, so two branches that both installed
+   * conflict in it. Conflicted, it is no longer JSON: `state`, `install`, `sync` and `update` all
+   * refused at the first read with `Next actions: []`, while `check` passed and `doctor` reported
+   * unused Flows. Both halves are asserted -- the tool that says what is wrong must say it, and the
+   * commands that refuse must say how to recover.
+   */
+  it('reports an unreadable ownership state, and offers the rebuild that fixes it', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    expect((await runCli(root, ['install'])).code).toBe(0);
+    const statePath = path.join(root, 'xforge', '.state.json');
+    const original = await readFile(statePath, 'utf8');
+    await writeFile(statePath, `<<<<<<< HEAD\n${original}=======\n${original}>>>>>>> other\n`);
+
+    const doctored = await runCli(root, ['doctor']);
+    expect(doctored.code).toBe(1);
+    expect(doctored.json.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'XFORGE_DOCTOR_OWNERSHIP_UNREADABLE', severity: 'error' }),
+    ]));
+
+    const state = await runCli(root, ['state']);
+    expect(state.code).toBe(1);
+    expect(state.json.nextActions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ action: 'rebuild-ownership-state', command: ['xforge', 'install'] }),
+    ]));
+
+    /* And the offered repair has to work, or it is one more thing that is merely said. */
+    await rm(statePath);
+    expect((await runCli(root, ['install'])).code).toBe(0);
+    expect((await runCli(root, ['state'])).code).toBe(0);
   });
 
   it('reports the Hook bypasses XForge cannot observe whenever a project has PermissionPolicies', async () => {
