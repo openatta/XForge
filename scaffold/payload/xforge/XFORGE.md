@@ -1,8 +1,21 @@
 # XForge project bootstrap
 
-Before project work, read `xforge/manifest.yaml` and `xforge/constitution.md`.
-Before reading an active Change's files, run `xforge stage-bundle --change <id>`
-and read in full everything it lists under `READ IN FULL`.
+On an active Change, the first call is `xforge stage --change <id> --content full`.
+One reply carries the working set: the ready Action with its `writes`,
+`requiredSections` and outline, the full text of that Action's inputs, the
+Constitution, and the diagnostics. Do not open those inputs separately — they
+arrived. After each Artifact, re-run it as plain `xforge stage --change <id>`,
+which sends only what moved.
+
+`--content full` on entry, because a session that has just started has nothing to
+check a digest against. The default withholds an unchanged Artifact and offers its
+digest instead; a reader who has not seen that file pays for the digest and then
+reads the file anyway.
+
+Outside a Change, read `xforge/manifest.yaml` and `xforge/constitution.md`.
+`xforge state` names the active Changes when the id is not known yet.
+`xforge stage-bundle --change <id>` answers only which Artifacts have moved since
+the Stage was entered, and returns paths rather than their content.
 
 Use the installed XForge workflow Skills. Treat CLI JSON/Gate evidence as
 deterministic facts and prompt guidance as guidance only.

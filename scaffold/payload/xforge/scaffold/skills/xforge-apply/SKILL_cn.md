@@ -6,7 +6,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash, Task
 
 # 不变量
 
-- **进入**用 `xforge stage --change <id>`。它一次返回：Change 在哪、ready 的 Action 及其 `writes`/`requiredSections`，以及 `owes` 下这个 Stage 仍欠的每个 Artifact 及其 `instruction`/`outline`、**该 Action `inputs` 的正文**、Constitution 正文，以及诊断。不要再单独去打开那些输入——它们已经到了。开始时以及每次材料性变更之后各跑一次；只消费当前 revision 的 ready Apply Action，绝不猜测 Flow 次序、路径、Gate 或并行策略。 它同时携带本 Stage 声明了什么——产出、Gate、exit 条件、返工路线——所以**不需要打开 `xforge/flows/*.yaml`**：那个文件 400 行，而你要去那里找的 outline，Action 里已经有了。
+- **进入**用 `xforge stage --change <id> --content full`。它一次返回：Change 在哪、ready 的 Action 及其 `writes`/`requiredSections`，以及 `owes` 下这个 Stage 仍欠的每个 Artifact 及其 `instruction`/`outline`、**该 Action `inputs` 的正文**、Constitution 正文，以及诊断。不要再单独去打开那些输入——它们已经到了。开始时以及每次材料性变更之后各跑一次；只消费当前 revision 的 ready Apply Action，绝不猜测 Flow 次序、路径、Gate 或并行策略。 它同时携带本 Stage 声明了什么——产出、Gate、exit 条件、返工路线——所以**不需要打开 `xforge/flows/*.yaml`**：那个文件 400 行，而你要去那里找的 outline，Action 里已经有了。
 - **离开**用 `xforge advance --change <id> --to verify`。把代码写完不等于把 Stage 走完：Stage 结束的标志是转移收据存在，在那之前无论工作多完整，Change 都还停在 `apply`。一份「实现已完成」的报告不是收据；而且这里没有任何东西会拦你——`apply` 没有声明 Gate、没有 exit 条件、没有审批，所以除了这条命令没有别的东西能结束它。两次实跑都把工作交付了、报告也写对了，却把 Change 留在 `apply`：转移全部 ready，无一被阻。
 - 从磁盘读取 Action 的全部 inputs、Constitution、相关 Rules/Specs、可选 Design/Check report 和现有工作包；聊天记忆不是事实源。
 - Main Agent 永远承担 Coordinator；Worker 不继续委派。XForge 不创建模型进程，子 Agent 由目标 runtime 的原生能力激活。

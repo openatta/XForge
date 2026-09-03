@@ -1,8 +1,19 @@
 # XForge 项目引导
 
-开始项目工作前，先读 `xforge/manifest.yaml` 与 `xforge/constitution.md`。
-读活跃 Change 的文件之前，先运行 `xforge stage-bundle --change <id>`，
-并把它列在 `READ IN FULL` 下的文件全部读完。
+在活跃 Change 上，第一个调用是 `xforge stage --change <id> --content full`。
+一次回复就带来整个工作集：ready 的 Action 及其 `writes`、`requiredSections`
+与 outline，该 Action 各输入的**正文**，Constitution 正文，以及诊断。
+不要再单独去打开那些输入——它们已经到了。每写完一个 Artifact，改用不带该
+选项的 `xforge stage --change <id>` 重跑，它只发送变动过的部分。
+
+进入时用 `--content full`，是因为刚开始的会话没有任何东西可以拿来核对摘要。
+默认模式会扣下没有变动的 Artifact、只给它的摘要；而没读过那个文件的人，
+摘要白付了，文件照样还得读一遍。
+
+不在 Change 上时，读 `xforge/manifest.yaml` 与 `xforge/constitution.md`。
+还不知道 Change id 时，`xforge state` 会列出活跃的 Change。
+`xforge stage-bundle --change <id>` 回答的是另一个更窄的问题——自进入本 Stage
+以来哪些 Artifact 变动过——它返回的是路径，不是正文。
 
 使用已安装的 XForge 工作流 Skills。把 CLI 的 JSON 输出与 Gate 证据当作确定性
 事实，把提示词里的指导仅当作指导。

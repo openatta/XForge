@@ -6,7 +6,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # 不变量
 
-- **进入**用 `xforge stage --change <id>`。它一次返回：Change 在哪、ready 的 Action 及其 `writes`/`requiredSections`，以及 `owes` 下这个 Stage 仍欠的每个 Artifact 及其 `instruction`/`outline`、**该 Action `inputs` 的正文**、Constitution 正文，以及诊断。不要再单独去打开那些输入——它们已经到了。每写完一个 Artifact 重跑一次，而不是另外去问「变了什么」。 它同时携带本 Stage 声明了什么——产出、Gate、exit 条件、返工路线——所以**不需要打开 `xforge/flows/*.yaml`**：那个文件 400 行，而你要去那里找的 outline，Action 里已经有了。
+- **进入**用 `xforge stage --change <id> --content full`。它一次返回：Change 在哪、ready 的 Action 及其 `writes`/`requiredSections`，以及 `owes` 下这个 Stage 仍欠的每个 Artifact 及其 `instruction`/`outline`、**该 Action `inputs` 的正文**、Constitution 正文，以及诊断。不要再单独去打开那些输入——它们已经到了；而让这句话在进入时成立的，正是 `--content full`。默认模式会扣下自进入本 Stage 以来没有变动的 Artifact，只给它的摘要——对已经读过该文件的会话这是划算的，对刚开始的会话则相反：摘要白付了，文件照样还得读一遍。每写完一个 Artifact，改用不带该选项的 `xforge stage --change <id>` 重跑，而不是另外去问「变了什么」——到那时你已经读过它们，默认模式又变成划算的那一边。 它同时携带本 Stage 声明了什么——产出、Gate、exit 条件、返工路线——所以**不需要打开 `xforge/flows/*.yaml`**：那个文件 400 行，而你要去那里找的 outline，Action 里已经有了。
 - 优先从代码、Specs、Rules 与 Proposal 查明事实；只询问会材料性改变结果且项目无法回答的少量问题。
 - Clarifications 与对 Proposal/delta Specs 的获授权回写必须保持一次一致修订；未解决的 material question 继续阻塞。
 
