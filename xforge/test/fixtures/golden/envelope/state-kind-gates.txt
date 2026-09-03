@@ -92,7 +92,7 @@ exit: 0
     "flows": [
       {
         "id": "major",
-        "version": 6,
+        "version": 7,
         "description": "High-assurance governance for high-risk, cross-system, or critical-impact changes",
         "policy": {
           "assuranceLevel": "major",
@@ -128,7 +128,7 @@ exit: 0
       },
       {
         "id": "quick",
-        "version": 4,
+        "version": 5,
         "description": "Fast delivery for low-risk, single-module, clearly scoped, and easily reversible changes",
         "policy": {
           "assuranceLevel": "quick",
@@ -149,7 +149,7 @@ exit: 0
       },
       {
         "id": "solid",
-        "version": 6,
+        "version": 7,
         "description": "Stable and maintainable delivery for ordinary product and engineering changes",
         "policy": {
           "assuranceLevel": "solid",
@@ -192,5 +192,26 @@ exit: 0
   },
   "diagnostics": [],
   "changes": [],
-  "nextActions": []
+  "nextActions": [
+    {
+      "action": "create-change",
+      "type": "artifact",
+      "actor": "main",
+      "authority": "planning-write",
+      "status": "ready",
+      "inputs": [],
+      "writes": [
+        "xforge/changes/<change-id>/change.yaml"
+      ],
+      "template": "flow: solid\nclassification:\n  risk: medium\n  security: false\n  privacy: false\n  publicApi: false\n  dataMigration: false\n  moduleContract: false\nscope:\n  modules: [root]\n  paths: [<project-relative glob>]\n",
+      "doneWhen": [
+        "change.yaml exists under a new kebab-case Change id in the resolved Changes directory.",
+        "Every classification key is answered from the work: risk, security, privacy, publicApi, dataMigration, moduleContract."
+      ],
+      "requiredEvidence": [
+        "xforge state --change <id> resolves the Change and reports its first ready Artifact."
+      ],
+      "reason": "A governed Change begins with change.yaml; no other Action creates one."
+    }
+  ]
 }

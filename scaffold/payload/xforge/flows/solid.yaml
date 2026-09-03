@@ -2,7 +2,7 @@ apiVersion: xforge.dev/v1alpha2
 kind: Flow
 metadata:
   name: solid
-  version: 6
+  version: 7
   description: Stable and maintainable delivery for ordinary product and engineering changes
 policy:
   assuranceLevel: solid
@@ -28,7 +28,23 @@ artifacts:
   - id: delta-specs
     generates: specs/**/*.md
     description: Define observable requirement and scenario deltas
-    instruction: Use stable Requirement IDs for success, failure, boundary, and compatibility scenarios without implementation detail.
+    instruction: >-
+      Use stable Requirement IDs for success, failure, boundary, and compatibility scenarios
+      without implementation detail.
+
+
+      The file name is not free. Its path names a **capability**, and archive merges this delta into
+      the project's canonical Specs at that same relative path — so the name chosen here is a
+      long-lived identifier, not a filename for one Change. Two accepted forms, and they mean the
+      same thing: `specs/<capability>/spec.md`, or the flat `specs/<capability>.md`. Anything else
+      still parses, and quietly declares a capability nobody meant: `specs/root/spec.md` declares a
+      capability called `root`.
+
+      Reuse a capability this project already records before inventing one. Two Changes that name
+      the same behaviour differently merge into two different canonical files, and nothing compares
+      them — the requirement-level conflict checks are per file, so the collision is never reported.
+      `xforge state` lists the canonical Specs this project has; when it lists none, the name chosen
+      here becomes the first one.
     outline: |
       ## ADDED Requirements
       ### Requirement: <REQ-ID> <name>
@@ -68,27 +84,55 @@ artifacts:
   - id: check-findings
     generates: evidence/check-findings.yaml
     description: Machine-decidable findings ledger the Check Gate can actually decide
-    instruction: One entry per finding with id, severity (blocker|warning|suggestion), summary, refs to the Artifacts it concerns, and for a blocker a status, a reworkTo Stage while open, and a resolvedBy identity once resolved. Record an explicit empty list when the review found nothing. The Stage cannot exit while any blocker is unresolved.
+    instruction: >-
+      One entry per finding with id, severity (blocker|warning|suggestion), summary, refs to the
+      Artifacts it concerns, and for a blocker a status, a reworkTo Stage while open, and a
+      resolvedBy identity once resolved. Record an explicit empty list when the review found
+      nothing. The Stage cannot exit while any blocker is unresolved.
+
+
+      The resolvedBy identity has nothing to be compared against while the Change has no commits
+      and no receipts, so every name passes and the Gate reports a warning saying so. That pass is
+      provisional: the Change's first commit creates the set, and a name that does not match it
+      then fails a Gate that was green a moment earlier, with the Check report already written. Put
+      a real identity in from the start rather than one you intend to correct later.
     outline: |
       findings:
         - id: <finding-id>
           severity: <blocker|warning|suggestion>
           summary: <what is wrong>
           refs: [<Requirement id | artifact or spec path>]   # where the problem is. `gate:<name>` belongs to constitution-check, which cites evidence rather than a location.
-          status: <open|resolved>
+          status: <open|resolved, required for a blocker; omit on a warning or suggestion>
           reworkTo: <stage id, required while a blocker is open>
           resolvedBy: <name or email, required once status is resolved for a blocker; must match a known approver or Git author>
   - id: constitution-check
     generates: evidence/constitution-check.yaml
     description: Answer every Constitution principle for this Change
-    instruction: One entry per `## ` principle in xforge/constitution.md, each with status compliant|violation|not-applicable. Every entry must cite at least one machine-locatable reference in `references` — a Requirement id from this Change's delta Specs, a file path that exists, or `gate:<name>` for a Gate that passed. A violation additionally needs a justification and a named approvedBy; not-applicable needs a justification. A general claim of compliance does not satisfy the Gate, and neither does an approval receipt on its own — a receipt records that someone approved a transition, not why this Change satisfies the principle.
+    instruction: >-
+      One entry per `## ` principle in xforge/constitution.md, in document order, each with status
+      compliant|violation|not-applicable. Every entry must cite at least one machine-locatable
+      reference in `references` — a Requirement id from this Change's delta Specs, a file path that
+      exists, or `gate:<name>` for a Gate that passed. A violation additionally needs a
+      justification and a named approvedBy; not-applicable needs a justification. A general claim of
+      compliance does not satisfy the Gate, and neither does an approval receipt on its own — a
+      receipt records that someone approved a transition, not why this Change satisfies the
+      principle. That bites hardest on a governance principle, where a receipt is the nearest
+      evidence to hand: cite what the Change actually did, and add the receipt beside it if you
+      want.
+
+
+      A cited path may be any path in the repository, resolved Change-relative first and then
+      project-relative, so xforge/constitution.md and xforge/architecture.md are valid citations and
+      are often the right ones for an architecture or governance principle. Do not confine yourself
+      to Change-local paths. Write every justification as a folded block scalar, because a plain
+      YAML scalar breaks on a colon followed by a space, or on a leading bracket or brace.
     outline: |
       principles:
         - principle: <exact `## ` heading from constitution.md>
           status: <compliant|violation|not-applicable>
           references: [<Requirement id | existing path | gate:<name>>]
           justification: <required for violation and not-applicable>
-          approvedBy: <named person, required for violation>
+          approvedBy: <named person, required for violation; must match a known approver or Git author, and once this Change holds approval receipts, someone named on one>
   - id: assurance
     generates: assurance.md
     description: Record verification against requirements, design, tests, and constraints

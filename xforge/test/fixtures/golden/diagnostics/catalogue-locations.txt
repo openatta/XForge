@@ -6,6 +6,8 @@
 (dynamic)  src/core/reconcile.ts
 (dynamic)  src/runners/gate.ts
 XFORGE_ADAPTER_PROJECTION_MISSING  src/install/planner.ts
+XFORGE_ADVANCE_GATES_REFUSED  src/cli.ts
+XFORGE_ADVANCE_NO_READY_TRANSITION  src/cli.ts
 XFORGE_AGENT_CALLER_UNKNOWN  src/core/checker.ts
 XFORGE_AGENT_INSTRUCTIONS_MISSING  src/core/resource-loader.ts
 XFORGE_AGENT_SKILL_DISABLED  src/core/resource-loader.ts
@@ -211,6 +213,7 @@ XFORGE_NOT_INSTALLED  src/commands/uninstall.ts
 XFORGE_NOT_INSTALLED  src/install/planner.ts
 XFORGE_OPTION_NOT_ALLOWED  src/cli.ts
 XFORGE_OPTION_UNKNOWN  src/cli.ts
+XFORGE_OPTION_VALUE_INVALID  src/cli.ts
 XFORGE_OPTION_VALUE_MISSING  src/cli.ts
 XFORGE_OWNERSHIP_INVALID  src/install/ownership.ts
 XFORGE_PATH_ABSOLUTE  src/core/path-safety.ts
@@ -297,7 +300,9 @@ XFORGE_SPEC_MERGE_CONFLICT  src/core/spec-merger.ts
 XFORGE_SPEC_REQUIREMENT_DUPLICATE  src/core/spec-merger.ts
 XFORGE_STAGE_BUNDLE_GIT_UNAVAILABLE  src/commands/stage-bundle.ts
 XFORGE_STAGE_BUNDLE_NO_BASELINE  src/commands/stage-bundle.ts
+XFORGE_STAGE_BUNDLE_SUPERSEDED  src/cli.ts
 XFORGE_STAGE_BUNDLE_TREE_DIRTY  src/commands/stage-bundle.ts
+XFORGE_STAGE_CONTENT_OVER_BUDGET  src/cli.ts
 XFORGE_STATE_UPGRADE_REQUIRED  src/install/planner.ts
 XFORGE_SUBCOMMAND_UNKNOWN  src/cli.ts
 XFORGE_SYMLINK_ESCAPE  src/core/path-safety.ts
@@ -378,6 +383,7 @@ XFORGE_WORK_PACKAGE_ARGUMENTS_REQUIRED  src/cli.ts
 XFORGE_WORK_PACKAGE_BASE_PRECEDES_DISPATCH  src/core/work-packages.ts
 XFORGE_WORK_PACKAGE_CHANGED_PATHS_MISMATCH  src/core/work-packages.ts
 XFORGE_WORK_PACKAGE_COMMIT_ANCESTRY  src/core/work-packages.ts
+XFORGE_WORK_PACKAGE_COMMIT_FAILED  src/commands/work-package.ts
 XFORGE_WORK_PACKAGE_DELIVERY_PATH_MISMATCH  src/core/work-packages/records.ts
 XFORGE_WORK_PACKAGE_DELIVERY_RECORD_STALE  src/core/work-packages.ts
 XFORGE_WORK_PACKAGE_DELIVERY_SLOT_MISUSED  src/core/work-packages/records.ts

@@ -70,7 +70,9 @@ describe('verification retire', () => {
       };
     });
 
-    const before = await runCli(built.root, ['check', '--change', built.change, '--gate', 'unit-tests']);
+    /* The whole transcript, asked for. Which declarations ran is the command's output, not a
+       verdict, so this is the caller `--evidence-detail full` exists for. */
+    const before = await runCli(built.root, ['check', '--evidence-detail', 'full', '--change', built.change, '--gate', 'unit-tests']);
     expect(before.json.data.gates[0].evidence.stdout).toContain('RETIRED');
     expect(before.json.data.gates[0].evidence.stdout).toContain('KEPT');
 
@@ -85,7 +87,7 @@ describe('verification retire', () => {
      * still ran would leave the project paying for a check it withdrew — which is the whole defect:
      * a live run's documentation grep executed on every `unit-tests` Gate long after its phase.
      */
-    const after = await runCli(built.root, ['check', '--change', built.change, '--gate', 'unit-tests']);
+    const after = await runCli(built.root, ['check', '--evidence-detail', 'full', '--change', built.change, '--gate', 'unit-tests']);
     expect(after.json.data.gates[0].evidence.status).toBe('passed');
     expect(after.json.data.gates[0].evidence.stdout).toContain('KEPT');
     expect(after.json.data.gates[0].evidence.stdout).not.toContain('RETIRED');

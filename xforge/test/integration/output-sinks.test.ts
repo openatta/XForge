@@ -31,7 +31,10 @@ describe('output sinks', () => {
     const result = await runCli(built.root, ['check', '--change', built.change, '--gate', 'check-findings']);
     const evidence = result.json.data.gates[0].evidence;
     expect(evidence.status).toBe('passed');
-    expect(evidence.stdout).toContain('names no resolvedBy');
+    /* Read from the summary `check` returns by default. A passing Gate's transcript is trimmed to
+       the lines that carry meaning a status does not — the first, and every warning — because a Gate
+       that passes while warning is exactly the case a bare `passed` hides. */
+    expect(evidence.outputLines.join('\n')).toContain('names no resolvedBy');
   }, 300_000);
 
   it('prints a Constitution-ledger warning through the Gate that evaluated it', async () => {

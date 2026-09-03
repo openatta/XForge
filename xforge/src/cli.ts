@@ -1,16 +1,19 @@
 #!/usr/bin/env node
 import path from 'node:path';
 import process from 'node:process';
-import { access } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline/promises';
+import { safeResolve } from './core/path-safety.js';
 import { CLI_NAME, CLI_VERSION, PROTOCOL_VERSION, TARGETS, type TargetId } from './constants.js';
 import { executeArchive } from './commands/archive.js';
 import { executeApprove, type ApprovalTerminal } from './commands/approve.js';
 import { executeAudit } from './commands/audit.js';
 import { executeCheck } from './commands/check.js';
-import { executeStageBundle, renderStageBundleText } from './commands/stage-bundle.js';
+import { executeStageBundle, renderStageBundleText, renderStageText } from './commands/stage-bundle.js';
+import { CLASSIFICATION_KEYS, changeTemplate } from './core/change-template.js';
+import { knownIdentities } from './core/ledger-identity.js';
 import { executeContractList, executeContractStatus, renderContractListText, renderContractStatusText } from './commands/contract.js';
 import { executeExplain, renderExplainText } from './commands/explain.js';
 import { executeFindingsResolve } from './commands/findings.js';
@@ -34,14 +37,15 @@ import { loadProject } from './core/project-loader.js';
 import { outlineSections } from './core/artifact-markers.js';
 import { detectScaffoldLanguage, parseScaffoldLanguage } from './core/language.js';
 import { envelope, present } from './protocol/envelope.js';
-import type { Diagnostic, Envelope, FlowAuthority, NextAction, ScaffoldLanguage } from './types.js';
+import type { Diagnostic, Envelope, FileChange, FlowAuthority, NextAction, ProjectContext, ScaffoldLanguage } from './types.js';
 
-type CommandName = 'help' | 'version' | 'init' | 'state' | 'install' | 'sync' | 'update' | 'uninstall' | 'check' | 'stage-bundle' | 'explain' | 'verification' | 'transition' | 'approve' | 'audit' | 'work-package' | 'hook' | 'archive' | 'doctor' | 'upgrade-scaffold' | 'review' | 'findings' | 'contract';
+type CommandName = 'help' | 'version' | 'init' | 'state' | 'install' | 'sync' | 'update' | 'uninstall' | 'check' | 'stage' | 'advance' | 'stage-bundle' | 'explain' | 'verification' | 'transition' | 'approve' | 'audit' | 'work-package' | 'hook' | 'archive' | 'doctor' | 'upgrade-scaffold' | 'review' | 'findings' | 'contract';
 
 interface ParsedArguments {
   command: string;
   text: boolean;
   dryRun: boolean;
+  commit?: boolean;
   verifyDigests: boolean;
   strict: boolean;
   allGates: boolean;
@@ -90,6 +94,10 @@ interface ParsedArguments {
   findingId?: string;
   answer?: string;
   scope?: string;
+  /** How much of a working set arrives as text. An intent, not a field list. */
+  content?: string;
+  /** How much of each Gate's Evidence `check` returns inline. */
+  evidenceDetail?: string;
   by?: string;
   status?: string;
   receiptId?: string;
@@ -112,7 +120,7 @@ interface ParsedArguments {
  */
 const GROUP_COMMANDS = new Set<string>(['audit', 'hook', 'work-package', 'verification', 'transition', 'review', 'findings', 'contract']);
 
-const COMMANDS: CommandName[] = ['help', 'version', 'init', 'state', 'install', 'sync', 'update', 'uninstall', 'check', 'stage-bundle', 'explain', 'verification', 'transition', 'approve', 'audit', 'work-package', 'hook', 'archive', 'doctor', 'upgrade-scaffold', 'review', 'findings', 'contract'];
+const COMMANDS: CommandName[] = ['help', 'version', 'init', 'state', 'install', 'sync', 'update', 'uninstall', 'check', 'stage', 'advance', 'stage-bundle', 'explain', 'verification', 'transition', 'approve', 'audit', 'work-package', 'hook', 'archive', 'doctor', 'upgrade-scaffold', 'review', 'findings', 'contract'];
 /*
  * `flows` and `approvals` are gone from this list because they were never in it in any working
  * sense. `--kind` filters `data.resources`, whose keys come from `SelectedResources`, and that type
@@ -126,7 +134,7 @@ const VALID_KINDS = ['skills', 'agents', 'rules', 'policies', 'hooks', 'gates', 
    duplicate guard in the parse loop. */
 const REPEATABLE_OPTIONS = new Set(['--field', '--include']);
 
-const VALUE_OPTIONS = ['--root', '--change', '--kind', '--target', '--gate', '--to', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--provider', '--output', '--event', '--package', '--language', '--as', '--evidence', '--stage', '--gate-name', '--command', '--module', '--covers', '--working-directory', '--timeout-seconds', '--not-applicable', '--justification', '--by', '--status', '--receipt', '--field', '--id', '--answer', '--scope', '--include'] as const;
+const VALUE_OPTIONS = ['--root', '--change', '--kind', '--target', '--gate', '--to', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--provider', '--output', '--event', '--package', '--language', '--as', '--evidence', '--stage', '--gate-name', '--command', '--module', '--covers', '--working-directory', '--timeout-seconds', '--not-applicable', '--justification', '--by', '--status', '--receipt', '--field', '--id', '--answer', '--scope', '--include', '--content', '--evidence-detail'] as const;
 
 function isValueOption(token: string): boolean {
   return VALUE_OPTIONS.includes(token as (typeof VALUE_OPTIONS)[number]);
@@ -249,7 +257,9 @@ const HELP: Record<CommandName, { usage: string; description: string; options: s
   sync: { usage: 'xforge [--root <path>] sync [--target <target>] [--adopt] [--dry-run] [--verify-digests] [--text]', description: 'Incrementally sync localized Scaffold changes to installed targets.', options: ['--root', '--target', '--adopt', '--dry-run', '--verify-digests', '--text'] },
   update: { usage: 'xforge [--root <path>] update [--target <target>] [--adopt] [--dry-run] [--text]', description: 'Fully reconcile installed targets, identities, and Adapter output.', options: ['--root', '--target', '--adopt', '--dry-run', '--text'] },
   uninstall: { usage: 'xforge [--root <path>] uninstall [--target <target>] [--force] [--dry-run] [--text]', description: 'Remove managed target files, refusing on a digest mismatch unless --force.', options: ['--root', '--target', '--force', '--dry-run', '--text'] },
-  check: { usage: 'xforge [--root <path>] check [--change <id>] [--gate <id>] [--stage <id> | --all-gates] [--force] [--text]', description: 'Validate project structure, deliveries, and the Gates the current Stage requires. With no Gate selection this also executes the verify commands declared by every work package, which for a large plan is dozens of external commands and minutes of wall time; narrowing with --gate, --stage or --all-gates runs only the selected Gates and skips them. Every one of those commands runs in this same working tree, one after another, so a verify command must be safe to re-enter: a suite that writes to a fixed scratch path, or asserts wall-clock throughput, will fail here for reasons that have nothing to do with the code under test. --field takes one value out of the result and prints nothing else, addressed as a dotted path through data (for example gates, or blockedBy); repeat it to read several in one call. Ask for `gates`, not `gates.0.status`: a Stage that declares no Gate answers with an empty list, `gates.0` then resolves to nothing, and the all-or-nothing rule fails the whole call -- turning a check that passed into `ok: false` with `data: null`. This is the largest recurring output a Stage produces, and it is usually consulted for one of them.', options: ['--root', '--change', '--gate', '--stage', '--all-gates', '--force', '--text', '--field'] },
+  check: { usage: 'xforge [--root <path>] check [--change <id>] [--evidence-detail <summary|full>] [--gate <id>] [--stage <id> | --all-gates] [--force] [--text]', description: 'Validate project structure, deliveries, and the Gates the current Stage requires. With no Gate selection this also executes the verify commands declared by every work package, which for a large plan is dozens of external commands and minutes of wall time; narrowing with --gate, --stage or --all-gates runs only the selected Gates and skips them. Every one of those commands runs in this same working tree, one after another, so a verify command must be safe to re-enter: a suite that writes to a fixed scratch path, or asserts wall-clock throughput, will fail here for reasons that have nothing to do with the code under test. --field takes one value out of the result and prints nothing else, addressed as a dotted path through data (for example gates, or blockedBy); repeat it to read several in one call. Ask for `gates`, not `gates.0.status`: a Stage that declares no Gate answers with an empty list, `gates.0` then resolves to nothing, and the all-or-nothing rule fails the whole call -- turning a check that passed into `ok: false` with `data: null`. This is the largest recurring output a Stage produces, and it is usually consulted for one of them.', options: ['--evidence-detail', '--root', '--change', '--gate', '--stage', '--all-gates', '--force', '--text', '--field'] },
+  advance: { usage: 'xforge [--root <path>] advance --change <id> [--to <stage>] [--dry-run] [--text]', description: 'Run this Stage\'s Gates and, if nothing refuses, take the Transition — the pair every Stage ends with, as one call. It is a call-count optimisation and nothing else: the Gate results and the Transition receipt are written separately and audited separately, exactly as when the two commands are run by hand. A failing or stale Gate refuses the Transition and says which one, so this can never move a Change past a Gate that did not pass. --to names the target when more than one Transition is ready; with one ready Transition it is the one taken, and with none this reports what is blocking and writes no receipt.', options: ['--root', '--change', '--to', '--dry-run', '--text'] },
+  stage: { usage: 'xforge [--root <path>] stage --change <id> [--content <none|changed|full>] [--text]', description: 'Everything this Stage needs, in one reply: where the Change stands, the Action that is ready with its writes, sections, instruction and outline, the text of that Action\'s inputs, the Constitution, and the diagnostics. --content names how much arrives as text and nothing else: changed (the default) sends the Stage\'s own outputs, whatever moved since the Stage was entered, and the Constitution, and offers a digest and section list for the rest; full gives up the digest vouchers and sends everything; none sends the plan alone. It is an intent, not a field list — a caller that has to enumerate what it needs is being asked the question it came here to have answered.', options: ['--root', '--change', '--content', '--text'] },
   'stage-bundle': { usage: 'xforge [--root <path>] stage-bundle --change <id> [--text]', description: 'List which of this Change\'s Artifacts have moved since the current Stage was entered, and which a digest can stand in for. A Transition receipt records the commit its Stage began at, so the set that changed is computable rather than assumed; the Stage\'s own outputs and the Constitution are always listed to be read, and an uncommitted edit anywhere under the Change voids every digest because git compares commits and cannot see one.', options: ['--root', '--change', '--text'] },
   explain: { usage: 'xforge explain <XFORGE_CODE> [--text]', description: 'Say what a diagnostic code means: its severity, and every message it can carry, from a catalogue frozen into this build. One code is raised from more than one place and each says something slightly different; which of those a reader has not met is what tells them the code has another cause. No project is required.', options: ['--text'] },
   verification: {
@@ -265,7 +275,7 @@ const HELP: Record<CommandName, { usage: string; description: string; options: s
   transition: { usage: 'xforge [--root <path>] transition --change <id> --to <stage> [--dry-run] [--text]\n       xforge [--root <path>] transition repair --change <id> --receipt <receiptId> [--dry-run] [--text]', description: 'Evaluate and record a governed Stage transition, or repair the receipt chain by dropping one leaf receipt. Repair is not a --force: it discards a recorded transition, reverting the Change to the Stage that transition left, and records what it discarded in the audit chain. Only a leaf may go — a receipt some later receipt chains to is load-bearing and is refused. --field takes one value out of the result and prints nothing else, addressed as a dotted path through data; repeat it to read several in one call.', options: ['--root', '--change', '--to', '--receipt', '--dry-run', '--text', '--field'] },
   approve: { usage: 'xforge [--root <path>] approve --change <id> --for <transition-id|archive> [--policy <id>] [--provider <mcp-provider-id> | local fields] [--dry-run] [--text]', description: 'Record an interactive human approval at the terminal, or submit/poll an mcp provider. There is no other approval mechanism. --for takes the id of the transition the approval unlocks (the value xforge state reports in nextActions[].command), not a literal word.', options: ['--root', '--change', '--for', '--policy', '--actor', '--role', '--reason', '--decision', '--attestation', '--provider', '--dry-run', '--text'] },
   audit: { usage: 'xforge [--root <path>] audit <status|verify|export|retry|prune> [--change <id>] [--output <path>] [--text]', description: 'Inspect, verify, export, redeliver, or prune the append-only audit chain. --field takes one value out of the result and prints nothing else, addressed as a dotted path through data; repeat it to read several in one call.', options: ['--root', '--change', '--output', '--text', '--field'] },
-  'work-package': { usage: 'xforge [--root <path>] work-package <dispatch|draft|acknowledge> --change <id> --package <id> [--as <integrator|reviewer> --evidence <path> [--scope <text>]] [--dry-run] [--text]', description: 'Dispatch a work package, draft its delivery record from what XForge already knows, or acknowledge integration/review evidence. --scope records what the acknowledgement actually covered, in the acknowledger\'s own words; it is optional and never inferred, so an absent scope means nobody said. --field takes one value out of the result and prints nothing else, addressed as a dotted path through data; repeat it to read several in one call.', options: ['--root', '--change', '--package', '--as', '--evidence', '--scope', '--dry-run', '--text', '--field'] },
+  'work-package': { usage: 'xforge [--root <path>] work-package <dispatch|draft|acknowledge> --change <id> --package <id> [--as <integrator|reviewer> --evidence <path> [--scope <text>]] [--commit] [--dry-run] [--text]', description: 'Dispatch a work package, draft its delivery record from what XForge already knows, or acknowledge integration/review evidence. dispatch --commit commits the receipt and the audit index it just wrote, and nothing else, because the delivery is measured from the commit containing that receipt and work sharing or preceding it falls outside the range; without the flag the reply says to do the same by hand. It is the only place XForge writes Git history, and only when asked. --scope records what the acknowledgement actually covered, in the acknowledger\'s own words; it is optional and never inferred, so an absent scope means nobody said. --field takes one value out of the result and prints nothing else, addressed as a dotted path through data; repeat it to read several in one call.', options: ['--root', '--change', '--package', '--as', '--evidence', '--scope', '--commit', '--dry-run', '--text', '--field'] },
   contract: {
     usage: 'xforge [--root <path>] contract list [--kind <kind>] [--text] [--field <path>]...\n       xforge [--root <path>] contract status [--text] [--field <path>]...',
     description: 'list: what the contract baseline records — every contract element, by the `<kind>:<selector>` id a delta has to address it by, and the module each one belongs to. Read-only, and there is no command beside it that writes an element: the baseline advances by a merged contract delta and by nothing else, so a second writer would undo the one property it has. --kind filters to one dialect and still lists a domain that matches nothing, because "records no element of this kind" and "does not exist" are different answers. status: what every Change in flight declares it will do to that baseline, and which elements more than one of them claims — the question no Gate can answer, because a content revision is computed per Change and a Gate runs inside one. It reports and never blocks: an expand half and a contract half of one migration look exactly like a collision, and whichever Change archives second is the one that would otherwise find out at merge time.',
@@ -308,6 +318,7 @@ function parseArguments(argv: string[]): ParsedArguments {
     if (token === '--version') { versionShortcut = true; continue; }
     if (token === '--text') { parsed.text = true; continue; }
     if (token === '--dry-run') { parsed.dryRun = true; continue; }
+    if (token === '--commit') { parsed.commit = true; continue; }
     if (token === '--verify-digests') { parsed.verifyDigests = true; continue; }
     if (token === '--strict') { parsed.strict = true; continue; }
     if (token === '--complete') { parsed.complete = true; continue; }
@@ -352,6 +363,8 @@ function parseArguments(argv: string[]): ParsedArguments {
     if (token === '--id') parsed.findingId = value;
     if (token === '--answer') parsed.answer = value;
     if (token === '--scope') parsed.scope = value;
+    if (token === '--content') parsed.content = value;
+    if (token === '--evidence-detail') parsed.evidenceDetail = value;
     if (token === '--by') parsed.by = value;
     if (token === '--status') parsed.status = value;
     if (token === '--as') {
@@ -464,9 +477,25 @@ function parseArguments(argv: string[]): ParsedArguments {
   }
 
   if (!COMMANDS.includes(parsed.command as CommandName)) {
+    /*
+     * A Skill's name is not a command, and saying so beats listing everything.
+     *
+     * Three of four measured Check runs opened with `xforge status`, which does not exist. Nothing
+     * about that is a guess at a command name: `xforge-status` is a shipped Skill, and a Skill and a
+     * command are different kinds of thing that share a vocabulary. The old message answered by
+     * pointing at `help`, so each of those runs spent a second call reading the command table to
+     * learn that the thing it wanted was not there at all.
+     */
+    const skillNamed = parsed.command && !COMMANDS.includes(parsed.command as CommandName)
+      ? ['propose', 'clarify', 'design', 'check', 'apply', 'verify', 'status', 'revise', 'scaffold', 'kanban', 'architect', 'upgrade-scaffold'].includes(parsed.command)
+      : false;
     throw new XForgeError(diagnostic(
       parsed.command ? 'XFORGE_COMMAND_UNKNOWN' : 'XFORGE_COMMAND_REQUIRED',
-      parsed.command ? `Unknown command: ${parsed.command}. Run xforge help for supported commands.` : 'A command is required. Run xforge help for supported commands.',
+      parsed.command
+        ? skillNamed
+          ? `Unknown command: ${parsed.command}. \`xforge-${parsed.command}\` is a Skill, not a CLI command — a Skill is instructions you read and follow, and it is the one that runs \`xforge\` commands. What you probably want here is \`xforge stage --change <id>\` for where a Change stands and what to do next, or \`xforge state\` for the portfolio. Run xforge help for the full command table.`
+          : `Unknown command: ${parsed.command}. Run xforge help for supported commands.`
+        : 'A command is required. Run xforge help for supported commands.',
     ));
   }
 
@@ -476,6 +505,20 @@ function parseArguments(argv: string[]): ParsedArguments {
     if (!allowed.has(flag)) throw new XForgeError(diagnostic('XFORGE_OPTION_NOT_ALLOWED', `${flag} is not valid for ${parsed.command}.`));
   }
   if (parsed.command === 'stage-bundle' && !parsed.change) throw new XForgeError(diagnostic('XFORGE_CHANGE_REQUIRED', 'stage-bundle requires --change <id>.'));
+  if (parsed.command === 'stage' && !parsed.change) throw new XForgeError(diagnostic('XFORGE_CHANGE_REQUIRED', 'stage requires --change <id>.'));
+  if (parsed.command === 'advance' && !parsed.change) throw new XForgeError(diagnostic('XFORGE_CHANGE_REQUIRED', 'advance requires --change <id>.'));
+  if (parsed.content !== undefined && !['none', 'changed', 'full'].includes(parsed.content)) {
+    throw new XForgeError(diagnostic('XFORGE_OPTION_VALUE_INVALID', `--content takes none, changed, or full; got ${parsed.content}. It names how much of the working set arrives as text, not which fields to include.`));
+  }
+  if (parsed.evidenceDetail !== undefined && !['summary', 'full'].includes(parsed.evidenceDetail)) {
+    throw new XForgeError(diagnostic('XFORGE_OPTION_VALUE_INVALID', `--evidence-detail takes summary or full; got ${parsed.evidenceDetail}.`));
+  }
+  if (parsed.evidenceDetail !== undefined && parsed.command !== 'check') {
+    throw new XForgeError(diagnostic('XFORGE_OPTION_NOT_ALLOWED', `--evidence-detail is only valid for check; ${parsed.command} returns no Gate Evidence.`));
+  }
+  if (parsed.content !== undefined && parsed.command !== 'stage') {
+    throw new XForgeError(diagnostic('XFORGE_OPTION_NOT_ALLOWED', `--content is only valid for stage; ${parsed.command} does not carry a working set.`));
+  }
   if (parsed.command === 'archive' && !parsed.change) throw new XForgeError(diagnostic('XFORGE_CHANGE_REQUIRED', 'archive requires --change <id>.'));
   if (parsed.command === 'verification') {
     if (!['declare', 'retire', 'draft-receipt', 'finalize'].includes(parsed.subcommand ?? '')) throw new XForgeError(diagnostic('XFORGE_VERIFICATION_ACTION_REQUIRED', 'verification requires the declare, retire, draft-receipt or finalize action.'));
@@ -548,6 +591,9 @@ function parseArguments(argv: string[]): ParsedArguments {
     }
     if (parsed.subcommand === 'acknowledge' && (!parsed.acknowledgeAs || !parsed.evidence)) {
       throw new XForgeError(diagnostic('XFORGE_WORK_PACKAGE_ACK_ARGUMENTS_REQUIRED', 'work-package acknowledge requires --as <integrator|reviewer> and --evidence <path>.'));
+    }
+    if (parsed.subcommand !== 'dispatch' && parsed.commit) {
+      throw new XForgeError(diagnostic('XFORGE_OPTION_NOT_ALLOWED', '--commit is only valid for work-package dispatch, which is the one command whose output has to be committed before the next step runs.'));
     }
     if (parsed.subcommand !== 'acknowledge' && (parsed.acknowledgeAs || parsed.evidence || parsed.scope)) {
       throw new XForgeError(diagnostic('XFORGE_OPTION_NOT_ALLOWED', '--as, --evidence and --scope are only valid for work-package acknowledge.'));
@@ -666,6 +712,11 @@ interface StageSummary {
   id: string;
   authority?: FlowAuthority;
   produces?: string[];
+  /* Declared here because `stage` reports them, and they were arriving as `undefined` from a type
+     that named three of the fields the payload actually carries. */
+  gates?: string[];
+  reworkTo?: string[];
+  exit?: { conditions?: Record<string, unknown>; gates?: string[] };
 }
 
 /**
@@ -682,6 +733,288 @@ interface StageSummary {
 function flowStages(data: Record<string, unknown>, flowId: string | undefined): StageSummary[] {
   const flows = (data.flows ?? []) as Array<{ id?: string; stages?: StageSummary[] | null }>;
   return flows.find((flow) => flow.id === flowId)?.stages ?? [];
+}
+
+
+/**
+ * Everything the caller could do next, computed from a resolved state payload.
+ *
+ * Extracted so that commands which *change* something can answer with it too. `transition` used to
+ * return `nextActions: []` -- a successful Stage move read as "nothing left to do", and the only way
+ * to learn the new Stage's Actions was a fresh `state` call. Across twenty recorded runs `state` was
+ * half of every governance call, and four measured Stages spent 58-81% of their calls on orientation;
+ * re-asking after every write is a large part of that.
+ *
+ * The rule this establishes: a command that moves the Change hands back the post-condition, so the
+ * Agent never has to ask what it just did.
+ */
+async function nextActionsFor(
+  project: ProjectContext,
+  data: Record<string, any>,
+  changeId: string | undefined,
+): Promise<NextAction[]> {
+  const nextActions: NextAction[] = [];
+  if (project.compatibility.mode === 'portable') nextActions.push({ action: 'resolve-declared-xforge', reason: 'Managed operations require the exact declared CLI identity.' });
+  const stateChange = (data.change ?? null) as {
+    flow?: string;
+    path?: string;
+    artifacts?: Array<{ id: string; outputPaths?: string[]; writePath?: string }>;
+    nextArtifact?: { id?: string; outputPaths?: string[]; writePath?: string; missingDependencies?: string[]; outline?: string; generates?: string; requires?: string[] } | null;
+    workPackages?: { packages?: Array<{ id: string; inputs: string[]; write_paths: string[]; done_when: string[] }> } | null;
+  } | null;
+  const stages = flowStages(data, stateChange?.flow);
+  /*
+   * Starting a Change, as an Action rather than as prose.
+   *
+   * Every other step of a governed Flow is a typed Action; this one was a YAML block inside
+   * `xforge-propose` and the destination was left for the Agent to assemble from the Changes
+   * path. Offered only at the portfolio view, which is where the question "should this become a
+   * Change" is actually asked -- inside a Change, the answer is already yes.
+   */
+  if (!changeId) {
+    const projectFacts = data.project as { paths?: { changes?: { value?: string } }; modules?: Array<{ id: string }> } | undefined;
+    const changesPath = projectFacts?.paths?.changes?.value ?? 'xforge/changes';
+    nextActions.push({
+      action: 'create-change',
+      type: 'artifact',
+      actor: 'main',
+      authority: 'planning-write',
+      status: 'ready',
+      inputs: [],
+      writes: [`${changesPath}/<change-id>/change.yaml`],
+      template: changeTemplate(project.manifest.flow, (projectFacts?.modules ?? []).map((module) => module.id)),
+      doneWhen: [
+        'change.yaml exists under a new kebab-case Change id in the resolved Changes directory.',
+        `Every classification key is answered from the work: ${CLASSIFICATION_KEYS.join(', ')}.`,
+      ],
+      requiredEvidence: ['xforge state --change <id> resolves the Change and reports its first ready Artifact.'],
+      reason: 'A governed Change begins with change.yaml; no other Action creates one.',
+    });
+  }
+  if (stateChange?.nextArtifact?.id && changeId) {
+    const artifactId = stateChange.nextArtifact.id;
+    /* From the Stage that produces this Artifact, never a constant: a Flow is free to produce a
+       check-stage Artifact under assurance-write. A Flow that declares no producing Stage for it
+       leaves the field off rather than inventing a level. */
+    const authority = stages.find((stage) => (stage.produces ?? []).includes(artifactId))?.authority;
+    /* A glob Artifact's outline is a repeating template, not a section set, so it has no literal
+       headings to state. `outlineSections` returns none for one either way; the check keeps the
+       intent visible. */
+    const sections = stateChange.nextArtifact.generates?.includes('*')
+      ? []
+      : outlineSections(stateChange.nextArtifact.outline ?? '');
+    /*
+     * A glob Artifact's destination, answered rather than handed back as the glob.
+     *
+     * `writePath` for `delta-specs` is the glob the Flow declares, which is a pattern and not a place. Four
+     * measured runs produced three different paths from it -- `specs/root/spec.md`,
+     * `specs/root/task-ledger.md`, `specs/task-ledger/spec.md` -- and two of them went reading the
+     * CLI's own compiled source to decide, spending 13% of the Stage's calls on the question. The
+     * paths are not interchangeable: `core/spec-merger.ts` reads the segment as a capability name and
+     * archive merges the delta into the canonical Specs at that relative path, so three answers are
+     * three different canonical files that nothing ever compares.
+     *
+     * What the product can state is the part it knows: which capabilities this project already
+     * records. The naming rule itself belongs to the Flow's `instruction`, beside the rest of the
+     * Artifact's shape; this adds the project's own facts to it, which is the half a Flow cannot
+     * carry.
+     */
+    const capabilities = [...new Set(((data.specs ?? []) as string[])
+      .map((entry) => entry.replace(/\.md$/, ''))
+      .map((entry) => entry.endsWith('/spec') ? entry.slice(0, -'/spec'.length) : entry))].sort();
+    const globDestination = stateChange.nextArtifact.generates?.includes('*') && stateChange.nextArtifact.outputPaths?.length === 0
+      ? capabilities.length > 0
+        ? `Write it under a capability this project already records: ${capabilities.join(', ')}. Inventing a second name for one of these splits the canonical Spec in two.`
+        : 'This project records no canonical Spec yet, so the capability named in this path becomes the first one, and every later Change touching the same behaviour has to match it.'
+      : null;
+    nextActions.push({
+      action: 'create-artifact',
+      type: 'artifact',
+      id: artifactId,
+      actor: 'main',
+      ...(authority ? { authority } : {}),
+      status: 'ready',
+      /*
+       * What to read, not what is absent.
+       *
+       * This was `missingDependencies`, which is empty exactly when the Action is ready — so the
+       * one field a Skill is told to reread was `[]` at every moment it could have been acted on.
+       * Twelve Skills carry "reread every Action input from disk" and it pointed at nothing, which
+       * left the Agent to fall back on rereading the whole Change: the cost `stage-bundle` was
+       * built to measure. The real answer is the Artifact's satisfied `requires`, resolved to the
+       * project-relative files they actually produced.
+       */
+      inputs: (stateChange.nextArtifact.requires ?? []).flatMap((required) => {
+        const dependency = stateChange.artifacts?.find((artifact) => artifact.id === required);
+        if (!dependency) return [];
+        const changeRoot = stateChange.path;
+        if (dependency.outputPaths?.length && changeRoot) return dependency.outputPaths.map((output) => `${changeRoot}/${output}`);
+        return dependency.writePath ? [dependency.writePath] : [];
+      }),
+      /* A not-yet-written Artifact has no outputPaths, which used to leave `writes` empty and the
+         destination for the Agent to guess. State the project-relative path instead. */
+      writes: stateChange.nextArtifact.outputPaths?.length
+        ? stateChange.nextArtifact.outputPaths
+        : [stateChange.nextArtifact.writePath].filter((item): item is string => Boolean(item)),
+      /* The headings verbatim, so the author is not left inferring them from a Markdown fragment.
+         Omitted for a glob Artifact, whose outline is a repeating template rather than a section
+         set, and when the Flow declares none. */
+      ...(sections.length > 0 ? { requiredSections: sections } : {}),
+      doneWhen: [
+        `Artifact ${artifactId} exists and satisfies the active Flow instructions.`,
+        ...(globDestination ? [globDestination] : []),
+      ],
+      requiredEvidence: ['xforge state reports the artifact as done for the current Change revision.'],
+      reason: `Next Flow Artifact is ${artifactId}.`,
+    });
+  }
+  const governance = (stateChange as any)?.governance;
+  if (governance?.currentStage === 'apply') {
+    /* The dispatch happens in the Stage the Change is in, so that Stage's declared authority is
+       the one that applies — `implementation-write` only because the shipped Flows say so. */
+    const applyAuthority = stages.find((stage) => stage.id === governance.currentStage)?.authority;
+    for (const packageId of (stateChange as any)?.workPackages?.ready ?? []) {
+      const workPackage = stateChange?.workPackages?.packages?.find((item) => item.id === packageId);
+      nextActions.push({
+        action: 'dispatch-work-package', type: 'governance', id: packageId, actor: 'main', ...(applyAuthority ? { authority: applyAuthority } : {}), status: 'ready',
+        inputs: workPackage?.inputs ?? [], writes: workPackage?.write_paths ?? [], doneWhen: workPackage?.done_when ?? [],
+        requiredEvidence: ['revision-bound dispatch receipt', 'Git delivery diff', 'verify command evidence', 'done_when evidence mapping'],
+        reworkTo: ['apply'],
+        reason: `Work package ${packageId} is ready for a revision-bound dispatch.`,
+        command: ['xforge', 'work-package', 'dispatch', '--change', changeId!, '--package', packageId],
+      });
+    }
+  }
+  for (const pending of governance?.pendingApprovals ?? []) nextActions.push({
+    action: 'approve', type: 'approval', id: pending.policyId, actor: 'human', status: 'pending',
+    inputs: ['current state revision', `approval policy ${pending.policyId}`], writes: ['approval receipt'],
+    doneWhen: [`Approval policy ${pending.policyId} is satisfied for ${pending.transition}.`], requiredEvidence: ['current-revision approval receipt'],
+    reason: `Approval ${pending.policyId} is required for ${pending.transition}.`, blockedBy: [`missing:${pending.missing}`],
+    command: ['xforge', 'approve', '--change', changeId!, '--for', pending.transition, '--policy', pending.policyId],
+  });
+  /*
+   * A Gate that has not run yet, as something to do rather than something to be stuck behind.
+   *
+   * A blocked transition reports `gate:<id>:missing`, and no Action named the command that clears
+   * it -- the answer lived only in the Skills' prose. An Agent following the Invariant every Skill
+   * carries, "run the command state.nextActions gives you", had a `ready: false` transition, a block
+   * it could read, and nothing to run. A cold end-to-end run reported exactly that and stopped.
+   *
+   * Only `missing` gets an Action. `failed` is a Gate that ran and said no, and re-running it
+   * changes nothing until the content does; offering the same command there would suggest the
+   * refusal is a retry away from clearing.
+   */
+  const missingGates = [...new Set((governance?.readyTransitions ?? [])
+    .flatMap((entry: any) => entry.blockedBy ?? [])
+    .filter((block: string) => block.startsWith('gate:') && block.endsWith(':missing'))
+    .map((block: string) => block.slice('gate:'.length, -':missing'.length)))] as string[];
+  if (changeId) for (const gateId of missingGates) nextActions.push({
+    action: 'run-gates', type: 'gate', id: gateId, actor: 'main', status: 'ready',
+    inputs: [], writes: [`${stateChange?.path ?? ''}/evidence/${gateId}.json`],
+    doneWhen: [`Gate ${gateId} has Evidence bound to the current content revision.`],
+    requiredEvidence: [`evidence/${gateId}.json written by xforge check at the current content revision`],
+    reason: `Gate ${gateId} has not run at this content revision, which is what blocks the Transition.`,
+    command: ['xforge', 'check', '--change', changeId, '--gate', gateId],
+  });
+
+  for (const transition of governance?.readyTransitions ?? []) nextActions.push({
+    action: 'transition', type: 'transition', id: transition.to, actor: 'main', status: transition.ready ? 'ready' : 'blocked',
+    inputs: ['current Change state', 'required gates and approvals'], writes: ['transition receipt'],
+    doneWhen: [`Current Stage is ${transition.to}.`], requiredEvidence: ['valid transition receipt'], reworkTo: governance?.currentStage ? [governance.currentStage] : [],
+    reason: transition.ready ? `Transition to ${transition.to} is ready.` : `Transition to ${transition.to} is blocked.`, blockedBy: transition.blockedBy,
+    command: ['xforge', 'transition', '--change', changeId!, '--to', transition.to],
+  });
+  /*
+   * The receipt, when the receipt is what stands between this Stage and the next.
+   *
+   * This was four paragraphs of Skill prose -- what `finalize` writes, why it is not a shortcut
+   * past the check, and that `draft-receipt` exists for the hand-assembled case. All of it was
+   * resident in every verify Stage and re-sent on every turn of it, to be acted on at one moment.
+   * A blocked transition already names the condition; the instruction belongs on that signal.
+   *
+   * `--by` ships as a placeholder and `--status` does not, which is not an inconsistency: they are
+   * different kinds of field. `passed` is the only status `finalize` accepts -- anything else is
+   * refused at `commands/verification.ts:586` -- so substituting it decides nothing. `--by` names
+   * the person asserting it, is written to `finalizedBy` unvalidated, and is the one field an
+   * Agent filling in for itself would be recording an authorisation nobody gave.
+   */
+  if (governance?.currentStage && changeId) {
+    const blockedOnReceipt = (governance.readyTransitions ?? []).some((transition: any) =>
+      (transition.blockedBy ?? []).some((item: string) => item.startsWith('condition:verificationReceipt:')));
+    if (blockedOnReceipt) nextActions.push({
+      action: 'finalize-verification', type: 'governance', actor: 'human', status: 'ready',
+      inputs: ['this Stage\'s Gate Evidence at the current content revision'], writes: ['verification receipt'],
+      doneWhen: ['The Stage\'s verificationReceipt exit condition is satisfied.'],
+      requiredEvidence: ['current-revision verification receipt'],
+      reason: `The verification receipt is what blocks this Stage. XForge already holds the change, contentRevision, gitHead and cited Gate set, and writes them from the same resolved Gate Evidence the exit condition is decided against — do not transcribe them, and do not assemble the receipt by hand. It is not a shortcut past the check: the Gate Evidence is re-read from disk first, and nothing is written if any cited Gate is stale, failed, or never ran. Supply --by yourself: it names the person asserting the verification, and is the field this command will not compute. Use \`xforge verification draft-receipt --change ${changeId}\` to compute the same facts without writing.`,
+      command: ['xforge', 'verification', 'finalize', '--change', changeId, '--status', 'passed', '--by', '<the person asserting it>'],
+    });
+  }
+  /* `ready-to-archive` is a synthetic terminal Stage, not one of `flow.stages`, so there is no
+     Stage to read here. The archive authority comes from `flow.terminal.archive.authority`, which
+     flow.schema.json pins to the const `archive-write` — this literal is the schema's only legal
+     value for it, not a level invented at this call site. */
+  if (governance?.currentStage === 'ready-to-archive') nextActions.push({
+    action: 'archive', type: 'archive', actor: 'main', authority: 'archive-write', status: (governance.pendingApprovals ?? []).some((item: any) => item.transition === 'archive') ? 'blocked' : 'ready',
+    inputs: ['current-revision verification, approval, gate, and audit evidence'], writes: ['canonical Specs', 'archived Change'],
+    doneWhen: ['The Change is archived atomically and canonical Specs are synchronized.'], requiredEvidence: ['archive transaction result'],
+    reason: 'The Change reached ReadyToArchive; terminal governance still applies.', command: ['xforge', 'archive', '--change', changeId!],
+  });
+  return nextActions;
+}
+
+/**
+ * A mutating command's reply, with the post-condition attached.
+ *
+ * Every command here already returns its own `nextActions` where it has something specific to say --
+ * a refusal's remedy, an approval the transition still needs. This adds what none of them said: where
+ * the Change now stands and what its next Action is. The command's own entries come first, because
+ * they are about what just happened; the state's follow.
+ *
+ * Resolving state costs one extra in-process read and saves the caller a round trip, which is the
+ * trade this whole change is built on: a turn re-sends the entire conversation, a second file read
+ * does not.
+ */
+async function withPostState(
+  project: ProjectContext,
+  changeId: string | undefined,
+  result: { data?: unknown; diagnostics?: Diagnostic[]; changes?: FileChange[]; nextActions?: NextAction[] },
+  dryRun?: boolean,
+): Promise<{ data?: unknown; diagnostics?: Diagnostic[]; changes?: FileChange[]; nextActions: NextAction[] }> {
+  const own = result.nextActions ?? [];
+  /*
+   * A rehearsal has no post-condition. `--dry-run` reports what a command *would* do and leaves the
+   * Change exactly where it was, so the state after it is the state before it -- which the caller
+   * either already has or can ask for. Attaching it would be the clearest case of the thing this
+   * change exists to stop: paying to send data nobody reads.
+   */
+  if (dryRun) return { ...result, nextActions: own };
+  /*
+   * Nothing is attached to a refusal. A command that was refused changed nothing, so it has no
+   * post-condition to report -- and a menu of onward moves printed under a refusal reads as though
+   * some of them were now available. What the caller needs there is the refusal and its remedy,
+   * which the command already returned.
+   */
+  if ((result.diagnostics ?? []).some((entry) => entry.severity === 'error')) return { ...result, nextActions: own };
+  try {
+    const state = await executeState(project, { change: changeId });
+    const following = await nextActionsFor(project, state.data as Record<string, any>, changeId);
+    /* De-duplicated on the identity a reader acts by. A command that already named the transition it
+       just unblocked should not have the state repeat it as a second, identical entry. */
+    const seen = new Set(own.map((entry) => `${entry.action}:${entry.id ?? ''}`));
+    /*
+     * Only what can be acted on. `state` lists blocked transitions too, because "why can I not go
+     * forward" is a question it exists to answer; repeating them after every write would be the
+     * unused half of every reply, and this whole change is an argument about not paying for data
+     * nobody reads. A caller who wants the blocked set asks `state` for it.
+     */
+    const actionable = following.filter((entry) => entry.status === undefined || entry.status === 'ready' || entry.status === 'pending');
+    return { ...result, nextActions: [...own, ...actionable.filter((entry) => !seen.has(`${entry.action}:${entry.id ?? ''}`))] };
+  } catch {
+    /* A state that cannot resolve after a write is itself worth not hiding, but it is the command's
+       result that the caller asked for -- returning it unadorned beats failing the whole call. */
+    return { ...result, nextActions: own };
+  }
 }
 
 async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
@@ -752,115 +1085,7 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
   }
   if (command === 'state') {
     const result = await executeState(project, { change: parsed.change, kind: parsed.kind, target: parsed.target, include: parsed.include });
-    const nextActions: NextAction[] = [];
-    if (project.compatibility.mode === 'portable') nextActions.push({ action: 'resolve-declared-xforge', reason: 'Managed operations require the exact declared CLI identity.' });
-    const stateChange = (result.data.change ?? null) as {
-      flow?: string;
-      nextArtifact?: { id?: string; outputPaths?: string[]; writePath?: string; missingDependencies?: string[]; outline?: string; generates?: string } | null;
-      workPackages?: { packages?: Array<{ id: string; inputs: string[]; write_paths: string[]; done_when: string[] }> } | null;
-    } | null;
-    const stages = flowStages(result.data, stateChange?.flow);
-    if (stateChange?.nextArtifact?.id && parsed.change) {
-      const artifactId = stateChange.nextArtifact.id;
-      /* From the Stage that produces this Artifact, never a constant: a Flow is free to produce a
-         check-stage Artifact under assurance-write. A Flow that declares no producing Stage for it
-         leaves the field off rather than inventing a level. */
-      const authority = stages.find((stage) => (stage.produces ?? []).includes(artifactId))?.authority;
-      /* A glob Artifact's outline is a repeating template, not a section set, so it has no literal
-         headings to state. `outlineSections` returns none for one either way; the check keeps the
-         intent visible. */
-      const sections = stateChange.nextArtifact.generates?.includes('*')
-        ? []
-        : outlineSections(stateChange.nextArtifact.outline ?? '');
-      nextActions.push({
-        action: 'create-artifact',
-        type: 'artifact',
-        id: artifactId,
-        actor: 'main',
-        ...(authority ? { authority } : {}),
-        status: 'ready',
-        inputs: stateChange.nextArtifact.missingDependencies ?? [],
-        /* A not-yet-written Artifact has no outputPaths, which used to leave `writes` empty and the
-           destination for the Agent to guess. State the project-relative path instead. */
-        writes: stateChange.nextArtifact.outputPaths?.length
-          ? stateChange.nextArtifact.outputPaths
-          : [stateChange.nextArtifact.writePath].filter((item): item is string => Boolean(item)),
-        /* The headings verbatim, so the author is not left inferring them from a Markdown fragment.
-           Omitted for a glob Artifact, whose outline is a repeating template rather than a section
-           set, and when the Flow declares none. */
-        ...(sections.length > 0 ? { requiredSections: sections } : {}),
-        doneWhen: [`Artifact ${artifactId} exists and satisfies the active Flow instructions.`],
-        requiredEvidence: ['xforge state reports the artifact as done for the current Change revision.'],
-        reason: `Next Flow Artifact is ${artifactId}.`,
-      });
-    }
-    const governance = (stateChange as any)?.governance;
-    if (governance?.currentStage === 'apply') {
-      /* The dispatch happens in the Stage the Change is in, so that Stage's declared authority is
-         the one that applies — `implementation-write` only because the shipped Flows say so. */
-      const applyAuthority = stages.find((stage) => stage.id === governance.currentStage)?.authority;
-      for (const packageId of (stateChange as any)?.workPackages?.ready ?? []) {
-        const workPackage = stateChange?.workPackages?.packages?.find((item) => item.id === packageId);
-        nextActions.push({
-          action: 'dispatch-work-package', type: 'governance', id: packageId, actor: 'main', ...(applyAuthority ? { authority: applyAuthority } : {}), status: 'ready',
-          inputs: workPackage?.inputs ?? [], writes: workPackage?.write_paths ?? [], doneWhen: workPackage?.done_when ?? [],
-          requiredEvidence: ['revision-bound dispatch receipt', 'Git delivery diff', 'verify command evidence', 'done_when evidence mapping'],
-          reworkTo: ['apply'],
-          reason: `Work package ${packageId} is ready for a revision-bound dispatch.`,
-          command: ['xforge', 'work-package', 'dispatch', '--change', parsed.change!, '--package', packageId],
-        });
-      }
-    }
-    for (const pending of governance?.pendingApprovals ?? []) nextActions.push({
-      action: 'approve', type: 'approval', id: pending.policyId, actor: 'human', status: 'pending',
-      inputs: ['current state revision', `approval policy ${pending.policyId}`], writes: ['approval receipt'],
-      doneWhen: [`Approval policy ${pending.policyId} is satisfied for ${pending.transition}.`], requiredEvidence: ['current-revision approval receipt'],
-      reason: `Approval ${pending.policyId} is required for ${pending.transition}.`, blockedBy: [`missing:${pending.missing}`],
-      command: ['xforge', 'approve', '--change', parsed.change!, '--for', pending.transition, '--policy', pending.policyId],
-    });
-    for (const transition of governance?.readyTransitions ?? []) nextActions.push({
-      action: 'transition', type: 'transition', id: transition.to, actor: 'main', status: transition.ready ? 'ready' : 'blocked',
-      inputs: ['current Change state', 'required gates and approvals'], writes: ['transition receipt'],
-      doneWhen: [`Current Stage is ${transition.to}.`], requiredEvidence: ['valid transition receipt'], reworkTo: governance?.currentStage ? [governance.currentStage] : [],
-      reason: transition.ready ? `Transition to ${transition.to} is ready.` : `Transition to ${transition.to} is blocked.`, blockedBy: transition.blockedBy,
-      command: ['xforge', 'transition', '--change', parsed.change!, '--to', transition.to],
-    });
-    /*
-     * The receipt, when the receipt is what stands between this Stage and the next.
-     *
-     * This was four paragraphs of Skill prose -- what `finalize` writes, why it is not a shortcut
-     * past the check, and that `draft-receipt` exists for the hand-assembled case. All of it was
-     * resident in every verify Stage and re-sent on every turn of it, to be acted on at one moment.
-     * A blocked transition already names the condition; the instruction belongs on that signal.
-     *
-     * `--by` ships as a placeholder and `--status` does not, which is not an inconsistency: they are
-     * different kinds of field. `passed` is the only status `finalize` accepts -- anything else is
-     * refused at `commands/verification.ts:586` -- so substituting it decides nothing. `--by` names
-     * the person asserting it, is written to `finalizedBy` unvalidated, and is the one field an
-     * Agent filling in for itself would be recording an authorisation nobody gave.
-     */
-    if (governance?.currentStage && parsed.change) {
-      const blockedOnReceipt = (governance.readyTransitions ?? []).some((transition: any) =>
-        (transition.blockedBy ?? []).some((item: string) => item.startsWith('condition:verificationReceipt:')));
-      if (blockedOnReceipt) nextActions.push({
-        action: 'finalize-verification', type: 'governance', actor: 'human', status: 'ready',
-        inputs: ['this Stage\'s Gate Evidence at the current content revision'], writes: ['verification receipt'],
-        doneWhen: ['The Stage\'s verificationReceipt exit condition is satisfied.'],
-        requiredEvidence: ['current-revision verification receipt'],
-        reason: `The verification receipt is what blocks this Stage. XForge already holds the change, contentRevision, gitHead and cited Gate set, and writes them from the same resolved Gate Evidence the exit condition is decided against — do not transcribe them, and do not assemble the receipt by hand. It is not a shortcut past the check: the Gate Evidence is re-read from disk first, and nothing is written if any cited Gate is stale, failed, or never ran. Supply --by yourself: it names the person asserting the verification, and is the field this command will not compute. Use \`xforge verification draft-receipt --change ${parsed.change}\` to compute the same facts without writing.`,
-        command: ['xforge', 'verification', 'finalize', '--change', parsed.change, '--status', 'passed', '--by', '<the person asserting it>'],
-      });
-    }
-    /* `ready-to-archive` is a synthetic terminal Stage, not one of `flow.stages`, so there is no
-       Stage to read here. The archive authority comes from `flow.terminal.archive.authority`, which
-       flow.schema.json pins to the const `archive-write` — this literal is the schema's only legal
-       value for it, not a level invented at this call site. */
-    if (governance?.currentStage === 'ready-to-archive') nextActions.push({
-      action: 'archive', type: 'archive', actor: 'main', authority: 'archive-write', status: (governance.pendingApprovals ?? []).some((item: any) => item.transition === 'archive') ? 'blocked' : 'ready',
-      inputs: ['current-revision verification, approval, gate, and audit evidence'], writes: ['canonical Specs', 'archived Change'],
-      doneWhen: ['The Change is archived atomically and canonical Specs are synchronized.'], requiredEvidence: ['archive transaction result'],
-      reason: 'The Change reached ReadyToArchive; terminal governance still applies.', command: ['xforge', 'archive', '--change', parsed.change!],
-    });
+    const nextActions = await nextActionsFor(project, result.data as Record<string, any>, parsed.change);
     return envelope({ command, root: project.root, data: result.data, diagnostics: result.diagnostics, nextActions });
   }
   if (command === 'install') {
@@ -880,12 +1105,385 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
     return envelope({ command, root: project.root, ...result });
   }
   if (command === 'check') {
-    const result = await executeCheck(project, { change: parsed.change, gate: parsed.gate, stage: parsed.stage, allGates: parsed.allGates, force: parsed.force });
-    return envelope({ command, root: project.root, ...result });
+    const result = await executeCheck(project, { change: parsed.change, gate: parsed.gate, stage: parsed.stage, allGates: parsed.allGates, force: parsed.force, evidence: parsed.evidenceDetail as 'summary' | 'full' | undefined });
+    return envelope({ command, root: project.root, ...await withPostState(project, parsed.change, result, parsed.dryRun) });
+  }
+  if (command === 'advance') {
+    /*
+     * The two calls every Stage ends with, made one.
+     *
+     * Across twelve measured Stages the count of governance calls that actually move the Change was
+     * fixed -- two at Propose, three at Check and Verify -- and `check` immediately followed by
+     * `transition` was in every one of them. That pairing is not a habit an instruction created; it
+     * is what the Flow requires, because Gate Evidence binds to the content revision and a
+     * Transition refuses without it.
+     *
+     * What this deliberately does not do is merge the records. The Gate run writes its Evidence and
+     * the Transition writes its receipt, separately, with the same digests and the same audit
+     * entries as when a person runs both by hand. Collapsing them into one record would make "the
+     * Gate passed" and "the Stage moved" indistinguishable, which is the one thing a governance
+     * chain must never lose. A Gate that fails refuses the Transition and names itself.
+     */
+    const gates = await executeCheck(project, { change: parsed.change });
+    const refusing = gates.diagnostics.filter((entry) => entry.severity === 'error');
+    const state = await executeState(project, { change: parsed.change });
+    const governance = (state.data as any)?.change?.governance;
+    const ready = (governance?.readyTransitions ?? []).filter((entry: any) => entry.ready);
+    const target = parsed.to ?? (ready.length === 1 ? ready[0].to : undefined);
+
+    if (refusing.length > 0) {
+      return envelope({
+        command, root: project.root, ok: false,
+        data: { change: parsed.change, stage: governance?.currentStage ?? null, transitioned: null, gates: (gates.data as any)?.gates ?? [] },
+        diagnostics: [...gates.diagnostics, diagnostic(
+          'XFORGE_ADVANCE_GATES_REFUSED',
+          `Gates refused, so no Transition was attempted and no receipt was written: ${refusing.map((entry) => entry.code).join(', ')}. Fix what they name and run advance again.`,
+          `${(state.data as any)?.change?.path ?? ''}`,
+        )],
+        nextActions: gates.nextActions,
+      });
+    }
+    if (!target) {
+      const blocked = (governance?.readyTransitions ?? []).flatMap((entry: any) => entry.blockedBy ?? []);
+      return envelope({
+        command, root: project.root,
+        data: { change: parsed.change, stage: governance?.currentStage ?? null, transitioned: null, gates: (gates.data as any)?.gates ?? [], blockedBy: blocked },
+        diagnostics: [...gates.diagnostics, diagnostic(
+          'XFORGE_ADVANCE_NO_READY_TRANSITION',
+          ready.length > 1
+            ? `Gates passed and more than one Transition is ready (${ready.map((entry: any) => entry.to).join(', ')}); name one with --to. Choosing between a forward move and a rework route is not a default this can pick.`
+            : `Gates passed and no Transition is ready${blocked.length ? `: ${blocked.join(', ')}` : ''}. Nothing was written.`,
+          `${(state.data as any)?.change?.path ?? ''}`,
+          'info',
+        )],
+        nextActions: await nextActionsFor(project, state.data as Record<string, any>, parsed.change),
+      });
+    }
+    const moved = await executeTransition(project, { change: parsed.change!, to: target, dryRun: parsed.dryRun });
+    const after = await withPostState(project, parsed.change, moved, parsed.dryRun);
+    /*
+     * `transitioned` reports what happened, not what was attempted.
+     *
+     * It was set to the target unconditionally, so a Transition the CLI had just refused came back
+     * as `transitioned: "design"` with the refusal sitting in the diagnostics beside it. The refusal
+     * itself was correct -- `executeTransition` blocks on missing Artifacts exactly as it does when
+     * run by hand -- but a caller reading the field it was given would have believed the Change
+     * moved. A merged command that misreports its own outcome is worse than the two calls it saves.
+     */
+    const refused = (moved.diagnostics ?? []).some((entry) => entry.severity === 'error');
+    return envelope({
+      command, root: project.root,
+      data: { change: parsed.change, transitioned: refused ? null : target, gates: (gates.data as any)?.gates ?? [], transition: after.data },
+      diagnostics: [...gates.diagnostics, ...(after.diagnostics ?? [])],
+      changes: after.changes,
+      nextActions: after.nextActions,
+    });
+  }
+  if (command === 'stage') {
+    /*
+     * One reply instead of a Stage's worth of questions.
+     *
+     * Measured over twelve runs of three Stages, 70% of every call was orientation: opening the
+     * Change's files, re-listing the directory, and asking `state` again. None of it is optional
+     * work — an Agent cannot write the next Artifact without its inputs — but all of it was being
+     * paid for one turn at a time, and a turn re-sends the whole conversation while a second read
+     * inside one process does not.
+     *
+     * So this composes what was already computable: the reading plan and its text from
+     * `stage-bundle`, the resolved state, and the Action that is ready with everything the author
+     * needs to satisfy it. The parts are unchanged; what changes is that they arrive together.
+     */
+    const bundle = await executeStageBundle(project, {
+      change: parsed.change!,
+      content: parsed.content as 'none' | 'changed' | 'full' | undefined,
+    });
+    const state = await executeState(project, { change: parsed.change });
+    const actions = await nextActionsFor(project, state.data as Record<string, any>, parsed.change);
+    const change = (state.data as any)?.change ?? null;
+    /*
+     * The Artifact this Stage owes, computed from the Stage rather than borrowed from `nextArtifact`.
+     *
+     * `nextArtifact` is scoped to the planning Artifacts — everything a Flow produces before `apply`
+     * — because that is what it was built for. At Verify that leaves it null while the Stage plainly
+     * owes an `assurance`, so the working set answered "no Action" at a Stage that has one, which is
+     * worse than the prose it replaced. A Stage-scoped command should answer from the Stage's own
+     * `produces`, and that is also the more general rule: it happens to agree with `nextArtifact`
+     * everywhere `nextArtifact` applies.
+     */
+    /* From the receipts state already resolved, not a second walk: `control-plane` computes this
+       same set to validate against, and a Change with neither receipts nor commits has none —
+       which is itself the answer a ledger author needs. */
+    const identities = await knownIdentities(project, parsed.change!, (change?.governance?.approvals ?? []) as never)
+      .then((known) => [...known.values].sort())
+      .catch(() => []);
+    const stageProduces = new Set(flowStages(state.data as Record<string, unknown>, change?.flow).find((entry) => entry.id === bundle.data.stage)?.produces ?? []);
+    let ready = actions.find((entry) => entry.type === 'artifact' && entry.status === 'ready') ?? null;
+    if (!ready) {
+      const owed = (change?.artifacts ?? []).find((artifact: any) => stageProduces.has(artifact.id) && artifact.status === 'ready');
+      if (owed) {
+        const sections = String(owed.generates ?? '').includes('*') ? [] : outlineSections(owed.outline ?? '');
+        ready = {
+          action: 'create-artifact', type: 'artifact', id: owed.id, actor: 'main', status: 'ready',
+          inputs: (owed.requires ?? []).flatMap((required: string) => {
+            const dependency = (change?.artifacts ?? []).find((artifact: any) => artifact.id === required);
+            if (!dependency) return [];
+            if (dependency.outputPaths?.length && change?.path) return dependency.outputPaths.map((output: string) => `${change.path}/${output}`);
+            return dependency.writePath ? [dependency.writePath] : [];
+          }),
+          writes: owed.outputPaths?.length ? owed.outputPaths : [owed.writePath].filter(Boolean),
+          ...(sections.length > 0 ? { requiredSections: sections } : {}),
+          doneWhen: [`Artifact ${owed.id} exists and satisfies the active Flow instructions.`],
+          requiredEvidence: ['xforge state reports the artifact as done for the current Change revision.'],
+          reason: `Stage ${bundle.data.stage} produces ${owed.id}, and it is not written yet.`,
+        };
+      }
+    }
+    /*
+     * The budget is on the reply, because the reply is what has to arrive.
+     *
+     * It was on the read bytes, which is not the same number: a plan of 15.7KB of file contents
+     * assembles into a 25.8KB reply once the Action, the outlines of everything else the Stage owes,
+     * the Stage's declarations and the diagnostics are around it. That passed a 24KB content budget
+     * and then overflowed the host anyway — a measured run spent two calls reading its own spilled
+     * output back, which is the exact failure the guard was added to prevent, one layer up.
+     *
+     * So it is measured here, where the whole payload exists, and the contents are the part that
+     * gives way: everything else in this reply is what the caller cannot reconstruct from disk.
+     */
+    const stageData = {
+        change: parsed.change,
+        flow: change?.flow ?? null,
+        stage: bundle.data.stage,
+        revision: change?.governance?.revision ?? null,
+        action: ready,
+        /*
+         * Every Artifact this Stage still owes, with its shape — not just the one that is ready.
+         *
+         * The Check Stage produces three, and this described one. The other two are ledgers whose
+         * whole content is a YAML shape, and that shape lived only in the Flow file — so all four
+         * measurement runs opened `xforge/flows/solid.yaml` right after calling this, each slicing
+         * the artifacts section. Reporting `produces: [a, b, c]` without saying what b and c are is
+         * a list of names, and a name is not something you can write from.
+         *
+         * The same mistake one level in from the last one: the ready Action was taken from
+         * `nextArtifact`, which stops before `apply`, and was fixed by reading the Stage's own
+         * `produces`. This reads all of them rather than the first.
+         */
+        owes: (change?.artifacts ?? [])
+          .filter((artifact: any) => (stageProduces.has(artifact.id)) && artifact.status !== 'done')
+          .map((artifact: any) => ({
+            id: artifact.id,
+            status: artifact.status,
+            writes: artifact.outputPaths?.length ? artifact.outputPaths : [artifact.writePath].filter(Boolean),
+            description: artifact.description ?? null,
+            instruction: artifact.instruction ?? null,
+            outline: artifact.outline ?? null,
+            requiredSections: String(artifact.generates ?? '').includes('*') ? [] : outlineSections(artifact.outline ?? ''),
+            missingDependencies: artifact.missingDependencies ?? [],
+          })),
+        otherActions: actions.filter((entry) => entry !== ready),
+        blockedBy: (change?.governance?.readyTransitions ?? []).flatMap((entry: any) => entry.blockedBy ?? []),
+        /*
+         * What this Stage declares, so the Flow file does not have to be opened to find out.
+         *
+         * Twenty recorded runs read `xforge/flows/*.yaml` twelve times for 132KB — 12% of every
+         * byte that entered context through a file read — to learn an outline or which Gates a
+         * Stage runs. The Action already carries the outline; this carries the rest of what a Stage
+         * is, which is the other half of the question those reads were asking.
+         */
+        stageDeclares: (() => {
+          const definition = flowStages(state.data as Record<string, unknown>, change?.flow).find((entry) => entry.id === bundle.data.stage);
+          return definition
+            ? {
+              produces: definition.produces ?? [],
+              gates: [...new Set([...(definition.gates ?? []), ...(definition.exit?.gates ?? [])])],
+              exitConditions: Object.keys(definition.exit?.conditions ?? {}),
+              reworkTo: definition.reworkTo ?? [],
+              authority: definition.authority ?? null,
+            }
+            : null;
+        })(),
+        /*
+         * Which names a ledger will accept, said by the only thing that knows.
+         *
+         * `resolvedBy`, `decidedBy` and `approvedBy` are checked against the approvers on this
+         * Change's receipts and its Git authors, and a name outside that set is refused. Nothing
+         * reported the set, so all four measurement runs worked it out the same way — `git log
+         * --format='%an <%ae>' | sort -u` — reconstructing by hand a list the CLI holds in memory
+         * while it validates against it.
+         *
+         * Reporting it does not widen what is accepted; the check is unchanged. It stops an author
+         * having to guess at the bar they are being held to, which is how a ledger ends up naming
+         * somebody who is not there.
+         */
+        /*
+       * What this Stage's work actually is, when the work is not an Artifact.
+       *
+       * `apply` produces nothing in the Flow's sense, so a working set organised around `produces`
+       * told it "no Artifact is ready" and stopped — on the Stage that carries the largest share of
+       * the work in the whole flow: dispatch, parallel workers, delivery records, integration,
+       * done_when evidence. The plan for all of it is `work-packages.yaml`, which appeared in the
+       * reading list as one more file with a digest beside it, named as nothing in particular.
+       *
+       * The CLI already resolves every part of this to answer `state`: which packages are ready,
+       * what each one may write, what it must satisfy, which can run at once, and which paths no
+       * package accounts for. The same mistake as the last two — reporting a Stage by its Artifacts
+       * when the Stage's substance is somewhere else.
+       */
+      work: change?.workPackages
+        ? {
+          path: change.workPackages.path,
+          baseCommit: change.workPackages.baseCommit,
+          ready: change.workPackages.ready ?? [],
+          waves: change.workPackages.waves ?? [],
+          parallelCandidates: change.workPackages.parallelCandidates ?? [],
+          protectedWritePaths: change.workPackages.protectedWritePaths ?? [],
+          unattributedPaths: change.workPackages.unattributedPaths ?? [],
+          packages: (change.workPackages.packages ?? []).map((entry: any) => ({
+            id: entry.id,
+            status: entry.status,
+            role: entry.role ?? null,
+            goal: entry.goal,
+            dependsOn: entry.depends_on ?? [],
+            inputs: entry.inputs ?? [],
+            writePaths: entry.write_paths ?? [],
+            verify: entry.verify ?? [],
+            doneWhen: entry.done_when ?? [],
+            missingDependencies: entry.missingDependencies ?? [],
+            delivered: Boolean(entry.delivery),
+            acknowledgements: entry.acknowledgements ?? null,
+          })),
+        }
+        : null,
+      ledgerIdentities: identities,
+        since: bundle.data.since,
+        worktreeClean: bundle.data.worktreeClean,
+        read: bundle.data.read,
+        vouched: bundle.data.vouched,
+      bytes: bundle.data.bytes,
+    };
+    /*
+     * The budget is on the reply, because the reply is what has to arrive.
+     *
+     * It was on the read bytes, which is a different number: 15.7KB of file contents assembles into
+     * a 25.8KB reply once the Action, the outlines of everything else the Stage owes, the Stage's
+     * declarations and the diagnostics are around it. That passed a content budget and overflowed
+     * the host anyway — a measured run spent two calls reading its own spilled output back, which is
+     * the failure the guard exists to prevent.
+     *
+     * The contents give way and nothing else does: everything else here is what a caller cannot
+     * reconstruct from disk, while the contents are files it can open. `--content full` is still
+     * honoured, because that caller asked.
+     */
+    /*
+     * A ready work package's declared `inputs` are read here, whether or not they changed.
+     *
+     * `stage-bundle` decides what to send by what *moved* since the Stage was entered, which is the
+     * right rule for an Artifact and the wrong one at Apply: the delta Spec and the Design were
+     * written two Stages ago and have not moved since, so they were vouched for with a digest and a
+     * heading list while being exactly the two files the Worker cannot write a line without. All
+     * four baseline runs opened them by hand, 3-4 calls each, and the alternative on offer --
+     * `--content full` -- also sends the proposal, the check report, and change.yaml, which Apply
+     * does not read.
+     *
+     * The plan already names what this Stage's work needs. Nothing has to be guessed, and it stays
+     * scoped to the packages that are actually ready, so a large plan does not send every input for
+     * work that has not started.
+     */
+    if (change?.workPackages) {
+      const readyIds = new Set(change.workPackages.ready ?? []);
+      const declared = new Set<string>();
+      for (const entry of (change.workPackages.packages ?? []) as Array<{ id: string; inputs?: string[] }>) {
+        if (!readyIds.has(entry.id)) continue;
+        for (const input of entry.inputs ?? []) declared.add(input);
+      }
+      const carried = new Set(stageData.read.map((entry) => entry.path));
+      for (const relative of declared) {
+        if (carried.has(relative)) continue;
+        try {
+          const source = await readFile(await safeResolve(project.root, relative), 'utf8');
+          stageData.read.push({ path: relative, reason: 'declared-input', ...(parsed.content === 'none' ? {} : { text: source }) });
+          stageData.bytes.read += Buffer.byteLength(source);
+        } catch {
+          /* An input the plan names but the tree does not have is the plan's problem, and
+             `check` already reports it as one. Saying it twice here would not help. */
+          continue;
+        }
+      }
+      stageData.vouched = stageData.vouched.filter((entry) => !declared.has(entry.path));
+    }
+    const stageDiagnostics = [...bundle.diagnostics, ...state.diagnostics];
+    const BUDGET = 20_000;
+    /*
+     * Measured on what is sent, not on `data` alone.
+     *
+     * The budget existed to keep the reply small enough to arrive, but it sized `stageData` while
+     * the envelope also carries the diagnostics and `nextActions` -- about 4.5KB at Apply. So a
+     * reply measured at 15.7KB went out at 20.2KB, past the 20KB it had just declared itself under.
+     * The comment above says the budget is on the reply; this makes that true.
+     */
+    const measure = () => JSON.stringify({ data: stageData, diagnostics: stageDiagnostics, nextActions: actions }).length;
+    const size = measure();
+    if (parsed.content !== 'full' && size > BUDGET) {
+      /*
+       * Shed the largest first, and keep whatever still fits.
+       *
+       * This dropped every text the moment one file pushed the reply over, so a 12KB Design took
+       * the 3KB Constitution down with it and the caller opened both. Nothing about the budget
+       * requires that: the reply is too big by some amount, and dropping the biggest contributor
+       * usually clears it while the small load-bearing files still arrive. The caller opens what
+       * the diagnostic names, which is now a shorter list than it was.
+       */
+      const dropped: string[] = [];
+      const order = stageData.read
+        .map((entry, index) => ({ index, size: typeof entry.text === 'string' ? entry.text.length : 0 }))
+        .filter((entry) => entry.size > 0)
+        .sort((left, right) => right.size - left.size);
+      /*
+       * Re-measured after each drop rather than subtracted.
+       *
+       * Subtracting the raw text length under-counts what the text costs once it is JSON-escaped --
+       * by about 4KB on the Apply reply -- so the loop stopped one file early and the reply went out
+       * 231 bytes over the budget it had just announced it was under. The number is also printed,
+       * and a printed number that was never measured is the failure this codebase keeps meeting.
+       * Serialising a handful of times costs nothing next to being wrong about it.
+       */
+      let current = size;
+      for (const candidate of order) {
+        if (current <= BUDGET) break;
+        const entry = stageData.read[candidate.index]!;
+        dropped.push(entry.path);
+        delete (entry as { text?: string }).text;
+        current = measure();
+      }
+      if (dropped.length > 0) stageDiagnostics.push(diagnostic(
+        'XFORGE_STAGE_CONTENT_OVER_BUDGET',
+        `This reply would be ${size} bytes, past the ${BUDGET} that reliably arrives inline, so the largest contents were left out until it fit -- it is now about ${current}. Everything else under READ still carries its text. Open these, or ask for --content full: ${dropped.join(', ')}.`,
+        `${change?.path ?? ''}`,
+        'info',
+      ));
+    }
+    return envelope({
+      command,
+      root: project.root,
+      data: stageData,
+      diagnostics: stageDiagnostics,
+      nextActions: actions,
+    });
   }
   if (command === 'stage-bundle') {
-    const result = await executeStageBundle(project, { change: parsed.change! });
-    return envelope({ command, root: project.root, ...result });
+    const result = await executeStageBundle(project, { change: parsed.change!, content: 'none' });
+    return envelope({
+      command,
+      root: project.root,
+      ...result,
+      diagnostics: [...result.diagnostics, diagnostic(
+        'XFORGE_STAGE_BUNDLE_SUPERSEDED',
+        'stage-bundle lists which files to read; `xforge stage --change <id>` lists them and sends their text, together with the ready Action and the diagnostics — which is the whole reason the list was wanted. This still works and is not going away in this release.',
+        null as unknown as string,
+        'info',
+      )],
+    });
   }
   if (command === 'verification') {
     if (parsed.subcommand === 'draft-receipt') {
@@ -929,19 +1527,19 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
     const result = await executeFindingsResolve(project, {
       change: parsed.change!, id: parsed.findingId!, answer: parsed.answer!, by: parsed.by!, dryRun: parsed.dryRun,
     });
-    return envelope({ command, root: project.root, ...result });
+    return envelope({ command, root: project.root, ...await withPostState(project, parsed.change, result, parsed.dryRun) });
   }
   if (command === 'review') {
     const result = await executeReviewAcknowledge(project, { change: parsed.change!, evidence: parsed.evidence!, scope: parsed.scope, dryRun: parsed.dryRun });
-    return envelope({ command, root: project.root, ...result });
+    return envelope({ command, root: project.root, ...await withPostState(project, parsed.change, result, parsed.dryRun) });
   }
   if (command === 'transition') {
     if (parsed.subcommand === 'repair') {
       const result = await repairTransitionChain(project, { change: parsed.change!, receiptId: parsed.receiptId!, dryRun: parsed.dryRun });
-      return envelope({ command, root: project.root, ...result });
+      return envelope({ command, root: project.root, ...await withPostState(project, parsed.change, result, parsed.dryRun) });
     }
     const result = await executeTransition(project, { change: parsed.change!, to: parsed.to!, dryRun: parsed.dryRun });
-    return envelope({ command, root: project.root, ...result });
+    return envelope({ command, root: project.root, ...await withPostState(project, parsed.change, result, parsed.dryRun) });
   }
   if (command === 'approve') {
     /*
@@ -1000,7 +1598,7 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
   }
   if (command === 'work-package') {
     if (parsed.subcommand === 'dispatch') {
-      const result = await executeWorkPackageDispatch(project, { change: parsed.change!, packageId: parsed.packageId!, dryRun: parsed.dryRun });
+      const result = await executeWorkPackageDispatch(project, { change: parsed.change!, packageId: parsed.packageId!, commit: parsed.commit === true, dryRun: parsed.dryRun });
       return envelope({ command, root: project.root, ...result });
     }
     if (parsed.subcommand === 'draft') {
@@ -1095,6 +1693,10 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
     render = parsed.subcommand === 'status'
       ? (data: unknown) => renderContractStatusText({ ok: true, data, diagnostics: [] } as Parameters<typeof renderContractStatusText>[0])
       : (data: unknown) => renderContractListText({ ok: true, data, diagnostics: [] } as Parameters<typeof renderContractListText>[0]);
+  } else if (parsed?.command === 'stage' && result.ok) {
+    /* The plan, without the contents. A measured run reached for `--text` here and got the JSON with
+       a heading on it -- larger than the JSON, for a reader who wanted less. */
+    render = (data: unknown) => renderStageText(data as Parameters<typeof renderStageText>[0]);
   } else if (parsed?.command === 'stage-bundle' && result.ok) {
     /* The reading plan is the entire output; as JSON it is a list of paths nobody scans. */
     render = (data: unknown) => renderStageBundleText(data as Parameters<typeof renderStageBundleText>[0]);
@@ -1136,8 +1738,19 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
        * which on a refusal is most of the reply.
        */
       const fromData = resolutions.filter((item) => item.resolved.found
-        && result.data !== null && typeof result.data === 'object'
-        && Object.hasOwn(result.data as object, item.path.split('.')[0]!));
+        && (paths.length > 1
+          /*
+           * A set that was asked for as a set comes back as a set.
+           *
+           * The rule below -- echo only what came out of `data` -- is right for one field, where
+           * copying `diagnostics` into `data` would answer the same question twice. It is wrong for
+           * several: `--field nextActions --field diagnostics --field project --field flows` on a
+           * refusal put four of them under `data` and left two at the envelope's top level, with
+           * nothing in the reply saying which was where. Three separate readers written against
+           * this in one afternoon each read the half they were not looking at as "no answer".
+           */
+          || (result.data !== null && typeof result.data === 'object'
+            && Object.hasOwn(result.data as object, item.path.split('.')[0]!))));
       process.stdout.write(present({
         ...result,
         data: fromData.length > 0

@@ -92,7 +92,7 @@ exit: 0
     "flows": [
       {
         "id": "solid",
-        "version": 6,
+        "version": 7,
         "apiVersion": "xforge.dev/v1alpha2",
         "description": "Stable and maintainable delivery for ordinary product and engineering changes",
         "policy": {
@@ -115,7 +115,12 @@ exit: 0
             "produces": [
               "proposal",
               "delta-specs"
-            ]
+            ],
+            "gates": [
+              "structure"
+            ],
+            "exitConditions": [],
+            "reworkTo": []
           },
           {
             "id": "design",
@@ -126,6 +131,11 @@ exit: 0
             ],
             "produces": [
               "design"
+            ],
+            "gates": [],
+            "exitConditions": [],
+            "reworkTo": [
+              "propose"
             ]
           },
           {
@@ -139,6 +149,16 @@ exit: 0
               "check-report",
               "check-findings",
               "constitution-check"
+            ],
+            "gates": [
+              "structure",
+              "check-findings",
+              "constitution-check"
+            ],
+            "exitConditions": [],
+            "reworkTo": [
+              "propose",
+              "design"
             ]
           },
           {
@@ -148,7 +168,14 @@ exit: 0
             "requires": [
               "check"
             ],
-            "produces": []
+            "produces": [],
+            "gates": [],
+            "exitConditions": [],
+            "reworkTo": [
+              "propose",
+              "design",
+              "check"
+            ]
           },
           {
             "id": "verify",
@@ -159,6 +186,16 @@ exit: 0
             ],
             "produces": [
               "assurance"
+            ],
+            "gates": [
+              "structure",
+              "unit-tests"
+            ],
+            "exitConditions": [
+              "verificationReceipt"
+            ],
+            "reworkTo": [
+              "apply"
             ]
           }
         ],
@@ -298,6 +335,7 @@ exit: 0
       "id": "add-feature",
       "path": "xforge/changes/add-feature",
       "flow": "solid",
+      "stage": "verify",
       "classification": {
         "dataMigration": false,
         "privacy": false,

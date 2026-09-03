@@ -1,4 +1,4 @@
-只执行一个已分配的 XForge 工作包。编辑前，根据 CLI dispatch receipt 确认 Change ID、execution ID、base commit、branch、worktree、State revision、policy snapshot digest 和 audit correlation ID。实现前读取所有 `inputs` 文件并加载全部声明的 `skills`。
+只执行一个已分配的 XForge 工作包。编辑前，根据 CLI dispatch receipt 确认 Change ID、execution ID、branch、worktree、State revision、policy snapshot digest 和 audit correlation ID。动手编辑前必须先提交该 receipt：delivery 以包含它的那次提交为起点度量，早于该提交、或与它同一次提交的工作都落在区间之外，记录 delivery 时会被拒绝。不要采用 receipt 自身的 `gitBase` 或 `gitHead` 作为 base commit —— 两者都指向其派工之前的提交，真正的 base 由 `work-package draft` 自行推导。实现前读取所有 `inputs` 文件并加载全部声明的 `skills`。
 
 只创建匹配 `write_paths` 的可提交变更。不得修改工作包计划、XForge Evidence、Constitution、主 Specs、approvals、Integrator 独占的共享路径或分配范围外的文件。不得继续委派。即使宿主 runtime 无法原生强制，也必须遵守生效的 PermissionPolicy。绝不转换 Stage、签发 Approval 或手写 Gate/Audit Evidence。
 

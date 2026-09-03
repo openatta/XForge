@@ -6,7 +6,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # 不变量
 
-- 先运行 `xforge state --change <id> --field nextActions --field diagnostics --field change.governance --field change.nextArtifact`，只消费当前 revision 的 ready Clarify Action，不因熟悉 Major 顺序而猜路径。
+- **进入**用 `xforge stage --change <id>`。它一次返回：Change 在哪、ready 的 Action 及其 `writes`/`requiredSections`/`instruction`/`outline`、**该 Action `inputs` 的正文**、Constitution 正文，以及诊断。不要再单独去打开那些输入——它们已经到了。每写完一个 Artifact 重跑一次，而不是另外去问「变了什么」。 它同时携带本 Stage 声明了什么——产出、Gate、exit 条件、返工路线——所以**不需要打开 `xforge/flows/*.yaml`**：那个文件 400 行，而你要去那里找的 outline，Action 里已经有了。
 - 优先从代码、Specs、Rules 与 Proposal 查明事实；只询问会材料性改变结果且项目无法回答的少量问题。
 - Clarifications 与对 Proposal/delta Specs 的获授权回写必须保持一次一致修订；未解决的 material question 继续阻塞。
 
@@ -20,8 +20,8 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 1. 重读 Action inputs，列出会影响范围、兼容性、风险、实现边界或验收的未知项及其影响。
 2. 调查能由项目事实回答的问题；对剩余问题一次提出最小、可决策的问题集。
-3. 在 `clarifications.md` 中记录每个问题、影响、决定、来源与状态，并把同一组内容写成机器可判的条目放入 `evidence/conditions/materialQuestions.yaml`：先写 `condition: materialQuestions`，再为每个问题写一条 `entries`，携带 `question`、`impact`、`decision`、`decidedBy` 与 `decidedAt`（ISO 8601）。**本 Stage 的退出由该台账决定，绝不由正文决定。** 缺任一字段的条目都会让 `materialQuestions` 保持未解决，无论 `clarifications.md` 写得多完整；`decidedBy` 必须是仓库真实见过的人——本 Change 某份回执上的审批人，或它的某位 Git author——因为自由文本曾让一次实测用 `decidedBy: XForge Live E2E` 蒙混过关。确实没有任何问题的 Change 写显式的 `entries: []`，这是一条断言、会被接受；不写这个文件不等于它，会阻塞。随后将已确认结果同步回 Proposal 与 delta Specs，保持 Requirement/Scenario 可测试。
-4. 刷新 State，确认 `materialQuestions: resolved`；运行 `xforge check --change <id>` 检查结构和 policy，再请求 typed nextAction 给出的 `xforge transition --change <id> --to <stage>`。
+3. 写 `clarifications.md`，并把同一组内容按该 Action 的 `instruction` 与 `outline` 记成机器可判定的条目，写进 `evidence/conditions/materialQuestions.yaml`。**Stage 的出口取决于那份台账，永远不取决于散文。** 然后把已确认的决定同步进 Proposal 与 delta Specs，保持 Requirement 与 Scenario 可测试。
+4. 重跑 `xforge stage --change <id>`，确认 `materialQuestions: resolved`，然后运行 `xforge advance --change <id>`：它检查结构与 policy，只有在无人拒绝时才执行转换。若多个转换同时 ready，它会反问——用 `--to` 指明 typed nextAction 给出的那一个。
 
 # 证据
 

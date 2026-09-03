@@ -30,8 +30,8 @@ function assertTransitionChain(control: { transitionChainValid: boolean; governa
   ));
 }
 
-export async function executeWorkPackageDispatch(project: ProjectContext, options: { change: string; packageId: string; dryRun: boolean }): Promise<{
-  data: { change: string; packageId: string; receipt: WorkPackageDispatchReceipt; dryRun: boolean };
+export async function executeWorkPackageDispatch(project: ProjectContext, options: { change: string; packageId: string; commit: boolean; dryRun: boolean }): Promise<{
+  data: { change: string; packageId: string; receipt: WorkPackageDispatchReceipt; next: string[]; committed: string | null; dryRun: boolean };
   diagnostics: Diagnostic[];
   changes: FileChange[];
 }> {
@@ -93,8 +93,11 @@ export async function executeWorkPackageDispatch(project: ProjectContext, option
   };
   const receipt: WorkPackageDispatchReceipt = { ...unsigned, digest: sha256(stableStringify(unsigned)) };
   const target = `${project.changesPath}/${options.change}/evidence/agents/${options.packageId}/dispatch/${executionId}.json`;
+  const auditIndex = `${project.changesPath}/${options.change}/evidence/audit/index.json`;
   const content = `${JSON.stringify(receipt, null, 2)}\n`;
   const changes: FileChange[] = [{ action: 'create', path: target, digest: sha256(content), source: `work-package:${options.packageId}:dispatch` }];
+  /* Declared because it is written below, in the same command, for the same reason `next` names it. */
+  if (!options.dryRun) changes.push({ action: 'modify', path: auditIndex, source: `work-package:${options.packageId}:dispatch` });
   if (!options.dryRun) {
     await atomicWrite(project.root, target, content);
     try {
@@ -115,7 +118,62 @@ export async function executeWorkPackageDispatch(project: ProjectContext, option
       throw error;
     }
   }
-  return { data: { change: options.change, packageId: options.packageId, receipt, dryRun: options.dryRun }, diagnostics, changes };
+  /*
+   * The receipt has to be committed before the work is, and this is the only moment saying so is
+   * still cheap.
+   *
+   * Four measured Apply runs dispatched, implemented, and only then met
+   * XFORGE_WORK_PACKAGE_DISPATCH_UNCOMMITTED at `draft` -- 4/4, and three of them had already
+   * committed the implementation, so recovering meant rewriting local history (`git reset --soft`,
+   * `--mixed`) to slip the receipt underneath. The rule was stated in exactly two places, both of
+   * them too late: the refusal itself, and a re-dispatch message a first attempt never sees.
+   *
+   * Saying it here costs one line and lands while the working tree is still clean.
+   */
+  /*
+   * Both files, because dispatching wrote both.
+   *
+   * `next` named the receipt alone, and `changes` declared only the receipt too -- but `recordAudit`
+   * above appends `evidence/audit/index.json` in the same breath. Three of the eight runs measured
+   * after this instruction landed committed exactly what it named, left the audit index dirty, and
+   * then swept it into the implementation commit, where it shows up inside the delivery diff as a
+   * governance path the Worker did not write. Two of them recovered with `git reset --mixed`; the
+   * third recorded it as an issue against its own delivery.
+   *
+   * A command that under-declares what it wrote sends a careful caller to do the wrong thing
+   * carefully.
+   */
+  /*
+   * `--commit` makes the ordering impossible to get wrong instead of merely documented.
+   *
+   * XForge writes no other Git history, and that is a deliberate line: a governance tool that
+   * rewrites a project's commits owns decisions it should not own. This stays on the safe side of
+   * it by being opt-in and by committing exactly the two paths this command just wrote -- not
+   * `git add -A`, which is how several measured runs implemented the instruction and which sweeps
+   * whatever else happens to be dirty into the commit the delivery is measured from. On a clean
+   * tree that is harmless; in a real project it is a delivery base nobody chose.
+   *
+   * It is not here to save a call. The instruction alone already reached 12/12 correct ordering.
+   * It is here because "the two files I wrote" is a set the caller has to reconstruct and this
+   * command already knows.
+   */
+  let committed: string | null = null;
+  if (options.commit && !options.dryRun) {
+    const staged = await git(project.root, ['add', '--', target, auditIndex]);
+    if (staged.code !== 0) {
+      throw new XForgeError(diagnostic('XFORGE_WORK_PACKAGE_COMMIT_FAILED', `Could not stage the dispatch receipt: ${staged.stderr.trim()}`, target));
+    }
+    const made = await git(project.root, ['commit', '--only', '-m', `Dispatch work package ${options.packageId} (${executionId})`, '--', target, auditIndex]);
+    if (made.code !== 0) {
+      throw new XForgeError(diagnostic('XFORGE_WORK_PACKAGE_COMMIT_FAILED', `Could not commit the dispatch receipt: ${made.stderr.trim() || made.stdout.trim()}`, target));
+    }
+    const head = await git(project.root, ['rev-parse', 'HEAD']);
+    committed = head.code === 0 ? head.stdout.trim() : null;
+  }
+  const next = options.dryRun || options.commit ? [] : [
+    `Commit ${target} and ${auditIndex} together, before editing anything. Dispatching wrote both. This delivery is measured from the commit that contains the receipt to HEAD, so work committed before that commit -- or inside it -- falls outside the range and is refused when the delivery is recorded; and an audit index left uncommitted here lands in the next commit instead, where it reads as a path this package changed.`,
+  ];
+  return { data: { change: options.change, packageId: options.packageId, receipt, next, committed, dryRun: options.dryRun }, diagnostics, changes };
 }
 
 /**
@@ -153,6 +211,7 @@ export async function executeWorkPackageDraft(project: ProjectContext, options: 
     executionId: string;
     target: string;
     supply: string[];
+    next: string[];
     delivery: Record<string, unknown>;
   };
   diagnostics: Diagnostic[];
@@ -291,6 +350,26 @@ export async function executeWorkPackageDraft(project: ProjectContext, options: 
         'status — succeeded, blocked or failed; your claim about this execution, which XForge will not make for you',
         'done_when_evidence[].evidence — each entry beginning with an exact changed_paths entry or an exact validation command, explanation after " — "',
         'issues — anything unresolved; [] if none',
+      ],
+      /*
+       * Two things a caller at this point has to work out, and both were measured being got wrong.
+       *
+       * The first is that nothing files this. `draft` returns the record and writes no file, on
+       * purpose -- a delivery is the Worker's assertion and a CLI that filed one would be signing
+       * it on their behalf. But the name reads like it writes, and there is no verb that does: two
+       * of twelve measured runs went looking for one (`work-package record`, `draft-delivery`),
+       * spending a refusal and up to two `help` calls each before finding that the answer is to
+       * write the file themselves.
+       *
+       * The second is that the commit boundaries end here. The receipt needs its own commit and the
+       * implementation needs its own, because the delivery diff is measured between them. Nothing
+       * after that does -- the delivery record, the Gate Evidence `check` writes, and the transition
+       * receipt can all go in one. Measured runs made four to six commits where three suffice, each
+       * one a call, because nothing told them where the requirement stopped.
+       */
+      next: [
+        `Write this delivery to ${project.changesPath}/${options.change}/evidence/agents/${options.packageId}/${dispatch.executionId}.yaml yourself, with the three fields above filled in. No command files it: the record is your assertion, so XForge drafts it and stops.`,
+        'That was the last commit boundary. The dispatch receipt and the implementation each needed their own commit; the delivery record, the Gate Evidence `check` writes, and the transition receipt do not, and can be committed together once the Stage is closed.',
       ],
       delivery,
     },

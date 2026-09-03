@@ -6,7 +6,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # 不变量
 
-- 先运行 `xforge state --change <id> --field nextActions --field diagnostics --field change.governance --field change.nextArtifact --field change.path`，只消费当前 revision 的 ready Design Action，并重读全部 Action inputs。
+- **进入**用 `xforge stage --change <id>`。它一次返回：Change 在哪、ready 的 Action 及其 `writes`/`requiredSections`/`instruction`/`outline`、**该 Action `inputs` 的正文**、Constitution 正文，以及诊断。不要再单独去打开那些输入——它们已经到了。每写完一个 Artifact 重跑一次，而不是另外去问「变了什么」。 它同时携带本 Stage 声明了什么——产出、Gate、exit 条件、返工路线——所以**不需要打开 `xforge/flows/*.yaml`**：那个文件 400 行，而你要去那里找的 outline，Action 里已经有了。
 - Design 解释 HOW、决策与边界，不重复 Proposal，不退化为逐文件任务列表或长期 Plan。
 - Constitution、Rules、现有架构和 Specs 是约束；不把约束原文机械复制进设计。
 
@@ -20,7 +20,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 1. 建模当前系统、目标行为、集成点、数据与接口边界。
 2. 记录主要决策、可行替代方案及拒绝理由，覆盖失败模式、兼容性、迁移和回滚。
 3. 严格按照当前 Action 的 Design artifact `instruction` 与 outline 执行——Solid 与 Major 的深度差异（例如 Major 的 trust boundaries、风险与缓解、测试策略、rollout、monitoring、stop signals、owner 和并行边界）已经在其中表达，不要补充或省略 Action 未定义的章节。
-4. 当 Action 列出 `contract-delta` Artifact 时，同样要写。它逐条列出本 Change 移动的模块接口，用基线已经在使用的 contract element id 定位——用 `xforge contract list` 读出来，绝不要凭记忆重打一遍：打错的 id 不会报错，它会作为一个新元素被合并到你本想修改的那个旁边——并且是一个 Change 唯一可以声明「接口变了」的地方——`xforge/contracts/` 是已经约定过的记录，把 delta 合并进去是 archive 的事。就地改基线，会让其他所有包对着一个没人约定过的接口继续实现。空的章节写 `(none)`，那是一条断言；留空是一处遗漏。声明了 `contract-lint` 的 Stage 在本项目记录命令之前无法通过——`xforge verification declare --gate-name contract-lint --command '[...]' --by <人>`——因为 declared Gate 在没有声明时是拒绝而不是放行，而手改 Manifest 既受治理，也正是某次实跑把 Manifest 改到读不出来的原因。
+4. 当 Action 列出 `contract-delta` Artifact 时，按该 Action 的 `instruction` 与 `outline` 写——元素 id 的形式、id 从哪里读、空段落意味着什么，都由它们给出。有一件事不在其中，因为它关乎这个项目而不是这个 Artifact：声明了 `contract-lint` 的 Stage，在项目用 `xforge verification declare --gate-name contract-lint --command '[...]' --by <person>` 记录命令之前不可能通过——declared Gate 在没有声明时是拒绝，不是放行。不要为了绕过它去手改 Manifest。
 5. 刷新 State 并运行 `xforge check --change <id>`；只修复 Design 权限内的结构问题，然后调用 typed nextAction 中通往 Check 的 Transition。所有随附 Flow 都不在 Design 出口收取审批——`planning-solid` 与 `implementation-major` 都改在 Check 出口收取——所以不要在这里等一份没人会发起的 receipt，也不要尝试为本 Stage 审批：`xforge approve` 会拒绝任何策略都不治理的 transition。
 
 # 证据

@@ -489,7 +489,17 @@ async function validateSuccessfulDelivery(
     return { diagnostics, unattributed };
   }
   if (delivery.changed_paths.length === 0) {
-    diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_EMPTY_DELIVERY', 'A succeeded write package must contain at least one changed path.', sourcePath));
+    /*
+     * When base and head are the same commit the emptiness has one overwhelmingly likely cause, and
+     * the bare sentence sent readers looking for the wrong thing: a measured run read "must contain
+     * at least one changed path" as its implementation having failed to save, when in fact the work
+     * and the dispatch receipt shared a commit and there was simply no range between them. Naming
+     * the cause costs a clause and points at the fix instead of at the code.
+     */
+    const cause = delivery.base_commit === delivery.head_commit
+      ? ' base_commit and head_commit are the same commit, so the work shares its commit with the dispatch receipt and there is no range to measure. Commit the receipt before the work.'
+      : '';
+    diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_EMPTY_DELIVERY', `A succeeded write package must contain at least one changed path.${cause}`, sourcePath));
   }
 
   const ancestry = await git(project.root, ['merge-base', '--is-ancestor', delivery.base_commit, delivery.head_commit]);

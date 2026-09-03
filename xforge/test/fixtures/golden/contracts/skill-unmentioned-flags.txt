@@ -6,6 +6,7 @@ approve --provider
 approve --reason
 approve --role
 audit --output
+check --evidence-detail
 check --stage
 doctor --strict
 hook --event
@@ -15,6 +16,7 @@ init --target
 install --adopt
 install --target
 review --scope
+stage --content
 state --target
 sync --adopt
 sync --target

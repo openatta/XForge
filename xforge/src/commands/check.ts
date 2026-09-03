@@ -34,6 +34,11 @@ interface CheckOptions {
   stage?: string;
   /** Bypass reuse of passed, still-current work-package verify Evidence; always re-run every verify Gate. */
   force?: boolean;
+  /**
+   * How much of each Gate's Evidence comes back inline. `summary` is the default and carries the
+   * verdict, the command, the exit code and where the whole record is; `full` carries the record.
+   */
+  evidence?: 'summary' | 'full';
 }
 
 type GateSelection = 'none' | 'explicit' | 'stage' | 'all' | 'archive';
@@ -51,14 +56,78 @@ interface CheckData {
    * excluded them" apart from "the Change declares no plan".
    */
   workPackagesSelected: boolean;
-  workPackages: Array<{ packageId: string; command: string; status: 'passed' | 'failed'; evidence: GateEvidence; cached: boolean }>;
+  workPackages: Array<{ packageId: string; command: string; status: 'passed' | 'failed'; evidence: GateEvidence | GateEvidenceSummary; cached: boolean }>;
   /**
    * `evidencePath` is carried because a Gate's Evidence file is not named after the Gate —
    * `unit-tests` writes `tests.json`, `security-scan` writes `security.json` — and a verification
    * receipt has to cite each Gate's digest. Without it the only way to find the file was to list
    * the Evidence directory and guess which entry belonged to which Gate.
    */
-  gates: Array<{ id: string; status: 'passed' | 'failed'; evidence: GateEvidence | null; evidencePath: string | null }>;
+  gates: Array<{ id: string; status: 'passed' | 'failed'; evidence: GateEvidence | GateEvidenceSummary | null; evidencePath: string | null }>;
+}
+
+/**
+ * What a Gate said, without repeating what it printed.
+ *
+ * A Gate's Evidence carries the whole stdout and stderr of the command it ran, and `check` returned
+ * all of it inline. That was 90% of every gate entry — 1,775 of 1,895 bytes for `unit-tests` — and
+ * it is already on disk at `evidencePath`, byte for byte, which is the copy the receipt cites and
+ * the only one that counts. A Stage runs `check` three or four times, so the same test output
+ * arrived three or four times and was then re-sent with every turn after that.
+ *
+ * The verdict, the identity, and where to find the rest.
+ *
+ * A Gate that *failed* is never summarised, whatever was asked for. Reading the output is the whole
+ * of what a reader does with a failure, and making them fetch it costs a call at the one moment
+ * they are already blocked — the narrowing would be paid for exactly when it is least affordable.
+ * So this trims the passing case, which is the repeated one: a Stage runs `check` three or four
+ * times and the passes are identical every time.
+ */
+interface GateEvidenceSummary {
+  gate: string;
+  status: 'passed' | 'failed';
+  command: GateEvidence['command'];
+  exitCode: number | null;
+  durationMs: number;
+  timedOut: boolean;
+  /**
+   * What it printed, kept only where the line carries meaning a status does not.
+   *
+   * The first line, because a reader who is looking at all needs to know what it said; and every
+   * `warning:` line, because a Gate that passes while warning is the case a bare `passed` hides —
+   * `constitution-check` can pass while printing "principle X cannot be cross-checked", and two
+   * tests read that text to prove it survives. Trimming a transcript must not trim what nothing
+   * else records.
+   */
+  outputLines: string[];
+  outputBytes: number;
+  contentRevision: string;
+  digest: string;
+  /** Where the whole record is. Read it, or re-run with --evidence full. */
+  evidencePath: string;
+  omitted: string;
+}
+
+function summariseEvidence(evidence: GateEvidence, evidencePath: string): GateEvidenceSummary {
+  const printed = `${evidence.stdout ?? ''}${evidence.stderr ?? ''}`;
+  const firstLine = printed.split(/\r?\n/).find((line) => line.trim().length > 0) ?? null;
+  return {
+    gate: evidence.gate,
+    status: evidence.status,
+    command: evidence.command,
+    exitCode: evidence.exitCode,
+    durationMs: evidence.durationMs,
+    timedOut: evidence.timedOut,
+    outputLines: [...new Set([
+      ...(firstLine === null ? [] : [firstLine]),
+      ...printed.split(/\r?\n/).filter((line) => line.trim().startsWith('warning:')),
+    ])].map((line) => line.slice(0, 400)),
+    outputBytes: Buffer.byteLength(printed),
+    contentRevision: evidence.contentRevision,
+    digest: evidence.digest,
+    evidencePath,
+    omitted: 'stdout, stderr and the revision bindings are in the file at evidencePath; re-run with --evidence full to have them inline.',
+  };
 }
 
 const ALL_GATES = 'all';
@@ -289,6 +358,16 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
   const changes: FileChange[] = [];
   const hasStructureErrors = diagnostics.some((item) => item.severity === 'error');
   const gateResults: CheckData['gates'] = [];
+  /*
+   * The raw Evidence, kept beside the reported result.
+   *
+   * `check` now summarises what it returns, and the warning lift below reads each Gate's stdout to
+   * surface notices a passing status does not carry -- the one thing standing between a reader who
+   * never opens `evidence/*.json` and a Gate that passed while printing a problem. Narrowing the
+   * reply must not narrow what the command itself can see, so the full record stays in hand here
+   * and only the reply is trimmed.
+   */
+  const rawEvidence = new Map<string, GateEvidence>();
   const workPackageResults: CheckData['workPackages'] = [];
 
   /*
@@ -414,7 +493,9 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
           packageId: verification.packageId,
           command: verification.command,
           status: reused.status,
-          evidence: reused,
+          evidence: options.evidence === 'full' || reused.status !== 'passed'
+            ? reused
+            : summariseEvidence(reused, `${project.changesPath}/${options.change}/evidence/${verification.gate.spec.evidence}`),
           cached: true,
         });
         continue;
@@ -451,7 +532,9 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
         packageId: verification.packageId,
         command: verification.command,
         status: result.evidence.status,
-        evidence: result.evidence,
+        evidence: options.evidence === 'full' || result.evidence.status !== 'passed'
+          ? result.evidence
+          : summariseEvidence(result.evidence, result.change.path),
         cached: false,
       });
     }
@@ -475,7 +558,15 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
       /* A Gate refusing for want of a human answer carries the question with it; dropping it here
          would leave the diagnostic naming a problem with no route to the fix. */
       nextActions.push(...result.nextActions);
-      gateResults.push({ id, status: result.evidence.status, evidence: result.evidence, evidencePath: result.change.path });
+      rawEvidence.set(id, result.evidence);
+      gateResults.push({
+        id,
+        status: result.evidence.status,
+        evidence: options.evidence === 'full' || result.evidence.status !== 'passed'
+          ? result.evidence
+          : summariseEvidence(result.evidence, result.change.path),
+        evidencePath: result.change.path,
+      });
     }
   }
 
@@ -663,7 +754,7 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
    * below see it.
    */
   for (const result of gateResults) {
-    const carried = (result.evidence?.stdout ?? '').split('\n').filter((line) => line.startsWith('warning: '));
+    const carried = (rawEvidence.get(result.id)?.stdout ?? '').split('\n').filter((line: string) => line.startsWith('warning: '));
     if (carried.length === 0 || result.status !== 'passed') continue;
     diagnostics.push(diagnostic(
       'XFORGE_GATE_PASSED_WITH_WARNINGS',

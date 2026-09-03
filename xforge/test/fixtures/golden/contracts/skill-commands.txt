@@ -1,11 +1,22 @@
+advance  <- xforge-apply/SKILL.md
+advance  <- xforge-apply/SKILL_cn.md
+advance  <- xforge-clarify/SKILL.md
+advance  <- xforge-clarify/SKILL_cn.md
+advance  <- xforge-propose/SKILL.md
+advance  <- xforge-propose/SKILL_cn.md
 approve  <- xforge-design/SKILL.md
 approve  <- xforge-design/SKILL_cn.md
 approve  <- xforge-verify/SKILL.md
 approve  <- xforge-verify/SKILL_cn.md
 archive  <- xforge-verify/SKILL.md
 archive  <- xforge-verify/SKILL_cn.md
+audit retry  <- flows/major.yaml
+audit verify  <- flows/quick.yaml
 audit verify  <- xforge-verify/SKILL.md
 audit verify  <- xforge-verify/SKILL_cn.md
+check  <- flows/major.yaml
+check  <- flows/solid-contract.yaml
+check  <- flows/solid.yaml
 check  <- xforge-apply/SKILL.md
 check  <- xforge-apply/SKILL_cn.md
 check  <- xforge-check/SKILL.md
@@ -14,8 +25,6 @@ check  <- xforge-clarify/SKILL.md
 check  <- xforge-clarify/SKILL_cn.md
 check  <- xforge-design/SKILL.md
 check  <- xforge-design/SKILL_cn.md
-check  <- xforge-propose/SKILL.md
-check  <- xforge-propose/SKILL_cn.md
 check  <- xforge-revise/SKILL.md
 check  <- xforge-revise/SKILL_cn.md
 check  <- xforge-scaffold/SKILL.md
@@ -24,14 +33,16 @@ check  <- xforge-status/SKILL.md
 check  <- xforge-status/SKILL_cn.md
 check  <- xforge-verify/SKILL.md
 check  <- xforge-verify/SKILL_cn.md
-contract list  <- xforge-design/SKILL.md
-contract list  <- xforge-design/SKILL_cn.md
+contract list  <- flows/solid-contract.yaml
 contract status  <- xforge-status/SKILL.md
 contract status  <- xforge-status/SKILL_cn.md
+doctor  <- flows/solid-contract.yaml
 doctor  <- xforge-upgrade-scaffold/SKILL.md
 doctor  <- xforge-upgrade-scaffold/SKILL_cn.md
 explain  <- xforge-apply/SKILL.md
 explain  <- xforge-apply/SKILL_cn.md
+explain  <- xforge-propose/SKILL.md
+explain  <- xforge-propose/SKILL_cn.md
 findings resolve  <- xforge-verify/SKILL.md
 findings resolve  <- xforge-verify/SKILL_cn.md
 install  <- xforge-upgrade-scaffold/SKILL.md
@@ -40,22 +51,30 @@ review acknowledge  <- xforge-apply/SKILL.md
 review acknowledge  <- xforge-apply/SKILL_cn.md
 review acknowledge  <- xforge-verify/SKILL.md
 review acknowledge  <- xforge-verify/SKILL_cn.md
-state  <- xforge-apply/SKILL.md
-state  <- xforge-apply/SKILL_cn.md
+stage  <- xforge-apply/SKILL.md
+stage  <- xforge-apply/SKILL_cn.md
+stage  <- xforge-check/SKILL.md
+stage  <- xforge-check/SKILL_cn.md
+stage  <- xforge-clarify/SKILL.md
+stage  <- xforge-clarify/SKILL_cn.md
+stage  <- xforge-design/SKILL.md
+stage  <- xforge-design/SKILL_cn.md
+stage  <- xforge-propose/SKILL.md
+stage  <- xforge-propose/SKILL_cn.md
+stage  <- xforge-revise/SKILL.md
+stage  <- xforge-revise/SKILL_cn.md
+stage  <- xforge-verify/SKILL.md
+stage  <- xforge-verify/SKILL_cn.md
+state  <- flows/major.yaml
+state  <- flows/quick.yaml
+state  <- flows/solid-contract.yaml
+state  <- flows/solid.yaml
 state  <- xforge-architect/SKILL.md
 state  <- xforge-architect/SKILL_cn.md
-state  <- xforge-check/SKILL.md
-state  <- xforge-check/SKILL_cn.md
-state  <- xforge-clarify/SKILL.md
-state  <- xforge-clarify/SKILL_cn.md
-state  <- xforge-design/SKILL.md
-state  <- xforge-design/SKILL_cn.md
 state  <- xforge-kanban/SKILL.md
 state  <- xforge-kanban/SKILL_cn.md
 state  <- xforge-propose/SKILL.md
 state  <- xforge-propose/SKILL_cn.md
-state  <- xforge-revise/SKILL.md
-state  <- xforge-revise/SKILL_cn.md
 state  <- xforge-scaffold/SKILL.md
 state  <- xforge-scaffold/SKILL_cn.md
 state  <- xforge-status/SKILL.md
@@ -66,14 +85,8 @@ state  <- xforge-verify/SKILL.md
 state  <- xforge-verify/SKILL_cn.md
 sync  <- xforge-scaffold/SKILL.md
 sync  <- xforge-scaffold/SKILL_cn.md
-transition  <- xforge-apply/SKILL.md
-transition  <- xforge-apply/SKILL_cn.md
 transition  <- xforge-check/SKILL.md
 transition  <- xforge-check/SKILL_cn.md
-transition  <- xforge-clarify/SKILL.md
-transition  <- xforge-clarify/SKILL_cn.md
-transition  <- xforge-propose/SKILL.md
-transition  <- xforge-propose/SKILL_cn.md
 transition  <- xforge-verify/SKILL.md
 transition  <- xforge-verify/SKILL_cn.md
 transition repair  <- xforge-verify/SKILL.md
@@ -84,6 +97,7 @@ update  <- xforge-upgrade-scaffold/SKILL.md
 update  <- xforge-upgrade-scaffold/SKILL_cn.md
 upgrade-scaffold  <- xforge-upgrade-scaffold/SKILL.md
 upgrade-scaffold  <- xforge-upgrade-scaffold/SKILL_cn.md
+verification declare  <- flows/solid-contract.yaml
 verification declare  <- xforge-check/SKILL.md
 verification declare  <- xforge-check/SKILL_cn.md
 verification declare  <- xforge-design/SKILL.md

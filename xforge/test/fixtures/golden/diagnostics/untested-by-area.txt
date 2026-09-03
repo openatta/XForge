@@ -20,6 +20,7 @@
    2  SCRIPT
    2  SPEC
    2  VERIFICATION
+   1  ADVANCE
    1  ATTESTATION
    1  BUNDLED
    1  DECISION
@@ -43,5 +44,6 @@
    1  ROOT
    1  SECRET
    1  SOURCE
+   1  STAGE
    1  STATE
    1  YAML

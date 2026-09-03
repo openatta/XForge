@@ -100,6 +100,49 @@ for (const absolute of await walk(payloadRoot)) {
   }
 }
 
+/*
+ * Direction 3: a measurement scenario may not be told how to orient itself.
+ *
+ * A third tier, and it exists because the second one could not answer the question it was asked.
+ * The guided prompts open with "Read AGENTS.md, the complete active Change (Proposal, delta Spec,
+ * Design), TEST_REQUEST.md" -- which is exactly the work the Stage working set was built to
+ * replace. An Agent following that reads all of it and *then* calls the CLI, so the command shows
+ * up as additional work and the improvement is invisible. Measured before and after a refactor that
+ * removed most of a Stage's orientation, the guided tier reported 3%.
+ *
+ * `check-vocabulary` already names the mechanism for defects: a prompt that answers what the
+ * product should have answered is an answer key. The same key hides gains. So the measurement tier
+ * may say anything about *what* to achieve -- it has to, or the runs are not comparable -- and
+ * nothing about *how to find out where things are*. That is the product's job, and measuring the
+ * product means letting it do it.
+ */
+const ORIENTATION_INSTRUCTIONS = [
+  /\bRead\s+`?AGENTS\.md/i, /\bRead\s+`?CLAUDE\.md/i, /\bRead\s+`?xforge\/XFORGE\.md/i,
+  /\bRead\s+.{0,40}\bmanifest\.yaml/i, /\bRead\s+.{0,40}\bconstitution\.md/i,
+  /\bthe complete active\b/i, /\bRead\s+.{0,60}\bSkill\b/i,
+  /\bcat\s+/i, /\bopen\s+the\s+(Proposal|Design|delta Spec)/i,
+];
+
+const measureRoots = (await readdir(scenariosRoot, { withFileTypes: true }))
+  .filter((entry) => entry.isDirectory() && entry.name.endsWith('-measure'))
+  .map((entry) => path.join(scenariosRoot, entry.name));
+
+for (const root of measureRoots) {
+  for (const absolute of await walk(root)) {
+    if (!isColdText(absolute)) continue;
+    const relative = path.relative(repositoryRoot, absolute);
+    const text = await readFile(absolute, 'utf8');
+    text.split('\n').forEach((line, index) => {
+      for (const pattern of ORIENTATION_INSTRUCTIONS) {
+        if (pattern.test(line)) {
+          problems.push(`${relative}:${index + 1}: a measurement scenario tells the Agent how to orient itself: "${line.trim().slice(0, 80)}". Say what to achieve; let the product say where things are, because that is what is being measured.`);
+          break;
+        }
+      }
+    });
+  }
+}
+
 /* Direction 2: a cold scenario may not be told what it is supposed to discover. */
 const coldRoots = (await readdir(scenariosRoot, { withFileTypes: true }))
   .filter((entry) => entry.isDirectory() && entry.name.endsWith('-cold'))
@@ -119,5 +162,5 @@ if (problems.length > 0) {
   process.stderr.write(`${problems.join('\n')}\n\n${problems.length} vocabulary violation(s).\n`);
   process.exitCode = 1;
 } else {
-  process.stdout.write(`Vocabulary gate clean: ${coldRoots.length} cold scenario(s), payload free of harness terms.\n`);
+  process.stdout.write(`Vocabulary gate clean: ${coldRoots.length} cold scenario(s), ${measureRoots.length} measurement scenario(s), payload free of harness terms.\n`);
 }

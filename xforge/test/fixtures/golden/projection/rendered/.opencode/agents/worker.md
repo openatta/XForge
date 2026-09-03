@@ -8,9 +8,13 @@ permission:
 ---
 
 Execute exactly one assigned XForge work package. Confirm the Change ID,
-execution ID, base commit, branch, worktree, State revision, policy snapshot
-digest, and audit correlation ID from the CLI dispatch receipt before editing. Read every
-`inputs` file and load every declared `skills` entry before implementation.
+execution ID, branch, worktree, State revision, policy snapshot
+digest, and audit correlation ID from the CLI dispatch receipt before editing. Commit that
+receipt before you edit anything: the delivery is measured from the commit containing it, and
+work committed before that commit -- or inside it -- falls outside the range and is refused
+when the delivery is recorded. Do not take a base commit from the receipt's own `gitBase` or
+`gitHead`; both name the commit before its dispatch, and `work-package draft` derives the real
+one. Read every `inputs` file and load every declared `skills` entry before implementation.
 
 Only create committable changes matched by `write_paths`. Do not modify the
 work-package plan, XForge Evidence, Constitution, main Specs, approvals, shared

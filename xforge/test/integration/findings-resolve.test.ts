@@ -77,10 +77,23 @@ describe('xforge findings resolve', () => {
     const moved = result.json.diagnostics.find((item: any) => item.code === 'XFORGE_FINDINGS_REVISION_MOVED');
     expect(moved.severity).toBe('info');
     expect(moved.message).toContain('verification-receipt.yaml');
-    expect(result.json.nextActions.map((item: any) => item.command.join(' '))).toEqual([
+    /*
+     * The command's own two remedies come first, then where the Change now stands.
+     *
+     * `findings resolve` moves the content revision, so its own answer is "re-run the Gates and
+     * redraft the receipt". What follows is the post-state every mutating command now carries: the
+     * Actions that are actually available afterwards. Blocked ones are deliberately absent -- they
+     * are what `state` is for -- and nothing is attached at all to a refusal or a `--dry-run`.
+     */
+    const commands = result.json.nextActions.map((item: any) => item.command.join(' '));
+    expect(commands.slice(0, 2)).toEqual([
       `xforge check --change ${CHANGE}`,
       `xforge verification draft-receipt --change ${CHANGE}`,
     ]);
+    expect(commands).toContain(`xforge transition --change ${CHANGE} --to apply`);
+    /* Only the appended half is filtered. The command's own entries describe what just happened and
+       may legitimately be blocked; the post-state is what is available now. */
+    expect(result.json.nextActions.slice(2).every((item: any) => item.status !== 'blocked')).toBe(true);
   });
 
   it('refuses at ready-to-archive and names the route back instead of staling the receipt', async () => {
@@ -195,8 +208,11 @@ describe('xforge findings resolve', () => {
     await runCli(root, ['transition', '--change', CHANGE, '--to', 'verify']);
     const gate = await runCli(root, ['check', '--change', CHANGE, '--gate', 'check-findings']);
     expect(gate.json.data.gates[0].evidence.status).toBe('passed');
-    expect(gate.json.data.gates[0].evidence.stdout).toContain('warning: ');
-    expect(gate.json.data.gates[0].evidence.stdout).toContain('names no resolvedBy');
+    /* Read from the summary the default reply carries: a passing Gate keeps its warning lines,
+       because "passed while warning" is precisely what the status alone does not say. */
+    const printed = gate.json.data.gates[0].evidence.outputLines.join('\n');
+    expect(printed).toContain('warning: ');
+    expect(printed).toContain('names no resolvedBy');
   });
 
   it('points the reader at the command instead of at a hand edit', async () => {

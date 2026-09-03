@@ -207,6 +207,19 @@ export async function readState(project: ProjectContext, options: StateOptions):
         authority: stage.authority,
         requires: stage.requires,
         produces: stage.produces,
+        /*
+         * The Gates, the exit conditions and the rework routes, which this summary dropped.
+         *
+         * A Stage is four things — what it produces, what it must pass, what it cannot leave
+         * without, and where a blocker sends it back — and only the first was reported. So the one
+         * place a reader could learn the other three was the Flow file, and twenty recorded runs
+         * opened `xforge/flows/*.yaml` twelve times for 132KB, 12% of everything that entered
+         * context through a file read. Four hundred lines of YAML read to recover four fields the
+         * resolver already had in hand.
+         */
+        gates: [...new Set([...(stage.gates ?? []), ...(stage.exit?.gates ?? [])])],
+        exitConditions: Object.keys(stage.exit?.conditions ?? {}),
+        reworkTo: stage.reworkTo ?? [],
       })) : null,
       artifacts: flowArtifacts(flow).map((artifact) => ({ id: artifact.id, generates: artifact.generates, requires: artifact.requires })),
       applyRequires: apply.requires,
@@ -257,6 +270,7 @@ export async function readState(project: ProjectContext, options: StateOptions):
        * makes, and the read was always of the last entry. What stays is that entry, the count, and
        * the route taken -- enough to answer "where has this been" without carrying the receipts.
        */
+      selectedChange.stage = control.governance.currentStage;
       selectedChange.governance = { ...control.governance, transitions: wanted.has('transitions')
         ? control.governance.transitions
         : {

@@ -1,4 +1,4 @@
-import { cp, mkdir, readFile, rm } from 'node:fs/promises';
+import { cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
@@ -26,7 +26,7 @@ const repositoryRoot = path.join(here, '..', '..');
 const workRoot = path.join(repositoryRoot, 'tests', '.tmp');
 
 function options(argv) {
-  const parsed = { 'max-attempts': '1', 'timeout-seconds': '1800', budget: '3', 'suite-budget': '5' };
+  const parsed = { 'max-attempts': '1', 'timeout-seconds': '1800', budget: '3', 'suite-budget': '5', 'overlay-skills': 'true' };
   for (let index = 0; index < argv.length; index += 2) {
     const [key, value] = [argv[index], argv[index + 1]];
     if (!key?.startsWith('--') || value === undefined) throw new Error('Expected --key value pairs.');
@@ -84,6 +84,45 @@ await cp(fixture, projectRoot, { recursive: true });
 await cp(shippedFlowPath, path.join(projectRoot, 'xforge', 'flows', `${manifest.flow}.yaml`));
 
 /*
+ * The Skills the fixture froze, replaced by the ones under test -- for the same reason the Flow is.
+ *
+ * A fixture is a whole project frozen at a Stage boundary, and a project contains its Skills. So a
+ * probe run against it measured the Skill of the day it was captured, not the Skill in the working
+ * tree: `quick-propose` still carried an `xforge-propose` whose first Invariant read
+ * `Run \`xforge state\`` with no `--field` at all, two rewrites behind. Nothing said so. The probe
+ * reported a verdict on a Stage while the instruction that drives that Stage had moved, which is
+ * the silent-drift failure this file refuses everywhere else -- and it made the cheap tier
+ * structurally unable to answer the question Skills are edited to answer, so every Skill change
+ * owed a full scenario instead.
+ *
+ * Only `xforge/scaffold/skills/` is written, never the projected copies under `.claude/` and its
+ * peers. Those are managed files with recorded digests: writing one by hand makes the next managed
+ * operation refuse with `XFORGE_MANAGED_FILE_MODIFIED`, which is the ownership record working
+ * correctly. `xforge update` below is what carries the new text into every target, exactly as it
+ * would in a real project.
+ */
+const payloadSkills = path.join(repositoryRoot, 'scaffold', 'payload', 'xforge', 'scaffold', 'skills');
+const projectSkills = path.join(projectRoot, 'xforge', 'scaffold', 'skills');
+const overlaySkills = selected['overlay-skills'] !== 'false';
+const replacedSkills = [];
+if (overlaySkills) {
+  for (const skill of (await readdir(payloadSkills, { withFileTypes: true })).filter((entry) => entry.isDirectory())) {
+    /* Only Skills this fixture actually selects. A Skill the project never adopted is not this
+       probe's business, and writing one in would change what the project is. */
+    if (!existsSync(path.join(projectSkills, skill.name))) continue;
+    for (const variant of ['SKILL.md', 'SKILL_cn.md']) {
+      const source = path.join(payloadSkills, skill.name, variant);
+      const target = path.join(projectSkills, skill.name, variant);
+      if (!existsSync(source) || !existsSync(target)) continue;
+      const shipped = await readFile(source, 'utf8');
+      if (shipped === await readFile(target, 'utf8')) continue;
+      await writeFile(target, shipped);
+      replacedSkills.push(path.relative(projectRoot, target));
+    }
+  }
+}
+
+/*
  * A Stage with no case of its own still gets measured.
  *
  * `cases/<stage>.mjs` holds what is specific to a Stage — the Check Agent keeping its verdict out of
@@ -122,12 +161,55 @@ const cli = await installCli({
   npmCache: process.env.XFORGE_LIVE_ENGINE_NPM_CACHE,
 });
 
+/*
+ * The identity the fixture declares, moved to the CLI the probe actually provisions.
+ *
+ * Every fixture pins the CLI of the day it was captured and the probe always installs the working
+ * tree's build, so the two disagree by construction -- and the disagreement is not cosmetic. The
+ * fixture ships a fail-closed `agent.tool.before` Hook, so the governance dispatcher denied *every*
+ * tool call the Agent made, including `xforge state`. The Agent then did the right thing: it read
+ * the diagnostic, stopped, and wrote nothing. Both Artifact checks failed, and the failure looked
+ * exactly like a Skill that does not produce its Artifacts.
+ *
+ * `xforge update` is the supported move for this and only this: it advances the CLI pin and leaves
+ * `manifest.scaffold.version` where the files are, so the Scaffold stays the fixture's own. It also
+ * reprojects, which is how the overlaid Skills reach `.claude/` and its peers.
+ *
+ * The outcome is checked rather than the exit code. `update` legitimately reports `ok: false` for
+ * warnings a fixture will always carry -- its Scaffold is behind the CLI by definition -- so the
+ * question is whether the identities now agree, which `state` answers directly.
+ */
+function runCli(args) {
+  return spawnSync(process.execPath, [cli.installedCliPath, '--root', projectRoot, ...args], { encoding: 'utf8' });
+}
+
+const updateResult = runCli(['update']);
+/*
+ * Three shapes, because `--field` narrows differently depending on how the call went, and a reader
+ * written for one of them reads the other two as "no answer". A single field on `ok: true` prints
+ * the bare value and nothing else; several fields print an object keyed by the paths asked for; a
+ * refusal keeps the whole envelope and narrows only `data`.
+ */
+const compatibility = JSON.parse(runCli(['state', '--field', 'project.compatibility']).stdout || '{}');
+const declared = compatibility.cli
+  ? compatibility
+  : compatibility.data?.['project.compatibility'] ?? compatibility['project.compatibility'] ?? null;
+if (!declared?.cli?.matches) {
+  throw new Error([
+    `The fixture still declares ${declared?.cli?.declared ?? 'an unknown CLI'} while the probe provisioned ${cli.version}.`,
+    '',
+    '  The fixture ships a fail-closed governance Hook, so every tool call the Agent makes would be',
+    '  denied and the run would measure nothing. `xforge update` was supposed to align them.',
+    '',
+    `  update said: ${(updateResult.stdout || updateResult.stderr || '').slice(0, 600)}`,
+  ].join('\n'));
+}
+
 const resultsRoot = path.join(workRoot, 'probe-results');
 await mkdir(resultsRoot, { recursive: true });
 const outputPath = path.join(resultsRoot, `${selected.fixture}.json`);
 const policyPath = path.join(resultsRoot, `${selected.fixture}-policy.json`);
 await rm(policyPath, { force: true });
-const { writeFile } = await import('node:fs/promises');
 await writeFile(policyPath, `${JSON.stringify(createLiveEnginePolicy({
   stages: [manifest.stage],
   suiteBudgetUsd: Number(selected['suite-budget']),
@@ -180,6 +262,12 @@ process.stdout.write(`${JSON.stringify({
   /* Which CLI the Agent actually had. Reported because the run that made this necessary looked
      exactly like a Stage failure until somebody read the diagnostics inside it. */
   cli: { version: cli.version, source: cli.source },
+  /* Which Skills the Agent actually read. A verdict reached against a frozen Skill is a verdict
+     about the day the fixture was captured, so the choice is recorded rather than assumed. */
+  skills: overlaySkills ? { overlaid: replacedSkills.length, files: replacedSkills } : { overlaid: false, reason: '--overlay-skills false' },
+  /* The fixture pins an older CLI by construction; this says the probe moved it rather than
+     leaving the Agent to be denied by the fail-closed Hook. */
+  identity: { declared: declared.cli.declared, actual: declared.cli.actual, scaffold: declared.scaffold.declared },
   checks,
   friction: { turns: run.num_turns ?? null, permissionDenials: run.permission_denials?.length ?? null, costUsd: run.total_cost_usd ?? null },
   project: projectRoot,

@@ -88,6 +88,51 @@ describe('work-package protocol', () => {
    * `resolveControlPlane` blocks on the plan existing — so an Agent that writes a plan and then
    * means to work the packages itself has no way to learn that dispatch is the missing step.
    */
+  /*
+   * `--commit` is the one place XForge writes Git history, so both halves of that are asserted here:
+   * that it commits exactly the two files the dispatch wrote and leaves everything else alone, and
+   * that it refuses loudly rather than half-committing when Git will not cooperate.
+   */
+  it('commits only the receipt and the audit index, leaving other dirty paths alone', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([workPackage('T001')]));
+    await initializeGit(root);
+    await advanceSolidToApply(root);
+    /* A path the caller happens to have dirty. `git add -A` -- how the by-hand instruction was
+       actually carried out in measured runs -- would sweep this into the delivery's base commit. */
+    await write(root, 'unrelated-scratch.txt', 'not part of this dispatch\n');
+
+    const dispatched = await runCli(root, ['work-package', 'dispatch', '--change', 'add-feature', '--package', 'T001', '--commit']);
+    expect(dispatched.code).toBe(0);
+    expect(dispatched.json.data.committed).toMatch(/^[0-9a-f]{40}$/);
+
+    const inCommit = (await git(root, ['show', '--name-only', '--format=', 'HEAD'])).split('\n').filter(Boolean).sort();
+    expect(inCommit).toEqual([
+      `xforge/changes/add-feature/evidence/agents/T001/dispatch/${dispatched.json.data.receipt.executionId}.json`,
+      'xforge/changes/add-feature/evidence/audit/index.json',
+    ].sort());
+    expect(await git(root, ['status', '--porcelain'])).toContain('unrelated-scratch.txt');
+
+    /* With the flag the reply stops telling the caller to do what it just did. */
+    expect(dispatched.json.data.next).toEqual([]);
+  });
+
+  it('refuses with XFORGE_WORK_PACKAGE_COMMIT_FAILED rather than half-committing when Git will not', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([workPackage('T001')]));
+    await initializeGit(root);
+    await advanceSolidToApply(root);
+    /* A held index lock is the deterministic way to make `git add` fail without depending on the
+       machine's global Git configuration. */
+    await write(root, '.git/index.lock', '');
+
+    const refused = await runCli(root, ['work-package', 'dispatch', '--change', 'add-feature', '--package', 'T001', '--commit']);
+    expect(refused.code).not.toBe(0);
+    expect(refused.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_WORK_PACKAGE_COMMIT_FAILED');
+  });
+
   it('names dispatch as the way out of an undispatched work package, and says nothing once it is dispatched', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);

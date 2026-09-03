@@ -139,6 +139,23 @@ function escalationRoute(flow: Flow, config: ChangeConfig, flows: readonly Flow[
   return ' No Flow this project has is eligible for it; adopting one is a decision for a person, not a classification to restate.';
 }
 
+/**
+ * Why the honest answer is the cheap one, said where the refusal is read.
+ *
+ * `moduleContract` is the only eligibility key nothing else can corroborate. Risk, module count and
+ * the critical-impact flags are all restated elsewhere in the Change or checkable against the
+ * repository; whether this Change moves an interface *between modules* is known only because the
+ * author said so. So the refusal it produces is the one an Agent can dismiss by editing the input
+ * that caused it, and doing that looks exactly like clearing a mistake.
+ *
+ * This sentence used to live in `xforge-propose` as seven lines every Change read on the way in,
+ * including the nine in ten that never set the key. It belongs to the moment the key actually
+ * refuses something, which is here: `xforge explain XFORGE_FLOW_TOO_WEAK` and the refusal itself
+ * are both places an Agent arrives only when it matters.
+ */
+const CONTRACT_KEY_IS_UNCORROBORATED =
+  ' Nothing compares moduleContract with the diff, so answering false here is not a weaker check — it is the one move that puts an interface change onto a Flow with no Stage that declares it.';
+
 export function flowEligibilityDiagnostics(
   flow: Flow,
   config: ChangeConfig,
@@ -162,7 +179,9 @@ export function flowEligibilityDiagnostics(
     const problems = eligibilityProblems(flow, config);
     if (problems.length > 0) diagnostics.push(diagnostic(
       'XFORGE_FLOW_TOO_WEAK',
-      `Flow ${flow.metadata.name} is not eligible for this Change: ${problems.join('; ')}.${escalationRoute(flow, config, candidates)}`,
+      `Flow ${flow.metadata.name} is not eligible for this Change: ${problems.join('; ')}.${escalationRoute(flow, config, candidates)}${
+        flow.policy.eligibleWhen.contractImpact === 'forbidden' && classification.moduleContract ? CONTRACT_KEY_IS_UNCORROBORATED : ''
+      }`,
       changePath,
     ));
     if (requiredFlows.length > 0 && !satisfiesRequired) diagnostics.push(requiredPolicyDiagnostic);

@@ -424,6 +424,8 @@ export async function resolveChangeState(
     id: changeId,
     path: toProjectPath(project.root, changeDirectory),
     flow: flow.metadata.name,
+    /* Filled in where governance resolves; null for a Flow that declares no Stages. */
+    stage: null,
     classification: config.classification,
     scope: config.scope,
     artifacts: artifactStates,

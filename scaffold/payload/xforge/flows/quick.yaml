@@ -2,7 +2,7 @@ apiVersion: xforge.dev/v1alpha2
 kind: Flow
 metadata:
   name: quick
-  version: 4
+  version: 5
   description: Fast delivery for low-risk, single-module, clearly scoped, and easily reversible changes
 policy:
   assuranceLevel: quick
@@ -35,7 +35,23 @@ artifacts:
   - id: delta-specs
     generates: specs/**/*.md
     description: Define observable requirement and scenario deltas
-    instruction: Use stable Requirement IDs for success, failure, boundary, and compatibility scenarios without implementation detail.
+    instruction: >-
+      Use stable Requirement IDs for success, failure, boundary, and compatibility scenarios
+      without implementation detail.
+
+
+      The file name is not free. Its path names a **capability**, and archive merges this delta into
+      the project's canonical Specs at that same relative path — so the name chosen here is a
+      long-lived identifier, not a filename for one Change. Two accepted forms, and they mean the
+      same thing: `specs/<capability>/spec.md`, or the flat `specs/<capability>.md`. Anything else
+      still parses, and quietly declares a capability nobody meant: `specs/root/spec.md` declares a
+      capability called `root`.
+
+      Reuse a capability this project already records before inventing one. Two Changes that name
+      the same behaviour differently merge into two different canonical files, and nothing compares
+      them — the requirement-level conflict checks are per file, so the collision is never reported.
+      `xforge state` lists the canonical Specs this project has; when it lists none, the name chosen
+      here becomes the first one.
     outline: |
       ## ADDED Requirements
       ### Requirement: <REQ-ID> <name>

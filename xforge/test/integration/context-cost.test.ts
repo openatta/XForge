@@ -204,14 +204,29 @@ describe('what a Stage pays to read', () => {
     const skills = join(root, 'xforge', 'scaffold', 'skills');
     const names = (await readdir(skills)).filter((name) => name.startsWith('xforge-'));
 
+    /*
+     * Both entries, because there are two and each is right where it is used.
+     *
+     * A Stage Skill opens with `xforge stage --change <id>`, which returns the plan and the text of
+     * the ready Action's inputs in one reply. `xforge-propose` opens with `state` instead, and has
+     * to: at that moment there is no Change for `stage` to be about. Asserting only the narrowed
+     * `state` form was right until the working set existed and would now pass a Skill that opens
+     * with nothing at all.
+     */
     const invariants: Array<{ skill: string; command: string }> = [];
     for (const name of names) {
       const text = await readFile(join(skills, name, 'SKILL.md'), 'utf8').catch(() => '');
-      for (const match of text.matchAll(/`(xforge state [^`]*--field[^`]*)`/gu)) {
+      for (const match of text.matchAll(/`(xforge (?:state [^`]*--field[^`]*|stage --change <id>))`/gu)) {
         invariants.push({ skill: name, command: match[1]!.replace(/<id>/gu, 'add-feature') });
       }
     }
     expect(invariants.length).toBeGreaterThanOrEqual(6);
+    /* Every Skill that drives a Stage has one. A Skill with none is a Skill whose Agent starts by
+       guessing, which is the failure this whole check exists for. */
+    const stageSkills = ['xforge-propose', 'xforge-clarify', 'xforge-design', 'xforge-check', 'xforge-apply', 'xforge-verify'];
+    for (const name of stageSkills) {
+      expect(invariants.some((entry) => entry.skill === name), `${name} declares no opening call`).toBe(true);
+    }
 
     for (const { skill, command } of invariants) {
       const result = await runCli(root, command.split(/\s+/u).slice(1));

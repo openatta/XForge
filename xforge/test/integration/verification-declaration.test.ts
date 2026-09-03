@@ -123,9 +123,17 @@ describe('declared verification', () => {
     const passing = await runCli(root, ['check', '--change', CHANGE, '--gate', 'unit-tests']);
     expect(passing.code).toBe(0);
     expect(passing.json.data.gates[0].status).toBe('passed');
-    /* `passed` here always means something ran; the transcript is the evidence of that. */
-    expect(passing.json.data.gates[0].evidence.stdout).toContain('ran 2 tests');
-    expect(passing.json.data.gates[0].evidence.stdout).toContain('declared by owner@example.test');
+    /*
+     * `passed` here always means something ran; the transcript is the evidence of that.
+     *
+     * The default reply trims a passing Gate's transcript to the lines that carry meaning a status
+     * does not, so the first line is asserted from the summary and the whole record from the option
+     * that exists to ask for it. Both matter: a reader must be able to tell a real run from a
+     * vacuous pass without a second call, and must still be able to get the full transcript.
+     */
+    expect(passing.json.data.gates[0].evidence.outputLines.join('\n')).toContain('ran 2 tests');
+    const full = await runCli(root, ['check', '--change', 'add-feature', '--gate', 'unit-tests', '--evidence-detail', 'full']);
+    expect(full.json.data.gates[0].evidence.stdout).toContain('declared by owner@example.test');
   });
 
   it('stops at the first failing command and names it', async () => {

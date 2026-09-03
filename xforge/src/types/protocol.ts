@@ -53,6 +53,19 @@ export interface NextAction {
    * needs it, and a fact the product can state is one no Skill has to carry.
    */
   requiredSections?: string[];
+  /**
+   * A starting document for an Action that writes a file no outline describes.
+   *
+   * `requiredSections` answers this for a Markdown Artifact: the Flow declares the `## ` headings
+   * and the CLI states them verbatim. A `change.yaml` has no outline to declare — it is a schema,
+   * not a document — so the shape lived as a fenced block inside `xforge-propose`, maintained by
+   * hand, and a classification key added to the schema could ship as a guard the one Skill expected
+   * to trigger it never mentioned. That happened to `moduleContract`.
+   *
+   * Rendered by the product with this project's own default Flow and first module substituted in,
+   * because those are the two fields an author is most likely to accept unread.
+   */
+  template?: string;
   doneWhen?: string[];
   requiredEvidence?: string[];
   reworkTo?: string[];

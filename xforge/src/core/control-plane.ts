@@ -528,7 +528,16 @@ export function blockRemedy(
        belonging to Stages the Change has not reached, which cannot pass yet and is not the advice. */
     return {
       code: 'XFORGE_GATE_EVIDENCE_STALE_REMEDY',
-      message: `Gate Evidence is bound to the content revision, so editing any Artifact after a Gate ran makes that Gate stale. Run \`xforge check --change ${changeId}\` after your last write to re-run this Stage's Gates against the current content.`,
+      /*
+       * The remedy said why it staled and not how to stop it staling again.
+       *
+       * A Stage whose Artifact must record what the Gates reported has an ordering problem the
+       * message never named: cite a Gate and the citation moves the content revision, staling the
+       * Gate that was just cited. Four measured runs met it; the three that wrote the citing
+       * Artifact last spent two `check` runs, and the one that wrote it first spent four plus three
+       * rounds of editing. The order is not a preference, it is the one that terminates.
+       */
+      message: `Gate Evidence is bound to the content revision, so editing any Artifact after a Gate ran makes that Gate stale. Run \`xforge check --change ${changeId}\` after your last write to re-run this Stage's Gates against the current content. If an Artifact of this Stage has to record what the Gates reported, write it last: everything the Gates read first, then one \`check\`, then that Artifact quoting it, then a final \`check\`. Writing it earlier means citing results that do not exist yet and staling them when you correct it.`,
     };
   }
 

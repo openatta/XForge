@@ -6,7 +6,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 
 # Invariants
 
-- Run `xforge state --change <id> --field nextActions --field diagnostics --field change.governance --field change.nextArtifact --field change.artifacts --field change.mandatoryGateEvidence` and resolve the mode as `verify-only`, `verify-and-archive`, or `archive-current`; without explicit archive authority, verify only.
+- **Enter** with `xforge stage --change <id>`. It returns where the Change stands, the ready Action with its `writes`, `requiredSections`, `instruction` and `outline`, the text of that Action's `inputs`, the Constitution, and the diagnostics — in one reply. Do not open those inputs separately; they arrived. Re-run it after each Artifact rather than asking what changed. It also carries what this Stage declares — what it produces, its Gates, its exit conditions, its rework routes — so `xforge/flows/*.yaml` does not need opening: the Flow file is 400 lines and the Action already holds the outline you would go there for.
 - Reread current-revision Proposal, delta/canonical Specs, optional Clarifications/Design/Check report, implementation diff, work packages/deliveries, Constitution, Rules, and Gates.
 - Do not fix product code by default or hand-write/tamper with Gate Evidence. Implementation changes invalidate old verification receipts.
 - Archive is a separate `archive-write` protocol action and does not grant deploy/release authority.

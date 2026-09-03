@@ -79,6 +79,9 @@ xforge/scaffold/skills/<skill-id>/
 
 ### 1.2 写作规范
 
+> **完整规范见 [Skill 编写规范](skill-authoring.md)** —— 四类句子、CLI 调用的唯一写法、
+> 强制复述清单、机器校验对照表。这里只保留新增一个 Skill 时必须先知道的部分。
+
 **Frontmatter**
 
 ```yaml
@@ -86,13 +89,11 @@ xforge/scaffold/skills/<skill-id>/
 name: my-skill
 description: 一句话说清「产出什么、什么时候用」
 allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
-license: Apache-2.0
-metadata:
-  author: ...
-  version: 1
-  source: ...          # 若改编自别处
 ---
 ```
+
+> ⚠️ frontmatter **只写宿主或 CLI 真的会读的字段**。不要写 `license:` 或 `metadata:` ——
+> 归属信息在 `scaffold/NOTICE` 里写一次，逐文件重复会被产品契约测试拒绝。
 
 **固定五个章节，顺序不变**
 
@@ -136,6 +137,8 @@ metadata:
 - [ ] `SKILL.md` + `SKILL_cn.md` 已创建，结构一致、语义镜像
 - [ ] 五个标准章节齐全；Authority 精确列出能写 / 不能写
 - [ ] 散文里没有按 Flow 名字分支
+- [ ] CLI 调用只用[六动作写法](skill-authoring.md)，命令取自 `nextActions[].command`
+- [ ] 对照 [Skill 编写规范 §5](skill-authoring.md) 的强制复述清单逐条确认
 - [ ] 已登记进 `manifest.yaml` 的 `scaffold.skills`
 - [ ] `xforge sync --dry-run` 已核对，再运行 `xforge sync`
 

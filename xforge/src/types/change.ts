@@ -41,6 +41,18 @@ export interface ChangeState {
   id: string;
   path: string;
   flow: string;
+  /**
+   * The Stage this Change is on, beside its id — the same value `governance.currentStage` carries.
+   *
+   * Duplicated deliberately, and the duplication is the point. Four measured runs ended by asking
+   * `state --change <id>` where the Change now was, and each spent three or four calls finding out:
+   * `data.stage` (absent), `data.change.stage` (absent), then a printed key listing, and in two runs
+   * a crash on the way. The answer was five levels down under `governance`, which is where it
+   * belongs for everything that reasons about receipts and revisions — and nowhere near where a
+   * reader looks for "which Stage is this". `activeChanges[].stage` already mirrors it at the
+   * portfolio level for exactly this reason; this is the same mirror one level in.
+   */
+  stage: string | null;
   classification: ChangeConfig['classification'];
   scope: ChangeConfig['scope'];
   artifacts: ArtifactState[];

@@ -15,38 +15,22 @@ Data: {
       "id": "structure",
       "status": "passed",
       "evidence": {
-        "protocolVersion": "2",
-        "schemaVersion": "1",
         "gate": "structure",
-        "change": "add-feature",
-        "flow": "solid",
-        "stage": "verify",
-        "stateRevision": "<sha256>",
-        "contentRevision": "<sha256>",
-        "policySnapshotDigest": "<sha256>",
-        "gitBase": "unknown",
-        "gitHead": "unknown",
-        "inputDigest": "<sha256>",
-        "runner": {
-          "name": "@xforge/cli",
-          "version": "0.8.1",
-          "integrity": "sha256:<sha256>"
-        },
+        "status": "passed",
         "command": [
           "builtin:structure"
         ],
-        "shell": false,
-        "workingDirectory": ".",
         "exitCode": 0,
-        "timedOut": false,
-        "outputTruncated": false,
-        "stdout": "Structural validation passed.",
-        "stderr": "",
-        "startedAt": "<timestamp>",
-        "finishedAt": "<timestamp>",
         "durationMs": <ms>,
-        "status": "passed",
-        "digest": "<sha256>"
+        "timedOut": false,
+        "outputLines": [
+          "Structural validation passed."
+        ],
+        "outputBytes": 29,
+        "contentRevision": "<sha256>",
+        "digest": "<sha256>",
+        "evidencePath": "xforge/changes/add-feature/evidence/structure.json",
+        "omitted": "stdout, stderr and the revision bindings are in the file at evidencePath; re-run with --evidence full to have them inline."
       },
       "evidencePath": "xforge/changes/add-feature/evidence/structure.json"
     },
@@ -54,38 +38,22 @@ Data: {
       "id": "unit-tests",
       "status": "passed",
       "evidence": {
-        "protocolVersion": "2",
-        "schemaVersion": "1",
         "gate": "unit-tests",
-        "change": "add-feature",
-        "flow": "solid",
-        "stage": "verify",
-        "stateRevision": "<sha256>",
-        "contentRevision": "<sha256>",
-        "policySnapshotDigest": "<sha256>",
-        "gitBase": "unknown",
-        "gitHead": "unknown",
-        "inputDigest": "<sha256>",
-        "runner": {
-          "name": "@xforge/cli",
-          "version": "0.8.1",
-          "integrity": "sha256:<sha256>"
-        },
+        "status": "passed",
         "command": [
           "builtin:declared:unit-tests"
         ],
-        "shell": false,
-        "workingDirectory": ".",
         "exitCode": 0,
-        "timedOut": false,
-        "outputTruncated": false,
-        "stdout": "node -e console.log(\"fixture verification ok\") -> exit 0 in <ms> (declared by owner@example.test)\nfixture verification ok\n",
-        "stderr": "",
-        "startedAt": "<timestamp>",
-        "finishedAt": "<timestamp>",
         "durationMs": <ms>,
-        "status": "passed",
-        "digest": "<sha256>"
+        "timedOut": false,
+        "outputLines": [
+          "node -e console.log(\"fixture verification ok\") -> exit 0 in <ms> (declared by owner@example.test)"
+        ],
+        "outputBytes": 122,
+        "contentRevision": "<sha256>",
+        "digest": "<sha256>",
+        "evidencePath": "xforge/changes/add-feature/evidence/tests.json",
+        "omitted": "stdout, stderr and the revision bindings are in the file at evidencePath; re-run with --evidence full to have them inline."
       },
       "evidencePath": "xforge/changes/add-feature/evidence/tests.json"
     }
@@ -171,6 +139,72 @@ Next actions: [
       "<what you decided>",
       "--by",
       "<you>"
+    ]
+  },
+  {
+    "action": "transition",
+    "type": "transition",
+    "id": "ready-to-archive",
+    "actor": "main",
+    "status": "ready",
+    "inputs": [
+      "current Change state",
+      "required gates and approvals"
+    ],
+    "writes": [
+      "transition receipt"
+    ],
+    "doneWhen": [
+      "Current Stage is ready-to-archive."
+    ],
+    "requiredEvidence": [
+      "valid transition receipt"
+    ],
+    "reworkTo": [
+      "verify"
+    ],
+    "reason": "Transition to ready-to-archive is ready.",
+    "blockedBy": [],
+    "command": [
+      "xforge",
+      "transition",
+      "--change",
+      "add-feature",
+      "--to",
+      "ready-to-archive"
+    ]
+  },
+  {
+    "action": "transition",
+    "type": "transition",
+    "id": "apply",
+    "actor": "main",
+    "status": "ready",
+    "inputs": [
+      "current Change state",
+      "required gates and approvals"
+    ],
+    "writes": [
+      "transition receipt"
+    ],
+    "doneWhen": [
+      "Current Stage is apply."
+    ],
+    "requiredEvidence": [
+      "valid transition receipt"
+    ],
+    "reworkTo": [
+      "verify"
+    ],
+    "reason": "Transition to apply is ready.",
+    "blockedBy": [],
+    "command": [
+      "xforge",
+      "transition",
+      "--change",
+      "add-feature",
+      "--to",
+      "apply"
     ]
   }
 ]

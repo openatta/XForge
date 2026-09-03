@@ -2,9 +2,19 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { scaffoldPayload, repositoryRoot } from '../helpers.js';
+import { changeTemplate } from '../../src/core/change-template.js';
 
 /**
- * The classification keys the CLI acts on, checked against the one Skill that writes them.
+ * The classification keys the CLI acts on, checked against the thing that offers them.
+ *
+ * That used to be a fenced YAML block inside `xforge-propose`, because creating a Change was the
+ * one step of a governed Flow no Action described. It is now the `create-change` Action's
+ * `template`, rendered by `core/change-template.ts` with this project's own default Flow and first
+ * module substituted in — so the shape has a single author again, and the Skill can say "fill in
+ * the template the Action gives you" instead of carrying a copy that drifts.
+ *
+ * The assertion follows it. What matters has not changed: a key the schema defines and the offered
+ * template omits is a guard nothing can ever trigger.
  *
  * `moduleContract` shipped as a fully wired eligibility key: `change.schema.json` defines it,
  * `checker.ts` reads it, and all three shipped Flows declare `contractImpact: forbidden` with
@@ -20,29 +30,22 @@ import { scaffoldPayload, repositoryRoot } from '../helpers.js';
 describe('Skill and classification contract', () => {
   const SKILLS = ['SKILL.md', 'SKILL_cn.md'] as const;
 
-  /** The `change.yaml` block in `xforge-propose`, which the Skill tells the Agent to preserve. */
-  function template(source: string, file: string): string {
-    const match = /```yaml\n([\s\S]*?)```/.exec(source);
-    expect(match, `${file}: no fenced yaml block found`).toBeTruthy();
-    const block = match![1]!;
-    expect(block, `${file}: the first yaml block is not the change.yaml template`).toContain('classification:');
-    return block;
-  }
-
-  it('names every classification key the schema defines in the change.yaml template', async () => {
+  it('offers every classification key the schema defines in the create-change template', async () => {
     const schema = JSON.parse(
       await readFile(path.join(repositoryRoot, 'xforge', 'schemas', 'change.schema.json'), 'utf8'),
     ) as { properties: { classification: { properties: Record<string, unknown> } } };
     const keys = Object.keys(schema.properties.classification.properties);
     expect(keys.length).toBeGreaterThan(1);
 
-    for (const file of SKILLS) {
-      const source = await readFile(path.join(scaffoldPayload, 'xforge', 'scaffold', 'skills', 'xforge-propose', file), 'utf8');
-      const block = template(source, file);
-      for (const key of keys) {
-        expect(block, `xforge-propose/${file}: the change.yaml template omits classification key "${key}", so an Agent following it never sets one`).toContain(`${key}:`);
-      }
+    const template = changeTemplate('solid', ['root']);
+    for (const key of keys) {
+      expect(template, `the create-change template omits classification key "${key}", so an Agent following the Action never sets one`).toContain(`${key}:`);
     }
+    /* The two fields that come from the project rather than from a placeholder. An Agent accepts
+       these unread more often than any other, so a template that hardcoded them would be worse
+       than one that left them blank. */
+    expect(template).toContain('flow: solid');
+    expect(template).toContain('modules: [root]');
   });
 
   /**

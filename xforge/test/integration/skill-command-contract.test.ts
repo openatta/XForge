@@ -42,11 +42,40 @@ describe('Skill and CLI command contract', () => {
    * rather than a command, and is skipped — matching it against the command table would report the
    * angle brackets as an unknown command.
    */
+  /*
+   * Flows instruct too, and the check has to follow the authority.
+   *
+   * A Flow's `instruction` is served to the Agent inside the ready Action, so a command named there
+   * is as much an instruction as one in a Skill -- and compressing the Skills moved several of them
+   * across that line deliberately, to stop two files describing one Artifact. Scanning only Skills
+   * after that would have quietly dropped `xforge contract list` out of this contract: still
+   * instructed, no longer checked, and free to name a command the CLI had renamed.
+   */
+  const flowFiles = async (): Promise<Array<{ label: string; source: string }>> => {
+    const roots = [
+      path.join(repositoryRoot, 'scaffold', 'payload', 'xforge', 'flows'),
+      path.join(repositoryRoot, 'scaffold', 'payload', 'xforge', 'scaffold', 'flows'),
+    ];
+    const found: Array<{ label: string; source: string }> = [];
+    for (const root of roots) {
+      for (const name of (await readdir(root)).filter((entry) => entry.endsWith('.yaml')).sort()) {
+        found.push({ label: `flows/${name}`, source: await readFile(path.join(root, name), 'utf8') });
+      }
+    }
+    return found;
+  };
+
   async function invocations(): Promise<Invocation[]> {
     const found: Invocation[] = [];
+    const documents: Array<{ label: string; source: string }> = [];
     for (const skill of (await readdir(skillsRoot)).sort()) {
       for (const file of (await readdir(path.join(skillsRoot, skill))).filter((name) => name.endsWith('.md')).sort()) {
-        const source = await readFile(path.join(skillsRoot, skill, file), 'utf8');
+        documents.push({ label: `${skill}/${file}`, source: await readFile(path.join(skillsRoot, skill, file), 'utf8') });
+      }
+    }
+    documents.push(...await flowFiles());
+    {
+      for (const { label: skill, source } of documents) {
         const spans = [
           ...[...source.matchAll(/`([^`\n]*)`/g)].map((match) => match[1]!),
           ...source.split('\n').filter((line) => line.trim().startsWith('xforge ')).map((line) => line.trim()),
@@ -60,7 +89,7 @@ describe('Skill and CLI command contract', () => {
           const second = tokens[1];
           const subcommand = second && /^[a-z][a-z-]*$/.test(second) ? second : null;
           found.push({
-            skill: `${skill}/${file}`,
+            skill,
             command,
             subcommand,
             flags: [...new Set(tokens.filter((token) => /^--[a-z][a-z-]*$/.test(token)))].sort(),

@@ -5,7 +5,7 @@
 
 ---
 
-## 六份核心文档
+## 七份核心文档
 
 | 文档 | 回答什么 | 什么时候读 |
 | --- | --- | --- |
@@ -15,6 +15,7 @@
 | [仓库与文件布局](repository-layout.md) | 每个中间产物落在哪、归谁写、被谁校验 | 排障或写台账时 |
 | [子 Agent 设计](sub-agent-design.md) | 并行工作包与 Worker / Integrator / Reviewer | 要并行交付时 |
 | [CLI 用法](cli-tool-usage.md) | 有哪些命令、接什么参数、返回什么、退出码与常见诊断码 | 查命令时 |
+| [Skill 编写规范](skill-authoring.md) | 一个 Skill 该怎么写：四类句子、CLI 调用的唯一写法、强制复述清单 | 写或改 Skill 时 |
 
 ---
 
@@ -47,6 +48,10 @@
 **「我想接公司的审批系统」**
 → [扩展指南 §7.5](extension-guide.md)（MCP provider 四步）
 
+**「我要写一个 Skill / 改一个 Skill」**
+→ [Skill 编写规范](skill-authoring.md)（怎么写）
+→ [扩展指南 §1](extension-guide.md)（放哪、怎么登记）
+
 **「并行交付要注意什么」**
 → [子 Agent 设计 §6.3](sub-agent-design.md)（`write_paths` 不相交只是必要条件）
 → [子 Agent 设计 §5.3](sub-agent-design.md)（`done_when_evidence` 前缀匹配）
@@ -76,6 +81,6 @@
 - **发布流程**：[RELEASING.md](../RELEASING.md)（仅英文）。
 
 产品规格、CLI 设计、测试设计、设计评审与审计报告属于内部材料，**不在本仓库发布**，
-本目录也不再保留它们的副本。这六份核心文档就是 XForge 公开文档的全部。
+本目录也不再保留它们的副本。这七份核心文档就是 XForge 公开文档的全部。
 
-> 六份核心文档以源码为准。发现文档与实现不一致时，以源码为准并提 issue。
+> 七份核心文档以源码为准。发现文档与实现不一致时，以源码为准并提 issue。
