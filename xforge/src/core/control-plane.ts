@@ -408,7 +408,8 @@ function whenItBites(flow: StageFlow, gateId: string): string {
     const remedy = blockRemedy(transition.blockedBy, changeId);
     if (!remedy || remedied.has(remedy.code)) continue;
     remedied.add(remedy.code);
-    diagnostics.push(diagnostic(remedy.code, remedy.message, `${project.changesPath}/${changeId}`, 'info'));
+    const entry = diagnostic(remedy.code, remedy.message, `${project.changesPath}/${changeId}`, 'info');
+    diagnostics.push(remedy.remedy ? { ...entry, remedy: remedy.remedy } : entry);
   }
 
   const governance: GovernanceState = {
@@ -469,7 +470,7 @@ export function blockRemedy(
      */
     current?: { contentRevision: string; policySnapshotDigest: string; artifactsMoved: boolean };
   } = {},
-): { code: string; message: string } | null {
+): { code: string; message: string; remedy?: Diagnostic['remedy'] } | null {
   /*
    * Ordered before the Gate remedy deliberately. Editing an Artifact after the closing transition
    * produces both blocks at once — the receipt goes stale and every Gate it bound goes stale with
@@ -570,6 +571,9 @@ export function blockRemedy(
   if (unreviewedPackages.length > 0) {
     const commands = unreviewedPackages.map((id) => `\`xforge work-package acknowledge --change ${changeId} --package ${id} --as reviewer --evidence <path>\``).join(', ');
     return {
+      remedy: {
+        commands: unreviewedPackages.map((id) => ['xforge', 'work-package', 'acknowledge', '--change', changeId, '--package', id, '--as', 'reviewer', '--evidence', '<path>']),
+      },
       code: 'XFORGE_INDEPENDENT_REVIEW_REMEDY',
       message: `This Flow requires every delivered work package to carry a Reviewer acknowledgement before Verify closes. The Reviewer is read-only and cannot write its own evidence: transcribe its returned result verbatim to \`<change>/evidence/agents/<package>/review/<execution>.md\` -- the \`review/\` subdirectory and the \`.md\` are both load-bearing, because \`evidence/agents/<package>/*.yaml\` is where delivery records live and a transcript written there is read as one -- then record it — ${commands}.`,
     };
@@ -590,6 +594,14 @@ export function blockRemedy(
     return {
       code: 'XFORGE_WORK_PACKAGE_UNDISPATCHED_REMEDY',
       message: `Apply cannot close while a package in this Change's work-package plan has never been dispatched. Dispatch each one, have its Worker record a delivery, then run \`xforge check --change ${changeId}\` to bind the deliveries: ${packages}.`,
+      /* Every package, then the bind -- naming the first dispatch alone would name a step that does
+         not finish the job, which is the whole reason this is a list. */
+      remedy: {
+        commands: [
+          ...undispatched.map((id) => ['xforge', 'work-package', 'dispatch', '--change', changeId, '--package', id]),
+          ['xforge', 'check', '--change', changeId],
+        ],
+      },
     };
   }
 

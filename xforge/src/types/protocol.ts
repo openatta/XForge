@@ -15,6 +15,24 @@ export interface Diagnostic {
   message: string;
   path?: string;
   details?: unknown;
+  /**
+   * What to run, for the diagnostics that know.
+   *
+   * A remedy has only ever been English inside `message`: of the 520 sites that raise one, the ones
+   * that name a command name it in prose, and a reader has to parse it back out of a sentence. The
+   * seven codes ending `_REMEDY` promise one in their name and deliver a paragraph.
+   *
+   * Deliberately narrow. Most diagnostics have no command -- the next step is work, or a decision,
+   * or a human -- and inventing one for them would be worse than the prose. This is populated only
+   * where the command is determinate, and `message` stays the authority: it says *why*, which is
+   * the half a command cannot carry.
+   *
+   * `commands` rather than `command` because a block is routinely plural -- three undispatched
+   * packages are three dispatches, and collapsing them to the first would name a step that does not
+   * finish the job. An argv may contain a `<placeholder>` the reader has to fill; that is still
+   * more useful than the same argv inside a sentence.
+   */
+  remedy?: { commands?: string[][] };
 }
 
 export interface FileChange {

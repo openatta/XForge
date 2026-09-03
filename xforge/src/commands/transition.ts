@@ -156,7 +156,14 @@ export async function executeTransition(project: ProjectContext, options: { chan
   }
   for (const block of requirement.blockedBy) diagnostics.push(diagnostic('XFORGE_TRANSITION_BLOCKED', `Transition is blocked by ${block}.`, `${project.changesPath}/${options.change}`));
   const remedy = blockRemedy(requirement.blockedBy, options.change);
-  if (remedy) diagnostics.push(diagnostic(remedy.code, remedy.message, `${project.changesPath}/${options.change}`, 'info'));
+  /* Widened after construction rather than by a sixth positional parameter on the helper: 520 sites
+     call it positionally and none of them has a remedy to pass. Bound to a name first, because the
+     catalogue scanner matches the helper's call form with a lookbehind that rejects a preceding
+     dot, so spreading it inline would drop this site out of the catalogue entirely. */
+  if (remedy) {
+    const entry = diagnostic(remedy.code, remedy.message, `${project.changesPath}/${options.change}`, 'info');
+    diagnostics.push(remedy.remedy ? { ...entry, remedy: remedy.remedy } : entry);
+  }
 
   /*
    * Surfaced as a warning, not a block, and deliberately: the Stage this remnant advanced to is

@@ -182,7 +182,10 @@ async function planArchive(project: ProjectContext, changeId: string, options: P
           artifactsMoved,
         },
       });
-      if (remedy) diagnostics.push(diagnostic(remedy.code, remedy.message, `${project.changesPath}/${changeId}`, 'info'));
+      if (remedy) {
+        const entry = diagnostic(remedy.code, remedy.message, `${project.changesPath}/${changeId}`, 'info');
+        diagnostics.push(remedy.remedy ? { ...entry, remedy: remedy.remedy } : entry);
+      }
     }
     const tracker = structure.change.apply.tracks;
     if (tracker) {

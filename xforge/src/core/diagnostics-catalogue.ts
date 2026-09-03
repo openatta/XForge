@@ -177,7 +177,11 @@ export async function rawCallCount(xforgeRoot: string): Promise<number> {
   for (const file of await sourceFiles(xforgeRoot)) {
     const source = await readFile(file, 'utf8');
     if (notACallSite(file)) continue;
-    total += [...source.matchAll(/(?<![A-Za-z0-9_.])diagnostic\(/g)].length;
+    /* The lookbehind rejects a preceding dot so `foo.diagnostic(` is not a call to this helper --
+       but it also rejected the spread form, and a diagnostic spread inline vanished from the
+       catalogue that claims to list every one this product can emit. Three did, briefly -- and this
+       comment cannot spell the form it is about, because this scanner would read the example. */
+    total += [...source.matchAll(/(?<![A-Za-z0-9_.])diagnostic\(|(?<=\.\.\.)diagnostic\(/g)].length;
   }
   return total;
 }
@@ -246,7 +250,9 @@ export async function readDiagnosticCatalogue(xforgeRoot: string): Promise<Diagn
     const source = await readFile(file, 'utf8');
     const relative = path.relative(xforgeRoot, file).split(path.sep).join('/');
     sites.push(...indirectCodes(source, relative));
-    for (const match of source.matchAll(/(?<![A-Za-z0-9_.])diagnostic\(/g)) {
+    /* Same widening as `rawCallCount`, and for the same reason: the two have to agree or the count
+       assertion fails against a catalogue that is actually correct. */
+    for (const match of source.matchAll(/(?<![A-Za-z0-9_.])diagnostic\(|(?<=\.\.\.)diagnostic\(/g)) {
       const open = match.index! + match[0].length - 1;
       const body = callBody(source, open);
       if (body === null) continue;
