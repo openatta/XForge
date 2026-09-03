@@ -36,7 +36,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash, Task
 
 - 存在 `xforge/architecture.md` 时读取它，实现保持在它记录的决策之内。当实现过程表明某条决策必须修改时，那是一个 rework 信号，不是一条留在原地的备注：回到 Action 的 rework Stage，由 Design 去提议。不要自己写 `evidence/conditions/architectureDeltas.yaml`——那条记录要填具名的 `decidedBy`，Agent 去填一个人的名字，就是在记录一份没人给过的授权。文件不存在时说明一次并继续：那是一个尚未写下架构的项目，不是一个违规的项目。
 - 交付成功必须同时具备真实 Git diff、全部 `verify` 退出为零、每项 `done_when` 的精确非空 `done_when_evidence` 映射，以及 CLI 重新校验结果。
-- 每条 `done_when_evidence` 必须**以**该 delivery 的某个 `changed_paths` 路径原文、或它真实跑过的某条 `verify` 命令原文**开头**，只有这段前缀参与匹配。解释写在 ` — ` 或 ` -- ` 之后，也接受 `path:`/`command:` 前缀。因此 `src/store/mod.rs — 定义 CredentialRepo` 能匹配，而 `src/store/mod.rs:166 — …` 不能；以测试函数名或散文开头的条目同样不能，无论内容多准确。不同判据要引不同证据：一条命令支撑一份 delivery 里的每一条判据，就说明它没有在区分它们，CLI 会指出这一点。
+- 每条 `done_when_evidence` 必须**以**该 delivery 的某个 `changed_paths` 路径原文、或它真实跑过的某条 `verify` 命令原文**开头**，只有这段前缀参与匹配。解释写在 ` — `、` – ` 或 ` -- ` 之后，也接受 `path:`/`command:` 前缀。结尾的 `:166` 或 `:166-190` 会在匹配前被剥掉，所以 `src/store/mod.rs — 定义 CredentialRepo` 与 `src/store/mod.rs:166 — …` **都能**匹配——行号对读者有用就写上。以测试函数名或散文开头的条目不能匹配，无论内容多准确。不同判据要引不同证据：一条命令支撑一份 delivery 里的每一条判据，就说明它没有在区分它们，CLI 会指出这一点。
 - Worker 的自然语言、checkbox 或自报退出码都不是 Gate Evidence；报告包状态、changed paths、命令结果、集成结果和未解决风险。
 
 # 停止与返工
