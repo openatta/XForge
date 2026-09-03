@@ -100,6 +100,7 @@ XFORGE_CONTRACT_DELTA_SECTION_CONTRADICTORY  src/core/contract-delta.ts
 XFORGE_CONTRACT_DELTA_SECTION_DUPLICATE  src/core/contract-delta.ts
 XFORGE_CONTRACT_DELTA_SECTION_EMPTY  src/core/contract-delta.ts
 XFORGE_CONTRACT_MERGE_CONFLICT  src/core/contract-merger.ts
+XFORGE_CONTRACT_MODIFIED_DIGEST_UNCHANGED  src/core/contract-merger.ts
 XFORGE_CONTRACT_READ_FAILED  src/commands/contract.ts
 XFORGE_DECISION_UNKNOWN  src/cli.ts
 XFORGE_DOCTOR_APPROVAL_POLICY_UNUSABLE  src/commands/doctor.ts

@@ -104,7 +104,13 @@ artifacts:
       xforge/contracts/. In each, list every contract element this Change adds, modifies or removes
       as a `### Element:` block headed by its contract element id — the `<kind>:<selector>` form the
       project's own enumeration prints, such as `openapi:paths./orders.post`. Under each block give
-      the owning module, whether the change is breaking, and the before and after shape. For a
+      the owning module, whether the change is breaking, and the before and after shape. Add
+      `- digest: <value>` when your enumeration computes a canonical digest for the element: the
+      baseline carries it forward, and it is the only thing that makes a *modification* decidable
+      later — adding and removing an element are visible in a list of ids, while widening an enum or
+      changing a field's type is not. A MODIFIED block whose digest matches the one the baseline
+      already records is reported, because the delta and the shape then disagree about whether
+      anything changed. For a
       breaking change give the expand-contract steps and cite the entry in
       evidence/conditions/contractDecisions.yaml that records who decided it. Never edit
       xforge/contracts/ directly: it is the record of what was agreed, and archive is what merges

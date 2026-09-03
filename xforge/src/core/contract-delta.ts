@@ -77,6 +77,25 @@ export function moduleOf(body: string): string {
   return raw.replace(/^[`'"]+|[`'"]+$/g, '');
 }
 
+/**
+ * The canonical shape digest an element block declares, or empty when it declares none.
+ *
+ * Optional, and the reason it exists is measured: the baseline was a list of ids and prose, so
+ * `contract-compat` and `contract-drift` could only do membership arithmetic. Adding, removing and
+ * renaming an element were decidable; *modifying* one -- widening an enum, changing a field's type,
+ * making a field required -- was invisible, and that is the most common breaking change there is.
+ * A live Change widened an enum on a child element and neither Gate could see it.
+ *
+ * XForge computes nothing here and still understands no dialect. The digest is whatever the
+ * project's own adapter calls the canonical form of that element; all this does is give it somewhere
+ * to live that survives the merge, so the next run has something to compare against. Parsed like
+ * `- module:` -- a prose convention, so trailing decoration is tolerated rather than refused.
+ */
+export function digestOf(body: string): string {
+  const raw = /^[ \t]*[-*+][ \t]+digest:[ \t]*(\S+)/m.exec(body)?.[1] ?? '';
+  return raw.replace(/^[`'"]+|[`'"]+$/g, '');
+}
+
 export function hasContractDeltaSections(source: string): boolean {
   return maskFencedCode(source).split(/\r?\n/).some((line) => SECTION_HEADER.test(line));
 }

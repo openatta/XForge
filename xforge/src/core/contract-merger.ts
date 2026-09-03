@@ -5,7 +5,7 @@ import type { Diagnostic, FileChange, ProjectContext } from '../types.js';
 import { XForgeError, diagnostic } from './errors.js';
 import { sha256 } from './hash.js';
 import { safeResolve } from './path-safety.js';
-import { hasContractDeltaSections, parseContractDelta } from './contract-delta.js';
+import { digestOf, hasContractDeltaSections, parseContractDelta } from './contract-delta.js';
 import { exists } from './files.js';
 import { maskFencedCode } from './markdown-fences.js';
 
@@ -185,9 +185,30 @@ function mergeExisting(record: string, delta: string, relative: string, raise: C
     active.set(block.id, block);
   }
   for (const block of deltaSection(delta, 'MODIFIED')) {
-    if (!active.has(block.id)) {
+    const recorded = active.get(block.id);
+    if (!recorded) {
       raise(conflict(`Cannot modify "${block.id}": the baseline does not record it. Declare it under ADDED Contract Elements if this Change introduces it.`, relative));
       continue;
+    }
+    /*
+     * Declared as modified, and the shape digest did not move.
+     *
+     * The only thing the baseline lets this product decide about a *modification*, and it can decide
+     * it only when both sides carry a digest -- which is optional, because a project whose adapter
+     * does not compute one is not thereby wrong. When both do, an unchanged digest means the delta
+     * and the shape disagree: either the element did not change and the block belongs somewhere
+     * else, or it changed and the digest was copied forward from the baseline rather than recomputed.
+     * Both are worth a sentence and neither is worth refusing an archive over.
+     */
+    const before = digestOf(recorded.content);
+    const after = digestOf(block.content);
+    if (before && after && before === after) {
+      note(diagnostic(
+        'XFORGE_CONTRACT_MODIFIED_DIGEST_UNCHANGED',
+        `"${block.id}" is declared under MODIFIED Contract Elements and carries the same digest the baseline records (${before}). Either the element did not change, or the digest was carried over rather than recomputed -- the record cannot tell which, and everything downstream reads the digest as the shape.`,
+        relative,
+        'warning',
+      ));
     }
     active.set(block.id, block);
   }
