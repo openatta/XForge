@@ -65,13 +65,22 @@ describe('Skill and classification contract', () => {
   it('offers every document key the work-package schema requires in the create-work-packages template', async () => {
     const schema = JSON.parse(
       await readFile(path.join(repositoryRoot, 'xforge', 'schemas', 'work-package.schema.json'), 'utf8'),
-    ) as { required: string[]; properties: Record<string, { const?: string }> };
+    ) as {
+      required: string[];
+      properties: Record<string, { const?: string }>;
+      $defs: { workPackage: { required: string[] } };
+    };
     expect(schema.required).toContain('apiVersion');
     expect(schema.required).toContain('kind');
 
     const template = workPackagePlanTemplate();
     for (const key of schema.required) {
       expect(template, `the create-work-packages template omits required document key "${key}", so a plan written from it is refused`).toContain(`${key}:`);
+    }
+    /* Both levels, because both are additionalProperties: false and both refuse the plan. `skills`
+       is required and reads as optional, which is exactly the field a template loses silently. */
+    for (const key of schema.$defs.workPackage.required) {
+      expect(template, `the create-work-packages template omits required package field "${key}", so every package written from it is refused`).toContain(`${key}:`);
     }
     /* The two that are `const` in the schema must match by value, not merely be present: a template
        naming the right key with the wrong value fails exactly as hard as one omitting it. */

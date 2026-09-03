@@ -23,6 +23,9 @@ const PLAN_HEADER: Pick<WorkPackagePlan, 'apiVersion' | 'kind'> = {
 /**
  * One package, with every field the schema accepts and nothing it does not.
  *
+ * Every required field is present -- `skills` included, which is required and is the one most
+ * easily read as optional, since a package that names no Skill still sounds well-formed.
+ *
  * Written out rather than reduced to the required subset because the optional fields are where the
  * plan is usually wrong: `verify` as an argv array rather than a shell string, `done_when` as
  * criteria rather than a narrative, `depends_on` present and empty rather than absent. A template
@@ -31,17 +34,28 @@ const PLAN_HEADER: Pick<WorkPackagePlan, 'apiVersion' | 'kind'> = {
  */
 const PACKAGE_SKELETON = [
   '  - id: T001',
+  '    # role: integrator   # the one optional field; its write_paths go inside integrator_paths',
   '    goal: <what this package delivers, in one line>',
   '    depends_on: []',
   '    inputs: [<path or Requirement id this package reads>]',
   '    write_paths: [<project-relative glob this package alone may write>]',
+  '    skills: [<Skill this package is executed under>]',
+  '    # argv arrays, never a shell string: argv[0] is spawned with the rest as literal arguments,',
+  '    # so no pipes, redirection or substitution. Needs a shell? Script it under write_paths.',
   '    verify: [[<argv>, <argument>]]',
   '    done_when:',
+  '      # A criterion holding `: ` parses as a mapping and is refused as `must be string`.',
+  '      # Write those as a block scalar: `- >-` alone on its line, text indented beneath.',
   '      - <observable criterion, checkable without reading the diff>',
 ];
 
 /**
- * The plan a `create-work-packages` Action offers.
+ * The plan a `create-work-packages` Action offers, with the shape rules on the fields they govern.
+ *
+ * The rules used to live in `xforge-apply` step 3, which an Agent reads on every entry to the
+ * Stage whether or not it is writing a plan. Here they are read once, by whoever is writing one,
+ * beside the field each governs -- and they cannot drift from the schema without this file and
+ * `work-package.schema.json` disagreeing in one directory.
  *
  * `integrator_paths` is offered commented out rather than empty: reserving surface obliges the plan
  * to carry a `role: integrator` package, so an empty list adopted unread would be a claim the plan
@@ -55,6 +69,8 @@ export function workPackagePlanTemplate(): string {
     '# integrator_paths: [<shared surface no worker package may write>]',
     'packages:',
     ...PACKAGE_SKELETON,
+    '# These fields and no others, at both levels: the schema is additionalProperties: false.',
+    '# change_id, execution_id, commits, branch, worktree and mode are dispatch data, not plan data.',
     '',
   ].join('\n');
 }
