@@ -106,6 +106,7 @@ XFORGE_DECISION_UNKNOWN  src/cli.ts
 XFORGE_DOCTOR_APPROVAL_POLICY_UNUSABLE  src/commands/doctor.ts
 XFORGE_DOCTOR_APPROVALS_INTERACTIVE_ONLY  src/commands/doctor.ts
 XFORGE_DOCTOR_ARCHITECTURE_ABSENT  src/commands/doctor.ts
+XFORGE_DOCTOR_AUDIT_CHAIN_UNKEYED  src/commands/doctor.ts
 XFORGE_DOCTOR_DEAD_CODE  src/commands/doctor.ts
 XFORGE_DOCTOR_FLOW_CONTENT_DRIFT  src/commands/doctor.ts
 XFORGE_DOCTOR_FLOW_VERSION_DRIFT  src/commands/doctor.ts

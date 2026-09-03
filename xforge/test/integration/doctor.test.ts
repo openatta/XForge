@@ -186,6 +186,46 @@ describe('doctor', () => {
     ]));
   });
 
+  /**
+   * Not "you should turn on the HMAC" -- the default chain is unkeyed by design and honest-agent
+   * governance is a defensible posture, so that would fire on every install. This fires on an
+   * inconsistency: a project that makes audit delivery mandatory to archive has claimed something
+   * stronger than an unkeyed chain in a repository the governed Agent can write.
+   */
+  it('reports a mandatory audit delivery drawn from an unkeyed chain', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await updateYaml(root, 'xforge/manifest.yaml', (manifest: any) => {
+      manifest.audit.remote.requiredFor = ['major'];
+      return manifest;
+    });
+    const result = await runCli(root, ['doctor']);
+    expect(result.code).toBe(0);
+    const finding = (result.json.data.suggestions as any[]).find((item) => item.code === 'XFORGE_DOCTOR_AUDIT_CHAIN_UNKEYED');
+    expect(finding, JSON.stringify((result.json.data.suggestions as any[]).map((item) => item.code))).toBeDefined();
+    expect(finding.message).toContain('audit.chain.hmacSecretEnv');
+  });
+
+  it('says nothing once the project declares a chain secret', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await updateYaml(root, 'xforge/manifest.yaml', (manifest: any) => {
+      manifest.audit.remote.requiredFor = ['major'];
+      manifest.audit.chain = { hmacSecretEnv: 'XFORGE_AUDIT_CHAIN_SECRET' };
+      return manifest;
+    });
+    const result = await runCli(root, ['doctor']);
+    expect((result.json.data.suggestions as any[]).map((item) => item.code)).not.toContain('XFORGE_DOCTOR_AUDIT_CHAIN_UNKEYED');
+  });
+
+  /* And it must stay silent on a stock project, or it is one more line nobody reads. */
+  it('says nothing when delivery is not required, which is the shipped default', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const result = await runCli(root, ['doctor']);
+    expect((result.json.data.suggestions as any[]).map((item) => item.code)).not.toContain('XFORGE_DOCTOR_AUDIT_CHAIN_UNKEYED');
+  });
+
   it('reports an unreadable ownership state, and offers the rebuild that fixes it', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);

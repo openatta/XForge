@@ -111,3 +111,22 @@ audit:
     hmacSecretEnv: XFORGE_AUDIT_HMAC_SECRET
     timeoutSeconds: 5
     requiredFor: []
+  # What the default chain is, and what this block changes -- stated here because the choice is
+  # not visible from anywhere else, and the machinery for the stronger property already exists.
+  #
+  # Every event carries the hash of its predecessor, so the chain detects a rewrite of its own
+  # history. But every input to that hash is public and lives in this repository, and `.audit/` is
+  # not committed -- so it is *corruption*-evident, not *tamper*-evident: it reliably catches a
+  # hand-placed Approval receipt, a truncated log or a forgotten recomputation, and it does not
+  # withstand an actor who rewrites the chain and the receipt together. XForge's default posture is
+  # honest-agent governance and that trade is deliberate.
+  #
+  # Declaring a secret from outside the repository closes it. Every appended event and every
+  # committed index then carries an HMAC over its body, and forging either needs the secret rather
+  # than just the repository. It is not on by default because it fails closed in every direction --
+  # appending to a signed chain without the secret refuses -- so a project that turns it on and
+  # then loses the variable stops being able to record anything, which is the correct behaviour and
+  # a bad surprise. Turn it on when the environment that runs XForge can be relied on to hold it:
+  #
+  #   chain:
+  #     hmacSecretEnv: XFORGE_AUDIT_CHAIN_SECRET
