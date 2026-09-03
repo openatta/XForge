@@ -181,12 +181,35 @@ function shapeFor(gate: string, dismissalCanClose: boolean): string {
   ].join('\n');
 }
 
+/**
+ * The declare call as argv, for the `command` field rather than the prose.
+ *
+ * `shapeFor` has spelled this out for a while, and spelling it out is not the same as carrying it.
+ * `NextAction.command` is the field the Skills tell an Agent to take a command from -- `xforge-verify`
+ * says so in as many words about the approval action -- and this action, the one that answers the
+ * question a declared Gate refuses on, left it undefined. So the only machine-readable route said
+ * nothing and the Agent had to parse an argv back out of a paragraph, which is the failure mode the
+ * `remedy` field on Diagnostic was added to end.
+ *
+ * The placeholders stay placeholders. `suggestionFor` can often guess the program from a build
+ * marker and deliberately is not used here: this Gate exists because guessing produced a `unit-tests`
+ * Gate that passed having run nothing, and an argv that arrives pre-filled is one an Agent will run.
+ * A caller must still put the question to whoever knows -- `<program>` is the part of this that has
+ * to be answered by a person, and it should look unanswered.
+ */
+function declareArgv(gate: string): string[] {
+  return ['xforge', 'verification', 'declare', '--gate-name', gate, '--command', '["<program>","<arg>"]', '--by', '<the person who answered>'];
+}
+
+export { declareArgv as verificationDeclareArgv };
+
 export function notDeclaredNextAction(gate: string, detected: DetectedToolchain[]): NextAction {
   return {
     action: 'declare-verification',
     type: 'maintenance',
     actor: 'human',
     status: 'blocked',
+    command: declareArgv(gate),
     reason: `Gate ${gate} has no command declared under manifest.verification.${gate}, so there is nothing for it to run and it refuses rather than passing. A pass on this Gate always means a declared command ran and exited 0; no number of dismissals produces one. ${suggestionLines(gate, detected)}\n\n${shapeFor(gate, false)}`,
   };
 }
@@ -197,6 +220,11 @@ export function uncoveredNextAction(gate: string, uncovered: DetectedToolchain[]
     type: 'maintenance',
     actor: 'human',
     status: 'blocked',
+    /* The declare form only. Either answer closes this one -- a command for the marker, or a recorded
+       dismissal of it -- but `NextAction.command` is singular, and the alternative is spelled out in
+       `reason` immediately below rather than half-carried here. Widening the field to a list is a
+       protocol change, and this is not the commit to make it in. */
+    command: declareArgv(gate),
     reason: `Gate ${gate} declares commands, but ${uncovered.length === 1 ? 'a build-system marker was found that none of them accounts for' : 'build-system markers were found that none of them accounts for'}. ${suggestionLines(gate, uncovered)}\n\nEither declare a command for it, or record it as not applicable with a justification — both answers are accepted, and once recorded the question is not asked again.\n\n${shapeFor(gate, true)}`,
   };
 }

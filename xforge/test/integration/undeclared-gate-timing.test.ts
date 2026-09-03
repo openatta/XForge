@@ -58,4 +58,31 @@ describe('when an undeclared Gate will refuse', () => {
     /* contract-lint runs at design; planning-solid is collected two Stages later, at the check exit. */
     expect(await clause(root, 'p', 'contract-lint')).toBe('which on this Flow is the design Stage, before any approval is collected.');
   });
+
+  /*
+   * The command in the field, not only in the sentence.
+   *
+   * This diagnostic has always named the declare call in prose, and prose is where it stayed: a
+   * reader had to parse an argv back out of an English paragraph, which is the exact job
+   * `Diagnostic.remedy` was added to end. A measured `solid` run met this at propose and carried it
+   * unanswered to verify, five Stages later.
+   *
+   * `<program>` stays a placeholder while the message shows `["cargo","test"]`. The message can
+   * afford an illustration because its next sentence says not to copy one; a field meant to be
+   * executed cannot, and this Gate exists precisely because a plausible test command that asserts
+   * nothing is the failure being prevented.
+   */
+  it('carries the declare command as an argv, not only inside the message', async () => {
+    const root = await fixture();
+    await clearVerification(root);
+    await write(root, 'xforge/changes/p/change.yaml', changeYaml('solid'));
+    const result = await runCli(root, ['state', '--change', 'p']);
+    const found = (result.json.diagnostics as any[])
+      .filter((item) => item.code === 'XFORGE_VERIFICATION_GATE_UNDECLARED')
+      .find((item) => item.message.includes('Gate unit-tests,'));
+    expect(found).toBeDefined();
+    expect(found.remedy?.commands).toEqual([
+      ['xforge', 'verification', 'declare', '--gate-name', 'unit-tests', '--command', '["<program>","<arg>"]', '--by', '<the person who answered>'],
+    ]);
+  });
 });

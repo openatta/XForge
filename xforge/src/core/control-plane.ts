@@ -19,7 +19,7 @@ import { changeImplementers, computeGovernanceRevision } from './revision.js';
 import { readChangeAuditEvents, remoteDeliveryRequired, type ChangeAuditFacts } from './audit.js';
 import { knownIdentities } from './ledger-identity.js';
 import { flowArchiveOperation } from './flow-resolver.js';
-import { undeclaredRequiredGates } from './verification.js';
+import { undeclaredRequiredGates, verificationDeclareArgv } from './verification.js';
 import { resolveWorkPackages, type WorkPackageResolution } from './work-packages.js';
 import { exists } from './files.js';
 import {
@@ -353,12 +353,28 @@ export async function resolveControlPlane(
     ...flowArchiveOperation(flow).mandatoryGates,
   ]);
   for (const gateId of undeclared) {
-    diagnostics.push(diagnostic(
-      'XFORGE_VERIFICATION_GATE_UNDECLARED',
-      `Flow ${flow.metadata.name} requires Gate ${gateId}, which runs whatever this project declares under manifest.verification.${gateId} — currently nothing. It will refuse the first time a Change reaches the Stage that runs it, ${whenItBites(flow, gateId)}. Answer it now with \`xforge verification declare --gate-name ${gateId} --command '["cargo","test"]' --by <person>\`, substituting the command this project actually verifies itself with. Do not answer it with whatever command happens to exist: a test command on a repository with no tests passes this Gate while asserting nothing.`,
-      'xforge/manifest.yaml',
-      'info',
-    ));
+    diagnostics.push({
+      ...diagnostic(
+        'XFORGE_VERIFICATION_GATE_UNDECLARED',
+        `Flow ${flow.metadata.name} requires Gate ${gateId}, which runs whatever this project declares under manifest.verification.${gateId} — currently nothing. It will refuse the first time a Change reaches the Stage that runs it, ${whenItBites(flow, gateId)}. Answer it now with \`xforge verification declare --gate-name ${gateId} --command '["cargo","test"]' --by <person>\`, substituting the command this project actually verifies itself with. Do not answer it with whatever command happens to exist: a test command on a repository with no tests passes this Gate while asserting nothing.`,
+        'xforge/manifest.yaml',
+        'info',
+      ),
+      /*
+       * The same command the message has always named, in the field a reader can act on.
+       *
+       * This one is determinate -- gate id and subcommand are both known here -- and it is the shape
+       * `remedy` was added for: the message says *why*, which no argv carries, and the argv says
+       * *what to run*, which no reader should have to parse back out of a sentence. A measured
+       * `solid` run met this diagnostic at propose and carried it, unanswered, to verify.
+       *
+       * `<program>` stays a placeholder where the message shows `["cargo","test"]`. The message can
+       * afford an illustration because the sentence after it says not to copy one; a field that
+       * exists to be executed cannot, and this Gate is here precisely because a plausible-looking
+       * test command that asserts nothing is the failure being prevented.
+       */
+      remedy: { commands: [verificationDeclareArgv(gateId)] },
+    });
   }
 
 /**

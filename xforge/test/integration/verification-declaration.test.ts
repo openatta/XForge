@@ -55,6 +55,19 @@ describe('declared verification', () => {
     /* A suggestion is a starting point for a question. The Agent must not adopt one on its own. */
     expect(action.reason).toContain('Do not guess');
     expect(action.reason).toContain('manifest.yaml');
+    /*
+     * And in `command`, which is the field the Skills tell an Agent to take a command from --
+     * `xforge-verify` says exactly that about the approval action. This action left it undefined
+     * while spelling the call out in prose, so the one machine-readable route said nothing.
+     *
+     * The program stays a placeholder even though `reason` just suggested `cargo test` from the
+     * detected Cargo.toml. That asymmetry is the point: a suggestion belongs in the sentence that
+     * also says not to adopt it, and an argv that arrives pre-filled is one an Agent will run.
+     */
+    expect(action.command).toEqual([
+      'xforge', 'verification', 'declare', '--gate-name', 'unit-tests',
+      '--command', '["<program>","<arg>"]', '--by', '<the person who answered>',
+    ]);
   });
 
   /*
