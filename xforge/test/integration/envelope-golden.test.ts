@@ -1,3 +1,5 @@
+import { rm } from 'node:fs/promises';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { renderEnvelope } from '../envelope-normalise.js';
 import { golden } from '../golden.js';
@@ -56,6 +58,15 @@ describe('envelope golden', () => {
     { name: 'state', argv: ['state'] },
     { name: 'state-change', argv: ['state', '--change', CHANGE] },
     { name: 'state-kind-gates', argv: ['state', '--kind', 'gates'] },
+    /*
+     * `stage` and `advance` are what `docs/skill-authoring.md` calls the entire protocol surface --
+     * every Stage Skill opens on one and closes on the other -- and neither had an envelope golden.
+     * The cost was measured: six Skills in both languages told the Agent to read `instruction` and
+     * `outline` off the ready Action, which carries neither. They sit on the sibling `owes` array,
+     * the behavioural tests always asserted them there, and nothing compared the two shapes.
+     */
+    { name: 'stage', argv: ['stage', '--change', CHANGE] },
+    { name: 'advance-dry-run', argv: ['advance', '--change', CHANGE, '--dry-run'] },
     { name: 'check-change', argv: ['check', '--change', CHANGE] },
     { name: 'check-stage-verify', argv: ['check', '--change', CHANGE, '--stage', 'verify'] },
     { name: 'doctor', argv: ['doctor'] },
@@ -94,6 +105,29 @@ describe('envelope golden', () => {
       renderEnvelope(result.stdout, { root }),
     ].join('\n');
     const { actual, expected } = await golden(`envelope/${name}.txt`, recorded);
+    expect(actual).toBe(expected);
+  });
+
+  /**
+   * The same command with an Artifact still owed.
+   *
+   * The shared fixture is complete, so its `owes` is `[]` and an entry's shape goes unrecorded --
+   * which is the half `owes` exists for. M3 lived in exactly that gap: six Skills in both languages
+   * told the Agent to read `instruction` and `outline` off the ready Action, and the only recording
+   * of where they actually live was a behavioural assertion nobody compared with the Skills.
+   */
+  it('records the stage envelope with an Artifact still owed', async () => {
+    const root = await atVerify();
+    await rm(path.join(root, 'xforge', 'changes', CHANGE, 'assurance.md'));
+    const argv = ['stage', '--change', CHANGE];
+    const result = await runCli(root, argv);
+    const recorded = [
+      `$ xforge ${argv.join(' ')}`,
+      `exit: ${result.code}`,
+      '',
+      renderEnvelope(result.stdout, { root }),
+    ].join('\n');
+    const { actual, expected } = await golden('envelope/stage-owed.txt', recorded);
     expect(actual).toBe(expected);
   });
 

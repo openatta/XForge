@@ -161,7 +161,7 @@ targets:
   - opencode
   - github-copilot
 xforge:
-  integrity: sha256:2089d6e6b2558e68945a6567d327d62c72d2a87b50137ef99622e9622e620aa3
+  integrity: sha256:8498735742c60191dbcbc9fbaf4775b038eeefe04f694375dcf9498cd80f1a7b
   package: "@xforge/cli"
   protocol: "2"
   source: npm

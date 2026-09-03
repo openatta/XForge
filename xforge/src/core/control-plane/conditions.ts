@@ -3,7 +3,7 @@ import type { ChangeState, Diagnostic, GateEvidence, ProjectContext, StageFlow, 
 import { unknownIdentityReason, type KnownIdentities } from '../ledger-identity.js';
 import { diagnostic } from '../errors.js';
 import { safeResolve } from '../path-safety.js';
-import { evaluateVerificationReceipt, VERIFICATION_RECEIPT_CONDITION } from '../verification-receipt.js';
+import { evaluateVerificationReceipt, VERIFICATION_RECEIPT_CONDITION, VERIFICATION_RECEIPT_PATH } from '../verification-receipt.js';
 import { readReviewAcknowledgements, reviewCovers } from '../review-acknowledgement.js';
 import type { WorkPackageResolution } from '../work-packages.js';
 import { parse as parseYaml } from 'yaml';
@@ -213,8 +213,20 @@ async function evaluateVerificationReceiptCondition(
   expected: string,
   contentRevision: string,
   gates: readonly GateEvidence[],
+  diagnostics: Diagnostic[],
 ): Promise<{ satisfied: boolean; reason: string }> {
   const result = await evaluateVerificationReceipt(project, changeId, { contentRevision, gates });
+  /*
+   * The receipt reader reports a key nothing reads -- by name, with the nearest known key as a
+   * suggestion -- and this was the one of the three evaluators not handed the diagnostics channel
+   * its siblings use, so every one of those warnings was computed and dropped. A receipt carrying
+   * an invented key was therefore accepted in silence, which is the whole reason the reader
+   * computes them. They surface whether or not the condition is satisfied: a receipt that passes
+   * while naming a field nobody reads is exactly the case worth saying out loud.
+   */
+  for (const warning of result.warnings ?? []) {
+    diagnostics.push(diagnostic('XFORGE_VERIFICATION_RECEIPT_UNKNOWN_KEY', warning, `${project.changesPath}/${changeId}/${VERIFICATION_RECEIPT_PATH}`, 'warning'));
+  }
   if (result.status !== 'passed') return { satisfied: false, reason: result.reason };
   if (expected !== 'passed') return { satisfied: false, reason: `status-passed-expected-${expected}` };
   return { satisfied: true, reason: 'satisfied' };
@@ -316,7 +328,7 @@ export async function evaluateStageCondition(
   },
 ): Promise<{ satisfied: boolean; reason: string }> {
   if (key === VERIFICATION_RECEIPT_CONDITION) {
-    return evaluateVerificationReceiptCondition(project, changeId, expected, context.contentRevision, context.gates);
+    return evaluateVerificationReceiptCondition(project, changeId, expected, context.contentRevision, context.gates, context.diagnostics);
   }
   if (key === INDEPENDENT_REVIEW_CONDITION) {
     return independentReviewCondition(project, changeId, context.workPackages, expected, context.contentRevision, context.diagnostics);

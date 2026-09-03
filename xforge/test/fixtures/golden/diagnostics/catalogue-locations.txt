@@ -362,6 +362,7 @@ XFORGE_VERIFICATION_GATE_LEFT_UNDECLARED  src/commands/verification.ts
 XFORGE_VERIFICATION_GATE_MIGRATED  src/commands/update.ts
 XFORGE_VERIFICATION_GATE_UNDECLARED  src/core/control-plane.ts
 XFORGE_VERIFICATION_RECEIPT_NOT_REQUIRED  src/commands/verification.ts
+XFORGE_VERIFICATION_RECEIPT_UNKNOWN_KEY  src/core/control-plane/conditions.ts
 XFORGE_VERIFICATION_RETIRE_AMBIGUOUS  src/commands/verification.ts
 XFORGE_VERIFICATION_RETIRE_NOT_FOUND  src/commands/verification.ts
 XFORGE_VERIFICATION_RETIRED  src/commands/verification.ts

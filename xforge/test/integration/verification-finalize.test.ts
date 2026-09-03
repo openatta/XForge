@@ -1,4 +1,4 @@
-import { readFile, rm } from 'node:fs/promises';
+import { readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
@@ -253,5 +253,35 @@ describe('verification finalize', () => {
     const misplaced = await runCli(root, ['verification', 'draft-receipt', '--change', 'add-feature', '--status', 'passed']);
     expect(misplaced.code).toBe(1);
     expect(codes(misplaced)).toContain('XFORGE_OPTION_NOT_ALLOWED');
+  });
+
+  /**
+   * The receipt reader has always named a key nothing reads, and the condition evaluator threw the
+   * result away: it was the one of three evaluators not handed the diagnostics channel its siblings
+   * already used. So an invented key was accepted in silence -- `workPackageDeliveries` was carried
+   * in a Skill for exactly that reason and nothing ever contradicted it.
+   *
+   * Wiring the channel through immediately reported `finalizedAt` against a receipt the CLI had
+   * just written itself, which is why both halves are asserted here: what the CLI writes must be
+   * silent, and what an author invents must not be.
+   */
+  it('says nothing about a receipt it wrote itself, and names an invented key in one it did not', async () => {
+    const at = await atVerify();
+    expect((await runCli(at.root, ['verification', 'finalize', '--change', at.change, '--status', 'passed', '--by', BY])).code).toBe(0);
+
+    const clean = await runCli(at.root, ['state', '--change', at.change]);
+    expect(
+      (clean.json.diagnostics ?? []).filter((item: any) => item.code === 'XFORGE_VERIFICATION_RECEIPT_UNKNOWN_KEY'),
+      'every key `verification finalize` writes must be a key the reader knows',
+    ).toEqual([]);
+
+    const receipt = path.join(at.root, 'xforge', 'changes', at.change, ...RECEIPT.split('/'));
+    await writeFile(receipt, `${await readFile(receipt, 'utf8')}workPackageDeliveries: []\n`);
+    const dirty = await runCli(at.root, ['state', '--change', at.change]);
+    expect(dirty.json.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'XFORGE_VERIFICATION_RECEIPT_UNKNOWN_KEY', severity: 'warning' }),
+    ]));
+    const named = (dirty.json.diagnostics as any[]).find((item) => item.code === 'XFORGE_VERIFICATION_RECEIPT_UNKNOWN_KEY');
+    expect(named.message).toContain('workPackageDeliveries');
   });
 });

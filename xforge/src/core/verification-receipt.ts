@@ -64,8 +64,20 @@ interface ReceiptGateCitation {
   status?: unknown;
 }
 
-/** Every key these evaluators read: the receipt itself, then one gate citation. */
-const RECEIPT_KEYS = ['change', 'status', 'contentRevision', 'gitHead', 'gates'] as const;
+/**
+ * Every key these evaluators read: the receipt itself, then one gate citation.
+ *
+ * `finalizedBy` and `finalizedAt` are written by `verification finalize`
+ * (`commands/verification.ts`), so leaving them out made the CLI's own output two unknown keys to
+ * the CLI's own reader. Nobody saw it because the warning that says so was computed and dropped one
+ * layer up; the first run after wiring it through reported `finalizedAt` against a receipt the CLI
+ * had just written itself.
+ *
+ * `draft-receipt` hands the same facts back for an author to record by hand, so this list is also
+ * what that author is measured against -- an addition here widens what a receipt may say, not
+ * merely what this reader tolerates.
+ */
+const RECEIPT_KEYS = ['change', 'status', 'contentRevision', 'gitHead', 'gates', 'finalizedBy', 'finalizedAt'] as const;
 const CITATION_KEYS = ['gate', 'status', 'evidence', 'inputDigest'] as const;
 
 interface VerificationReceiptLedger {

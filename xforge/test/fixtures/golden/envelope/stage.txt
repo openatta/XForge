@@ -1,0 +1,249 @@
+$ xforge stage --change add-feature
+exit: 0
+
+{
+  "protocolVersion": "2",
+  "ok": true,
+  "command": "stage",
+  "root": "<ROOT>",
+  "data": {
+    "change": "add-feature",
+    "flow": "solid",
+    "stage": "verify",
+    "revision": {
+      "contentRevision": "<sha256>",
+      "stateRevision": "<sha256>",
+      "policySnapshotDigest": "<sha256>",
+      "gitBase": "unknown",
+      "gitHead": "unknown",
+      "governingRevision": "<sha256>"
+    },
+    "action": null,
+    "owes": [],
+    "otherActions": [
+      {
+        "action": "transition",
+        "type": "transition",
+        "id": "ready-to-archive",
+        "actor": "main",
+        "status": "ready",
+        "inputs": [
+          "current Change state",
+          "required gates and approvals"
+        ],
+        "writes": [
+          "transition receipt"
+        ],
+        "doneWhen": [
+          "Current Stage is ready-to-archive."
+        ],
+        "requiredEvidence": [
+          "valid transition receipt"
+        ],
+        "reworkTo": [
+          "verify"
+        ],
+        "reason": "Transition to ready-to-archive is ready.",
+        "blockedBy": [],
+        "command": [
+          "xforge",
+          "transition",
+          "--change",
+          "add-feature",
+          "--to",
+          "ready-to-archive"
+        ]
+      },
+      {
+        "action": "transition",
+        "type": "transition",
+        "id": "apply",
+        "actor": "main",
+        "status": "ready",
+        "inputs": [
+          "current Change state",
+          "required gates and approvals"
+        ],
+        "writes": [
+          "transition receipt"
+        ],
+        "doneWhen": [
+          "Current Stage is apply."
+        ],
+        "requiredEvidence": [
+          "valid transition receipt"
+        ],
+        "reworkTo": [
+          "verify"
+        ],
+        "reason": "Transition to apply is ready.",
+        "blockedBy": [],
+        "command": [
+          "xforge",
+          "transition",
+          "--change",
+          "add-feature",
+          "--to",
+          "apply"
+        ]
+      }
+    ],
+    "blockedBy": [],
+    "stageDeclares": {
+      "produces": [
+        "assurance"
+      ],
+      "gates": [
+        "structure",
+        "unit-tests"
+      ],
+      "exitConditions": [],
+      "reworkTo": [
+        "apply"
+      ],
+      "authority": "assurance-write"
+    },
+    "work": null,
+    "ledgerIdentities": [
+      "owner@example.test"
+    ],
+    "since": {
+      "receiptId": "<uuid>",
+      "from": "apply",
+      "to": "verify",
+      "gitHead": "unknown"
+    },
+    "worktreeClean": false,
+    "read": [
+      {
+        "path": "xforge/changes/add-feature/assurance.md",
+        "reason": "written-by-this-stage",
+        "text": "## Completeness\nAll requirements are covered.\n"
+      },
+      {
+        "path": "xforge/changes/add-feature/change.yaml",
+        "reason": "worktree-dirty",
+        "text": "classification:\n  dataMigration: false\n  privacy: false\n  publicApi: false\n  risk: medium\n  security: false\nflow: solid\nscope:\n  modules:\n    - root\n  paths:\n    - src/**\n"
+      },
+      {
+        "path": "xforge/changes/add-feature/check-report.md",
+        "reason": "worktree-dirty",
+        "text": "## Completeness\nProposal, delta Specs, and Design agree.\n"
+      },
+      {
+        "path": "xforge/changes/add-feature/design.md",
+        "reason": "worktree-dirty",
+        "text": "## Decisions\nUse a deterministic fixture.\n"
+      },
+      {
+        "path": "xforge/changes/add-feature/proposal.md",
+        "reason": "worktree-dirty",
+        "text": "## Why\nTest\n\n## Flow choice\nsolid\n"
+      },
+      {
+        "path": "xforge/changes/add-feature/specs/widget/spec.md",
+        "reason": "worktree-dirty",
+        "text": "## ADDED Requirements\n\n### Requirement: Widget works\n\n#### Scenario: success\n- **WHEN** used\n- **THEN** it works\n"
+      },
+      {
+        "path": "xforge/constitution.md",
+        "reason": "always",
+        "text": "---\nversion: 1.1.0\nratified: 2026-08-08\nlastAmended: 2026-08-08\n---\n\n# Project Constitution\n\n## Mission and boundaries\n\nDeliver the project's declared behavior without silently expanding scope,\nauthority, data collection, or dependencies.\n\n## Architecture principles\n\nPrefer small, testable modules and explicit contracts. Preserve existing\nproject layout and compatibility unless an approved Change says otherwise.\n\n## Security, privacy, and compliance\n\nUse least privilege, keep secrets out of repository assets and output, validate\nall trust-boundary input, and record security/privacy impact explicitly.\n\n## Quality and observability\n\nExternally observable requirements need automated verification. Failures must\nbe diagnosable without exposing sensitive data. No Change is complete without\ncurrent evidence from its mandatory gates.\n\n## Parallel Development\n\nParallelize only dependency-ready work packages whose write paths do not\noverlap and whose shared resources can be isolated. Every write-capable Worker\nuses an assigned worktree and fixed base commit, and each path has a single\nwriter at a time. Shared contracts, migrations, generated files, and lock files\nhave one Integrator writer. Accept delivery only from verified Git diffs,\ndeclared verification commands, and current Gate Evidence; Agent prose is not\nproof. No Agent may approve its own exception.\n\n## Compatibility and versioning\n\nPublic interfaces, stored data, and protocols change deliberately with a\ndocumented migration and rollback strategy.\n\n## Governance\n\nThis Constitution outranks ordinary Rules. Amend it through an independently\nreviewed Change and update its semantic version: MAJOR for breaking principles,\nMINOR for new or materially broader principles, PATCH for clarification.\nHumans or authorized external systems grant approvals; an AI Agent cannot\nself-approve an exception.\n"
+      }
+    ],
+    "vouched": [],
+    "bytes": {
+      "read": 2332,
+      "vouched": 0
+    }
+  },
+  "diagnostics": [
+    {
+      "code": "XFORGE_STAGE_BUNDLE_GIT_UNAVAILABLE",
+      "severity": "warning",
+      "message": "Git could not report the Change's status, so nothing can be vouched for: fatal: not a git repository (or any of the parent directories): .git",
+      "path": "xforge/changes/add-feature"
+    },
+    {
+      "code": "XFORGE_STAGE_BUNDLE_TREE_DIRTY",
+      "severity": "info",
+      "message": "The Change directory has uncommitted edits, so every Artifact is listed to be read in full. A digest voucher compares commits, and an uncommitted change is invisible to that comparison — vouching over one would report \"unchanged\" about a file that changed, which is worse than the re-reading this command exists to avoid. Commit the Change directory and run this again to get the short list.",
+      "path": "xforge/changes/add-feature"
+    },
+    {
+      "code": "XFORGE_RULE_OUT_OF_CHANGE_SCOPE",
+      "severity": "info",
+      "message": "1 severity-must Rule(s) do not reach this Change: governance-assets-are-integrator-only. A Rule's scope.paths is compared with the paths change.yaml declares, never with the repository. `xforge doctor` lists each scope.",
+      "path": "xforge/changes/add-feature/change.yaml"
+    }
+  ],
+  "changes": [],
+  "nextActions": [
+    {
+      "action": "transition",
+      "type": "transition",
+      "id": "ready-to-archive",
+      "actor": "main",
+      "status": "ready",
+      "inputs": [
+        "current Change state",
+        "required gates and approvals"
+      ],
+      "writes": [
+        "transition receipt"
+      ],
+      "doneWhen": [
+        "Current Stage is ready-to-archive."
+      ],
+      "requiredEvidence": [
+        "valid transition receipt"
+      ],
+      "reworkTo": [
+        "verify"
+      ],
+      "reason": "Transition to ready-to-archive is ready.",
+      "blockedBy": [],
+      "command": [
+        "xforge",
+        "transition",
+        "--change",
+        "add-feature",
+        "--to",
+        "ready-to-archive"
+      ]
+    },
+    {
+      "action": "transition",
+      "type": "transition",
+      "id": "apply",
+      "actor": "main",
+      "status": "ready",
+      "inputs": [
+        "current Change state",
+        "required gates and approvals"
+      ],
+      "writes": [
+        "transition receipt"
+      ],
+      "doneWhen": [
+        "Current Stage is apply."
+      ],
+      "requiredEvidence": [
+        "valid transition receipt"
+      ],
+      "reworkTo": [
+        "verify"
+      ],
+      "reason": "Transition to apply is ready.",
+      "blockedBy": [],
+      "command": [
+        "xforge",
+        "transition",
+        "--change",
+        "add-feature",
+        "--to",
+        "apply"
+      ]
+    }
+  ]
+}
