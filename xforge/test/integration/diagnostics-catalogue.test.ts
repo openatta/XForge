@@ -48,14 +48,17 @@ describe('diagnostic catalogue', () => {
      * product can emit and was missing a tenth of them, and the untested-code list below is built
      * from this catalogue — so it could not owe anything for a code it had never heard of.
      *
-     * Fifty-two now, over forty-two codes: the contract work added the reconciliation rules, whose
+     * Fifty-four now, over forty-four codes: the contract work added the reconciliation rules, whose
      * observations carry their own code and reach a reader through the one forwarding site in
      * `core/reconcile.ts`; RC-8 added one, and `doctor`'s suggestions reach a reader the same
-     * indirect way. That is the shape this count exists to keep visible.
+     * indirect way. The two most recent are `doctor`'s Hook-suppression findings, which are
+     * `DoctorFinding` object literals like every other suggestion. That is the shape this count
+     * exists to keep visible -- and the reason the code must stay a string literal on the `code:`
+     * key: `indirectCodes` reads the literal, so a code behind a `const` is invisible here.
      */
     const indirect = sites.filter((site) => site.severity === 'indirect');
-    expect(indirect.length).toBe(52);
-    expect(new Set(indirect.map((site) => site.code)).size).toBe(42);
+    expect(indirect.length).toBe(54);
+    expect(new Set(indirect.map((site) => site.code)).size).toBe(44);
   });
 
   it('splits arguments at top-level commas only', () => {

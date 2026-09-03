@@ -15,7 +15,7 @@ exit: 0
       "unusedFlows": 2,
       "unusableApprovals": 0,
       "conformance": 0,
-      "suggestions": 7
+      "suggestions": 8
     },
     "danglingReferences": [],
     "deadCode": [],
@@ -61,6 +61,12 @@ exit: 0
         "id": "protected-manifest",
         "message": "PermissionPolicy protected-manifest exempts integrator, and none of this project's targets (codex, claude, cursor, opencode, github-copilot) can express an actor exemption in its own permission layer. The exemption therefore lives only in the XForge runtime Hook bridge, which applies it only when the host reports the calling sub-agent's identity — so wherever it does not, this policy is an unconditional ask for every actor including the exempted one. Confirm the exempted actors are registered sub-agents of a target that reports them, or write the policy so it does not rely on an exemption.",
         "path": "xforge/scaffold/policies/protected-manifest.yaml",
+        "severity": "info"
+      },
+      {
+        "scope": "policies",
+        "code": "XFORGE_DOCTOR_HOOK_SUPPRESSION_UNVERIFIABLE",
+        "message": "This project's PermissionPolicies are enforced by Hooks, and its targets declare these ways Hooks can be evaded — codex: hosted tools; specialized opt-out tool paths | claude: disableAllHooks in any settings file; allowManagedHooksOnly in managed settings | cursor: events not exposed by Cursor | opencode: events not emitted by the plugin API | github-copilot: events not exposed by Copilot hooks. XForge can observe one of them: disableAllHooks in this project's own Claude settings file, which is reported separately when it is set. It cannot observe user-level settings, administrator-managed settings, or settings a host fetches from a server at startup, because none of those sit inside the project root. A Hook suppressed by any of them leaves no in-band signal. Ask the host instead: `claude doctor` lists managed settings it dropped, and /status names the setting sources actually in effect.",
         "severity": "info"
       },
       {
@@ -127,6 +133,11 @@ exit: 0
       "severity": "info",
       "message": "PermissionPolicy protected-manifest exempts integrator, and none of this project's targets (codex, claude, cursor, opencode, github-copilot) can express an actor exemption in its own permission layer. The exemption therefore lives only in the XForge runtime Hook bridge, which applies it only when the host reports the calling sub-agent's identity — so wherever it does not, this policy is an unconditional ask for every actor including the exempted one. Confirm the exempted actors are registered sub-agents of a target that reports them, or write the policy so it does not rely on an exemption.",
       "path": "xforge/scaffold/policies/protected-manifest.yaml"
+    },
+    {
+      "code": "XFORGE_DOCTOR_HOOK_SUPPRESSION_UNVERIFIABLE",
+      "severity": "info",
+      "message": "This project's PermissionPolicies are enforced by Hooks, and its targets declare these ways Hooks can be evaded — codex: hosted tools; specialized opt-out tool paths | claude: disableAllHooks in any settings file; allowManagedHooksOnly in managed settings | cursor: events not exposed by Cursor | opencode: events not emitted by the plugin API | github-copilot: events not exposed by Copilot hooks. XForge can observe one of them: disableAllHooks in this project's own Claude settings file, which is reported separately when it is set. It cannot observe user-level settings, administrator-managed settings, or settings a host fetches from a server at startup, because none of those sit inside the project root. A Hook suppressed by any of them leaves no in-band signal. Ask the host instead: `claude doctor` lists managed settings it dropped, and /status names the setting sources actually in effect."
     },
     {
       "code": "XFORGE_DOCTOR_RULE_SCOPE_EMPTY",

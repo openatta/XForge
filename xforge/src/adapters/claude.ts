@@ -21,7 +21,7 @@ export const claudeAdapter: Adapter = {
   trace: artifactTrace('claude', '3'),
   capability: {
     skills: 'native', commands: 'native', agents: 'native', rules: 'native', hooks: 'native', guidance: 'native', permissionPolicy: 'native',
-    runtimeHook: { events: RUNTIME_HOOK_EVENTS.claude, blocking: 'native', managed: 'degraded', local: 'native', cloud: 'degraded', trust: 'platform-review', bypasses: [] },
+    runtimeHook: { events: RUNTIME_HOOK_EVENTS.claude, blocking: 'native', managed: 'degraded', local: 'native', cloud: 'degraded', trust: 'platform-review', bypasses: ['disableAllHooks in any settings file', 'allowManagedHooksOnly in managed settings'] },
     auditDelivery: 'native', subagent: 'native',
     permissionPolicyScopes: PERMISSION_POLICY_SCOPES.claude,
   },

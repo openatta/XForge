@@ -19,7 +19,7 @@ import { loadYaml } from '../core/yaml.js';
 import { getAdapter } from '../adapters/index.js';
 import { capabilityGapDiagnostics } from '../install/planner.js';
 import { undeclaredRequiredGates } from '../core/verification.js';
-import { exists } from '../core/files.js';
+import { exists, readJsonIfExists } from '../core/files.js';
 import { readStagedUpgrade, upgradeInProgressDiagnostic } from '../core/upgrade-sentinel.js';
 
 type DoctorKind = 'skills' | 'agents' | 'rules' | 'policies' | 'hooks' | 'gates' | 'scripts' | 'flows' | 'approvals' | 'mcp-servers';
@@ -377,6 +377,54 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
         id,
         message: `PermissionPolicy ${id} exempts ${exempted.join(', ')}, and none of this project's targets (${project.manifest.targets.join(', ')}) can express an actor exemption in its own permission layer. The exemption therefore lives only in the XForge runtime Hook bridge, which applies it only when the host reports the calling sub-agent's identity — so wherever it does not, this policy is an unconditional ${policy.value.spec.effect} for every actor including the exempted one. Confirm the exempted actors are registered sub-agents of a target that reports them, or write the policy so it does not rely on an exemption.`,
         path: policy.yamlPath,
+        severity: 'info',
+      });
+    }
+  }
+
+  /*
+   * PermissionPolicies reach the host as Hooks, and a Hook the host declines to run enforces
+   * nothing while continuing to look installed.
+   *
+   * Every target declares in `capability.runtimeHook.bypasses` the ways its Hooks can be evaded.
+   * Claude's were recorded as none until this check was written; they are two, and unlike the other
+   * targets' -- which are gaps in event coverage -- both are total off switches. `disableAllHooks`
+   * is settable in *any* settings file, so the developer being governed can turn off every
+   * projected Hook with one line in a file they own. `allowManagedHooksOnly` is an administrator's
+   * setting that keeps only organisation-deployed Hooks, silently bypassing every project-level one.
+   *
+   * Exactly one of those is observable from inside a project root, and this reports it. The rest are
+   * not: user settings, managed settings, and settings the host fetches from a server at startup all
+   * sit outside the root, and nothing in this CLI reads outside the root -- `safeResolve` is a
+   * containment check, and reading a home directory or `/etc` would be the first breach of it. So
+   * the second finding declares the blind spot rather than implying coverage the check does not
+   * have. `RuleCoverage` exists to say whether a Rule's claimed enforcer actually enforces; this is
+   * the same question asked of the host instead of the Flow, and answering it partly and saying so
+   * beats answering it not at all.
+   *
+   * Suggestions, not warnings, for the reason the exemption check above gives: these are properties
+   * of the product's targets, and a per-install warning fires every time until nobody reads it.
+   */
+  if (structure.resources.policies.size > 0) {
+    const hookTargets = project.manifest.targets.filter((target) => getAdapter(target).capability.runtimeHook.bypasses.length > 0);
+    if (project.manifest.targets.includes('claude')) {
+      const settings = await readJsonIfExists<{ disableAllHooks?: unknown }>(await safeResolve(project.root, '.claude/settings.json'));
+      if (settings?.disableAllHooks === true) {
+        suggestions.push({
+          scope: 'policies',
+          code: 'XFORGE_DOCTOR_HOOKS_DISABLED_LOCALLY',
+          message: `This project's own Claude settings file sets disableAllHooks: true, so none of this project's ${structure.resources.policies.size} PermissionPolicy Hook(s) run in Claude Code. The projected files are still present and \`xforge state\` still reports the policies as installed — the enforcement is what is absent, not the configuration. Remove the key, or stop relying on these policies to guard anything.`,
+          path: '.claude/settings.json',
+          severity: 'info',
+        });
+      }
+    }
+    if (hookTargets.length > 0) {
+      const declared = hookTargets.map((target) => `${target}: ${getAdapter(target).capability.runtimeHook.bypasses.join('; ')}`).join(' | ');
+      suggestions.push({
+        scope: 'policies',
+        code: 'XFORGE_DOCTOR_HOOK_SUPPRESSION_UNVERIFIABLE',
+        message: `This project's PermissionPolicies are enforced by Hooks, and its targets declare these ways Hooks can be evaded — ${declared}. XForge can observe one of them: disableAllHooks in this project's own Claude settings file, which is reported separately when it is set. It cannot observe user-level settings, administrator-managed settings, or settings a host fetches from a server at startup, because none of those sit inside the project root. A Hook suppressed by any of them leaves no in-band signal. Ask the host instead: \`claude doctor\` lists managed settings it dropped, and /status names the setting sources actually in effect.`,
         severity: 'info',
       });
     }

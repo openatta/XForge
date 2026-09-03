@@ -137,6 +137,43 @@ describe('doctor', () => {
     expect(result.json.data.unusedFlows.map((item: any) => item.id).sort()).toEqual(['major', 'quick']);
   });
 
+  it('reports the Hook bypasses XForge cannot observe whenever a project has PermissionPolicies', async () => {
+    /* A standing suggestion, not a warning, and gated on the project actually having policies: a
+       project with none is not relying on Hooks for anything, so the blind spot is not its problem. */
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const result = await runCli(root, ['doctor']);
+    expect(result.code).toBe(0);
+    const finding = result.json.data.suggestions.find((item: any) => item.code === 'XFORGE_DOCTOR_HOOK_SUPPRESSION_UNVERIFIABLE');
+    expect(finding).toBeDefined();
+    /* It must name the mechanisms rather than gesturing at them -- the point of the finding is that
+       the reader can go check the two the CLI cannot see. */
+    expect(finding.message).toContain('disableAllHooks');
+    expect(finding.message).toContain('allowManagedHooksOnly');
+    /* And it must not imply coverage it does not have. */
+    expect(finding.message).toContain('cannot observe');
+  });
+
+  it('reports a locally disabled Hook layer, which is the one suppression inside the project root', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await write(root, '.claude/settings.json', JSON.stringify({ disableAllHooks: true }, null, 2));
+    const result = await runCli(root, ['doctor']);
+    expect(result.code).toBe(0);
+    expect(result.json.data.suggestions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ scope: 'policies', code: 'XFORGE_DOCTOR_HOOKS_DISABLED_LOCALLY', path: '.claude/settings.json' }),
+    ]));
+  });
+
+  it('does not report a locally disabled Hook layer when the key is absent or false', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await write(root, '.claude/settings.json', JSON.stringify({ disableAllHooks: false }, null, 2));
+    const result = await runCli(root, ['doctor']);
+    expect(result.code).toBe(0);
+    expect(result.json.data.suggestions.map((item: any) => item.code)).not.toContain('XFORGE_DOCTOR_HOOKS_DISABLED_LOCALLY');
+  });
+
   it('flags an enabled Gate that no Flow Stage or archive terminal references as dead code', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);

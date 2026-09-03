@@ -82,7 +82,10 @@ exit: 0
           "local": "native",
           "cloud": "degraded",
           "trust": "platform-review",
-          "bypasses": []
+          "bypasses": [
+            "disableAllHooks in any settings file",
+            "allowManagedHooksOnly in managed settings"
+          ]
         },
         "auditDelivery": "native",
         "subagent": "native",
