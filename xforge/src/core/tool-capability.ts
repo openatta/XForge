@@ -178,6 +178,59 @@ const TARGET_TOOLS: Record<TargetId, Record<string, ResolvedCapability>> = {
     task: 'subagent',
     listmcpresources: 'mcp',
     readmcpresource: 'mcp',
+    /*
+     * The task list, which is `TodoWrite` renamed and split.
+     *
+     * `todowrite` above is dead on this host and these five are what replaced it, which nothing
+     * noticed because an unmapped tool fails quietly *per call*: `unknownToolPolicy` defaults to
+     * `ask`, a headless run answers an ask with a denial, and the Agent shrugs and works without a
+     * plan. One measured `solid` run spent 12 of its 199 turns that way and `major` spent 19; across
+     * every transcript this repository has kept, 124 denials are this one missing name. The
+     * capability is unchanged from `todowrite` -- a task list is bookkeeping, it writes no file the
+     * policy surface can name -- so the mapping is `none`, not a policy.
+     *
+     * `taskoutput` and `taskstop` read and end a running task rather than editing the list, which is
+     * the same relationship `bashoutput` and `killshell` have to `bash`, and they are `none` for the
+     * same reason: the governed act was the spawn, and it was already decided.
+     */
+    taskcreate: 'none',
+    taskupdate: 'none',
+    tasklist: 'none',
+    taskget: 'none',
+    taskoutput: 'none',
+    taskstop: 'none',
+    /* Invoking a Skill is the `slashcommand` case under another name -- see SHARED_TOOLS. XForge's
+       own Skills are invoked through it, so leaving it unmapped put the ask on the product's own
+       entry point: 4 more denials in the same transcripts. */
+    skill: 'none',
+    /* Reporting findings to the host UI and scheduling this Agent's own next turn. Neither names a
+       resource; both were reaching the heuristic and asking. */
+    reportfindings: 'none',
+    schedulewakeup: 'none',
+    /*
+     * Deferred agent work. `subagent`, emphatically not `none`: each of these gets another Agent
+     * running, and the fact that the run is scheduled for later or addressed to a session elsewhere
+     * is what makes it worth a policy, not what exempts it from one. `cronlist` only reads the
+     * schedule, so it is bookkeeping like any other listing.
+     */
+    workflow: 'subagent',
+    croncreate: 'subagent',
+    crondelete: 'subagent',
+    sendmessage: 'subagent',
+    cronlist: 'none',
+    /*
+     * Recognised, and deliberately still routed to ask -- the `grep`/`glob` treatment, for a
+     * different reason.
+     *
+     * A worktree switch moves the tree every later path is resolved against, so its resource is not
+     * a path this policy surface can match but the meaning of every path after it; `designsync`
+     * names no resource this can read at all. Listing them changes nothing about what happens, and
+     * that is the point: without an entry, the next reader cannot tell a tool nobody has classified
+     * from one somebody classified as needing a human. These are the second kind.
+     */
+    enterworktree: 'unknown',
+    exitworktree: 'unknown',
+    designsync: 'unknown',
   },
   codex: {
     shell: 'shell',

@@ -36,6 +36,51 @@ describe('tool -> capability resolution', () => {
   it('marks plan/todo bookkeeping tools as outside the capability model', () => {
     expect(resolveToolCapability('claude', 'TodoWrite').capability).toBe('none');
     expect(resolveToolCapability('codex', 'update_plan').capability).toBe('none');
+    // TodoWrite renamed and split. Unmapped, these asked -- and a headless run answers an ask with a
+    // denial, so the Agent lost its task list on every Stage that tried to keep one.
+    for (const name of ['TaskCreate', 'TaskUpdate', 'TaskList', 'TaskGet', 'TaskOutput', 'TaskStop']) {
+      expect(resolveToolCapability('claude', name), name).toEqual({ capability: 'none', hint: null, source: 'table' });
+    }
+  });
+
+  it('treats invoking a Skill like a slash command, not as an unknown tool', () => {
+    // XForge's own Skills are invoked through this tool, so an ask here is an ask on the product's
+    // own entry point.
+    expect(resolveToolCapability('claude', 'Skill')).toEqual({ capability: 'none', hint: null, source: 'table' });
+  });
+
+  it('governs deferred agent work as subagent, not as bookkeeping', () => {
+    // Scheduling a run for later, or addressing one to a session elsewhere, still gets an Agent
+    // running: that is what makes it policy-worthy, not what exempts it.
+    for (const name of ['Workflow', 'CronCreate', 'CronDelete', 'SendMessage']) {
+      expect(resolveToolCapability('claude', name).capability, name).toBe('subagent');
+    }
+    expect(resolveToolCapability('claude', 'CronList').capability).toBe('none');
+  });
+
+  /*
+   * Every tool the host actually offers resolves from the table, one way or another.
+   *
+   * The roster is the surface Claude Code exposed to a live-engine run, read out of the `tools`
+   * array in the `system/init` record its transcript opens with -- refresh it from
+   * `tests/.tmp/live-engine-results/*-transcript.jsonl` after a run against a newer host.
+   *
+   * What this asserts is `source: 'table'`, not a particular capability: an entry may legitimately
+   * resolve to `unknown` (`EnterWorktree` does, deliberately). The failure it exists to catch is
+   * `source: 'heuristic'` or `'unrecognised'` -- a name nobody has classified, which the dispatcher
+   * then puts to `unknownToolPolicy`. That failure is silent per call and was worth 124 denials
+   * across this repository's transcripts before anyone counted them, because the only symptom is an
+   * Agent quietly doing without.
+   */
+  it('classifies every tool the host offers, so an unmapped name fails here and not in a live run', () => {
+    const hostRoster = [
+      'Task', 'Bash', 'CronCreate', 'CronDelete', 'CronList', 'DesignSync', 'Edit', 'EnterWorktree',
+      'ExitWorktree', 'NotebookEdit', 'Read', 'ReportFindings', 'ScheduleWakeup', 'SendMessage',
+      'Skill', 'TaskCreate', 'TaskGet', 'TaskList', 'TaskOutput', 'TaskStop', 'TaskUpdate',
+      'WebFetch', 'WebSearch', 'Workflow', 'Write',
+    ];
+    const unclassified = hostRoster.filter((name) => resolveToolCapability('claude', name).source !== 'table');
+    expect(unclassified).toEqual([]);
   });
 
   it('treats invoking a slash command as outside the capability model, not an unknown tool', () => {
