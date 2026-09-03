@@ -221,6 +221,7 @@
                 "authority": { "const": "archive-write" },
                 "requires": { "$ref": "#/$defs/idList" },
                 "syncSpecs": { "type": "boolean" },
+                "gates": { "$ref": "#/$defs/idList", "description": "Gates archive re-runs before closing the Change. Absent falls back to the Gates of the Stage named `verify`, which is what v1alpha2 has always inferred. State it explicitly on any Flow whose closing Stage is not named `verify`, or that Stage's Gates are silently left out of the archive check." },
                 "syncContracts": { "type": "boolean", "description": "Merge this Change's contract deltas into the contract baseline at archive. Deliberately absent from `required`: a Flow written before contracts existed is still a valid Flow, and adding this to the required set would invalidate every one of them at once." },
                 "evidencePolicy": { "const": "current-revision", "description": "Accepted for compatibility with Flows written before v0.7.9 and no longer read by the CLI; archive always binds Evidence to the current revision. The shipped Flows omit it." },
                 "approvals": { "$ref": "#/$defs/idList" },

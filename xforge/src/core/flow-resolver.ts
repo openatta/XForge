@@ -93,12 +93,22 @@ export function flowArchiveOperation(flow: Flow): {
   /* `syncContracts` is optional in both schemas, so a Flow written before contracts existed reads
      as false here rather than as undefined -- archive branches on it directly. */
   if (!isStageFlow(flow)) return { ...flow.operations.archive, syncContracts: flow.operations.archive.syncContracts ?? false };
+  /*
+   * Declared if the Flow says so, inferred from the Stage named `verify` if it does not.
+   *
+   * v1alpha1 required this set as `mandatoryGates`; v1alpha2 dropped the field and inferred it
+   * here, which is correct for every shipped Flow and silent when it is wrong. A Flow with a Stage
+   * after Verify contributes none of that Stage's Gates to the archive re-check and gets no
+   * diagnostic -- the Gates simply are not in the set. `graphDiagnostics` reports that case now;
+   * this reads the declaration when there is one and keeps the inference when there is not, so no
+   * existing Flow changes behaviour.
+   */
   const verify = flow.stages.find((stage) => stage.id === 'verify');
   return {
     requires: artifactsForStages(flow, flow.terminal.archive.requires),
     syncSpecs: flow.terminal.archive.syncSpecs,
     syncContracts: flow.terminal.archive.syncContracts ?? false,
-    mandatoryGates: [...new Set(verify?.gates ?? [])],
+    mandatoryGates: [...new Set(flow.terminal.archive.gates ?? verify?.gates ?? [])],
   };
 }
 
@@ -227,6 +237,27 @@ function stageGraphDiagnostics(flow: StageFlow, filePath: string): Diagnostic[] 
   for (const id of stageIds) visit(id);
   for (const required of ['propose', 'apply', 'verify']) {
     if (!stageSet.has(required)) diagnostics.push(diagnostic('XFORGE_FLOW_STAGE_REQUIRED', `Stage Flow must define ${required}.`, filePath));
+  }
+  /*
+   * A Stage after Verify whose Gates archive will not re-run.
+   *
+   * The archive-mandatory Gate set is the Gates of the Stage named `verify` unless
+   * `terminal.archive.gates` says otherwise, so a Flow that adds a Stage after Verify silently
+   * contributes none of that Stage's Gates to the archive re-check. It is not an error -- a Flow may
+   * legitimately want only Verify's Gates re-run -- but it must be a decision somebody made rather
+   * than a consequence of where the inference happens to look.
+   */
+  if (flow.terminal.archive.gates === undefined) {
+    const verifyIndex = flow.stages.findIndex((stage) => stage.id === 'verify');
+    const after = verifyIndex >= 0 ? flow.stages.slice(verifyIndex + 1).filter((stage) => (stage.gates ?? []).length > 0) : [];
+    if (after.length > 0) {
+      diagnostics.push(diagnostic(
+        'XFORGE_FLOW_ARCHIVE_GATES_INFERRED',
+        `Stage${after.length === 1 ? '' : 's'} ${after.map((stage) => stage.id).join(', ')} run after verify and declare Gates that archive will not re-run: with no \`terminal.archive.gates\`, the archive-mandatory set is verify's Gates alone. State the set explicitly, or confirm by declaring it as verify's.`,
+        filePath,
+        'warning',
+      ));
+    }
   }
   return diagnostics;
 }

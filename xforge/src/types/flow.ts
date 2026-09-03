@@ -141,6 +141,16 @@ export interface StageFlow {
       authority: 'archive-write';
       requires: string[];
       syncSpecs: boolean;
+      /**
+       * Gates archive re-runs before it closes the Change.
+       *
+       * v1alpha1 required this as `mandatoryGates`; v1alpha2 dropped it and inferred the set from
+       * the Stage literally named `verify`. That inference is invisible when it is wrong: a Flow
+       * with a Stage after Verify contributes none of its Gates to the archive check, and nothing
+       * says so. Optional, and absent still falls back to Verify's Gates, so every Flow written
+       * against v1alpha2 keeps its current behaviour.
+       */
+      gates?: string[];
       syncContracts?: boolean;
       /** Accepted for compatibility with Flows written before it was removed; nothing reads it. */
       evidencePolicy?: 'current-revision';

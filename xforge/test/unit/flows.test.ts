@@ -451,3 +451,38 @@ describe('Artifact write destination', () => {
     expect(deltas?.writePath).toBe(`${base}/specs/**/*.md`);
   });
 });
+describe('archive-mandatory Gates', () => {
+  /**
+   * A Stage added after Verify contributed none of its Gates to the archive re-check and produced
+   * no diagnostic -- the set was inferred from the Stage literally named `verify`. The set is
+   * declarable now, and the inference says out loud when it is probably not what the author meant.
+   */
+  async function archiveDiagnostics(mutate: (flow: any) => void): Promise<string[]> {
+    const root = await fixture();
+    await updateYaml(root, 'xforge/flows/solid.yaml', mutate);
+    const project = await loadProject(root);
+    const { diagnostics } = await loadFlows(project);
+    return diagnostics.map((item) => item.code);
+  }
+
+  const withSoak = (flow: any): void => {
+    flow.stages.push({ id: 'soak', skill: 'xforge-verify', authority: 'assurance-write', requires: ['verify'], produces: [], gates: ['structure'], reworkTo: ['verify'] });
+    flow.terminal.archive.requires = ['soak'];
+  };
+
+  it('warns when a Stage after verify declares Gates the inferred archive set will not re-run', async () => {
+    expect(await archiveDiagnostics(withSoak)).toContain('XFORGE_FLOW_ARCHIVE_GATES_INFERRED');
+  });
+
+  it('says nothing once the Flow declares the set', async () => {
+    expect(await archiveDiagnostics((flow: any) => {
+      withSoak(flow);
+      flow.terminal.archive.gates = ['structure', 'unit-tests'];
+    })).not.toContain('XFORGE_FLOW_ARCHIVE_GATES_INFERRED');
+  });
+
+  /* And the shipped Flows must stay silent, or the warning is noise on every project. */
+  it('says nothing about the Flows the release ships', async () => {
+    expect(await archiveDiagnostics(() => {})).not.toContain('XFORGE_FLOW_ARCHIVE_GATES_INFERRED');
+  });
+});
