@@ -87,7 +87,7 @@ resources:
     kind: script
     license: project
     version: 1
-  - digest: 3ee9a6d1d19d9894a3bf7ebcc793b032df5e6acb1b8a183cd6a896cd949ea272
+  - digest: 22d25d299f63b0f55269f198b1c97455d756db42d51ac4f44484821f3ba7267c
     id: xforge-apply
     kind: skill
     license: project
