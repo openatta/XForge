@@ -5,7 +5,18 @@
 # edge to whichever dialect was left out. What the CLI can decide is whether this project said how
 # it checks its own contracts, and it refuses until the project has.
 #
-# Reads project.modules[].dependsOn and refuses an import that runs against it. A contract says what a module may assume of another; this says which modules may assume anything at all.
+# Reads project.modules[].dependsOn and refuses an import that runs against it. A contract says what
+# a module may assume of another; this says which modules may assume anything at all -- which makes
+# this an architecture check that arrived with the contract work, not a contract check. It is listed
+# under `design-within-the-declared-architecture`'s gateRefs for that reason, and can be selected on
+# its own: a project wanting dependency directions enforced does not have to adopt a contract
+# baseline to get them.
+#
+# `dependsOn` did not exist until recently. This comment named it from the day the Gate shipped
+# while the Manifest schema was additionalProperties: false over {id, path, kind}, so a project
+# following this line was rejected by the schema and the reference implementation hardcoded the
+# direction in a regex instead. The field is real now, and an id in it that names no module is
+# reported by `check`.
 #
 # `required: true` is load bearing despite the schema calling the field ignored: core/verification.ts
 # reads it to decide whether an undeclared Gate is worth reporting. Gate scheduling genuinely does

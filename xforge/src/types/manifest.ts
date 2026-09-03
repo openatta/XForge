@@ -16,6 +16,20 @@ export interface ProjectModule {
   id: string;
   path: string;
   kind: 'application' | 'service' | 'library' | 'module';
+  /**
+   * Module ids this module may depend on, and who answers for it.
+   *
+   * `module-boundaries` documented itself as reading `dependsOn` from the day it shipped, and the
+   * field did not exist: the Manifest schema is `additionalProperties: false` over `{id, path,
+   * kind}`, so a project following the Gate's own comment was rejected by the schema. The Gate's
+   * reference implementation hardcoded the direction in a regex instead. It was specified as a
+   * schema change alongside the contract work and dropped without a note.
+   *
+   * Absent is undeclared, not unrestricted. A project that has not said which directions are legal
+   * gives that Gate nothing to check, which is a different thing from saying every direction is.
+   */
+  dependsOn?: string[];
+  owner?: string;
 }
 
 export interface NpmScaffoldSource {

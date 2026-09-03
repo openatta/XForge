@@ -81,6 +81,17 @@
                   "library",
                   "module"
                 ]
+              },
+              "dependsOn": {
+                "type": "array",
+                "items": { "$ref": "#/$defs/id" },
+                "uniqueItems": true,
+                "description": "Module ids this module may depend on — the declaration `module-boundaries` reads, compared by a Gate command against the imports the code actually takes. Absent is undeclared, not unrestricted: a project that has not said which directions are legal has nothing for that Gate to check."
+              },
+              "owner": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Who answers for this module. Durable, unlike a Change's work-package `write_paths`, which say who may write a path for the length of one Change and nothing after it."
               }
             }
           }

@@ -146,6 +146,46 @@ describe('doctor', () => {
    * unused Flows. Both halves are asserted -- the tool that says what is wrong must say it, and the
    * commands that refuse must say how to recover.
    */
+  /**
+   * `dependsOn` is the declaration `module-boundaries` reads, and it did not exist until now: the
+   * Gate's own header named it from the day it shipped while the Manifest schema was
+   * additionalProperties: false over {id, path, kind}, so a project following that line was
+   * rejected by the schema. Adding the field without checking the ids in it would have shipped one
+   * more declaration nobody compares against anything.
+   */
+  it('refuses a module dependency that names a module this project does not declare', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await updateYaml(root, 'xforge/manifest.yaml', (manifest: any) => {
+      manifest.project.modules = [
+        { id: 'api', path: 'src/api', kind: 'service', dependsOn: ['store'] },
+        { id: 'store', path: 'src/store', kind: 'library', dependsOn: ['nowhere'] },
+      ];
+      return manifest;
+    });
+    const result = await runCli(root, ['check', '--change', 'add-feature']);
+    expect(result.json.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'XFORGE_MODULE_DEPENDS_ON_UNKNOWN', severity: 'error' }),
+    ]));
+    /* And the legal direction beside it must not be reported, or the check is just noise. */
+    const messages = (result.json.diagnostics as any[]).filter((item) => item.code === 'XFORGE_MODULE_DEPENDS_ON_UNKNOWN').map((item) => item.message);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toContain('nowhere');
+  });
+
+  it('refuses a module that lists itself, which reads as a declaration and is not one', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await updateYaml(root, 'xforge/manifest.yaml', (manifest: any) => {
+      manifest.project.modules = [{ id: 'api', path: 'src/api', kind: 'service', dependsOn: ['api'] }];
+      return manifest;
+    });
+    const result = await runCli(root, ['check', '--change', 'add-feature']);
+    expect(result.json.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'XFORGE_MODULE_DEPENDS_ON_SELF', severity: 'error' }),
+    ]));
+  });
+
   it('reports an unreadable ownership state, and offers the rebuild that fixes it', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);

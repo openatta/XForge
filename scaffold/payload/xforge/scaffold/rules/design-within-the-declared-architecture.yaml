@@ -29,5 +29,21 @@ spec:
     # blocks on it. It said "caught by its ledger" here until an audit asked which code did the
     # catching and found none. An unauthorised architecture change is, today, not caught by
     # anything; what the ledger buys is that an authorised one is attributable afterwards.
+    # Empty, and the route out of empty is two steps rather than one.
+    #
+    # `module-boundaries` is the one architecture invariant this product can execute: it compares
+    # the directions `project.modules[].dependsOn` declares with the imports the code actually
+    # takes. Naming it here is what would let this Rule report `verified` instead of `instructed`
+    # forever -- but a Rule may not reference a Gate the project has not enabled
+    # (XFORGE_RULE_GATE_DISABLED), and `module-boundaries` is `required: true` with
+    # `builtin: declared`, so shipping it enabled would block every project at Verify until it
+    # declared a command for a check it never asked for.
+    #
+    # So a project that wants this enforced does both, in this order:
+    #   1. add `module-boundaries` to `scaffold.gates` in xforge/manifest.yaml, add the Gate to the
+    #      Stage that should run it, and `xforge verification declare` its command
+    #   2. add `module-boundaries` to `gateRefs` here
+    #
+    # Doing 2 without 1 is refused, which is the correct order stated as an error.
     gateRefs: []
     policyRefs: []

@@ -12,6 +12,13 @@ spec:
     paths:
       - src/**
   enforcement:
-    # instructed only: deliberately uncovered, and `xforge state` reports it as such.
+    # Instructed only, and deliberately so: conformance is a judgement about a design, and a Gate
+    # scoring it would be scoring prose.
+    #
+    # It said `xforge state` reports it as uncovered. It does not: `uncovered` is computed only for
+    # `severity: must`, this Rule is `should`, and the text renderer prints only Rules that are
+    # uncovered or unenforceable -- so this Rule appears in no coverage report at all. The
+    # Constitution's Architecture principles say the same thing and are answered under a required
+    # Gate, which is where the enforceable half of this already lives.
     gateRefs: []
     policyRefs: []

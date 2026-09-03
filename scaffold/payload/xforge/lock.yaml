@@ -62,7 +62,7 @@ resources:
     kind: rule
     license: project
     version: 3
-  - digest: 1545c1a714ea25c763ee8e3f4a1c9e5f406720ed6198329a9fa2a64da675850f
+  - digest: d9bde26bcc8b25d0402318eda2172b708804a7f3c04259dcf5eeac48e7b2424f
     id: design-within-the-declared-architecture
     kind: rule
     license: project
@@ -77,7 +77,7 @@ resources:
     kind: rule
     license: project
     version: 1
-  - digest: 6377d51cfbe4187fd79d86837a3da974a0219dab8a04647f22148d2609436053
+  - digest: 538a4c60fdfea1325c283370a7aaeef42c9e6cca4246d4adbb16d1fec056db42
     id: prefer-small-explicit-contracts
     kind: rule
     license: project
@@ -161,7 +161,7 @@ targets:
   - opencode
   - github-copilot
 xforge:
-  integrity: sha256:87e1319f4e0641fc9401649469a95e9c6a383f026bab09d7fbd485af89aa63d0
+  integrity: sha256:2679e1b9ce2e93d82b3e6777e24affafc86e79cb65f1de17d09ebeadfbed5515
   package: "@xforge/cli"
   protocol: "2"
   source: npm

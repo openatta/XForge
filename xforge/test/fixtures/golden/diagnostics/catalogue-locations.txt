@@ -211,6 +211,8 @@ XFORGE_MANAGED_FILE_MODIFIED  src/install/planner.ts
 XFORGE_MANAGED_REQUIRED  src/core/project-loader.ts
 XFORGE_MANIFEST_VERSION_FIELD_NOT_FOUND  src/core/project-loader.ts
 XFORGE_MCP_SERVER_NOT_PROJECTED  src/install/planner.ts
+XFORGE_MODULE_DEPENDS_ON_SELF  src/core/checker.ts
+XFORGE_MODULE_DEPENDS_ON_UNKNOWN  src/core/checker.ts
 XFORGE_MODULE_DUPLICATE  src/core/project-loader.ts
 XFORGE_NOT_INSTALLED  src/commands/uninstall.ts
 XFORGE_NOT_INSTALLED  src/install/planner.ts

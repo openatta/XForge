@@ -266,6 +266,26 @@ export async function checkStructure(project: ProjectContext, changeId?: string)
   const approvalPolicyIds = new Set(
     [...flowResult.flows.values()].flatMap((flow) => (isStageFlow(flow) ? (flow.governance?.approvalPolicies.map((policy) => policy.id) ?? []) : [])),
   );
+  /*
+   * A declared dependency direction that names a module this project does not have.
+   *
+   * `dependsOn` is the declaration `module-boundaries` reads, and a Gate command comparing imports
+   * against it can only be as good as the ids in it. An unknown id is not a stricter boundary; it
+   * is a boundary nobody is checking, spelled like one somebody is -- the same shape as the Rule
+   * and Agent reference checks either side of this.
+   *
+   * Self-dependency is refused separately: a module that lists itself has said nothing, and reads
+   * as though it has said something.
+   */
+  for (const module of project.manifest.project.modules) {
+    for (const dependency of module.dependsOn ?? []) {
+      if (dependency === module.id) {
+        diagnostics.push(diagnostic('XFORGE_MODULE_DEPENDS_ON_SELF', `Module ${module.id} lists itself in dependsOn, which declares nothing while reading as a declaration.`, 'xforge/manifest.yaml'));
+      } else if (!moduleIds.has(dependency)) {
+        diagnostics.push(diagnostic('XFORGE_MODULE_DEPENDS_ON_UNKNOWN', `Module ${module.id} depends on unknown module ${dependency}. A direction naming a module this project does not declare is not a boundary anything can check.`, 'xforge/manifest.yaml'));
+      }
+    }
+  }
   for (const [id, agent] of resources.agents) {
     for (const caller of agent.value.spec.delegation.callableBy) {
       if (caller !== 'main' && !agentIds.has(caller)) diagnostics.push(diagnostic('XFORGE_AGENT_CALLER_UNKNOWN', `Agent ${id} allows unknown caller ${caller}.`, agent.yamlPath));
