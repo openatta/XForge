@@ -4,7 +4,7 @@
 > 它按什么逻辑运转、你脑子里要装哪几个模型才能顺畅地用它工作。
 > 它不是命令手册；命令与参数见 [CLI 用法](cli-tool-usage.md)，最终以 `xforge help --text` 为准。
 >
-> 对应实现：`@xforge/cli 0.8.1`、File Protocol 2、`xforge.dev/v1alpha2`。
+> 对应实现：`@xforge/cli 0.8.2`、File Protocol 2、`xforge.dev/v1alpha2`。
 
 **相关文档**
 

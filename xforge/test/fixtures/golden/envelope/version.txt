@@ -8,7 +8,7 @@ exit: 0
   "root": null,
   "data": {
     "name": "@xforge/cli",
-    "version": "0.8.1",
+    "version": "0.8.2",
     "protocolVersion": "2",
     "nodeVersion": "<node>",
     "buildIdentity": {
