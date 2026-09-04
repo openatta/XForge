@@ -194,6 +194,46 @@ const compatibility = JSON.parse(runCli(['state', '--field', 'project.compatibil
 const declared = compatibility.cli
   ? compatibility
   : compatibility.data?.['project.compatibility'] ?? compatibility['project.compatibility'] ?? null;
+/*
+ * The lock has to agree too, not just the version.
+ *
+ * `cli.matches` compares declared version with running version, and both can say 0.8.3 while
+ * `lock.yaml` still pins the integrity digest of a different build of it -- which is the normal
+ * case here, because the probe installs the working tree's CLI and the fixture was captured against
+ * whatever build made it. This guard passed on that, and the run then met XFORGE_LOCK_CLI_MISMATCH
+ * on every command: nine tool results carrying it, eight calls spent working out what it meant.
+ * A guard that clears a project which cannot run a single command without erroring is measuring
+ * something other than the Skill.
+ */
+const diagnosticsReply = JSON.parse(runCli(['state', '--field', 'diagnostics']).stdout || 'null');
+/* One `--field` on `ok: true` prints the bare list; a refusal keeps the envelope and narrows only
+   `data`. Both shapes reach here, because a lock mismatch is itself a refusal. */
+const reportedDiagnostics = Array.isArray(diagnosticsReply)
+  ? diagnosticsReply
+  : diagnosticsReply?.diagnostics ?? diagnosticsReply?.data?.diagnostics ?? [];
+/*
+ * The prefix is tested against a local, not against `.code` directly, and that is not a style
+ * choice. `diagnostics-catalogue.test.ts` scans every `.ts`/`.mjs` under `tests/` for
+ * `.code.startsWith('...')` and treats a match as a test asserting that whole family. Written the
+ * obvious way, this guard -- which is harness code, not a test -- marked all five untested
+ * `XFORGE_LOCK_*` codes as covered and shrank the debt list by five with no coverage behind it.
+ */
+const lockErrors = reportedDiagnostics.filter((item) => {
+  const reported = typeof item?.code === 'string' ? item.code : '';
+  return reported.startsWith('XFORGE_LOCK_') && item?.severity === 'error';
+});
+if (lockErrors.length > 0) {
+  throw new Error([
+    `The fixture's lockfile still disagrees with the CLI the probe provisioned (${cli.version}).`,
+    ...lockErrors.map((item) => `  ${item.code}: ${item.message}`),
+    '',
+    '  `xforge update` rewrites the lock, and needs xforge/.state.json to run. A fixture frozen with',
+    '  `snapshot.mjs --at <ref>` gets that file only if the snapshot copied it -- git cannot, because',
+    '  it is ignored by design. Re-freeze the fixture with a current snapshot.mjs.',
+    '',
+    `  update said: ${(updateResult.stdout || updateResult.stderr || '').slice(0, 400)}`,
+  ].join('\n'));
+}
 if (!declared?.cli?.matches) {
   throw new Error([
     `The fixture still declares ${declared?.cli?.declared ?? 'an unknown CLI'} while the probe provisioned ${cli.version}.`,

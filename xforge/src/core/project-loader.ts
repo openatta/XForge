@@ -415,14 +415,31 @@ export function assertManaged(project: ProjectContext, command: string): void {
     'XFORGE_LOCK_PROTOCOL_MISMATCH',
   ].includes(item.code));
   const upgradable = canUpgradeDeclaredCli(project.manifest);
+  /*
+   * The lockfile disagrees while the declared version already agrees.
+   *
+   * Neither branch below covered this, and the one it fell to told the reader to install the exact
+   * declared npm version -- which was already installed. Advice a reader has satisfied reads as
+   * advice they have misunderstood, so they go looking for what else it could mean.
+   *
+   * The state is reachable by ordinary means: `lock.yaml` pins the CLI's integrity digest, not just
+   * its version, so any locally built CLI disagrees with a lock written against a different build of
+   * the same version. `commands/projection.ts` already classifies this code as one `update` resolves;
+   * saying so here is what closes the loop, because until now this refusal named no command at all
+   * and `install` refuses on the same code -- leaving a project whose only two repair commands each
+   * point at the other. A probe run met exactly that and spent eight calls on it.
+   */
+  const onlyLockDisagrees = compatibilityErrors.length > 0
+    && compatibilityErrors.every((item) => item.code === 'XFORGE_LOCK_CLI_MISMATCH' || item.code === 'XFORGE_LOCK_PROTOCOL_MISMATCH')
+    && project.compatibility.cli.matches;
+  const resolution = upgradable
+    ? { action: 'resolve-declared-xforge', reason: `The declared CLI version (${project.manifest.xforge.version}) is older than the running CLI (${CLI_VERSION}) and the Protocol matches — run xforge update to reconcile the declared version, rather than installing an older CLI.`, command: ['xforge', 'update'] }
+    : onlyLockDisagrees
+      ? { action: 'resolve-declared-xforge', reason: `The declared CLI (${project.manifest.xforge.version}) already matches the running one; it is xforge/lock.yaml that disagrees, which happens when the running build is not the published one it was written against. Run xforge update to rewrite the lock. Installing the declared version again changes nothing, because it is already installed.`, command: ['xforge', 'update'] }
+      : { action: 'resolve-declared-xforge', reason: 'Install the exact @xforge/cli npm version declared by the project.' };
   throw new XForgeError(
     compatibilityErrors.length > 0 ? compatibilityErrors : diagnostic('XFORGE_MANAGED_REQUIRED', `${command} requires Managed mode.`),
-    {
-      root: project.root,
-      nextActions: upgradable
-        ? [{ action: 'resolve-declared-xforge', reason: `The declared CLI version (${project.manifest.xforge.version}) is older than the running CLI (${CLI_VERSION}) and the Protocol matches — run xforge update to reconcile the declared version, rather than installing an older CLI.`, command: ['xforge', 'update'] }]
-        : [{ action: 'resolve-declared-xforge', reason: 'Install the exact @xforge/cli npm version declared by the project.' }],
-    },
+    { root: project.root, nextActions: [resolution] },
   );
 }
 

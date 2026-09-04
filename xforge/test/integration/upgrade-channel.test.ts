@@ -175,6 +175,33 @@ describe('declared CLI version upgrade channel', () => {
     expect(await manifestText(root)).toBe(before);
   });
 
+  /*
+   * The version already agrees and the lockfile does not, which neither branch used to cover.
+   *
+   * `lock.yaml` pins the CLI's integrity digest, not only its version, so any locally built CLI
+   * disagrees with a lock written against a different build of the same version. The refusal fell
+   * to the branch that says "install the exact declared npm version" -- already true, so the reader
+   * has satisfied the advice and goes looking for what else it could mean. `install` refuses on the
+   * same code, so the project's two repair commands each pointed at the other. A probe run met that
+   * loop and spent eight of its calls in it.
+   */
+  it('names update, not a reinstall, when the lockfile is what disagrees', async () => {
+    const root = await fixture();
+    const lockFile = path.join(root, 'xforge', 'lock.yaml');
+    const lock = await readFile(lockFile, 'utf8');
+    /* Only the integrity digest moves: the declared version stays exactly what is running, which is
+       the whole point of the case. */
+    await writeFile(lockFile, lock.replace(/(xforge:\n  integrity: )sha256:[a-f0-9]{64}/, `$1sha256:${'0'.repeat(64)}`));
+
+    const update = await runCli(root, ['install']);
+    expect(update.code).toBe(1);
+    expect(update.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_LOCK_CLI_MISMATCH');
+    const [action] = update.json.nextActions;
+    expect(action.action).toBe('resolve-declared-xforge');
+    expect(action.command).toEqual(['xforge', 'update']);
+    expect(action.reason).toContain('already matches the running one');
+  });
+
   it('refuses a never-installed project before reconciling, leaving the Manifest byte-identical', async () => {
     /* `init`ed on an older CLI, never `install`ed: the declared version is genuinely stale, so the
        upgrade channel would happily reconcile it — but `update` cannot project without an

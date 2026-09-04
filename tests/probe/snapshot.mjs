@@ -82,6 +82,27 @@ if (selected.at) {
      in it name the commits they were bound to and a probe run writes more on top. */
   git(['clone', '--no-hardlinks', '--quiet', source, target]);
   git(['checkout', '--quiet', '-B', 'probe', selected.at], target);
+  /*
+   * The installation record, which git cannot supply and the fixture is not a project without.
+   *
+   * `xforge/.state.json` is ignored on purpose -- it is a rebuildable digest cache, and tracking it
+   * turns an ordinary two-branch merge into a hard stop, because a conflicted copy is no longer
+   * JSON and `state`, `install`, `sync` and `update` all refuse at the first read. So a fixture
+   * materialised from history has every authored file and no record that anything was installed.
+   *
+   * `probe.mjs` then runs `xforge update` to move the fixture's declared identity onto the CLI it
+   * provisioned, and `update` refuses with `XFORGE_NOT_INSTALLED` because that record is missing.
+   * The lock keeps the integrity of whatever build captured the fixture, every later command fails
+   * `XFORGE_LOCK_CLI_MISMATCH`, and `install` -- the obvious next move -- refuses on that same code.
+   * A measured probe met all of it and spent eight of its calls there, which is not what it was
+   * paid to measure.
+   *
+   * Copied from the working tree rather than reconstructed: it describes the install that produced
+   * this project, `update` rewrites it immediately, and a cache one run out of date is worth far
+   * more here than no cache at all.
+   */
+  const installRecord = path.join(source, 'xforge', '.state.json');
+  if (existsSync(installRecord)) await cp(installRecord, path.join(target, 'xforge', '.state.json'));
 } else {
   await cp(source, target, { recursive: true });
 }
