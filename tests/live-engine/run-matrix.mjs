@@ -1,5 +1,5 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { readFileSync, existsSync } from 'node:fs';
+import { mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
+import { readFileSync, existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -542,6 +542,48 @@ function testedBuild() {
   }
 }
 
+/**
+ * The previous run of this scenario, moved aside instead of overwritten.
+ *
+ * Every artefact here is named `<scenario>-<stage>.json`, so re-running a scenario silently
+ * destroyed the run before it. That contradicts the one thing the README insists on -- "the run is
+ * the product, and it is not saved anywhere else" -- and it makes the comparison these runs exist
+ * to support impossible: an A/B needs both arms, and the B arm was deleting A on its way in. It
+ * happened: a 199-turn baseline was overwritten by the run measuring against it, and five of its
+ * seven transcripts were gone before anyone re-read them. Only `-timeline.json` survived, because
+ * that run died before rewriting it.
+ *
+ * Keyed by the commit the prior run tested, which is the only name that makes two arms comparable
+ * afterwards. An interrupted run leaves no timeline to read a commit from, so those fall back to
+ * the newest artefact's timestamp -- less useful than a hash, and still better than deletion.
+ *
+ * The live paths keep their names, because `release-check.mjs` reads
+ * `<scenario>-timeline.json` and must go on finding the current run where it always was.
+ */
+async function archivePriorResults(scenario) {
+  const existing = existsSync(resultsRoot)
+    ? (await readdir(resultsRoot)).filter((name) => name.startsWith(`${scenario}-`))
+    : [];
+  if (existing.length === 0) return;
+
+  let label = null;
+  try {
+    const timeline = JSON.parse(readFileSync(path.join(resultsRoot, `${scenario}-timeline.json`), 'utf8'));
+    label = timeline?.testedBuild?.commit?.slice(0, 12) ?? null;
+  } catch { label = null; }
+  if (!label) {
+    const newest = Math.max(...existing.map((name) => statSync(path.join(resultsRoot, name)).mtimeMs));
+    label = `interrupted-${new Date(newest).toISOString().replace(/[:.]/g, '-')}`;
+  }
+
+  const destination = path.join(resultsRoot, 'archive', label);
+  await mkdir(destination, { recursive: true });
+  for (const name of existing) {
+    await rename(path.join(resultsRoot, name), path.join(destination, name));
+  }
+  process.stdout.write(`Archived ${existing.length} prior ${scenario} artefact(s) to archive/${label}\n`);
+}
+
 function commit(projectRoot, message) {
   run('git', ['add', '.'], projectRoot);
   const status = spawnSync('git', ['status', '--porcelain'], { cwd: projectRoot, encoding: 'utf8' }).stdout.trim();
@@ -799,6 +841,7 @@ const flowName = scenarioConfig.flow;
 /* Scopes the per-scenario temp roots in setup.mjs / run-engine.mjs so flows can run in parallel. */
 process.env.XFORGE_LIVE_ENGINE_SCENARIO = scenarioName;
 await mkdir(resultsRoot, { recursive: true });
+await archivePriorResults(scenarioName);
 
 /*
  * One entry per Stage the Agent drove. The value that matters is `contentRevision`:
