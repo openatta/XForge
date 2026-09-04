@@ -357,6 +357,44 @@ the repository `.env` inside an isolated project. Scenario prompts prohibit
 parent-directory access; behavioral isolation is an explicit fallback, not a
 sandbox guarantee.
 
+## Reading a number these runs produce
+
+Twelve runs of `solid` in one sitting, driving the same Flow, produced this spread on
+one Stage's output tokens: 26,565 to 52,679. That is the noise a change has to beat,
+and most changes do not. Four conclusions were drawn and then withdrawn during that
+sitting, each on evidence that looked convincing at the time. What follows is what
+went wrong, so the next reader does not repeat it.
+
+**Three points is not a reproduction.** A change to the Check report's outline gave
+39,492 / 40,494 / 39,692 across three runs and was reported as a stable 11% saving.
+Widening to twelve runs put the prose arm's own standard deviation at 7,264 — the
+three tight points were a sample, not a signal. Welch on the full set: t=1.22, and
+the two ranges overlap almost entirely.
+
+**Structural measurements survive; statistical ones usually do not.** The same change
+moved `check-report.md` from 11,434 characters to about 4,800 and the findings ledger
+from 2,954 to about 3,770, every run. Those are counted, not inferred, and they are
+what the change is: reasoning relocated from prose nothing reads into a ledger a Gate
+does. Claim that. Do not claim the token saving.
+
+**A result file is rewritten by its own Stage's retry.** `<scenario>-<stage>.json`
+holds whatever the latest attempt wrote. One reading here caught a failed first
+attempt (42 turns, 56,844 output), and a conclusion was drawn from it ten minutes
+before the successful retry (33 turns, 39,882) replaced it. Check the run has left
+that Stage before reading its numbers.
+
+**Prefer a criterion the product computes.** The Check experiment was judged on
+"did the findings count hold up", which needs interpretation and got it wrong twice.
+The assurance experiment was judged on whether reconciliation raised
+`XFORGE_RECONCILE_REQUIREMENT_UNANCHORED`, which is a yes or no the CLI answers.
+The second kind is worth designing the experiment around.
+
+**Turns and cost are not the same axis.** Fitted over 51 stage-level samples from
+these runs, output tokens cost about fifty times a cached input token, and cost
+correlates with output (r=0.95) far better than with turn count (r=0.80). A change
+that removes round trips and lengthens replies can raise the bill: one did, at -15%
+turns and +4% cost. Report both columns or neither.
+
 ## Extending coverage
 
 Adding a Skill or a Flow (per
