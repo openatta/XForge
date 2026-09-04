@@ -17,7 +17,7 @@ exit: 1
     {
       "code": "XFORGE_FIELD_NOT_FOUND",
       "severity": "error",
-      "message": "No value at --field nope.nope. data has no \"nope\" (it has: project, scaffold, xforge, constitution, specs, changes, activeChanges, flows, resources, targets, installation, change). Run the command without --field and without --text to see the shape of data."
+      "message": "No value at --field nope.nope. data has no \"nope\" (it has: project, scaffold, xforge, constitution, specs, changes, activeChanges, flows, resources, targets, installation, change). The paths that did resolve are under data; run the command without --field and without --text to see the shape of the rest."
     }
   ],
   "changes": [],
