@@ -1854,34 +1854,32 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
       return 0;
     }
     if (failed.length > 0) {
-      /*
-       * The values that did resolve, kept -- while the call still fails.
-       *
-       * Not the whole envelope: the caller narrowed to these values and named one wrongly, and
-       * answering with the entire resolved project costs an Agent ~12K tokens of context for a typo.
-       * But `data: null` threw away the correct answers too, and a caller that wanted four values
-       * and mistyped one had to ask again for the three it had already been given. Across one
-       * measured `solid` run that happened five times and discarded fifteen resolved values -- once
-       * eight of ten, for two bad paths.
-       *
-       * The rule this is often mistaken for is worth stating exactly. `resolutions` is computed for
-       * every path before anything prints, so a partial answer is never dressed as a whole one; what
-       * must not happen is a caller "receiving three of four values and a zero exit" and carrying on
-       * as though it had four. The danger there is the exit code, not the data. `ok` stays false,
-       * the exit stays 1, and every missing path still gets its own diagnostic -- so the reply
-       * cannot read as success, and the work already done is not thrown away with the typo.
-       */
-      const resolved = resolutions.filter((item) => item.resolved.found);
       process.stdout.write(present({
         ...result, ok: false,
-        data: resolved.length > 0
-          ? Object.fromEntries(resolved.map((item) => [item.path, (item.resolved as { value: unknown }).value]))
-          : null,
+      /*
+       * `data: null`, and the reason is not the obvious one.
+       *
+       * The caller narrowed to these values and named one wrongly, and answering with the entire
+       * resolved project costs an Agent ~12K tokens of context for a typo. The diagnostics below
+       * already say the shape is not here and how to ask for it.
+       *
+       * Returning the paths that *did* resolve was tried, on the reasoning that a caller asking for
+       * four values and mistyping one should not have to ask again for the three it had been given
+       * -- one measured run discarded fifteen resolved values that way, once eight of ten. It was
+       * reverted. Four prior runs raised `XFORGE_FIELD_NOT_FOUND` 4, 4, 4 and 5 times over the same
+       * five Stages; with the resolved values kept, the next run raised it **10**, with turns +19%
+       * and cost +10% against the arm it was measured against.
+       *
+       * Making a wrong guess cheap removes the pressure to guess right. The waste was never the
+       * discarded values -- it is the guess, and each one is a whole turn whose refusal returns the
+       * entire envelope regardless. Paying for the typo once is what keeps the count at four.
+       */
+      data: null,
         diagnostics: [...result.diagnostics, ...failed.map((item) => diagnostic(
           'XFORGE_FIELD_NOT_FOUND',
           /* `--text` no longer prints `data` verbatim for every command, so the advice names both
              flags: the shape lives in the JSON envelope, which is what dropping them returns. */
-          `No value at --field ${item.path}. ${(item.resolved as { reason: string }).reason} The paths that did resolve are under data; run the command without --field and without --text to see the shape of the rest.`,
+          `No value at --field ${item.path}. ${(item.resolved as { reason: string }).reason} Run the command without --field and without --text to see the shape of data.`,
         ))],
       }, textMode, render));
       return 1;
