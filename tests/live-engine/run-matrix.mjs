@@ -416,7 +416,7 @@ const PROJECT_ADAPTED_TEST_COMMAND = ['node', '--test', 'test/'];
 /** Old enough to make the staged merge a real one; the exact number does not matter, only that it lags. */
 const AGED_SCAFFOLD_VERSION = '0.7.12';
 
-const OPTION_DEFAULTS = { 'cli-source': 'npm', 'suite-budget': '30', budget: '3', 'max-attempts': '2', 'timeout-seconds': '900' };
+const OPTION_DEFAULTS = { 'cli-source': 'npm', 'suite-budget': '30', budget: '3', 'max-attempts': '2', 'timeout-seconds': '900', session: 'per-stage' };
 
 /**
  * A trivial round trip to the configured provider, in milliseconds, or `null` if it cannot be made.
@@ -502,6 +502,7 @@ function options(argv) {
      Flow needs, and it wins when both are given. */
   result.scenario ??= result.flow;
   if (!SCENARIOS[result.scenario]) throw new Error(`--scenario must be one of: ${Object.keys(SCENARIOS).join(', ')}`);
+  if (!['per-stage', 'per-change'].includes(result.session)) throw new Error('--session must be per-stage or per-change.');
   return result;
 }
 
@@ -697,6 +698,15 @@ async function runEngine({ projectRoot, scenario, stageId, promptRelative, polic
     '--max-attempts', cliOptions['max-attempts'],
     '--timeout-seconds', cliOptions['timeout-seconds'],
     '--allow-behavioral-isolation', 'true',
+    /*
+     * `--session per-change` runs every Stage of one Change in a single resumed session, so the
+     * fixed preamble and the understanding built in earlier Stages are paid for once instead of
+     * once per Stage. Default `per-stage` is the shape every measurement so far was taken in and
+     * stays byte-identical: this is an experiment's second arm, not a new default.
+     */
+    ...(cliOptions.session === 'per-change'
+      ? ['--session-chain', path.join(resultsRoot, `${scenario}-session.txt`)]
+      : []),
   ];
   /*
    * `maxAttemptsPerStage` was only ever a budget cap: the policy reserved a second attempt that

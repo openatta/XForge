@@ -1,4 +1,5 @@
 import { mkdir, readFile, realpath, rename, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { cliBinDirectory } from './xforge-cli.mjs';
 import { fileURLToPath } from 'node:url';
@@ -150,12 +151,32 @@ await atomicJson(policyPath, policy);
  * the last is the same result envelope `json` would have returned, written to the same path in the
  * same shape, so nothing downstream changes. The transcript lands beside it.
  */
+/*
+ * One session per Change, when asked for it, instead of one per Stage.
+ *
+ * A Stage costs about 23k tokens of fixed preamble before it reads anything, and it pays that on
+ * every turn; a measured `solid` run spent 4.64M of its 6.17M prompt tokens re-sending a preamble
+ * that never changed. Seven cold starts also mean seven rebuilds of the same understanding, which
+ * is what makes 65-82% of the calls in every measured Stage orientation rather than work.
+ *
+ * `--session-chain <file>` tests whether that is inherent. The file carries the previous Stage's
+ * session id: the first Stage writes one, each later Stage resumes it and arrives already holding
+ * the Change it is working on. Session persistence has to be on for that, so `--no-session-persistence`
+ * is dropped in this mode and kept in every other -- the default path below is unchanged, because
+ * this is the arm of an experiment and not yet a decision.
+ */
+const sessionChain = selected['session-chain'] ? path.resolve(selected['session-chain']) : null;
+const resumeSessionId = sessionChain && existsSync(sessionChain)
+  ? (await readFile(sessionChain, 'utf8')).trim() || null
+  : null;
+
 const args = [
   '-p',
   '--output-format', 'stream-json',
   /* `stream-json` under `--print` requires it; the CLI refuses the combination otherwise. */
   '--verbose',
-  '--no-session-persistence',
+  ...(sessionChain ? [] : ['--no-session-persistence']),
+  ...(resumeSessionId ? ['--resume', resumeSessionId] : []),
   '--dangerously-skip-permissions',
   '--max-budget-usd', String(reservation.effectiveBudgetUsd),
 ];
@@ -257,6 +278,19 @@ const fallback = {
   error: redact((spawnError?.message ?? errorOutput) || 'Engine returned no JSON output.'),
 };
 await writeFile(outputPath, `${JSON.stringify(engineResult ?? fallback, null, 2)}\n`);
+
+/*
+ * Hand this Stage's session to the next one, but only on a run that produced a usable session.
+ *
+ * Written after the result rather than from the `init` record, because a Stage that died is a Stage
+ * whose session should not be resumed: continuing into a context that ended in a provider stall
+ * would carry the stall's half-finished state into the arm being measured, and the comparison is
+ * the whole point of the mode. A failed Stage leaves the chain holding the last good id, so the
+ * retry resumes what the failed attempt started from rather than what it left behind.
+ */
+if (sessionChain && engineResult?.session_id && !engineResult.is_error) {
+  await writeFile(sessionChain, `${engineResult.session_id}\n`);
+}
 
 const costUsd = typeof engineResult?.total_cost_usd === 'number' ? engineResult.total_cost_usd : null;
 /*
