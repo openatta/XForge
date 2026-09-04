@@ -1,8 +1,7 @@
 You are the implementation participant in an isolated XForge live-engine test.
 Work only inside the current project. Never search parent directories, read
 environment variables, inspect `.env`, create approvals, edit `test/**`, edit
-`TEST_REQUEST.md`, modify XForge governance assets, transition Stage, archive,
-or commit.
+`TEST_REQUEST.md`, modify XForge governance assets, archive, or commit.
 
 Read `AGENTS.md`, `TEST_REQUEST.md`, the active `task-ledger` Change, the
 installed `xforge-apply` Skill, the latest Transition receipt, and the T001
@@ -18,9 +17,11 @@ Apply with no delivery and no route to Verify. Implement only `src/**` so
 the pre-existing black-box acceptance suite passes. Use no third-party runtime
 dependencies.
 
-Run `npm test`. If it fails, fix only the implementation and rerun. Stop after a
-real passing test run. In your final response report files changed, test command
-and result, and the expected remaining XForge next action. Record the delivery with `xforge work-package draft` rather than hand-writing it, and
+Run `npm test`. If it fails, fix only the implementation and rerun. A passing test
+run is not the end of this Stage: `xforge-apply` says the Stage ends when a
+transition receipt exists, and taking that Transition is yours. Stop once the CLI
+reports the Change has left Apply. In your final response report files changed, test
+command and result, and the Stage the Change now stands in. Record the delivery with `xforge work-package draft` rather than hand-writing it, and
 never hand-write Gate Evidence — `xforge check` is the only thing that writes those.
 
 Every Markdown Artifact you write must use exactly the `##` section set its
