@@ -666,13 +666,21 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
       if (gateBlockReason(evidence, control.governance.revision.contentRevision) === 'stale') staleGates.push(gateId);
     }
     if (staleGates.length > 0) {
-      diagnostics.push(diagnostic(
+      /*
+       * The re-run, in the field a reader can act on.
+       *
+       * The message has named this command for a while, spelled with one `--gate` per stale Gate,
+       * and spelling it out is not the same as carrying it. This code fired in a measured `solid`
+       * run and is one of only fourteen the whole Flow ever raises, so it is worth the field: the
+       * argv is fully determinate here -- the Change and the exact Gate list are both in hand.
+       */
+      diagnostics.push({ ...diagnostic(
         'XFORGE_GATE_EVIDENCE_STALE',
         `${staleGates.length} Gate(s) hold Evidence that passed against an earlier content revision and no longer bind the current one: ${staleGates.join(', ')}. Gate Evidence binds to the Change's content at the moment the Gate runs, so writing any declared Artifact after a Gate passes stales it — which is why the Stage order is write the assurance first, then run \`xforge check --change ${options.change}\`, then finish the verification receipt — \`xforge verification finalize\` writes it from the Evidence in one step, or \`draft-receipt\` computes the facts for you to record by hand. Re-run these Gates before attempting the transition; nothing else about them is wrong. Name them: \`xforge check --change ${options.change} ${staleGates.map((id) => `--gate ${id}`).join(' ')}\`. A plain \`xforge check\` runs the Gates the *current* Stage declares, and a Stage that declares none — clarify and design both do — refreshes nothing while reporting this same notice again.`,
         `${project.changesPath}/${options.change}`,
         'warning',
         { gates: staleGates },
-      ));
+      ), remedy: { commands: [['xforge', 'check', '--change', options.change, ...staleGates.flatMap((id) => ['--gate', id])]] } });
     }
   }
 

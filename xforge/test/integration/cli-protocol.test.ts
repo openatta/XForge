@@ -278,7 +278,18 @@ describe('state --field', () => {
 
   /* And one bad path among several fails the whole call rather than answering partially: a caller
      that got three of four values would carry on believing it had all four. */
-  it('fails the call when any one of several --field paths does not resolve', async () => {
+  /*
+   * The call fails, and the values that resolved are still returned.
+   *
+   * The rule this protects is about the exit code, not the data: a caller must never receive three
+   * of four values with a zero exit and carry on as though it had four. `ok` is false, the exit is
+   * 1, and every missing path gets its own diagnostic, so the reply cannot read as success.
+   *
+   * Withholding the resolved values as well was a separate decision, and it cost. In one measured
+   * `solid` run five calls failed this way and discarded fifteen values that had resolved -- once
+   * eight of ten, for two bad paths -- and each had to be asked for again.
+   */
+  it('fails the call when any one of several --field paths does not resolve, keeping the ones that did', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
     const result = await runCli(root, [
@@ -287,10 +298,22 @@ describe('state --field', () => {
       '--field', 'nope.nope',
     ]);
     expect(result.code).toBe(1);
-    expect(result.json.data).toBeNull();
+    expect(result.json.ok).toBe(false);
+    expect(result.json.data).toEqual({ 'change.id': CHANGE });
     const found = (result.json.diagnostics as any[]).find((item) => item.code === 'XFORGE_FIELD_NOT_FOUND');
     expect(found, JSON.stringify(result.json.diagnostics)).toBeTruthy();
     expect(found.message).toContain('nope.nope');
+    /* One diagnostic per missing path, so a caller counting them learns how much is absent. */
+    expect((result.json.diagnostics as any[]).filter((item) => item.code === 'XFORGE_FIELD_NOT_FOUND')).toHaveLength(1);
+  });
+
+  it('still withholds data entirely when no --field path resolves', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    const result = await runCli(root, ['state', '--change', CHANGE, '--field', 'nope.nope', '--field', 'also.missing']);
+    expect(result.code).toBe(1);
+    expect(result.json.data).toBeNull();
+    expect((result.json.diagnostics as any[]).filter((item) => item.code === 'XFORGE_FIELD_NOT_FOUND')).toHaveLength(2);
   });
 
   /* The Skills tell an Agent to consume the ready Action for the current revision -- which lives in
