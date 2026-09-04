@@ -159,7 +159,9 @@ export function rulePaths(rule: RuleResource): string[] {
   return normalizeRule(rule).paths;
 }
 
-export const BOOTSTRAP_BODY = `# XForge bootstrap\n\nBefore project work, read \`xforge/XFORGE.md\`, then \`xforge/manifest.yaml\`, \`xforge/constitution.md\`, and the active Change under the resolved logical Changes path. Use installed \`xforge-*\` Skills and treat only matching CLI/Gate evidence as enforced facts.\n`;
+/* The same contract for the hosts that read `AGENTS.md` rather than `CLAUDE.md`. It named four
+   files to open before starting; the entry call returns three of them, so it names the call. */
+export const BOOTSTRAP_BODY = `# XForge bootstrap\n\nThis project is governed by XForge. The CLI is \`xforge\`, already installed and on PATH; never \`npx xforge\`.\n\nOn a Change, \`xforge stage --change <id>\` is the first call: it returns the ready Action with its \`writes\`, \`requiredSections\` and outline, the text of that Action's inputs, the Constitution, and the diagnostics. Outside a Change, \`xforge state\` reports project facts and names the active Changes. Read commands take \`--field <dotted.path>\`, repeatable, to return one value instead of the whole envelope.\n\nUse the installed \`xforge-*\` Skills, take commands from \`nextActions[].command\`, and treat only matching CLI/Gate evidence as enforced facts. \`xforge/XFORGE.md\` carries Flow selection and the parallel development policy.\n`;
 
 /**
  * Claude Code loads `CLAUDE.md`, never `AGENTS.md`, so its block used to import `AGENTS.md` to
@@ -172,11 +174,43 @@ export const BOOTSTRAP_BODY = `# XForge bootstrap\n\nBefore project work, read \
  */
 export const CLAUDE_MEMORY_BEGIN = '<!-- XFORGE:BEGIN -->';
 export const CLAUDE_MEMORY_END = '<!-- XFORGE:END -->';
+/*
+ * The operative contract, in the file the host loads by itself.
+ *
+ * This block used to say only "read `xforge/XFORGE.md`", and every Stage duly spent a turn doing
+ * that -- then another on `manifest.yaml` and another on `constitution.md`, because XFORGE.md's
+ * first line sends the reader there. Measured across five Stages, orientation was 65-82% of every
+ * Stage's calls, and this chain is the part of it that fires before a Skill has even loaded.
+ *
+ * A turn is the expensive unit -- it re-sends the entire context -- while this text is loaded by
+ * the host at no turn cost at all. So the few facts every Stage needs are stated here rather than
+ * pointed at. What stays behind the pointer is what only one Stage needs: Flow selection (propose)
+ * and the parallel-development policy (apply). Inlining those would put them in every turn of every
+ * Stage to be read in one.
+ *
+ * Kept short on purpose. This rides on every turn of every session, so a paragraph that saves one
+ * read and costs 200 tokens x 191 turns is not a saving. Anything that does not remove a read or
+ * prevent a wrong call belongs in XFORGE.md.
+ */
 export const CLAUDE_MEMORY_BODY = [
   '## XForge',
   '',
-  'Before project work, read `xforge/XFORGE.md`. It carries the project bootstrap,',
-  'the CLI invocation contract, and the spec-driven parallel development policy.',
+  'This project is governed by XForge. The CLI is `xforge`, already installed and on PATH.',
+  'Never `npx xforge` — npm carries an unrelated package of that name.',
   '',
-  'Per-topic XForge guidance is installed under `.claude/rules/`.',
+  'On a Change, `xforge stage --change <id>` is the first call: it returns the ready Action with',
+  'its `writes`, `requiredSections` and outline, the text of that Action\'s inputs, the Constitution,',
+  'and the diagnostics. Re-run it after each Artifact rather than asking what changed. Outside a',
+  'Change, `xforge state` reports project facts and names the active Changes.',
+  '',
+  'Read commands take `--field <dotted.path>`, repeatable, to return one value instead of the whole',
+  'envelope; one path that does not resolve fails the call. Chain commands that do not read each',
+  'other onto one line — a turn costs far more than a process.',
+  '',
+  'Run the command a reply gives you in `nextActions[].command` or `remedy.commands` rather than',
+  'assembling one from a usage string. Treat CLI JSON and Gate evidence as deterministic facts, and',
+  'prompt guidance as guidance.',
+  '',
+  '`xforge/XFORGE.md` carries what only one Stage needs: Flow selection and the spec-driven',
+  'parallel development policy. Per-topic XForge guidance is installed under `.claude/rules/`.',
 ].join('\n');

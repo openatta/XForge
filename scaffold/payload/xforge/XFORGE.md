@@ -1,11 +1,13 @@
 # XForge project bootstrap
 
-Before project work, read `xforge/manifest.yaml` and `xforge/constitution.md`.
-Before reading an active Change's files, run `xforge stage-bundle --change <id>`
-and read in full everything it lists under `READ IN FULL`.
+The entry contract — the CLI invocation form, the Stage entry call, and `--field` —
+is in `CLAUDE.md` / `AGENTS.md`, which your host loads without being asked. It is not
+repeated here. This file carries what only one Stage needs, and what a reader comes
+looking for once.
 
-Use the installed XForge workflow Skills. Treat CLI JSON/Gate evidence as
-deterministic facts and prompt guidance as guidance only.
+`xforge stage-bundle --change <id>` answers a narrower question than `stage` does:
+which of this Change's Artifacts have moved since the Stage was entered. It returns
+paths, not their content.
 
 ## Invoking the CLI
 

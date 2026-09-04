@@ -1,11 +1,11 @@
 # XForge 项目引导
 
-开始项目工作前，先读 `xforge/manifest.yaml` 与 `xforge/constitution.md`。
-读活跃 Change 的文件之前，先运行 `xforge stage-bundle --change <id>`，
-并把它列在 `READ IN FULL` 下的文件全部读完。
+入口契约——CLI 的调用形式、Stage 的入口命令、以及 `--field`——写在
+`CLAUDE.md` / `AGENTS.md` 里，宿主会自动加载，这里不再重复。本文件承载的是
+只有某一个 Stage 才需要、以及读者只会来查一次的内容。
 
-使用已安装的 XForge 工作流 Skills。把 CLI 的 JSON 输出与 Gate 证据当作确定性
-事实，把提示词里的指导仅当作指导。
+`xforge stage-bundle --change <id>` 回答的是比 `stage` 更窄的一个问题：自进入
+本 Stage 以来，这个 Change 的哪些 Artifact 变动过。它返回的是路径，不是正文。
 
 ## 调用 CLI
 
