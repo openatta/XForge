@@ -237,7 +237,7 @@ export async function createCompleteSolidChange(root: string, id = 'add-feature'
   await write(root, `${base}/proposal.md`, '## Why\nTest\n\n## Flow choice\nsolid\n');
   await write(root, `${base}/specs/widget/spec.md`, '## ADDED Requirements\n\n### Requirement: Widget works\n\n#### Scenario: success\n- **WHEN** used\n- **THEN** it works\n');
   await write(root, `${base}/design.md`, '## Decisions\nUse a deterministic fixture.\n');
-  await write(root, `${base}/check-report.md`, '## Completeness\nProposal, delta Specs, and Design agree.\n');
+  await write(root, `${base}/check-report.md`, '## Reviewed\nCompleteness, consistency, testability, feasibility and risk; no findings.\n');
   await write(root, `${base}/${CHECK_FINDINGS_PATH}`, checkFindings());
   await write(root, `${base}/${CONSTITUTION_CHECK_PATH}`, await constitutionLedger(root));
   await write(root, `${base}/assurance.md`, '## Completeness\nAll requirements are covered.\n');

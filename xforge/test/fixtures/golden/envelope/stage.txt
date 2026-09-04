@@ -128,7 +128,7 @@ exit: 0
       {
         "path": "xforge/changes/add-feature/check-report.md",
         "reason": "worktree-dirty",
-        "text": "## Completeness\nProposal, delta Specs, and Design agree.\n"
+        "text": "## Reviewed\nCompleteness, consistency, testability, feasibility and risk; no findings.\n"
       },
       {
         "path": "xforge/changes/add-feature/design.md",
@@ -153,7 +153,7 @@ exit: 0
     ],
     "vouched": [],
     "bytes": {
-      "read": 2332,
+      "read": 2362,
       "vouched": 0
     }
   },

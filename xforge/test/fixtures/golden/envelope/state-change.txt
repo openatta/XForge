@@ -415,7 +415,7 @@ exit: 0
         {
           "id": "check-report",
           "generates": "check-report.md",
-          "description": "Narrate the pre-implementation review across Proposal, delta Specs, and Design",
+          "description": "Record the pre-implementation review — what was covered, what the Gates reported, and where a blocker routes",
           "requires": [
             "proposal",
             "delta-specs",

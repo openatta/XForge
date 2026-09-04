@@ -72,13 +72,10 @@ artifacts:
         pattern: ['**Rejected alternative:', '**被否决的替代方案：']
   - id: check-report
     generates: check-report.md
-    description: Narrate the pre-implementation review across Proposal, delta Specs, and Design
-    instruction: Explain completeness, consistency, testability, feasibility, and risk, and record under Gates and evidence what `xforge check` actually reported. Use Rework to name the Stage a blocker sends this Change back to and what must change there, and say plainly when there is nothing to rework. Do not write a verdict on whether Check passes — the findings ledger decides that, and a verdict in prose only competes with the record that governs.
+    description: Record the pre-implementation review — what was covered, what the Gates reported, and where a blocker routes
+    instruction: Under Reviewed, name each dimension covered (completeness, consistency, testability, feasibility and risk), the content revision reviewed, and the findings raised for it by id — cite `evidence/check-findings.yaml` rather than restating what a finding says or why. The reasoning belongs in the finding, once. Under Gates and evidence record what `xforge check` actually reported. Use Rework to name the Stage a blocker sends this Change back to and what must change there, and say plainly when there is nothing to rework. Do not write a verdict on whether Check passes — the findings ledger decides that, and a verdict in prose only competes with the record that governs.
     outline: |
-      ## Completeness
-      ## Consistency
-      ## Testability
-      ## Feasibility and risk
+      ## Reviewed
       ## Gates and evidence
       ## Rework
   - id: check-findings

@@ -9,10 +9,11 @@ Spec, Design), `TEST_REQUEST.md`, and the installed `xforge-check` Skill. Use
 is a ready Check Action before writing anything.
 
 Produce `check-report.md` with exactly the `##` sections the Flow's check-report
-outline defines — Completeness, Consistency, Testability, Feasibility and risk,
-Gates and evidence, Rework — reviewing those dimensions across the Proposal,
-delta Spec, and Design.
-Do not add or omit a section. Specifically
+outline defines, and no others — take them from the ready Action's
+`requiredSections` rather than from memory. Review completeness, consistency,
+testability, and feasibility and risk across the Proposal, delta Spec, and
+Design with the same depth either way; what the outline governs is where that
+review is written down, not how much of it to do. Specifically
 verify that every requirement in the delta Spec has a corresponding decision
 in the Design, that the Design introduces no behavior the delta Spec does not
 state, and that each requirement is testable as written. Do not soften a real
