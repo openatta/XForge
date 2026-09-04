@@ -226,6 +226,33 @@ if (seeded.adoptedFlows.length > 0) {
   runWithEnv('xforge', ['--root', projectRoot, 'install'], projectRoot, cliEnv);
 }
 
+/*
+ * The host's own task list, declined for the duration of a measured run.
+ *
+ * Not a product opinion -- XForge's capability table classifies these correctly as `none`
+ * (bookkeeping, no resource a policy could name) and deliberately ships no deny for them. This is
+ * the instrument holding a variable still.
+ *
+ * The variable is large and it moves on its own. `TodoWrite` was renamed to this family and the
+ * capability table still named the old one, so for a while these were denied by accident; mapping
+ * them correctly restored the behaviour and a full run went from 152 to 191 turns against the same
+ * baseline. Worse for measuring anything else, it is not stable between runs: the same `propose`
+ * Stage made 0 task calls in one run and 12 in the next, and `revise` went 11 to 0 -- a swing wider
+ * than any change being tested. Whatever a run is meant to show about a Skill or a CLI reply is
+ * read through that noise unless it is pinned.
+ *
+ * Set `XFORGE_LIVE_ENGINE_ALLOW_TASK_LIST=1` to leave the host's default alone and measure with it.
+ */
+if (!process.env.XFORGE_LIVE_ENGINE_ALLOW_TASK_LIST) {
+  const settingsPath = path.join(projectRoot, '.claude', 'settings.json');
+  let settings = {};
+  try { settings = JSON.parse(await readFile(settingsPath, 'utf8')); } catch { settings = {}; }
+  settings.permissions ??= {};
+  settings.permissions.deny = [...new Set([...(settings.permissions.deny ?? []), 'TaskCreate', 'TaskUpdate', 'TaskList', 'TaskGet'])];
+  await mkdir(path.dirname(settingsPath), { recursive: true });
+  await writeFile(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
+}
+
 run('git', ['init', '--quiet', '--initial-branch=main'], projectRoot);
 run('git', ['config', 'user.name', 'XForge Live E2E'], projectRoot);
 run('git', ['config', 'user.email', 'xforge-live@example.test'], projectRoot);
