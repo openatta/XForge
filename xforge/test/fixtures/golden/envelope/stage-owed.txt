@@ -37,10 +37,8 @@ exit: 0
       ],
       "requiredSections": [
         "Completeness",
-        "Correctness",
         "Coherence",
-        "Gates and evidence",
-        "Findings"
+        "Gates and evidence"
       ],
       "doneWhen": [
         "Artifact assurance exists and satisfies the active Flow instructions."
@@ -58,14 +56,12 @@ exit: 0
           "xforge/changes/add-feature/assurance.md"
         ],
         "description": "Record verification against requirements, design, tests, and constraints",
-        "instruction": "Summarize completeness, correctness, coherence, and Gates with traceable evidence.",
-        "outline": "## Completeness\n## Correctness\n## Coherence\n## Gates and evidence\n## Findings\n",
+        "instruction": "Completeness is a table and nothing else — one row per Requirement ID, the clause it pins, and where the evidence for it lives (a test name with file:line, or the probe that reached it). Every Requirement ID must appear here; this section is the Flow's requirement-coverage anchor, and a Requirement missing from it is reported by reconciliation rather than by prose. Coherence carries the one judgement no ledger holds — whether the Proposal, delta Spec, Design, tests and implementation describe the same behaviour, and where they diverge. Under Gates and evidence name this Stage's Gate set and point at the receipt; do not restate a Gate's findings, digests or exit codes, because `xforge check` wrote them and the receipt cites them. Do not restate what the work-package delivery record or `evidence/check-findings.yaml` already say; cite them by path or id.",
+        "outline": "## Completeness\n## Coherence\n## Gates and evidence\n",
         "requiredSections": [
           "Completeness",
-          "Correctness",
           "Coherence",
-          "Gates and evidence",
-          "Findings"
+          "Gates and evidence"
         ],
         "missingDependencies": []
       }
