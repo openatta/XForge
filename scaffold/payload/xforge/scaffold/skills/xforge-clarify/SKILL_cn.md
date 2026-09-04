@@ -1,7 +1,6 @@
 ---
 name: xforge-clarify
 description: 消除 Major Change 中会改变范围、设计、兼容性、风险或验收的关键歧义，并原子回写上游规格；用于 State 返回 ready Clarify Action 或规划审查要求澄清时。
-allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 ---
 
 # 不变量

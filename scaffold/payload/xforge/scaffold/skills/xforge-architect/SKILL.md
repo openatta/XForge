@@ -1,7 +1,6 @@
 ---
 name: xforge-architect
 description: Write and maintain xforge/architecture.md, the project's durable architecture — its module map, invariants, and the few decisions whose reversal would touch several modules; use when starting a project, when asked about the architecture, or when an approved architecture change needs merging back.
-allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 ---
 
 # Invariants

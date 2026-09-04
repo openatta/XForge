@@ -1,7 +1,6 @@
 ---
 name: xforge-upgrade-scaffold
 description: Merge a staged newer XForge Scaffold into this project's own, preserving the project's adaptations and reporting what needs a human decision; use after `xforge upgrade-scaffold` has staged a version and written MERGE.md.
-allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 ---
 
 # Invariants

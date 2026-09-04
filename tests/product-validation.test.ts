@@ -62,7 +62,27 @@ describe('XForge product contract', () => {
            only what a host or the CLI actually reads. */
         expect(variant).not.toMatch(/^license:/m);
         expect(variant).not.toMatch(/^metadata:/m);
-        expect(variant).toMatch(/^allowed-tools: .+$/m);
+        /*
+         * `allowed-tools` is gone, and its absence is the assertion now.
+         *
+         * It was here on the reading that a host reads it -- true only when a Skill is invoked
+         * through the Skill tool. Across the 27 transcripts this repository has kept, that happened
+         * once: every Stage reads `SKILL.md` as a file, so the frontmatter never activated and the
+         * declaration was never once exercised.
+         *
+         * Unexercised would be harmless. Wrong is not. Eleven of the twelve declared
+         * `Bash(xforge:*)`, while the same runs spent 37 of 67 Bash calls on `ls`, `cat`, `git`,
+         * `find`, `npm`, `grep` and `python3` -- several of them steps the Skills' own prose
+         * requires. Enforced, the allowlist would have refused the work its own file asks for. All
+         * twelve also declared `Grep` and `Glob`, used 0 and 1 times across those transcripts and
+         * absent from the tool list the host advertises.
+         *
+         * So this is not "drop an unused key": it is removing a claim that was false and would have
+         * bitten the moment anything honoured it. If tool restriction is wanted, it has to be
+         * written against what the Skills actually do and tested by a run that invokes them as
+         * Skills -- neither of which was true of the line this replaces.
+         */
+        expect(variant, 'frontmatter carries only what a host or the CLI actually reads').not.toMatch(/^allowed-tools:/m);
       }
     }
     const apply = await readFile(path.join(scaffold, 'payload', 'xforge', 'scaffold', 'skills', 'xforge-apply', 'SKILL.md'), 'utf8');

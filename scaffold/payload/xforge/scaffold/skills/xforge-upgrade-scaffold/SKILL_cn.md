@@ -1,7 +1,6 @@
 ---
 name: xforge-upgrade-scaffold
 description: 把已暂存的新版 XForge 脚手架合并进本项目自己的脚手架，保住项目的适配，并报告需要人来决定的事项；用于 `xforge upgrade-scaffold` 已暂存某个版本并写出 MERGE.md 之后。
-allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 ---
 
 # 不变量

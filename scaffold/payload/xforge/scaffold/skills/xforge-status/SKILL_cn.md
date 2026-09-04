@@ -1,7 +1,6 @@
 ---
 name: xforge-status
 description: 把 xforge state 的机器状态解释为可读进度——既可以是"在飞的 Change 有哪些、各自到了哪个 Stage"的全局视图，也可以是单个 Change 的详情；用于用户询问在飞情况、做到哪、为何阻塞、剩余工作包、Evidence 是否当前或能否 Verify/Archive 时。
-allowed-tools: Read, Grep, Glob, Bash(xforge:*)
 ---
 
 # 不变量

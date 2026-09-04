@@ -1,7 +1,6 @@
 ---
 name: xforge-design
 description: Produce a governed technical design for a Solid or Major Change, including alternatives, failure boundaries, and verification; use for a ready Design Action after Proposal, Specs, and required Clarifications are satisfied.
-allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 ---
 
 # Invariants

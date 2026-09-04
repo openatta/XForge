@@ -1,7 +1,6 @@
 ---
 name: xforge-architect
 description: 编写与维护 xforge/architecture.md——项目的长期架构：模块地图、不变量，以及少数几条推翻它就要动多个模块的决策；用于项目起步、用户询问架构，或已批准的架构变更需要合并回来时。
-allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 ---
 
 # 不变量

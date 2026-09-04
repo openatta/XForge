@@ -955,6 +955,39 @@ async function nextActionsFor(
     command: ['xforge', 'transition', '--change', changeId!, '--to', transition.to],
   });
   /*
+   * The one-call form, offered where it is the whole remaining job.
+   *
+   * `advance` runs this Stage's Gates and takes the Transition if none refuses -- the CLI's own
+   * description calls it "a call-count optimisation and nothing else". `xforge-apply` tells an Agent
+   * to leave with it. And `nextActions`, which is where the Skills say to take a command from, never
+   * mentioned it: a Stage blocked only by Gates it can run was told to make N `check` calls and then
+   * a `transition`, and the `transition` it was handed would refuse until those N had happened. Two
+   * commands for one act, and the one the product named was the one that fails first.
+   *
+   * Offered only when every remaining blocker is a Gate this Stage can actually clear. An approval,
+   * an artifact or a condition in the set means `advance` cannot finish the job either, and naming
+   * it there would point at a command that refuses for a reason the reader has already been told.
+   * `:failed` is excluded on the same reading the `run-gates` block above uses: that Gate ran and
+   * said no, and re-running changes nothing until the content does.
+   *
+   * Additive. The `run-gates` and `transition` rows stay, because both remain true -- a reader who
+   * wants the Gate results separately, or who is scripting the two halves, is not being told to stop.
+   */
+  const clearableByAdvance = (block: string): boolean => /^gate:.+:(missing|stale)$/.test(block);
+  if (changeId) for (const transition of governance?.readyTransitions ?? []) {
+    const blocks: string[] = transition.blockedBy ?? [];
+    if (blocks.length === 0 || !blocks.every(clearableByAdvance)) continue;
+    const gates = blocks.map((block) => block.slice('gate:'.length, block.lastIndexOf(':')));
+    nextActions.push({
+      action: 'advance', type: 'transition', id: transition.to, actor: 'main', status: 'ready',
+      inputs: ['current Change state'], writes: ['gate evidence', 'transition receipt'],
+      doneWhen: [`Current Stage is ${transition.to}.`],
+      requiredEvidence: ['current-revision Gate Evidence and a valid transition receipt'],
+      reason: `Only Gates this Stage runs (${[...new Set(gates)].join(', ')}) stand between here and ${transition.to}. advance runs them and takes the Transition if none refuses, in one call instead of ${gates.length + 1}.`,
+      command: ['xforge', 'advance', '--change', changeId, '--to', transition.to],
+    });
+  }
+  /*
    * The receipt, when the receipt is what stands between this Stage and the next.
    *
    * This was four paragraphs of Skill prose -- what `finalize` writes, why it is not a shortcut

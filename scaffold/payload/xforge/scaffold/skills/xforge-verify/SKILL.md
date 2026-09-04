@@ -1,7 +1,6 @@
 ---
 name: xforge-verify
 description: Verify Change completeness, correctness, consistency, and Gates from current evidence, and preview then archive only with explicit user authority; use for acceptance readiness, closure, or archiving a Change with a current verification receipt.
-allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 ---
 
 # Invariants

@@ -1,7 +1,6 @@
 ---
 name: xforge-status
 description: Explain xforge state as readable progress — either the portfolio of in-flight Changes and the Stage each sits at, or one Change in depth; use when the user asks what is in flight, what is done, why work is blocked, which packages remain, whether Evidence is current, or whether Verify/Archive is ready.
-allowed-tools: Read, Grep, Glob, Bash(xforge:*)
 ---
 
 # Invariants

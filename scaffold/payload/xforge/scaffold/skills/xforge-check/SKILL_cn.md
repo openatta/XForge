@@ -1,7 +1,6 @@
 ---
 name: xforge-check
 description: 对 Solid 或 Major Change 做实现前跨 Artifact 语义审查，检查完整性、一致性、可测试性、风险与可实施性；用于 State 返回 ready Check Action 或规划需要正式质量门时。
-allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 ---
 
 # 不变量

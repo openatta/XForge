@@ -1,4 +1,4 @@
-quick  propose            state              stage=propose specPlan=0 next=run-gates|transition
+quick  propose            state              stage=propose specPlan=0 next=advance|run-gates|transition
 quick  propose            check              gates=1 next=transition
 quick  propose            audit verify       refused: XFORGE_AUDIT_EVENT_MISSING
 quick  propose            draft-receipt      refused: XFORGE_VERIFICATION_RECEIPT_NOT_REQUIRED
@@ -18,7 +18,7 @@ quick  ready-to-archive   check              gates=2 next=archive
 quick  ready-to-archive   audit verify       remoteDelivery=optional
 quick  ready-to-archive   draft-receipt      refused: XFORGE_VERIFICATION_RECEIPT_NOT_REQUIRED
 quick  ready-to-archive   archive --dry-run  specPlan=1
-solid  propose            state              stage=propose specPlan=0 next=run-gates|transition
+solid  propose            state              stage=propose specPlan=0 next=advance|run-gates|transition
 solid  propose            check              gates=1 next=transition
 solid  propose            audit verify       refused: XFORGE_AUDIT_EVENT_MISSING
 solid  propose            draft-receipt      refused: XFORGE_VERIFICATION_RECEIPT_NOT_REQUIRED
@@ -48,7 +48,7 @@ solid  ready-to-archive   check              gates=2 next=archive
 solid  ready-to-archive   audit verify       remoteDelivery=optional
 solid  ready-to-archive   draft-receipt      refused: XFORGE_VERIFICATION_RECEIPT_NOT_REQUIRED
 solid  ready-to-archive   archive --dry-run  specPlan=1
-major  propose            state              stage=propose specPlan=0 next=run-gates|transition
+major  propose            state              stage=propose specPlan=0 next=advance|run-gates|transition
 major  propose            check              gates=1 next=transition
 major  propose            audit verify       refused: XFORGE_AUDIT_EVENT_MISSING
 major  propose            draft-receipt      refused: XFORGE_VERIFICATION_RECEIPT_NOT_REQUIRED

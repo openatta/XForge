@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createCompleteSolidChange, fixture, runCli, write } from '../helpers.js';
+import { changeYaml, createCompleteSolidChange, fixture, runCli, write } from '../helpers.js';
 
 /**
  * The route out of a blocked transition, said where the block is read.
@@ -86,5 +86,44 @@ describe('a blocked transition names its route out', () => {
         ['xforge', 'transition', '--change', CHANGE, '--to', entry.to],
       );
     }
+  });
+
+  /*
+   * The one-call form, where running the Gates is the whole remaining job.
+   *
+   * `advance` runs this Stage's Gates and takes the Transition if none refuses; the CLI calls it "a
+   * call-count optimisation and nothing else" and `xforge-apply` tells an Agent to leave with it.
+   * `nextActions` -- which is where the Skills say to take a command from -- never named it, so a
+   * Stage blocked only by Gates it could run was handed N `check` calls plus a `transition` that
+   * would refuse until those N had happened. Two commands for one act, and the product named the
+   * one that fails first.
+   */
+  it('offers advance when only runnable Gates remain, in place of N checks and a transition', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root, CHANGE);
+    /* Artifacts are all present, so what is left blocking the exit is this Stage's own Gates. */
+    const state = await runCli(root, ['state', '--change', CHANGE, '--field', 'nextActions']);
+    const actions = state.json as unknown as Array<Record<string, any>>;
+    const advance = actions.filter((item) => item.action === 'advance');
+    const blockedTransitions = actions.filter((item) => item.action === 'transition' && item.status === 'blocked');
+
+    expect(advance.length, JSON.stringify(actions.map((a) => [a.action, a.id, a.status, a.blockedBy]))).toBeGreaterThan(0);
+    for (const item of advance) {
+      expect(item.status).toBe('ready');
+      expect(item.command).toEqual(['xforge', 'advance', '--change', CHANGE, '--to', item.id]);
+      /* It replaces the pair, so it must claim only what it can finish: every blocker on the
+         matching transition has to be a Gate this Stage can actually run. */
+      const paired = blockedTransitions.find((entry) => entry.id === item.id);
+      for (const block of paired?.blockedBy ?? []) expect(block, `advance offered past ${block}`).toMatch(/^gate:.+:(missing|stale)$/);
+    }
+  });
+
+  it('withholds advance when an approval or artifact is what stands in the way', async () => {
+    const root = await fixture();
+    /* Nothing written: the exit is blocked by missing Artifacts, which no Gate run can produce. */
+    await write(root, `xforge/changes/${CHANGE}/change.yaml`, changeYaml('solid'));
+    const state = await runCli(root, ['state', '--change', CHANGE, '--field', 'nextActions']);
+    const actions = state.json as unknown as Array<Record<string, any>>;
+    expect(actions.filter((item) => item.action === 'advance')).toEqual([]);
   });
 });

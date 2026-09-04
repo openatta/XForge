@@ -1,7 +1,6 @@
 ---
 name: xforge-check
 description: Perform a pre-implementation semantic review across a Solid or Major Change's Artifacts for completeness, consistency, testability, risk, and feasibility; use for a ready Check Action or a formal planning quality gate.
-allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 ---
 
 # Invariants
