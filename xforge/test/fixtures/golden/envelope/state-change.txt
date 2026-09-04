@@ -668,12 +668,28 @@ exit: 0
           {
             "to": "ready-to-archive",
             "ready": true,
-            "blockedBy": []
+            "blockedBy": [],
+            "command": [
+              "xforge",
+              "transition",
+              "--change",
+              "add-feature",
+              "--to",
+              "ready-to-archive"
+            ]
           },
           {
             "to": "apply",
             "ready": true,
-            "blockedBy": []
+            "blockedBy": [],
+            "command": [
+              "xforge",
+              "transition",
+              "--change",
+              "add-feature",
+              "--to",
+              "apply"
+            ]
           }
         ]
       },

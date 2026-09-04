@@ -178,4 +178,31 @@ describe('xforge stage working set', () => {
     expect((result.json.diagnostics as Array<{ code: string }>).map((entry) => entry.code))
       .toContain('XFORGE_OPTION_VALUE_INVALID');
   });
+
+  /*
+   * Reading one value back out costs one call, not two.
+   *
+   * `stage` was the only read command that refused `--field`, on the reasoning that a caller
+   * enumerating what it needs is asking the question the command came to answer. That is right
+   * about the way in and was wrong about the way out: withholding it did not stop callers narrowing
+   * the reply, it stopped them narrowing it cheaply. A measured run read one stage reply with two
+   * calls -- `| head -c 6000`, then `| tail -c 4500` re-running the whole command -- and hand-parsed
+   * it with python on a third. The default is unchanged; this is the follow-up read.
+   */
+  it('lets one value be read back out without re-running the command to page through it', async () => {
+    const root = await fixture();
+    await write(root, 'xforge/changes/add-feature/change.yaml', changeYaml('solid'));
+    await write(root, 'xforge/changes/add-feature/proposal.md', '## Why\nTest\n\n## Flow choice\nsolid\n');
+
+    const narrowed = await runCli(root, ['stage', '--change', 'add-feature', '--field', 'action.id', '--field', 'stage']);
+    /* On `ok: true` the requested paths are the whole reply, at the top level -- the envelope
+       survives only on a refusal, where `ok: false` must never read like a success. */
+    expect(narrowed.json).toEqual({ 'action.id': 'delta-specs', stage: 'propose' });
+
+    /* And the whole reply is still what arrives when nothing is asked for by name: the default is
+       the intent it always was, and `--field` only re-reads a reply already received. */
+    const whole = await runCli(root, ['stage', '--change', 'add-feature']);
+    expect((whole.json.data as any).action.id).toBe('delta-specs');
+    expect((whole.json.data as any).read, 'the working set still arrives in full').toBeTruthy();
+  });
 });

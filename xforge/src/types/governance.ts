@@ -158,7 +158,17 @@ export interface GovernanceState {
     remoteRequired: boolean;
     coverageGaps: string[];
   };
-  readyTransitions: Array<{ to: string; ready: boolean; blockedBy: string[] }>;
+  /**
+   * Every legal target from here, each carrying the call that takes it.
+   *
+   * `command` is on the entry rather than only on the matching `nextActions` row because `--field`
+   * is what a caller uses to avoid re-reading the whole envelope, and narrowing to
+   * `change.governance.readyTransitions` used to strip the one thing the reader was going to act on.
+   * A measured run did exactly that: it asked for `readyTransitions`, got `{to, ready, blockedBy}`,
+   * and then spent a turn on `xforge --help` -- 10,748 characters -- to find the syntax of the
+   * command it had just been told was ready. Narrowing the reply should not cost more than it saves.
+   */
+  readyTransitions: Array<{ to: string; ready: boolean; blockedBy: string[]; command: string[] }>;
 }
 
 export interface AuditEvent {

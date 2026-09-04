@@ -60,4 +60,31 @@ describe('a blocked transition names its route out', () => {
     expect(ready?.ready, 'the fixture was supposed to be able to reach design').toBe(true);
     expect((read.json.diagnostics as any[]).filter((item) => item.code.endsWith('_REMEDY'))).toEqual([]);
   });
+
+  /*
+   * Narrowing the reply must not strip the thing the reader was going to act on.
+   *
+   * `--field` exists so a caller does not carry the whole envelope for the rest of the session, and
+   * `readyTransitions` is what a Stage asks for when deciding whether it may leave. It answered
+   * `{to, ready, blockedBy}` and nothing else, so a measured run read "transition to propose is
+   * ready", had no command to run, and spent a turn on `xforge --help` -- 10,748 characters -- to
+   * find the syntax of the call it had just been told was available. The narrow reply cost more
+   * than the wide one it replaced.
+   */
+  it('carries each ready transition\'s own command, so narrowing to them does not cost a help lookup', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root, CHANGE);
+
+    const narrowed = await runCli(root, ['state', '--change', CHANGE, '--field', 'change.governance.readyTransitions']);
+    /* One `--field` prints that value and nothing else, so the reply is the list itself; several
+       come back as an object keyed by the paths asked for. */
+    const transitions = narrowed.json as unknown as Array<{ to: string; command: string[] }>;
+    expect(Array.isArray(transitions), JSON.stringify(narrowed.json).slice(0, 400)).toBe(true);
+    expect(transitions.length).toBeGreaterThan(0);
+    for (const entry of transitions) {
+      expect(entry.command, `no command on transition to ${entry.to}`).toEqual(
+        ['xforge', 'transition', '--change', CHANGE, '--to', entry.to],
+      );
+    }
+  });
 });

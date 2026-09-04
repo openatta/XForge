@@ -240,7 +240,12 @@ export async function resolveControlPlane(
       if (!auditFacts.chain.valid) blockedBy.push('audit:chain-invalid');
     }
     transitionRequirements.set(target, { approvals: approvalEvidence, gates: gateEvidence, blockedBy, approvalPolicies });
-    readyTransitions.push({ to: target, ready: blockedBy.length === 0, blockedBy });
+    readyTransitions.push({
+      to: target,
+      ready: blockedBy.length === 0,
+      blockedBy,
+      command: ['xforge', 'transition', '--change', changeId, '--to', target],
+    });
   }
 
   if (currentStage === 'ready-to-archive') {
