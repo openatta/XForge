@@ -617,6 +617,53 @@ function declaredReworkTarget(projectRoot, envelope, stage) {
 }
 
 /**
+ * The human's answer to a Check finding, supplied the way `runApprovals` supplies a signature.
+ *
+ * A Check finding that names no `reworkTo` is not a blocker and no Gate reports it -- it is a
+ * question the Check Stage pointed at whoever signs the closing approval, and `xforge findings
+ * resolve` is the only way its answer gets recorded. `xforge-verify` is explicit that the answer and
+ * the name must be the user's and never the Agent's, so an Agent that follows the Skill and finds
+ * nobody to ask has nothing it may do.
+ *
+ * The harness already plays that person for approvals and did not play it here, which made the run
+ * non-deterministic in a way that hid behind the Agent. Three runs wrote findings of exactly the
+ * same shape -- warning severity, no status, no reworkTo. Two had a verify Agent that filed the
+ * receipt anyway; the third followed the Skill, refused to invent an answer, and the run died at the
+ * closing transition on `condition:verificationReceipt:receipt-missing`. So two of the three
+ * "successes" depended on the Agent overstepping, which is not a property to build a measurement on.
+ *
+ * A blocker is deliberately left alone: `declaredReworkTarget` routes those, and answering one here
+ * would resolve away the rework path the Flow defines for it.
+ */
+function answerOpenFindings(projectRoot) {
+  const ledger = path.join(projectRoot, changePath(changeId, 'evidence/check-findings.yaml'));
+  let findings;
+  try { findings = parse(readFileSync(ledger, 'utf8'))?.findings ?? []; } catch { return; }
+  const answerable = findings.filter((finding) => finding?.status !== 'resolved'
+    && finding?.severity !== 'blocker' && !finding?.reworkTo && finding?.id);
+  if (answerable.length === 0) return;
+  for (const finding of answerable) {
+    runXforgeJson(projectRoot, [
+      'findings', 'resolve', '--change', changeId, '--id', finding.id,
+      '--answer', 'Reviewed by the project owner for this run and accepted as recorded; no Artifact change required.',
+      '--by', 'XForge Live E2E',
+    ]);
+  }
+  /*
+   * And the Gates again, because answering moved the content revision.
+   *
+   * `findings resolve` rewrites the ledger, which is an Artifact, so every Gate that had passed is
+   * now bound to a revision this Change no longer has -- the CLI says so in the `--dry-run`:
+   * "Gate Evidence bound to it would be stale." Leaving that for the transition to discover would
+   * turn the harness answering a question into the Stage refusing to close, which is the failure
+   * this function exists to remove rather than relocate.
+   */
+  runXforgeJson(projectRoot, ['check', '--change', changeId]);
+  commit(projectRoot, `Answered ${answerable.length} open Check finding(s) as the project owner`);
+  process.stdout.write(`${JSON.stringify({ findingsAnswered: answerable.map((item) => item.id) })}\n`);
+}
+
+/**
  * Reads the Change's State without treating a governed refusal as a harness error.
  *
  * `state` exits non-zero whenever it has an `error` diagnostic to report — an Agent that wrote an
@@ -1225,6 +1272,8 @@ for (let index = 0; index < stages.length; ) {
     commit(projectRoot, `Live engine standalone checkpoint: ${scenarioConfig.inject.stageLabel}`);
     timelineStep(projectRoot, scenarioConfig.inject.stageLabel);
   }
+
+  answerOpenFindings(projectRoot);
 
   if (stage.exit?.approvals?.length && nextStage
     && changeState(projectRoot).governance.currentStage === nextStage.id) {
