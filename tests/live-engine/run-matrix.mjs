@@ -976,7 +976,7 @@ if (!limits.atDefaults) {
   })}\n`);
 }
 
-const timeline = { scenario: scenarioName, flow: flowName, changeId: null, cli: null, limits, outcome: null, reworks: 0, friction: null, stages: [] };
+const timeline = { scenario: scenarioName, flow: flowName, changeId: null, cli: null, limits, outcome: null, reworks: 0, friction: null, stages: [], agentOmissions: [] };
 
 /**
  * What this Stage cost the model to get through, as distinct from whether it got through.
@@ -1372,39 +1372,82 @@ for (let index = 0; index < stages.length; ) {
        */
       let reworkFrom = backward?.from;
       let reworkTo = current;
+      /* Set when the harness takes a forward Transition the Agent left. That is not a rework, so
+         none of the rework accounting below applies to it -- counting it would spend the scenario's
+         rework budget on the Agent's omission and read as the Flow sending work back. */
+      let tookOmittedTransition = false;
       if (!isDeclaredRework) {
         const probe = tryXforgeJson(projectRoot, ['transition', '--change', changeId, '--to', nextStage.id, '--dry-run']);
         const held = current === stage.id ? declaredReworkTarget(projectRoot, probe, stage) : null;
         if (!held) {
           const blocks = probe.diagnostics?.filter((item) => item.severity === 'error').map((item) => item.message).join(' ');
-          throw new Error(`Agent did not self-transition ${stage.id} -> ${nextStage.id} as instructed (currentStage=${current}, lastReceipt=${backward ? `${backward.from}->${backward.to}` : 'none'})${blocks ? `; the Stage is blocked by: ${blocks}` : ' and nothing blocks it'}.`);
+          /*
+           * An Agent that stopped with nothing blocking it is a finding, not a reason to stop
+           * measuring.
+           *
+           * Four of seven runs in one sitting ended here, all at `apply -> verify`, all with the
+           * Agent's own final report naming the transition as ready and then treating it as
+           * somebody else's step. Throwing made that defect cost the whole run: every Stage after
+           * `apply` went unmeasured, so a change to `verify` could not be tested at all while this
+           * was outstanding, and the runs that happened to get through were the ones where the
+           * Agent overstepped rather than the ones where the product worked.
+           *
+           * So it is recorded and the run continues. `agentOmissions` is the record -- it names the
+           * Stage, the target and what the CLI said was blocking, which is the same evidence the
+           * exception carried, kept as data instead of as a stack trace. A blocked Stage still
+           * throws: that one is the Flow refusing, not the Agent declining.
+           */
+          if (blocks) {
+            throw new Error(`Agent did not self-transition ${stage.id} -> ${nextStage.id} as instructed (currentStage=${current}, lastReceipt=${backward ? `${backward.from}->${backward.to}` : 'none'}); the Stage is blocked by: ${blocks}.`);
+          }
+          timeline.agentOmissions.push({
+            stage: stage.id, to: nextStage.id, currentStage: current,
+            lastReceipt: backward ? `${backward.from}->${backward.to}` : null,
+            note: 'Agent left the Stage without taking a Transition that nothing blocked; the harness took it so later Stages could be measured.',
+          });
+          process.stdout.write(`${JSON.stringify({ agentOmission: `${stage.id}->${nextStage.id}` })}\n`);
+          runXforgeJson(projectRoot, ['transition', '--change', changeId, '--to', nextStage.id]);
+          commit(projectRoot, `Harness took the ${stage.id} -> ${nextStage.id} Transition the Agent left`);
+          tookOmittedTransition = true;
         }
-        runXforgeJson(projectRoot, ['transition', '--change', changeId, '--to', held]);
-        reworkFrom = stage.id;
-        reworkTo = held;
-      }
-      reworks += 1;
-      if (reworks > maxReworks) {
-        /* The same verdict the Approval-gated arm reaches, and reachable from here too: whether a
-           Stage's exit is gated decides which branch notices the block, not whether running out of
-           reworks at Check is a governance result. */
-        /* Judged by where the rework came *from*, not by the loop's cursor: an Agent can move
-           forward and back inside one turn, so the Stage that declared the rework is the one the
-           receipt names, and that is what "ran out of reworks at Check" means. */
-        const origin = stages.find((candidate) => candidate.id === reworkFrom) ?? stage;
-        if (allowedOutcomes.includes('stopped-at-check') && origin.id === 'check') {
-          outcome = 'stopped-at-check';
-          stoppedAtCheck = assertStoppedAtCheck({ projectRoot, changeId, flowDefinition: flow, checkStage: origin, scenarioName });
-          break;
+        if (!tookOmittedTransition) {
+            runXforgeJson(projectRoot, ['transition', '--change', changeId, '--to', held]);
+            reworkFrom = stage.id;
+            reworkTo = held;
+          }
         }
-        throw new Error(`${scenarioName} reworked ${reworks} times (limit ${maxReworks}); last was ${reworkFrom} -> ${reworkTo} (loop at ${stage.id}).`);
+        /*
+         * Everything below is rework accounting, and a Transition the harness took for the Agent is
+         * not a rework -- it is the forward move the Agent declined to make. `advanced` therefore
+         * stays true, so the loop advances by one Stage on the normal path rather than jumping to a
+         * rework target, and the scenario's rework budget is left alone. `continue` is wrong here:
+         * this loop carries no increment expression and advances at its foot, so skipping the foot
+         * would spin forever.
+         */
+        if (!tookOmittedTransition) {
+        reworks += 1;
+        if (reworks > maxReworks) {
+          /* The same verdict the Approval-gated arm reaches, and reachable from here too: whether a
+             Stage's exit is gated decides which branch notices the block, not whether running out of
+             reworks at Check is a governance result. */
+          /* Judged by where the rework came *from*, not by the loop's cursor: an Agent can move
+             forward and back inside one turn, so the Stage that declared the rework is the one the
+             receipt names, and that is what "ran out of reworks at Check" means. */
+          const origin = stages.find((candidate) => candidate.id === reworkFrom) ?? stage;
+          if (allowedOutcomes.includes('stopped-at-check') && origin.id === 'check') {
+            outcome = 'stopped-at-check';
+            stoppedAtCheck = assertStoppedAtCheck({ projectRoot, changeId, flowDefinition: flow, checkStage: origin, scenarioName });
+            break;
+          }
+          throw new Error(`${scenarioName} reworked ${reworks} times (limit ${maxReworks}); last was ${reworkFrom} -> ${reworkTo} (loop at ${stage.id}).`);
+        }
+        process.stdout.write(`${JSON.stringify({ rework: reworks, from: reworkFrom, to: reworkTo, cause: isDeclaredRework ? 'agent-transition' : 'blocking-finding' })}\n`);
+        commit(projectRoot, `Reworked ${reworkFrom} -> ${reworkTo}`);
+        countedReceipt = (changeState(projectRoot).governance.transitions ?? []).at(-1)?.digest ?? countedReceipt;
+        index = stages.findIndex((candidate) => candidate.id === reworkTo);
+        await reopenStageAttempts(policyPath, stages.slice(index).map((candidate) => candidate.id));
+        advanced = false;
       }
-      process.stdout.write(`${JSON.stringify({ rework: reworks, from: reworkFrom, to: reworkTo, cause: isDeclaredRework ? 'agent-transition' : 'blocking-finding' })}\n`);
-      commit(projectRoot, `Reworked ${reworkFrom} -> ${reworkTo}`);
-      countedReceipt = (changeState(projectRoot).governance.transitions ?? []).at(-1)?.digest ?? countedReceipt;
-      index = stages.findIndex((candidate) => candidate.id === reworkTo);
-      await reopenStageAttempts(policyPath, stages.slice(index).map((candidate) => candidate.id));
-      advanced = false;
     }
   }
 
