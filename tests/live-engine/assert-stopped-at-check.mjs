@@ -41,6 +41,27 @@ function changePath(changeId, generates) {
 }
 
 /**
+ * The Change's own classification block, or an empty object when it cannot be read.
+ *
+ * Read from disk each time rather than threaded through: this file is entered from several places
+ * and the alternative is a parameter every caller has to remember to pass, which is how the
+ * baseline assertion came to disagree with the Flow about the same question.
+ */
+function changeClassification(projectRoot, changeId) {
+  try {
+    const source = readFileSync(path.join(projectRoot, changePath(changeId, 'change.yaml')), 'utf8');
+    return parse(source)?.classification ?? {};
+  } catch { return {}; }
+}
+
+/** Whether this Change owes this Artifact, by the same rule `core/flow-resolver.ts` applies. */
+function artifactIsOwed(artifact, classification) {
+  const impacts = artifact.requiredWhen?.anyImpact ?? [];
+  if (impacts.length === 0) return true;
+  return impacts.some((impact) => classification?.[impact] === true);
+}
+
+/**
  * Whether a Stage produced the Artifact its Flow declares, allowing for the ones declared as a glob.
  *
  * `delta-specs` generates `specs/**\/*.md` — a pattern, not a filename — because a Change may carry
@@ -92,6 +113,17 @@ export function assertStoppedAtCheck({ projectRoot, changeId, flowDefinition, ch
     for (const artifactId of stage.produces ?? []) {
       const artifact = flowDefinition.artifacts.find((entry) => entry.id === artifactId);
       if (!artifact) continue;
+      /*
+       * An Artifact this Change does not owe is not one a Stage failed to produce.
+       *
+       * Every Artifact used to be owed by every Change on the Flow, so "declared and absent" could
+       * only mean the Agent skipped its work. `requiredWhen` broke that equivalence: a Change that
+       * classifies itself `moduleContract: false` owes no contract delta, and holding it to one is
+       * the criterion failing a run for obeying the Flow. A live Major run reached
+       * `stopped-at-check` -- an outcome it is scored on -- and was thrown away here for "design
+       * never produced contracts/**\/*.md" on a Change that had nothing to declare.
+       */
+      if (!artifactIsOwed(artifact, changeClassification(projectRoot, changeId))) continue;
       if (!producedArtifact(projectRoot, changeId, artifact.generates)) {
         problems.push(`${stage.id} never produced ${artifact.generates}.`);
       }
