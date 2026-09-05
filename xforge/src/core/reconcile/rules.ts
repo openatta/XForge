@@ -380,19 +380,34 @@ function named(ids: string[], limit = 8): string {
 export function reconcileObservabilityCrossCheck(
   principles: LedgerPrinciple[],
   gateRecorded: Map<string, string>,
+  /**
+   * The Constitution's own principle headings.
+   *
+   * Needed because the ledger is no longer the only place the observability principle can be
+   * answered: since the Gate decides that one itself when it can, a Change that never wrote an
+   * entry is asserting compliance just as much as one that did -- through the Gate's decision
+   * rather than through a paragraph. Reading only the ledger would have made this rule silently
+   * stop firing for exactly the Changes the Gate had answered on the author's behalf, which is the
+   * check disappearing at the moment the thing it checks became automatic.
+   */
+  constitutionPrinciples: string[] = [],
 ): ReconciliationObservation[] {
   const recorded = gateRecorded.get('unit-tests');
   if (!recorded || recorded === 'passed') return [];
-  return principles
+  const answered = principles
     .filter((entry) => entry.status === 'compliant' && isObservabilityPrinciple(entry.principle))
-    .map((entry) => ({
-      id: `RC-8:${entry.principle}`,
-      rule: 'RC-8',
-      code: 'XFORGE_RECONCILE_OBSERVABILITY_UNVERIFIED',
-      provenance: 'computed' as const,
-      summary: `The Constitution ledger answers "${entry.principle}" compliant, and this Change's unit-tests Gate Evidence now records status "${recorded}". The Gate that reads this pair runs at the Check Stage, before unit-tests has run, so it could not check it there and nothing re-runs it. Automated verification that does not pass does not establish compliance.`,
-      refs: [`gate:unit-tests`],
-    }));
+    .map((entry) => entry.principle);
+  const inLedger = new Set(principles.map((entry) => entry.principle));
+  const decided = constitutionPrinciples.filter((principle) =>
+    isObservabilityPrinciple(principle) && !inLedger.has(principle));
+  return [...answered, ...decided].map((principle) => ({
+    id: `RC-8:${principle}`,
+    rule: 'RC-8',
+    code: 'XFORGE_RECONCILE_OBSERVABILITY_UNVERIFIED',
+    provenance: 'computed' as const,
+    summary: `The Constitution answers "${principle}" compliant${inLedger.has(principle) ? ' in this Change\'s ledger' : ' by the Gate\'s own decision, the ledger having left it to the CLI'}, and this Change's unit-tests Gate Evidence now records status "${recorded}". The Gate that reads this pair runs at the Check Stage, before unit-tests has run, so it could not check it there and nothing re-runs it. Automated verification that does not pass does not establish compliance.`,
+    refs: [`gate:unit-tests`],
+  }));
 }
 
 export function reconcileContractImpact(

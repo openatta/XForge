@@ -67,6 +67,14 @@ interface ConstitutionCheckResult extends LedgerVerdict {
   principles: string[];
   covered: string[];
   violations: string[];
+  /**
+   * Principles the CLI answered from its own facts rather than asking the author for.
+   *
+   * Reported so the Evidence says which of the two answered each principle: a reader who sees
+   * `5/7 answered` needs to know whether the other two were skipped or decided, and those are
+   * opposite facts.
+   */
+  machineDecided: MachineDecision[];
 }
 
 /** The `## ` headings of the Constitution, in document order. The `# ` title is not a principle. */
@@ -204,7 +212,113 @@ async function resolveReference(
 
 /** The observability principle names automated verification; `unit-tests` is the Gate that proves it. */
 export function isObservabilityPrinciple(principle: string): boolean {
-  return /observab|automated verification|test/i.test(principle);
+  return /observab|automated verification|test|可观测/i.test(principle);
+}
+
+/** The parallel-development principle; the work-package machinery is what enforces every clause of it. */
+function isParallelDevelopmentPrinciple(principle: string): boolean {
+  return /parallel|并行/i.test(principle);
+}
+
+/**
+ * A principle this CLI answers itself, and why.
+ *
+ * `compliant`/`not-applicable` are decisions; `deferred` means the fact that would decide it does
+ * not exist at this Stage and something later performs the check.
+ */
+interface MachineDecision {
+  principle: string;
+  status: 'compliant' | 'not-applicable' | 'deferred';
+  /** Machine-locatable, in the same vocabulary a ledger entry would have to cite. */
+  references: string[];
+  basis: string;
+}
+
+/**
+ * The principles the CLI decides rather than asks about.
+ *
+ * Two of the shipped seven have a machine-visible truth, and asking an Agent to argue for them in
+ * prose bought nothing: it produced a paragraph, and the paragraph was then measured against the
+ * same facts this function reads. Four measured Check Stages wrote a 6.8-8.3KB ledger, about 30% of
+ * everything that Stage wrote, and roughly a third of it restated what a Gate had already proved or
+ * a schema had already enforced.
+ *
+ * So the Gate stops asking. It does not stop *checking* — the decision below is made from evidence
+ * and recorded with its basis in the Gate's own report, which is a stronger claim than a sentence
+ * an Agent could have written either way.
+ *
+ * Three things this deliberately does not do:
+ *
+ * 1. **It never writes into the ledger.** The ledger is a Change Artifact; a CLI that authored
+ *    entries in it would be putting words in the author's mouth, and the one entry shape that
+ *    carries a human's name (`approvedBy` on a violation) is exactly what must never be machine-
+ *    written. The decision lives in Gate Evidence, which only the Gate runner may write anyway.
+ * 2. **It never decides a violation.** A machine decision can say "the facts support this" or "the
+ *    facts do not exist yet". Declaring a deliberate departure is a judgement with an approver on
+ *    it, and an Agent that wants to record one still writes the entry.
+ * 3. **It does not silence an entry that is there.** A ledger that answers one of these anyway is
+ *    evaluated exactly as before, so nothing an author wants to say is refused.
+ */
+async function machineDecisions(
+  project: ProjectContext,
+  changeId: string,
+  principles: string[],
+  gates: Map<string, string>,
+): Promise<MachineDecision[]> {
+  const decisions: MachineDecision[] = [];
+  for (const principle of principles) {
+    if (isObservabilityPrinciple(principle)) {
+      const unitTests = gates.get('unit-tests');
+      if (unitTests === 'passed') {
+        decisions.push({
+          principle,
+          status: 'compliant',
+          references: ['gate:unit-tests'],
+          basis: 'this Change holds passing unit-tests Gate Evidence for its current revision.',
+        });
+      } else if (!unitTests) {
+        /*
+         * Not a gap this Gate can close. It runs at Check; `unit-tests` runs at Verify, after it,
+         * and nothing re-runs a Check-Stage Gate. Asking the author to assert compliance here was
+         * asking for the one thing that could not be checked at the moment it was written -- RC-8
+         * performs the check from the reconciliation pass, which does run at Verify.
+         */
+        decisions.push({
+          principle,
+          status: 'deferred',
+          references: ['gate:unit-tests'],
+          basis: 'this Change has no unit-tests Gate Evidence yet, and this Gate runs before the Stage that produces it; RC-8 checks it once the Gate has run.',
+        });
+      }
+      /* A recorded non-passing status is left to the entry evaluation below, which already refuses
+         a `compliant` answer contradicted by the Evidence. There is nothing to decide in the
+         author's favour here, so nothing is decided. */
+      continue;
+    }
+    if (isParallelDevelopmentPrinciple(principle)) {
+      const relative = `${project.changesPath}/${changeId}/work-packages.yaml`;
+      let planned = false;
+      try {
+        await access(await safeResolve(project.root, relative));
+        planned = true;
+      } catch { /* no plan: nothing was parallelised, which is the answer rather than a gap. */ }
+      decisions.push(planned
+        ? {
+          principle,
+          status: 'compliant',
+          references: [relative, 'gate:structure'],
+          basis: 'every clause of this principle is a structural check `core/work-packages.ts` performs on the plan and `structure` reports: one writer per path, Integrator-only shared paths, an assigned worktree and fixed base commit per write-capable package, and delivery accepted only from a verified diff.',
+        }
+        : {
+          principle,
+          status: 'not-applicable',
+          references: [project.constitution.path],
+          basis: 'this Change declares no work-package plan, so no work was parallelised and there is nothing for the principle to govern.',
+        });
+      continue;
+    }
+  }
+  return decisions;
 }
 
 /**
@@ -249,7 +363,7 @@ export async function evaluateConstitutionCheck(
 ): Promise<ConstitutionCheckResult> {
   const relative = `${project.changesPath}/${changeId}/${CONSTITUTION_CHECK_PATH}`;
   const principles = constitutionPrinciples(project.constitution.content);
-  const empty = (problems: string[]): ConstitutionCheckResult => ({ ...verdict(problems), principles, covered: [], violations: [] });
+  const empty = (problems: string[]): ConstitutionCheckResult => ({ ...verdict(problems), principles, covered: [], violations: [], machineDecided: [] });
 
   if (principles.length === 0) {
     return empty([`${project.constitution.path}: no "## " principle sections found; the Constitution cannot be checked against.`]);
@@ -314,9 +428,21 @@ export async function evaluateConstitutionCheck(
   }
   let citedAnything = false;
 
+  const decided = await machineDecisions(project, changeId, principles, facts.gates);
+  const decidedByName = new Map(decided.map((decision) => [decision.principle, decision]));
+
   for (const principle of principles) {
     const entry = byName.get(principle);
-    if (!entry) { problems.push(`${relative}: principle "${principle}" is not answered.`); continue; }
+    if (!entry) {
+      const decision = decidedByName.get(principle);
+      if (!decision) { problems.push(`${relative}: principle "${principle}" is not answered.`); continue; }
+      /* Answered, by the component that can check it. Recorded rather than passed over in silence:
+         the Evidence has to be able to say which of the two answered each principle. */
+      if (decision.status === 'deferred') {
+        warnings.push(`${relative}: principle "${principle}" is not decided at this Stage — ${decision.basis}`);
+      }
+      continue;
+    }
     covered.push(principle);
     const status = trimmedText(entry.status) as PrincipleStatus;
     if (!STATUSES.includes(status)) {
@@ -409,7 +535,7 @@ export async function evaluateConstitutionCheck(
    * answer is unsupported" but "this whole ledger is a blanket claim of compliance", which is
    * exactly what the Gate exists to reject.
    */
-  if (!citedAnything && violations.length === 0) {
+  if (!citedAnything && violations.length === 0 && covered.length > 0) {
     problems.push(`${relative}: no entry in this ledger cites anything; a ledger of bare statuses is the general claim of compliance this Gate replaces.`);
   }
 
@@ -420,7 +546,7 @@ export async function evaluateConstitutionCheck(
     warnings.push(`${relative}: ${approvedNames.length} approvedBy name(s) (${approvedNames.join(', ')}) were accepted without verification — ${unverifiable}.`);
   }
 
-  return { ...verdict(problems, warnings), principles, covered, violations };
+  return { ...verdict(problems, warnings), principles, covered, violations, machineDecided: decided };
 }
 
 /**

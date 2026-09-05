@@ -325,7 +325,13 @@ export async function runGate(
       timedOut: false,
       outputTruncated: false,
       ...ledgerReport(
-        `Constitution ledger accepted: ${constitution.covered.length}/${constitution.principles.length} principles answered, ${constitution.violations.length} recorded violation(s).`,
+        [
+          `Constitution ledger accepted: ${constitution.covered.length}/${constitution.principles.length} principles answered in the ledger, ${constitution.violations.length} recorded violation(s).`,
+          /* Which component answered each principle, because "answered" and "skipped" are opposite
+             facts and a bare fraction cannot tell them apart. */
+          ...constitution.machineDecided.map((decision) =>
+            `Decided by the CLI, not asked of the author — "${decision.principle}": ${decision.status} (${decision.references.join(', ')}) — ${decision.basis}`),
+        ].join('\n'),
         constitution,
       ),
     };

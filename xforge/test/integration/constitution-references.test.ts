@@ -1,3 +1,5 @@
+import { rm } from 'node:fs/promises';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   CONSTITUTION_CHECK_PATH,
@@ -238,3 +240,132 @@ describe('Constitution ledger references', () => {
     });
   });
 });
+
+/*
+ * Two of the seven principles are answered by the CLI, not asked of the author.
+ *
+ * Four measured Check Stages wrote a 6.8-8.3KB Constitution ledger -- about 30% of everything that
+ * Stage wrote -- and a third of it argued in prose for facts the CLI already held: the observability
+ * principle against `unit-tests` Gate Evidence, the parallel-development principle against the
+ * structural checks `core/work-packages.ts` performs on the plan. A paragraph asserting either was
+ * measured against those same facts the moment it arrived, so writing it bought nothing.
+ *
+ * The Gate now decides them and records the decision with its basis. What must stay true is that
+ * this is a *narrowing of the question*, not a widening of what passes: an entry supplied anyway is
+ * still evaluated, no violation is ever machine-decided, and the later cross-check that catches an
+ * observability claim contradicted by a failing Gate still fires when the claim came from the CLI.
+ */
+describe('principles the CLI answers itself', () => {
+  const asked = (principles: string[]) => principles.filter((principle) =>
+    !/observab|automated verification|test|可观测/i.test(principle) && !/parallel|并行/i.test(principle));
+
+  it('accepts a ledger that omits them, and says in the result which ones it decided', async () => {
+    const root = await fixture();
+    await citableChange(root);
+    const principles = await principlesOf(root);
+    await write(root, LEDGER, ledger(asked(principles).map((principle) => ({ principle, body: compliant('proposal.md') }))));
+
+    const result = await evaluateConstitutionCheck(await project(root), CHANGE);
+    expect(result.problems).toEqual([]);
+    expect(result.status).toBe('passed');
+
+    /* Decided, not skipped -- the two are opposite facts and the Evidence has to distinguish them. */
+    const decided = result.machineDecided.map((decision) => decision.principle);
+    expect(decided).toContain('Quality and observability');
+    expect(decided).toContain('Parallel Development');
+    /* Every decision cites something in the same vocabulary a ledger entry would have to use. */
+    for (const decision of result.machineDecided) expect(decision.references.length).toBeGreaterThan(0);
+    /* And the ledger is credited only with what the author actually answered. */
+    expect(result.covered).toEqual(asked(principles));
+  });
+
+  it('decides observability from the Gate Evidence rather than from the author saying so', async () => {
+    const root = await fixture();
+    await citableChange(root);
+    const principles = await principlesOf(root);
+    await write(root, LEDGER, ledger(asked(principles).map((principle) => ({ principle, body: compliant('proposal.md') }))));
+
+    const observability = result0(await evaluateConstitutionCheck(await project(root), CHANGE), 'Quality and observability');
+    expect(observability.status).toBe('compliant');
+    expect(observability.references).toContain('gate:unit-tests');
+  });
+
+  it('defers rather than deciding when the Gate that would decide it has not run', async () => {
+    const root = await fixture();
+    await citableChange(root);
+    /* Check runs before Verify, so at Check there is no unit-tests Evidence to read. Removing it
+       is what that Stage actually looks like. */
+    await rm(path.join(root, 'xforge', 'changes', CHANGE, 'evidence', 'tests.json'));
+    const principles = await principlesOf(root);
+    await write(root, LEDGER, ledger(asked(principles).map((principle) => ({ principle, body: compliant('proposal.md') }))));
+
+    const result = await evaluateConstitutionCheck(await project(root), CHANGE);
+    /* Not a failure: a Change that has not run its tests yet is not in violation of anything. */
+    expect(result.status).toBe('passed');
+    expect(result0(result, 'Quality and observability').status).toBe('deferred');
+    expect(result.warnings.join(' ')).toContain('RC-8');
+  });
+
+  it('answers parallel development not-applicable when nothing was parallelised', async () => {
+    const root = await fixture();
+    await citableChange(root);
+    const principles = await principlesOf(root);
+    await write(root, LEDGER, ledger(asked(principles).map((principle) => ({ principle, body: compliant('proposal.md') }))));
+
+    /* `citableChange` writes no work-packages.yaml, which is a permitted delivery shape. There is
+       no parallel work for the principle to govern, and that is an answer rather than a gap. */
+    const parallel = result0(await evaluateConstitutionCheck(await project(root), CHANGE), 'Parallel Development');
+    expect(parallel.status).toBe('not-applicable');
+  });
+
+  it('still evaluates an entry the author writes anyway, so a violation stays declarable', async () => {
+    const root = await fixture();
+    await citableChange(root);
+    const principles = await principlesOf(root);
+    await write(root, LEDGER, ledger([
+      ...asked(principles).map((principle) => ({ principle, body: compliant('proposal.md') })),
+      /* A violation with no justification and no approver: refused exactly as before. Nothing about
+         deciding this principle by default may make an entry for it unreadable. */
+      { principle: 'Parallel Development', body: '    status: violation\n' },
+    ]));
+
+    const result = await evaluateConstitutionCheck(await project(root), CHANGE);
+    expect(result.status).toBe('failed');
+    expect(result.problems.join(' ')).toContain('no justification');
+    expect(result.problems.join(' ')).toContain('needs a named approver');
+  });
+
+  it('never machine-decides a violation', async () => {
+    const root = await fixture();
+    await citableChange(root);
+    const principles = await principlesOf(root);
+    await write(root, LEDGER, ledger(asked(principles).map((principle) => ({ principle, body: compliant('proposal.md') }))));
+
+    const result = await evaluateConstitutionCheck(await project(root), CHANGE);
+    /* A decision can say the facts support this, or that they do not exist yet. Declaring a
+       deliberate departure carries an approver's name, and no machine may write one. */
+    for (const decision of result.machineDecided) expect(['compliant', 'not-applicable', 'deferred']).toContain(decision.status);
+    expect(result.violations).toEqual([]);
+  });
+
+  it('refuses a compliant answer contradicted by the Evidence, exactly as before', async () => {
+    const root = await fixture();
+    await citableChange(root);
+    await write(root, `${BASE}/evidence/tests.json`, JSON.stringify({ gate: 'unit-tests', status: 'failed' }));
+    const principles = await principlesOf(root);
+    await write(root, LEDGER, ledger([
+      ...asked(principles).map((principle) => ({ principle, body: compliant('proposal.md') })),
+      { principle: 'Quality and observability', body: compliant('proposal.md') },
+    ]));
+
+    const result = await evaluateConstitutionCheck(await project(root), CHANGE);
+    expect(result.status).toBe('failed');
+    expect(result.problems.join(' ')).toContain('does not establish compliance');
+  });
+});
+
+function result0(result: { machineDecided: Array<{ principle: string; status: string; references: string[] }> }, principle: string) {
+  const found = result.machineDecided.find((decision) => decision.principle === principle);
+  if (!found) throw new Error(`No machine decision for "${principle}"; got ${result.machineDecided.map((d) => d.principle).join(', ') || '(none)'}`);
+  return found;
+}

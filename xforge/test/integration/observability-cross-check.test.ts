@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CONSTITUTION_CHECK_PATH, constitutionPrinciples, evaluateConstitutionCheck } from '../../src/core/constitution-check.js';
 import { loadProject } from '../../src/core/project-loader.js';
-import { advanceSolidToApply, createCompleteSolidChange, fixture, runCli } from '../helpers.js';
+import { advanceSolidToApply, createCompleteSolidChange, fixture, runCli, write } from '../helpers.js';
 
 /**
  * The cross-check the Constitution Gate defers, and where the answer actually arrives.
@@ -78,6 +78,40 @@ describe('the deferred observability cross-check', () => {
     /* Reconciliation ran anyway: any RC rule reporting proves the control plane was resolved. */
     expect(codes.filter((code: string) => code.startsWith('XFORGE_RECONCILE_')).length,
       JSON.stringify(codes)).toBeGreaterThan(0);
+  });
+
+  /*
+   * The same rule, for a ledger that never answered the principle.
+   *
+   * The Gate now decides observability itself when it can, so a Change is entitled to leave the
+   * entry out -- and that is still a claim of compliance, made by the CLI on the facts rather than
+   * by the author in prose. A rule that reads only ledger entries would have gone quiet on exactly
+   * those Changes: the check disappearing at the moment the thing it checks became automatic, which
+   * is the failure mode this whole file exists to record one instance of.
+   */
+  it('fires when the ledger left the principle to the CLI and the Gate then failed', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root, CHANGE);
+
+    /* Rewrite the ledger without the observability entry -- what an author following the Skill now
+       produces -- keeping every principle the CLI does not decide. */
+    const project = await loadProject(root, { exactRoot: true });
+    const principles = constitutionPrinciples(project.constitution.content)
+      .filter((name) => !/observab|automated verification|test/i.test(name) && !/parallel/i.test(name));
+    await write(root, `xforge/changes/${CHANGE}/${CONSTITUTION_CHECK_PATH}`,
+      `principles:\n${principles.map((name) => `  - principle: ${JSON.stringify(name)}\n    status: compliant\n    references: [proposal.md]\n`).join('')}`);
+
+    await advanceSolidToApply(root, CHANGE);
+    await runCli(root, ['transition', '--change', CHANGE, '--to', 'verify']);
+    await runCli(root, ['verification', 'declare', '--gate-name', 'unit-tests',
+      '--command', '["node","-e","process.exit(1)"]', '--by', 'A Tester']);
+    const ran = await runCli(root, ['check', '--change', CHANGE]);
+
+    const observed = (ran.json.diagnostics as any[]).filter((item) => item.code === 'XFORGE_RECONCILE_OBSERVABILITY_UNVERIFIED');
+    expect(observed.length, JSON.stringify((ran.json.diagnostics as any[]).map((item) => item.code))).toBeGreaterThan(0);
+    /* And it says which of the two made the claim, because the remedy differs: an author edits an
+       entry, a CLI decision means the Gate itself has to be answered. */
+    expect(observed[0].message).toContain("by the Gate's own decision");
   });
 
   it('says nothing while the Gate passes', async () => {

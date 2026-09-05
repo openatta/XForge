@@ -231,8 +231,12 @@ describe('Constitution ledger', () => {
     const result = await evaluateConstitution(root);
     expect(result.status).toBe('failed');
     expect(result.problems.join(' ')).toContain('is not a principle in');
-    /* Each real principle is still unanswered. */
-    expect(result.problems.filter((item) => item.includes('is not answered')).length).toBe(result.principles.length);
+    /* Each principle the ledger owed an answer for is still unanswered — which is every principle
+       the CLI does not decide itself. The two it does (observability, parallel development) are
+       answered from Gate Evidence and the work-package plan, so their absence is not a shortfall. */
+    expect(result.problems.filter((item) => item.includes('is not answered')).length)
+      .toBe(result.principles.length - result.machineDecided.length);
+    expect(result.machineDecided.length).toBeGreaterThan(0);
   });
 
   it('goes stale the moment the Constitution gains a principle', async () => {

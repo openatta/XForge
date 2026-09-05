@@ -8,6 +8,7 @@ import {
   readArtifactSources, readContractElements, readFindings, readMaterialDecisions, readPrinciples,
   readSpecRequirements,
 } from './reconcile/sources.js';
+import { constitutionPrinciples } from './constitution-check.js';
 import {
   reconcileConstitutionReferences, reconcileContractImpact, reconcileCoverageSections,
   reconcileDeclaredGaps, reconcileMaterialDecisions, reconcileObservabilityCrossCheck,
@@ -129,7 +130,7 @@ export async function reconcileChange(
       new Set(project.manifest.scaffold.gates ?? []),
       gateRecorded,
     ),
-    ...reconcileObservabilityCrossCheck(principlesResult.principles, gateRecorded),
+    ...reconcileObservabilityCrossCheck(principlesResult.principles, gateRecorded, constitutionPrinciples(project.constitution.content)),
     ...reconcileMaterialDecisions(await readMaterialDecisions(project, changeId), sources),
     ...reconcileContractImpact(
       contractResult.elements,
