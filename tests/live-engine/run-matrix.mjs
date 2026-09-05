@@ -657,8 +657,16 @@ function answerOpenFindings(projectRoot) {
    * "Gate Evidence bound to it would be stale." Leaving that for the transition to discover would
    * turn the harness answering a question into the Stage refusing to close, which is the failure
    * this function exists to remove rather than relocate.
+   *
+   * Read without throwing, because this call is here to refresh Evidence, not to assert the Gates
+   * pass. `check` exits non-zero whenever a mandatory Gate fails, and after this function has run
+   * that is the ordinary outcome: it deliberately leaves blockers and anything carrying `reworkTo`
+   * unanswered -- a harness may not wave through the findings that exist to send a Change back --
+   * so a Flow whose Check raised one legitimately fails here and reworks. Throwing on it ended the
+   * major run with a stack trace one call after the Gates had been refreshed, discarding four
+   * Stages already paid for and the timeline that would have recorded them.
    */
-  runXforgeJson(projectRoot, ['check', '--change', changeId]);
+  tryXforgeJson(projectRoot, ['check', '--change', changeId]);
   commit(projectRoot, `Answered ${answerable.length} open Check finding(s) as the project owner`);
   process.stdout.write(`${JSON.stringify({ findingsAnswered: answerable.map((item) => item.id) })}\n`);
 }
