@@ -466,6 +466,9 @@ async function probeProviderLatency() {
      * The shape of the probe changes because the reachable surface does. There is no base URL to
      * POST to, so it times the CLI itself, which is what the stages run anyway.
      */
+    /* Same switch the engine reads, for the same reason: the probe has to time the path the run
+       will actually take, not the one the credentials file happens to describe. */
+    if (process.env.XFORGE_LIVE_ENGINE_PROVIDER === 'subscription') return await probeCliLatency();
     if (!config.ANTHROPIC_AUTH_TOKEN || !config.ANTHROPIC_BASE_URL) return await probeCliLatency();
     const started = Date.now();
     const response = await fetch(`${config.ANTHROPIC_BASE_URL.replace(/\/$/, '')}/v1/messages`, {

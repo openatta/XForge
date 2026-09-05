@@ -218,6 +218,19 @@ authenticate. Which one is in force is decided entirely by the repository-root
 One without the other is refused rather than half-applied: it reaches nothing,
 and failing at startup is cheaper than failing on the first stage.
 
+**`XFORGE_LIVE_ENGINE_PROVIDER=subscription` takes the second path without
+touching `.env`.** The gateway keys live in a credentials file, and a run that
+wants the other path should not have to move that file aside and remember to
+move it back — a crashed run then leaves it somewhere nobody put it. The
+variable also makes which path a run took visible in the command that started
+it, which is what a recorded result needs to be readable a month later.
+
+```bash
+XFORGE_LIVE_ENGINE_PROVIDER=subscription \
+  node tests/live-engine/run-matrix.mjs --flow solid --cli-source local \
+  --suite-budget 150 --budget 30
+```
+
 On the subscription path `HOME` is still redirected per scenario, so the engine
 copies `~/.claude/.credentials.json` into the scenario's config directory and
 nothing else — sessions, projects, caches and history stay isolated exactly as

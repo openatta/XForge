@@ -115,6 +115,27 @@ const configured = dotenv(await readFile(path.join(repositoryRoot, '.env'), 'utf
  * the subscription — so a run on this path wants `--suite-budget` raised to a number that reflects
  * how far it should get, not how much it may spend.
  */
+/*
+ * `XFORGE_LIVE_ENGINE_PROVIDER=subscription` picks the second path without editing `.env`.
+ *
+ * The gateway keys live in a credentials file, and a run that wants the other path should not have
+ * to move that file aside and remember to move it back -- a crashed run then leaves the developer's
+ * `.env` somewhere they did not put it. Stating the choice as an environment variable keeps the
+ * credentials file exactly where it is and makes which path a run took visible in the command that
+ * started it, which is also what a recorded result needs to be readable later.
+ */
+const forcedSubscription = process.env.XFORGE_LIVE_ENGINE_PROVIDER === 'subscription';
+if (process.env.XFORGE_LIVE_ENGINE_PROVIDER && !forcedSubscription && process.env.XFORGE_LIVE_ENGINE_PROVIDER !== 'gateway') {
+  throw new Error(`XFORGE_LIVE_ENGINE_PROVIDER must be "subscription" or "gateway"; got "${process.env.XFORGE_LIVE_ENGINE_PROVIDER}".`);
+}
+if (forcedSubscription) {
+  delete configured.ANTHROPIC_AUTH_TOKEN;
+  delete configured.ANTHROPIC_BASE_URL;
+  /* The model too: a gateway's model id is meaningless on the first-party path, and passing one
+     that does not resolve there fails every call with a message about the model rather than about
+     the switch that caused it. */
+  delete configured.ANTHROPIC_MODEL;
+}
 const gatewayConfigured = Boolean(configured.ANTHROPIC_AUTH_TOKEN && configured.ANTHROPIC_BASE_URL);
 if (!gatewayConfigured && (configured.ANTHROPIC_AUTH_TOKEN || configured.ANTHROPIC_BASE_URL)) {
   throw new Error('Set both ANTHROPIC_AUTH_TOKEN and ANTHROPIC_BASE_URL to use a gateway, or neither to use the developer credentials. One without the other reaches nothing.');
