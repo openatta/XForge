@@ -12,12 +12,12 @@ project:
       path: .
       kind: application
 scaffold:
-  version: 0.8.3
+  version: 0.8.4
   language: en
   source:
     type: npm
     package: "@xforge/cli"
-    version: 0.8.3
+    version: 0.8.4
   skills:
     - xforge-propose
     - xforge-clarify
@@ -73,7 +73,7 @@ scripts:
 xforge:
   source: npm
   package: "@xforge/cli"
-  version: 0.8.3
+  version: 0.8.4
   protocol: "2"
 flow: solid
 targets:
