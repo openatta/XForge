@@ -1,7 +1,7 @@
 ---
 name: "worker"
 description: "Isolated work-package implementation worker"
-tools: "Read, Grep, Glob, Write, Edit, NotebookEdit, Bash, TodoWrite"
+tools: "Read, Grep, Glob, Write, Edit, NotebookEdit, Bash"
 model: "inherit"
 ---
 

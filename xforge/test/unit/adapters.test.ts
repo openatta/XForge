@@ -119,7 +119,10 @@ describe('Agent contract reaches enforceable frontmatter', () => {
   it('gives the read-only Reviewer a write-free Claude tools list and a reasoning model', () => {
     const output = getAdapter('claude').renderAgent(reviewer, 'Review the integrated change.')!;
     const frontmatter = output.split('---')[1]!;
-    expect(frontmatter).toMatch(/^tools: "Read, Grep, Glob, Bash, TodoWrite"$/m);
+    /* Exactly the declared capabilities and nothing appended: `TodoWrite` used to ride along on
+       every projected sub-Agent without any `tools.allow` asking for it, and was a dead name here
+       besides. Asserted as a whole string so a re-added freebie fails rather than passes. */
+    expect(frontmatter).toMatch(/^tools: "Read, Grep, Glob, Bash"$/m);
     expect(frontmatter).not.toMatch(/\bWrite\b/);
     expect(frontmatter).not.toMatch(/\bEdit\b/);
     expect(frontmatter).toMatch(/^model: "opus"$/m);

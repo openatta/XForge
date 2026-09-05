@@ -57,7 +57,21 @@ function agentAllows(agent: AgentResource, capability: 'read' | 'search' | 'writ
   return agent.spec.tools.allow.includes(capability);
 }
 
-/** Claude Code subagent `tools:` is a comma-separated list of canonical tool names. */
+/**
+ * Claude Code subagent `tools:` is a comma-separated list of canonical tool names.
+ *
+ * Every entry comes from a declared capability. `TodoWrite` used to be appended to all of them
+ * unconditionally, which is two faults in one line. It granted a tool no `spec.tools.allow`
+ * asked for -- the comment above calls that set canonical, and an adapter that adds to it is
+ * writing an authority nobody declared. And it granted one that no longer exists: `todowrite` is
+ * dead on this host, renamed and split into the `task*` family, which `core/tool-capability.ts`
+ * already records and which cost 124 quiet denials before anyone noticed.
+ *
+ * Dropped rather than renamed. On a host without the tool this changes nothing a sub-Agent can do
+ * and only stops the file claiming otherwise; on a host that still has it, it withdraws a grant
+ * that was never declared. If sub-Agents should carry a task list, that is a capability to add to
+ * the contract, where every target can see it -- not one adapter's parting gift.
+ */
 export function claudeAgentFrontmatter(agent: AgentResource): Record<string, FrontmatterValue> {
   const tools = [
     ...(agentAllows(agent, 'read') ? ['Read'] : []),
@@ -65,7 +79,6 @@ export function claudeAgentFrontmatter(agent: AgentResource): Record<string, Fro
     ...(agentAllows(agent, 'write') ? ['Write', 'Edit', 'NotebookEdit'] : []),
     ...(agentAllows(agent, 'test') ? ['Bash'] : []),
     ...(agentAllows(agent, 'network') ? ['WebFetch', 'WebSearch'] : []),
-    'TodoWrite',
   ];
   const model = { reasoning: 'opus', fast: 'haiku' }[agent.spec.model.class] ?? 'inherit';
   return { tools: tools.join(', '), model };

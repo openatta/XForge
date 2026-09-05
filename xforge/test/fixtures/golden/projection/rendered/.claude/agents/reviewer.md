@@ -1,7 +1,7 @@
 ---
 name: "reviewer"
 description: "Independent read-only integrated-change reviewer"
-tools: "Read, Grep, Glob, Bash, TodoWrite"
+tools: "Read, Grep, Glob, Bash"
 model: "opus"
 ---
 

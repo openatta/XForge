@@ -1,7 +1,7 @@
 ---
 name: "integrator"
 description: "Single-writer work-package integration specialist"
-tools: "Read, Grep, Glob, Write, Edit, NotebookEdit, Bash, TodoWrite"
+tools: "Read, Grep, Glob, Write, Edit, NotebookEdit, Bash"
 model: "opus"
 ---
 
