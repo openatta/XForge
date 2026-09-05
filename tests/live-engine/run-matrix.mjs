@@ -1343,6 +1343,49 @@ for (let index = 0; index < stages.length; ) {
     process.stdout.write(`${JSON.stringify({ approvals: 'agent-collected', stage: stage.id, to: nextStage.id, collected })}\n`);
     commit(projectRoot, `Agent collected ${stage.id} approvals and transitioned into ${nextStage.id}`);
   } else if (stage.exit?.approvals?.length) {
+    /*
+     * The Agent may have sent the work back before this ran, and an Approval-gated Stage had no way
+     * to notice.
+     *
+     * The branch below it -- "the Agent sent the work back, which is what a Stage that found a real
+     * problem is supposed to do" -- is reached only by Stages with no exit approvals, so a Stage
+     * that has one read a backward move as a missing approval instead. `solid-contract` produced
+     * exactly that: its Check Agent recorded a blocker, transitioned check -> design, and the
+     * harness then asked `enterprise-approvals` for `planning-solid --for apply`. The CLI answered
+     * correctly -- `--for apply does not name a transition this Change can take: from Stage design
+     * the Flow allows check, propose` -- and the harness turned that into a stack trace, discarding
+     * a run in which every model call had succeeded and the governance chain had done its job.
+     *
+     * A rework is an outcome the scenario is scored on, not a crash. Counted here the same way the
+     * ungated arm counts one, including `countedReceipt` so a receipt that is still the newest on a
+     * later iteration is not counted twice.
+     */
+    const currentBeforeApproval = changeState(projectRoot).governance.currentStage;
+    if (currentBeforeApproval !== stage.id) {
+      const receipts = changeState(projectRoot).governance.transitions ?? [];
+      const backward = receipts.at(-1);
+      const movedBack = stages.findIndex((candidate) => candidate.id === currentBeforeApproval);
+      const isRework = movedBack >= 0 && movedBack <= index
+        && Boolean(backward) && backward.to === currentBeforeApproval
+        && (stage.reworkTo ?? []).includes(currentBeforeApproval)
+        && backward.digest !== countedReceipt;
+      if (isRework) {
+        reworks += 1;
+        countedReceipt = backward.digest;
+        process.stdout.write(`${JSON.stringify({ rework: reworks, from: stage.id, to: currentBeforeApproval, cause: 'agent-reworked-before-approval' })}\n`);
+        if (reworks > maxReworks) {
+          if (allowedOutcomes.includes('stopped-at-check') && stage.id === 'check') {
+            outcome = 'stopped-at-check';
+            stoppedAtCheck = assertStoppedAtCheck({ projectRoot, changeId, flowDefinition: flow, checkStage: stage, scenarioName });
+            break;
+          }
+          throw new Error(`${scenarioName} reworked ${reworks} times (limit ${maxReworks}); last was ${stage.id} -> ${currentBeforeApproval}, taken by the Agent before the Stage's approvals were collected.`);
+        }
+        index = movedBack;
+        await reopenStageAttempts(policyPath, stages.slice(index).map((candidate) => candidate.id));
+        continue;
+      }
+    }
     await runApprovals({
       projectRoot, policyIds: stage.exit.approvals, transition: nextStage?.id ?? 'verify', changeId: changeId,
     });
