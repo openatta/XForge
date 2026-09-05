@@ -280,6 +280,7 @@ solid $8.54、solid-rework $11.64、major $14.39（含一次返工，45 分钟�
 | 现象 | 归类 | 处置 |
 | --- | --- | --- |
 | `"classification":"provider_failure"` | **外部**，服务端错误 | harness 已自动重试；连续出现说明服务端不稳，停手 |
+| `"classification":"budget_exhausted"` | **自己的配置**：该段超过 `stageBudgetUsd` | 不重试（重试只是赌它下次正好压线）。看 `major-policy.json` 里那段的实花，把预算调到它真实需要的水平 |
 | `"timedOut":true` | **外部/负载** | 自动重试；并行时更易发生，可改串行 |
 | `reworked N times (limit M)` | **断言冲突** | 见下 |
 | `XFORGE_GATE_FAILED` | 读 `evidence/<gate>.json` 的 **`stderr`** 字段，那里有确切原因 | 按原因定 |

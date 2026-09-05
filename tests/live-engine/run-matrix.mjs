@@ -182,7 +182,7 @@ const SCENARIOS = {
      * whether the governance chain did its job, which `stopped-at-check` checks point by point.
      */
     maxReworks: 1,
-    expect: { outcome: ['archived', 'stopped-at-check'] },
+    expect: { outcome: ['archived', 'stopped-at-check', 'stopped-before-archive'] },
     inject: { afterStage: 'check', prompt: 'standalone/status-blocked.md', stageLabel: 'standalone-status-blocked' },
   },
 
@@ -214,7 +214,7 @@ const SCENARIOS = {
     changeId: null,
     intent: 'cold',
     maxReworks: 2,
-    expect: { outcome: ['archived', 'stopped-at-check', 'stopped-awaiting-declaration'] },
+    expect: { outcome: ['archived', 'stopped-at-check', 'stopped-awaiting-declaration', 'stopped-before-archive'] },
     prepare: replaceRequestWithColdIntent,
   },
 
@@ -771,6 +771,13 @@ async function runEngine({ projectRoot, scenario, stageId, promptRelative, polic
    * watchdog killed. `provider_failure` covers a real refusal too, but a refusal reproduces on the
    * retry and fails the same way one attempt later, whereas a stall usually does not. The policy
    * stays the authority on how many attempts exist; this only stops leaving one on the table.
+   *
+   * `budget_exhausted` is deliberately absent, and adding it would undo the reason it was split out
+   * of `provider_failure`. A Stage that costs more than `stageBudgetUsd` costs about the same on the
+   * retry: whether the second attempt lands under the cap is chance, not recovery. One Major check
+   * failed at $3.05 and its retry passed at $2.57, which reads as a flake and is really a budget set
+   * just below what that Stage costs. Retrying buys a coin toss for the price of the Stage; stopping
+   * says which Stage outgrew its budget.
    */
   const transient = new Set(['provider_failure', 'environment_blocked']);
   for (let attempt = 1; ; attempt += 1) {
@@ -1151,6 +1158,8 @@ let contractBaseline = null;
 let outcome = 'archived';
 let stoppedAtCheck = null;
 let stoppedAwaitingDeclaration = null;
+/** Set when the Flow refused the terminal Transition -- the condition that refused, kept for the reader. */
+let stoppedBeforeArchive = null;
 /* The Transition receipt already attributed to a rework, so the next iteration does not count the
    same one again while the Flow sits on the Stage it was sent back to. */
 let countedReceipt = null;
@@ -1501,14 +1510,52 @@ if (outcome === 'archived' && allowedOutcomes.includes('stopped-awaiting-declara
   }
 }
 
+/*
+ * The terminal Transition, read rather than asserted.
+ *
+ * `outcome` starts at `archived` and is only ever downgraded, so everything below runs on the
+ * assumption that the Change can close. A Flow may refuse it for a reason that is the product
+ * working: Major's Verify declares `independentReview`, and a Change whose delivered package
+ * carries no attributed Reviewer acknowledgement is blocked here by design.
+ *
+ * That refusal used to arrive as a throw, which killed the run before the timeline was written --
+ * eight paid Stages and every number in them lost, and `release:check` correctly reporting no
+ * result for the scenario because none existed. The refusal is worth more than that: it is the
+ * only evidence that the condition holds, and it is the first thing a reader wants when a Major
+ * run does not archive. So it becomes an outcome with the blocking condition recorded on it, and
+ * the archive assertions below are skipped rather than run against a Change that never got there.
+ *
+ * Deliberately not scripted around: the harness could dispatch the Reviewer itself and always
+ * archive, but `xforge-apply` step 8 already prescribes that sequence and the CLI already names
+ * the exact command in `XFORGE_INDEPENDENT_REVIEW_REMEDY`. Whether an Agent follows them is the
+ * thing this scenario is paid to observe, and a harness that does the step for it observes nothing.
+ */
 if (outcome === 'archived') {
 runXforgeJson(projectRoot, ['check', '--change', changeId]);
 const readyState = runXforgeJson(projectRoot, ['state', '--change', changeId]);
 if (readyState.data.change.governance.currentStage !== 'ready-to-archive') {
-  runXforgeJson(projectRoot, ['transition', '--change', changeId, '--to', 'ready-to-archive']);
-  commit(projectRoot, 'Transitioned into ready-to-archive');
+  const moved = tryXforgeJson(projectRoot, ['transition', '--change', changeId, '--to', 'ready-to-archive']);
+  if (moved.ok === false) {
+    outcome = 'stopped-before-archive';
+    /* The refused envelope names the condition in `XFORGE_TRANSITION_BLOCKED`, not in a `blockedBy`
+       field -- `data` here carries only from/to/ready/receipt. Reading the field that does not exist
+       recorded `null` for the one thing this outcome is about. */
+    const blocked = (moved.diagnostics ?? []).find((item) => item.code === 'XFORGE_TRANSITION_BLOCKED');
+    stoppedBeforeArchive = {
+      from: moved.data?.from ?? null,
+      to: moved.data?.to ?? null,
+      blockedBy: blocked?.message ?? null,
+      diagnostics: (moved.diagnostics ?? []).map((item) => item.code),
+    };
+  } else {
+    commit(projectRoot, 'Transitioned into ready-to-archive');
+  }
+}
 }
 
+/* Everything below archives a Change that reached `ready-to-archive`; the block above is what
+   decides whether it did, so this is a second gate on the same flag rather than a nested one. */
+if (outcome === 'archived') {
 await runApprovals({
   projectRoot, policyIds: flow.terminal.archive.approvals ?? [], transition: 'archive', changeId: changeId,
 });
@@ -1619,6 +1666,7 @@ process.stdout.write(`${JSON.stringify({
   contractBaseline,
   stoppedAtCheck,
   stoppedAwaitingDeclaration,
+  stoppedBeforeArchive,
   project: projectRoot,
   acceptanceExitCode: acceptance?.status ?? null,
   /* Reported in tokens: the spend figure still gates the run (see `budgetAccountingComplete`,

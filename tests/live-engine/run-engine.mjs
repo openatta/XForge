@@ -309,11 +309,32 @@ const tokens = usage ? {
   total: tokenCount(usage.input_tokens) + tokenCount(usage.output_tokens)
     + tokenCount(usage.cache_read_input_tokens) + tokenCount(usage.cache_creation_input_tokens),
 } : null;
+/*
+ * Why the budget arm exists.
+ *
+ * The ladder below used to be two rungs, and `provider_failure` was the catch-all: every non-zero
+ * exit landed there, including the one this harness causes itself. `stageBudgetUsd` stops a Stage
+ * that costs more than the policy allows, and the engine reports that plainly --
+ * `terminal_reason: budget_exhausted`, `subtype: error_max_budget_usd` -- but the label said the
+ * provider had failed. Two Major runs were read that way, in the run log and in a report, before
+ * the envelope was opened.
+ *
+ * The label is not cosmetic, because `run-matrix` retries what it believes is transient. A stalled
+ * provider usually clears on the retry; a Stage that costs more than its budget costs the same
+ * again, so the retry is a coin toss on landing under the cap -- one Major check attempt failed at
+ * $3.05 and its retry passed at $2.57, which looks like a flake and is not one. Naming it keeps it
+ * out of the transient set, so the run stops and says the budget is too small for this Stage
+ * instead of paying twice to discover it again.
+ */
+const budgetExhausted = engineResult?.subtype === 'error_max_budget_usd'
+  || engineResult?.terminal_reason === 'budget_exhausted';
 const classification = timedOut || spawnError
   ? 'environment_blocked'
-  : code !== 0 || engineResult?.is_error === true
-    ? 'provider_failure'
-    : 'success';
+  : budgetExhausted
+    ? 'budget_exhausted'
+    : code !== 0 || engineResult?.is_error === true
+      ? 'provider_failure'
+      : 'success';
 const completed = completeLiveEngineAttempt(policy, {
   stage,
   attempt: reservation.attempt,
