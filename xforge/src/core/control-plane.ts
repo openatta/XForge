@@ -38,6 +38,10 @@ export { INDEPENDENT_REVIEW_CONDITION } from './control-plane/conditions.js';
 export { loadApprovalReceipts, loadTransitionReceipts } from './control-plane/receipts.js';
 export { legalTransitionTargets } from './control-plane/graph.js';
 
+/* An Artifact stops holding a Transition when it is written, and equally when this Change was never
+   asked for it. Named once because three call sites got the second half wrong independently. */
+const ARTIFACT_SATISFIED = new Set(['done', 'not-owed']);
+
 
 function structuredExit(stage: StageFlow['stages'][number]): { conditions?: Record<string, ExitCondition>; gates?: string[]; approvals?: string[]; auditEvents?: string[] } {
   const exit = stage.exit;
@@ -213,7 +217,7 @@ export async function resolveControlPlane(
     if (!transitions.chainValid) blockedBy.push('transition-chain:invalid');
     if (!isRework && current) {
       for (const artifactId of current.produces) {
-        if (state.artifacts.find((artifact) => artifact.id === artifactId)?.status !== 'done') blockedBy.push(`artifact:${artifactId}`);
+        if (!ARTIFACT_SATISFIED.has(state.artifacts.find((artifact) => artifact.id === artifactId)?.status ?? '')) blockedBy.push(`artifact:${artifactId}`);
       }
       /* `unusable` blocks rather than falls through to the plan-less path: a plan nobody can read
          cannot show that its packages were delivered, and treating it as "no plan" would let the

@@ -24,7 +24,18 @@ export interface ChangeConfig {
 }
 
 export interface ArtifactState extends ArtifactDefinition {
-  status: 'done' | 'ready' | 'blocked';
+  /**
+   * `not-owed` is not a weaker `done`; it is a different statement. `done` says this Change wrote
+   * the Artifact. `not-owed` says the Flow declares it and this Change was never asked for it,
+   * because its `requiredWhen` does not match what the Change declares about itself.
+   *
+   * They were the same value at first, and the cost showed up in a live run: a contract delta
+   * reported `done` with an empty `outputPaths` and the guidance "Written.", which is a puzzle
+   * rather than a fact, and an Agent cannot decline to solve a puzzle sitting in its context.
+   * Deliberation on the layer that Change owed nothing of quadrupled -- 80 contract mentions to
+   * 318 -- while the artifacts it actually wrote stayed the same size.
+   */
+  status: 'done' | 'not-owed' | 'ready' | 'blocked';
   /** Files that actually exist, relative to the Change directory. Empty until the Artifact is written. */
   outputPaths: string[];
   /**

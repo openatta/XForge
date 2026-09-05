@@ -1333,7 +1333,7 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
          * `produces`. This reads all of them rather than the first.
          */
         owes: (change?.artifacts ?? [])
-          .filter((artifact: any) => (stageProduces.has(artifact.id)) && artifact.status !== 'done')
+          .filter((artifact: any) => (stageProduces.has(artifact.id)) && artifact.status !== 'done' && artifact.status !== 'not-owed')
           .map((artifact: any) => ({
             id: artifact.id,
             status: artifact.status,

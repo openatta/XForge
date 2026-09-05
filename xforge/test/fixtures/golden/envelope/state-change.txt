@@ -427,27 +427,6 @@ exit: 0
           "guidance": "Written. Its instruction and outline are in the Flow, or in state --include artifacts."
         },
         {
-          "id": "contract-delta",
-          "generates": "contracts/**/*.md",
-          "validator": "contract-delta",
-          "requiredWhen": {
-            "anyImpact": [
-              "moduleContract"
-            ]
-          },
-          "description": "Declare this Change's delta to the module interface baseline",
-          "requires": [
-            "proposal",
-            "delta-specs",
-            "design"
-          ],
-          "status": "done",
-          "outputPaths": [],
-          "writePath": "xforge/changes/add-feature/contracts/**/*.md",
-          "missingDependencies": [],
-          "guidance": "Written. Its instruction and outline are in the Flow, or in state --include artifacts."
-        },
-        {
           "id": "check-report",
           "generates": "check-report.md",
           "description": "Record the pre-implementation review — what was covered, what the Gates reported, and where a blocker routes",

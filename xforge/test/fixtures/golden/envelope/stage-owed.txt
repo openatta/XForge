@@ -28,7 +28,6 @@ exit: 0
         "xforge/changes/add-feature/proposal.md",
         "xforge/changes/add-feature/specs/widget/spec.md",
         "xforge/changes/add-feature/design.md",
-        "xforge/changes/add-feature/contracts/**/*.md",
         "xforge/changes/add-feature/check-report.md",
         "xforge/changes/add-feature/evidence/check-findings.yaml",
         "xforge/changes/add-feature/evidence/constitution-check.yaml"

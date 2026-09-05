@@ -295,10 +295,22 @@ export async function readState(project: ProjectContext, options: StateOptions):
      * `cli.ts:703` reads to state the sections a `create-artifact` Action must produce.
      */
     if (!wanted.has('artifacts')) {
-      selectedChange.artifacts = selectedChange.artifacts.map((artifact) => artifact.status !== 'done'
-        ? artifact
-        : { ...artifact, instruction: undefined, outline: undefined,
-            guidance: 'Written. Its instruction and outline are in the Flow, or in state --include artifacts.' } as never);
+      /*
+       * A `not-owed` Artifact leaves the payload entirely, rather than being trimmed like a written
+       * one. There is nothing about it a Change needs: it was never asked for, nothing depends on
+       * its absence, and it cannot become owed without the Change changing what it says about
+       * itself. Trimming it left `guidance: "Written."` on a document nobody wrote -- a puzzle in
+       * the context of every Stage, and a measured one: deliberation about the contract layer
+       * quadrupled on a Change that owed none of it while the artifacts it did write stayed the
+       * same size. `state --include artifacts` still shows it, because "what does this Flow
+       * declare" is a real question, just not one every Stage is asking.
+       */
+      selectedChange.artifacts = selectedChange.artifacts
+        .filter((artifact) => artifact.status !== 'not-owed')
+        .map((artifact) => artifact.status !== 'done'
+          ? artifact
+          : { ...artifact, instruction: undefined, outline: undefined,
+              guidance: 'Written. Its instruction and outline are in the Flow, or in state --include artifacts.' } as never);
     }
   }
 

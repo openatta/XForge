@@ -441,6 +441,8 @@ export async function resolveChangeState(
   const artifacts = flowArtifacts(flow);
   const artifactStates: ArtifactState[] = [];
   const completed = new Set<string>();
+  /* Counts as satisfied for anything that depends on it, and says why it is satisfied. */
+  const notOwed = new Set<string>();
   const rawOutputs = new Map<string, string[]>();
   for (const artifact of artifacts) {
     const outputs = await artifactOutputs(changeDirectory, artifact);
@@ -458,16 +460,18 @@ export async function resolveChangeState(
      * them is `outputPaths`, which stays empty, so anything that wants to know whether a document
      * exists still asks the right question.
      */
-    if (!artifactIsOwed(artifact, config)) { completed.add(artifact.id); continue; }
+    if (!artifactIsOwed(artifact, config)) { completed.add(artifact.id); notOwed.add(artifact.id); continue; }
     let done = await outputsSatisfyArtifact(changeDirectory, artifact, outputs);
     if (!isStageFlow(flow) && artifact.id === 'approval' && done) done = await approvalGranted(changeDirectory, outputs);
     if (done) completed.add(artifact.id);
   }
   for (const artifact of artifacts) {
     const missingDependencies = artifact.requires.filter((id) => !completed.has(id));
-    const status: ArtifactState['status'] = completed.has(artifact.id)
-      ? 'done'
-      : missingDependencies.length === 0 ? 'ready' : 'blocked';
+    const status: ArtifactState['status'] = notOwed.has(artifact.id)
+      ? 'not-owed'
+      : completed.has(artifact.id)
+        ? 'done'
+        : missingDependencies.length === 0 ? 'ready' : 'blocked';
     artifactStates.push({
       ...artifact,
       status,

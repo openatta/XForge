@@ -28,8 +28,13 @@ async function rules(root: string, change = CHANGE): Promise<any[]> {
   return ((state.json.data as any)?.change?.governance?.rules ?? []) as any[];
 }
 
+/*
+ * `--include artifacts`, because the default payload drops a `not-owed` entry on purpose and these
+ * assertions are about what the Flow declares rather than about what a Stage is shown. The test
+ * below that asserts the dropping reads the default payload instead.
+ */
 async function artifacts(root: string, change = CHANGE): Promise<any[]> {
-  const state = await runCli(root, ['state', '--change', change]);
+  const state = await runCli(root, ['state', '--change', change, '--include', 'artifacts']);
   return ((state.json.data as any)?.change?.artifacts ?? []) as any[];
 }
 
@@ -66,12 +71,34 @@ describe('the contract layer a project gets without configuring anything', () =>
     const delta = (await artifacts(root)).find((item) => item.id === 'contract-delta');
     expect(delta, 'the Flow declares the Artifact for every Change').toBeTruthy();
     /*
-     * Owed is the question, not declared. An Artifact this Change does not owe is complete: holding
-     * its Stage open until it writes a document saying "nothing changed" is a required turn spent
-     * asserting nothing, which is the friction that kept the opt-in version unadopted.
+     * Owed is the question, not declared. An Artifact this Change does not owe does not hold its
+     * Stage open -- requiring a document that says "nothing changed" is a turn spent asserting
+     * nothing, which is the friction that kept the opt-in version unadopted.
+     *
+     * `not-owed` rather than `done`, and the distinction was bought with a live run. Reported as
+     * `done` it carried an empty `outputPaths` and the guidance "Written.", which is a puzzle
+     * rather than a fact; deliberation about the contract layer quadrupled on a Change that owed
+     * none of it, while the artifacts it actually wrote stayed the same size.
      */
-    expect(delta.status).toBe('done');
+    expect(delta.status).toBe('not-owed');
     expect(delta.outputPaths).toEqual([]);
+  });
+
+  it('keeps a not-owed Artifact out of the payload every Stage reads', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+
+    const state = await runCli(root, ['state', '--change', CHANGE]);
+    const listed = ((state.json.data as any)?.change?.artifacts ?? []).map((item: any) => item.id);
+    expect(listed).not.toContain('contract-delta');
+    /* Everything this Change does owe is still there. */
+    expect(listed).toContain('design');
+    expect(listed).toContain('constitution-check');
+
+    /* And the question "what does this Flow declare" is still answerable, just not on every call. */
+    const full = await runCli(root, ['state', '--change', CHANGE, '--include', 'artifacts']);
+    const all = ((full.json.data as any)?.change?.artifacts ?? []).map((item: any) => item.id);
+    expect(all).toContain('contract-delta');
   });
 
   it('owes one from a Change that declares it does', async () => {
