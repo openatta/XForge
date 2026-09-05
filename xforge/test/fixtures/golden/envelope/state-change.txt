@@ -59,7 +59,7 @@ exit: 0
       },
       "language": "en",
       "lockedResources": null,
-      "lockedResourceCount": 25
+      "lockedResourceCount": 26
     },
     "xforge": {
       "declaration": {
@@ -103,7 +103,7 @@ exit: 0
               "medium"
             ],
             "criticalImpacts": "forbidden",
-            "contractImpact": "forbidden"
+            "contractImpact": "allowed"
           }
         },
         "stages": [
@@ -130,7 +130,8 @@ exit: 0
               "propose"
             ],
             "produces": [
-              "design"
+              "design",
+              "contract-delta"
             ],
             "gates": [],
             "exitConditions": [],
@@ -155,7 +156,9 @@ exit: 0
               "check-findings",
               "constitution-check"
             ],
-            "exitConditions": [],
+            "exitConditions": [
+              "contractDecisions"
+            ],
             "reworkTo": [
               "propose",
               "design"
@@ -221,12 +224,22 @@ exit: 0
             ]
           },
           {
+            "id": "contract-delta",
+            "generates": "contracts/**/*.md",
+            "requires": [
+              "proposal",
+              "delta-specs",
+              "design"
+            ]
+          },
+          {
             "id": "check-report",
             "generates": "check-report.md",
             "requires": [
               "proposal",
               "delta-specs",
-              "design"
+              "design",
+              "contract-delta"
             ]
           },
           {
@@ -236,6 +249,7 @@ exit: 0
               "proposal",
               "delta-specs",
               "design",
+              "contract-delta",
               "check-report"
             ]
           },
@@ -246,6 +260,7 @@ exit: 0
               "proposal",
               "delta-specs",
               "design",
+              "contract-delta",
               "check-report",
               "check-findings"
             ]
@@ -257,6 +272,7 @@ exit: 0
               "proposal",
               "delta-specs",
               "design",
+              "contract-delta",
               "check-report",
               "check-findings",
               "constitution-check"
@@ -299,7 +315,8 @@ exit: 0
       "rules": [
         "governance-assets-are-integrator-only",
         "observable-requirements-are-tested",
-        "design-decisions-need-a-human"
+        "design-decisions-need-a-human",
+        "interfaces-are-contract-governed"
       ],
       "policies": [
         "protected-files",
@@ -410,13 +427,35 @@ exit: 0
           "guidance": "Written. Its instruction and outline are in the Flow, or in state --include artifacts."
         },
         {
+          "id": "contract-delta",
+          "generates": "contracts/**/*.md",
+          "validator": "contract-delta",
+          "requiredWhen": {
+            "anyImpact": [
+              "moduleContract"
+            ]
+          },
+          "description": "Declare this Change's delta to the module interface baseline",
+          "requires": [
+            "proposal",
+            "delta-specs",
+            "design"
+          ],
+          "status": "done",
+          "outputPaths": [],
+          "writePath": "xforge/changes/add-feature/contracts/**/*.md",
+          "missingDependencies": [],
+          "guidance": "Written. Its instruction and outline are in the Flow, or in state --include artifacts."
+        },
+        {
           "id": "check-report",
           "generates": "check-report.md",
           "description": "Record the pre-implementation review — what was covered, what the Gates reported, and where a blocker routes",
           "requires": [
             "proposal",
             "delta-specs",
-            "design"
+            "design",
+            "contract-delta"
           ],
           "status": "done",
           "outputPaths": [
@@ -434,6 +473,7 @@ exit: 0
             "proposal",
             "delta-specs",
             "design",
+            "contract-delta",
             "check-report"
           ],
           "status": "done",
@@ -452,6 +492,7 @@ exit: 0
             "proposal",
             "delta-specs",
             "design",
+            "contract-delta",
             "check-report",
             "check-findings"
           ],
@@ -478,6 +519,7 @@ exit: 0
             "proposal",
             "delta-specs",
             "design",
+            "contract-delta",
             "check-report",
             "check-findings",
             "constitution-check"
@@ -511,7 +553,7 @@ exit: 0
           "unit-tests"
         ],
         "syncSpecs": true,
-        "syncContracts": false
+        "syncContracts": true
       },
       "workPackages": null,
       "governance": {
@@ -609,8 +651,30 @@ exit: 0
             ],
             "policyRefs": [],
             "approvalRefs": [],
+            "validatorRefs": [],
             "enforceableRefs": [
               "unit-tests"
+            ]
+          },
+          {
+            "id": "interfaces-are-contract-governed",
+            "severity": "must",
+            "instruction": "Interfaces between modules — HTTP operations, event schemas, database table structure, and the symbols one module exports to another — are defined by the baseline under xforge/contracts/, and a Change that alters one declares the alteration in its own contract-delta before implementing it. Reference the contract from the implementation rather than restating it, so there is one place a reader can be wrong about. Never edit the baseline directly: it is the record of what was agreed, archive merges the delta into it, and a Worker who edits it in place leaves every other package building against something nothing agreed to. When the implementation and the contract disagree, change the implementation — changing the contract is a decision that needs a named person in evidence/conditions/contractDecisions.yaml. The protected-files policy is a guardrail an honest Agent respects rather than a boundary that stops a determined one; the binding check is contract-compat, which compares what the delta declared against what actually moved.",
+            "coverage": [
+              "instructed",
+              "guarded",
+              "structural"
+            ],
+            "gateRefs": [],
+            "policyRefs": [
+              "protected-files"
+            ],
+            "approvalRefs": [],
+            "validatorRefs": [
+              "contract-delta"
+            ],
+            "enforceableRefs": [
+              "contract-delta"
             ]
           }
         ],

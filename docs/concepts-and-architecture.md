@@ -186,11 +186,11 @@ terminal:    # 归档：需要哪些审批、审计策略、是否 syncSpecs / s
 # quick
 eligibleWhen: { risk: [low], criticalImpacts: forbidden, contractImpact: forbidden, maxModules: 1 }
 # solid
-eligibleWhen: { risk: [low, medium], criticalImpacts: forbidden, contractImpact: forbidden }
+eligibleWhen: { risk: [low, medium], criticalImpacts: forbidden, contractImpact: allowed }
 # major
-eligibleWhen: { risk: [low, medium, high], criticalImpacts: allowed, contractImpact: forbidden }
+eligibleWhen: { risk: [low, medium, high], criticalImpacts: allowed, contractImpact: allowed }
 requiredWhen: { risk: [high], anyImpact: [security, privacy, publicApi, dataMigration] }
-# solid-contract（模板，随包但未启用）
+# solid-contract（模板，随包但未启用）——只多出四道 declared Gate 与调度它们的 Stage
 eligibleWhen: { risk: [low, medium], criticalImpacts: forbidden, contractImpact: allowed }
 ```
 
@@ -199,12 +199,27 @@ eligibleWhen: { risk: [low, medium], criticalImpacts: forbidden, contractImpact:
 
 `contractImpact` 与 `criticalImpacts` 是**两个问题、两个键**，这一点是刻意的。
 判断一个 Flow 能不能承载接口变更，看的不是它有没有 design stage——`solid` 和 `major` 都有——
-而是它**有没有声明 contract-delta 这个 Artifact、并在归档时合并它**。三个随包 Flow 都没有，
-所以三个都写 `contractImpact: forbidden`：接受一份自己治理不了的声明，比拒绝它更糟。
+而是它**有没有声明 contract-delta 这个 Artifact、并在归档时合并它**。0.8.4 起 `solid` 与 `major`
+两者都有，所以两者都写 `contractImpact: allowed`；`quick` 仍然没有，也仍然拒绝——那次拒绝是结构性的，
+不是偏好：Quick 没有 design stage 可以写 delta，也没有评审去读它。
+`major` 必须跟着 `solid` 一起放开，理由相反：一个保证级别更高的 Flow 如果拒绝接口变更，
+就会在"升级正是正确答案"的那一刻把升级变成死路。
 
 反过来，把 `moduleContract` 并进 critical impacts 会让一次编辑同时点燃三处判定，其中两处是错的——
 `quick` 和 `solid` 都写着 `criticalImpacts: forbidden`，于是**专门为治理接口而写的那个 Flow，
 会第一个变得没资格承载接口变更**。
+
+**默认给到什么、不给到什么。** 不需要任何配置就生效的是：一份被 CLI 校验的 contract-delta
+（`validator: contract-delta`，读到即校验，无 Gate 无 Evidence）、一条 Worker 写不了的基线
+（`protected-files` deny `xforge/contracts/**`）、破坏性变更的决策台账，以及归档时的合并。
+`xforge state` 把这一层报成 `guarded, structural`，**不是 `verified`**。
+仍然需要选中的是四道 `builtin: declared` 的 Gate（`contract-lint`／`contract-compat`／
+`contract-drift`／`module-boundaries`）——契约方言按项目而异，CLI 给不出命令，默认开启会让每个项目
+卡在一道它从没要求过的检查上。
+
+这条边界要说准：默认层完整治理一次**被声明的**接口变更，完全不治理一次**未被声明的**。
+`moduleContract` 是 Change 自己说的，而唯一拿这句话去和 diff 对照的是 `contract-compat`。
+一份把这里报成 `verified` 的覆盖报告，就是在宣称一次项目并没有买下的检查。
 
 ### 4.3 一个 stage 长什么样
 

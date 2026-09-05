@@ -66,18 +66,8 @@ describe('archive transaction', () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
     await updateYaml(root, 'xforge/scaffold/gates/unit-tests.yaml', (gate) => { gate.spec.command = [process.execPath, '-e', 'process.exit(0)']; delete gate.spec.builtin; });
-    await updateYaml(root, 'xforge/flows/solid.yaml', (flow: any) => {
-      flow.artifacts.push({
-        id: 'contract-delta',
-        generates: 'contracts/**/*.md',
-        validator: 'contract-delta',
-        description: 'Declare this Change\'s delta to the module interface baseline',
-        instruction: 'List every contract element this Change adds, modifies or removes.',
-        outline: '## ADDED Contract Elements\n## MODIFIED Contract Elements\n## REMOVED Contract Elements\n',
-      });
-      flow.stages.find((stage: any) => stage.id === 'design').produces.push('contract-delta');
-      flow.terminal.archive.syncContracts = true;
-    });
+    /* The shipped `solid` declares the contract-delta Artifact and merges it at archive since
+       0.8.4; this used to add both by hand, and adding them again is a duplicate Artifact id. */
     await write(root, 'xforge/contracts/http.md', [
       '# http', '', '## Purpose', '', 'Established by archived XForge Changes.', '', '## Elements', '',
       '### Element: openapi:paths./orders.get', '', '- module: api', '',
@@ -122,18 +112,8 @@ describe('archive transaction', () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
     await updateYaml(root, 'xforge/scaffold/gates/unit-tests.yaml', (gate) => { gate.spec.command = [process.execPath, '-e', 'process.exit(0)']; delete gate.spec.builtin; });
-    await updateYaml(root, 'xforge/flows/solid.yaml', (flow: any) => {
-      flow.artifacts.push({
-        id: 'contract-delta',
-        generates: 'contracts/**/*.md',
-        validator: 'contract-delta',
-        description: 'Declare this Change\'s delta to the module interface baseline',
-        instruction: 'List every contract element this Change adds, modifies or removes.',
-        outline: '## ADDED Contract Elements\n',
-      });
-      flow.stages.find((stage: any) => stage.id === 'design').produces.push('contract-delta');
-      flow.terminal.archive.syncContracts = true;
-    });
+    /* The shipped `solid` declares the contract-delta Artifact and merges it at archive since
+       0.8.4; this used to add both by hand, and adding them again is a duplicate Artifact id. */
     await write(root, 'xforge/changes/add-feature/contracts/http.md', '## ADDED Contract Elements\n\n### Element: openapi:paths./orders.post\n\n- module: api\n');
     expect((await runCli(root, ['install'])).code).toBe(0);
     await advanceSolidToReadyToArchive(root);
@@ -163,18 +143,8 @@ describe('archive transaction', () => {
      */
     const root = await fixture();
     await createCompleteSolidChange(root);
-    await updateYaml(root, 'xforge/flows/solid.yaml', (flow: any) => {
-      flow.artifacts.push({
-        id: 'contract-delta',
-        generates: 'contracts/**/*.md',
-        validator: 'contract-delta',
-        description: 'Declare this Change\'s delta to the module interface baseline',
-        instruction: 'List every contract element this Change adds, modifies or removes.',
-        outline: '## ADDED Contract Elements\n## MODIFIED Contract Elements\n## REMOVED Contract Elements\n',
-      });
-      flow.stages.find((stage: any) => stage.id === 'design').produces.push('contract-delta');
-      flow.terminal.archive.syncContracts = true;
-    });
+    /* The shipped `solid` declares the contract-delta Artifact and merges it at archive since
+       0.8.4; this used to add both by hand, and adding them again is a duplicate Artifact id. */
     await write(root, 'xforge/contracts/http.md', '# http\n\n## Elements\n\n### Element: openapi:paths./orders.get\n\n- module: api\n');
     await write(root, 'xforge/changes/add-feature/contracts/http.md', [
       '## ADDED Contract Elements', '', '### Element: openapi:paths./orders.get', '', '- module: api', '',

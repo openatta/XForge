@@ -67,6 +67,11 @@ resources:
     kind: rule
     license: project
     version: 1
+  - digest: f4a3ce26ba1ceeea38a82899db1f29006febec4ce275fd8742b643ba5d02955a
+    id: interfaces-are-contract-governed
+    kind: rule
+    license: project
+    version: 1
   - digest: 31a19248041aedef5b83184209ecee32b5121fce98b9420b12848048ecfc3dc9
     id: observable-requirements-are-tested
     kind: rule
@@ -82,7 +87,7 @@ resources:
     kind: skill
     license: project
     version: "1"
-  - digest: 3cb7dd7bccc514522f1bf9421324c2ee94611227a1dc32126329ea2e9213c4af
+  - digest: fd87b7310469d06083fb89d9e03b102702453cca7f353379b9b426e07de4e4b2
     id: xforge-check
     kind: skill
     license: project
@@ -92,7 +97,7 @@ resources:
     kind: skill
     license: project
     version: "1"
-  - digest: 4b142109b777a8f414aad88664920a900a412c9bad2f5f5fce79f1d57ab56636
+  - digest: f0eb5df260cd5e83b2c0462606f2b9502485bedff78c005743e6e59718818b75
     id: xforge-design
     kind: skill
     license: project
@@ -146,7 +151,7 @@ targets:
   - opencode
   - github-copilot
 xforge:
-  integrity: sha256:0e478b72717f0959541d8855bb5ddb2c30ba33524783f755e98aae0f52ee3d3c
+  integrity: sha256:1d4395f9ed3dc8db9ce8272dadc6a1e0a3543fca063a1054b2377d52bf998236
   package: "@xforge/cli"
   protocol: "2"
   source: npm

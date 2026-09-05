@@ -137,10 +137,18 @@ const SCENARIOS = {
     mutate: { afterStage: 'design', apply: contradictTaskLedgerDesign },
   },
   /*
-   * Contract governance, driven end to end by a real model.
+   * Contract governance at its *selected* tier, driven end to end by a real model.
    *
-   * The Flow is `solid-contract`, which ships as a template rather than active -- `xforge/flows/` is
-   * read by listing it, so a Flow placed there is one the project runs. The seed selects it in the
+   * Since 0.8.4 the half that needs no configuration ships on: `solid` and `major` both declare the
+   * contract-delta Artifact, the contractDecisions exit condition and the archive merge, and every
+   * project gets them without selecting anything. That half is deterministic CLI behaviour -- which
+   * Artifact a Change owes, which condition applies to it, which coverage tier the Rule reports --
+   * and `test/integration/contract-default-layer.test.ts` holds it, because a live run is the wrong
+   * instrument for a question a fixture answers exactly.
+   *
+   * What is still opt-in is the four `builtin: declared` Gates, and that is what this scenario is
+   * for. The Flow is `solid-contract`, which ships as a template rather than active -- `xforge/flows/`
+   * is read by listing it, so a Flow placed there is one the project runs. The seed selects it in the
    * Manifest and `setup.mjs` performs the same copy the template's own header documents, so the
    * harness exercises the adoption route instead of carrying a second copy that would drift from it.
    *

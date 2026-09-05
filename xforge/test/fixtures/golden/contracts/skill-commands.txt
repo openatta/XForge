@@ -33,7 +33,9 @@ check  <- xforge-status/SKILL.md
 check  <- xforge-status/SKILL_cn.md
 check  <- xforge-verify/SKILL.md
 check  <- xforge-verify/SKILL_cn.md
+contract list  <- flows/major.yaml
 contract list  <- flows/solid-contract.yaml
+contract list  <- flows/solid.yaml
 contract status  <- xforge-status/SKILL.md
 contract status  <- xforge-status/SKILL_cn.md
 doctor  <- flows/solid-contract.yaml

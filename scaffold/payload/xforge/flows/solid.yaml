@@ -12,7 +12,10 @@ policy:
     # No Stage here produces a contract delta, so a Change that says it moves a module interface has
     # nowhere to declare what it moved and nothing that would merge it. `solid-contract` is the Flow
     # that carries one; this refuses the claim rather than accepting it and governing nothing.
-    contractImpact: forbidden
+    # `allowed` since 0.8.4, when the contract layer became part of this Flow rather than a template
+    # beside it. It sits next to `criticalImpacts: forbidden` deliberately: a Flow can refuse every
+    # critical impact and still be the right place to govern an interface change.
+    contractImpact: allowed
 artifacts:
   - id: proposal
     generates: proposal.md
@@ -70,6 +73,64 @@ artifacts:
         section: Decisions and alternatives
         role: decision-alternative
         pattern: ['**Rejected alternative:', '**被否决的替代方案：']
+  - id: contract-delta
+    generates: contracts/**/*.md
+    validator: contract-delta
+    # Owed only by a Change that says it moves an interface. Every other Artifact on this Flow is
+    # owed by every Change, and an empty glob is an unfinished Stage -- this is the first one a
+    # Change can legitimately owe nothing of, and holding its Stage open until it writes a document
+    # saying "nothing changed" is friction with no reader.
+    #
+    # It is a self-declaration. Nothing in the shipped configuration catches a Change that moves an
+    # interface while declaring it did not; `contract-compat` is the Gate that compares the two, and
+    # it is `builtin: declared` because contract dialects differ per project, so it is selected
+    # rather than shipped on. What this Flow governs by default is a *declared* interface change,
+    # completely: a validated delta, a baseline no Worker may edit, a recorded decision for every
+    # breaking change, and a merge at archive.
+    requiredWhen:
+      anyImpact: [moduleContract]
+    description: Declare this Change's delta to the module interface baseline
+    instruction: >-
+      One file per contract domain under contracts/, mirroring the domain files in
+      xforge/contracts/. In each, list every contract element this Change adds, modifies or removes
+      as a `### Element:` block headed by its contract element id — the `<kind>:<selector>` form the
+      project's own enumeration prints, such as `openapi:paths./orders.post`. Under each block give
+      the owning module, whether the change is breaking, and the before and after shape. Add
+      `- digest: <value>` when your enumeration computes a canonical digest for the element: the
+      baseline carries it forward, and it is the only thing that makes a *modification* decidable
+      later — adding and removing an element are visible in a list of ids, while widening an enum or
+      changing a field's type is not. A MODIFIED block whose digest matches the one the baseline
+      already records is reported, because the delta and the shape then disagree about whether
+      anything changed. For a breaking change give the expand-contract steps and cite the entry in
+      evidence/conditions/contractDecisions.yaml that records who decided it.
+
+
+      Read the element ids with `xforge contract list` and never retype one from memory: a mistyped
+      id does not fail, it merges as a new element beside the one you meant to change. This file is
+      the only place a Change may say an interface changed. xforge/contracts/ records what was
+      already agreed and archive is what merges a delta into it, so editing the baseline in place
+      leaves every other package building against something nothing agreed to — and the
+      protected-files policy refuses the write, so an attempt to is a refusal rather than a
+      surprise at integration. Do not restate Requirements and do not describe implementation. A
+      section with nothing in it gets `(none)`, which is an assertion; a blank one is an omission
+      and is refused.
+    outline: |
+      ## ADDED Contract Elements
+      ### Element: <kind>:<selector>
+      ## MODIFIED Contract Elements
+      ## REMOVED Contract Elements
+      ## Breaking Changes
+      ## Consumer Impact
+    # No markers, and the reason is worth recording because it cost something. An Artifact whose
+    # `generates` contains a `*` skips marker and outline validation entirely
+    # (core/artifact-markers.ts short-circuits on it), so the glob and a `contract-breaking` marker
+    # cannot both exist. The glob wins: one file per domain is what lets two Changes touch two
+    # domains without meeting in the same file, and it is what makes the destination of a merge
+    # derivable from the delta's own path rather than from a convention held somewhere else.
+    #
+    # What the marker would have bought was RC-4 reading `## Breaking Changes` and reporting a
+    # breaking change no finding cites. That check is real -- it was watched to fire -- and it is
+    # given up here rather than forgotten.
   - id: check-report
     generates: check-report.md
     description: Record the pre-implementation review — what was covered, what the Gates reported, and where a blocker routes
@@ -192,7 +253,9 @@ stages:
     skill: xforge-design
     authority: planning-write
     requires: [propose]
-    produces: [design]
+    # Order carries meaning: an Artifact listed after another in the same Stage depends on it, so
+    # contract-delta is written against a design that already exists rather than beside it.
+    produces: [design, contract-delta]
     reworkTo: [propose]
   - id: check
     skill: xforge-check
@@ -202,6 +265,15 @@ stages:
     gates: [structure, check-findings, constitution-check]
     reworkTo: [propose, design]
     exit:
+      conditions:
+        # Only a Change that declared an interface change owes this: the ledger records who decided a
+        # breaking change, and a Change with no delta has no such decision to have made. Requiring it
+        # of every Change would mean every Change filing `entries: []` -- a turn spent asserting
+        # nothing, with the Stage held open until it is spent.
+        contractDecisions:
+          expected: resolved
+          requiredWhen:
+            anyImpact: [moduleContract]
       approvals: [planning-solid]
   - id: apply
     skill: xforge-apply
@@ -225,6 +297,10 @@ terminal:
     authority: archive-write
     requires: [verify]
     syncSpecs: true
+    # The baseline advances here and nowhere else. A Change may reach archive with a delta nobody
+    # merged -- that was a real defect on the branch this arrived on -- so the merge is part of
+    # closing rather than something a Stage was supposed to have done.
+    syncContracts: true
     approvals: [closing-solid]
     auditPolicy:
       requiredEventTypes: [gate.after, stage.entered, approval.decided]

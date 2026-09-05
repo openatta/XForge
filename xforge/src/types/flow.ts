@@ -62,6 +62,19 @@ export interface ArtifactDefinition {
    */
   validator?: 'spec-delta' | 'contract-delta' | 'outline';
   markers?: ArtifactMarker[];
+  /**
+   * When this Artifact is owed at all; absent means always.
+   *
+   * Exists because a contract delta is the first Artifact a Change can legitimately owe nothing of.
+   * Every other one is owed by every Change on the Flow, and an empty glob is therefore an
+   * unfinished Stage -- but a Change that moves no interface has nothing to declare, and holding
+   * its Stage open until it writes a document saying so is friction with no reader.
+   *
+   * It reads the Change's self-declared `classification`, and the CLI does not pretend otherwise: nothing
+   * here catches a Change that moves an interface while declaring it did not. `contract-compat` is
+   * what does, and it is dialect-specific, so it is selected rather than shipped on.
+   */
+  requiredWhen?: { anyImpact?: Array<'security' | 'privacy' | 'publicApi' | 'dataMigration' | 'moduleContract'> };
 }
 
 export interface LegacyFlow {
@@ -79,6 +92,8 @@ export type FlowAuthority = 'read-only' | 'planning-write' | 'assurance-write' |
 
 export interface StageFlowArtifact extends Omit<ArtifactDefinition, 'requires'> {}
 
+export type ExitCondition = string | { expected: string; requiredWhen: { anyImpact?: Array<'security' | 'privacy' | 'publicApi' | 'dataMigration' | 'moduleContract'> } };
+
 export interface FlowStage {
   id: string;
   skill: string;
@@ -89,7 +104,15 @@ export interface FlowStage {
   gates?: string[];
   reworkTo?: string[];
   exit?: {
-    conditions?: Record<string, string>;
+    /**
+     * Condition key -> the status its ledger must declare.
+     *
+     * The object form narrows *which Changes owe it*, in the same `requiredWhen` shape the
+     * Artifacts use. A Change that does not match owes no ledger and is not blocked by its absence
+     * — written that way rather than as a ledger every Change files empty, because an `entries: []`
+     * nobody could skip is a turn spent asserting nothing and a Stage held open until it is spent.
+     */
+    conditions?: Record<string, ExitCondition>;
     gates?: string[];
     approvals?: string[];
     auditEvents?: string[];

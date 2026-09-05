@@ -11,7 +11,7 @@ description: Produce a governed technical design for a Solid or Major Change, in
 
 # Authority
 
-- Write only the Artifact paths the Action returns. On a contract-governed Flow that is two documents, the Design and the `contract-delta`, and neither is `xforge/contracts/` itself.
+- Write only the Artifact paths the Action returns. For a Change that declared `classification.moduleContract: true` that is two documents, the Design and the `contract-delta`, and neither is `xforge/contracts/` itself — the baseline is written by archive and by nothing else, and `protected-files` refuses the attempt.
 - Do not modify Proposal, Specs, Clarifications, product code, Check reports, Evidence, tasks, or Archive. Return upstream changes as rework.
 
 # Execution
@@ -19,7 +19,7 @@ description: Produce a governed technical design for a Solid or Major Change, in
 1. Model the current system, target behavior, integration points, data, and interface boundaries.
 2. Record major decisions, viable alternatives and rejection reasons, failure modes, compatibility, migration, and rollback.
 3. Follow the Design Artifact's `instruction` and outline under `owes` exactly — Solid vs Major depth (e.g. Major's trust boundaries, risks and mitigations, test strategy, rollout, monitoring, stop signals, owner, and parallel boundaries) is already expressed there. Do not add or omit sections the Action does not define.
-4. When the Action lists a `contract-delta` Artifact, write it as that Artifact's `instruction` and `outline` under `owes` define it — they carry the element-id form, how to read the ids, and what an empty section says. One thing is not in them because it is about this project rather than this Artifact: a Stage that declares `contract-lint` cannot pass until the project has recorded a command with `xforge verification declare --gate-name contract-lint --command '[...]' --by <person>`, because a declared Gate refuses rather than passes when nothing is declared. Do not hand-edit the Manifest to get past it.
+4. When the Action lists a `contract-delta` Artifact, write it as that Artifact's `instruction` and `outline` under `owes` define it — they carry the element-id form, how to read the ids, and what an empty section says. It is listed only for a Change that declared `moduleContract: true`; when it is absent this Change said it moves no interface, and there is nothing to write. One thing is not in the Artifact's own text because it is about this project rather than this Artifact: a Stage that declares `contract-lint` cannot pass until the project has recorded a command with `xforge verification declare --gate-name contract-lint --command '[...]' --by <person>`, because a declared Gate refuses rather than passes when nothing is declared. No shipped Flow declares it — a project that selected it did so deliberately. Do not hand-edit the Manifest to get past it.
 5. Refresh State and run `xforge check --change <id>`; fix only Design-authorized structural issues, then invoke the typed ready Transition to Check. No shipped Flow collects an approval at the Design exit — `planning-solid` and `implementation-major` are both collected at the Check exit — so do not wait here for a receipt nothing will request, and do not try to approve for this Stage: `xforge approve` refuses a transition no policy governs.
 
 # Evidence

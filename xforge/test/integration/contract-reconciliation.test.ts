@@ -16,24 +16,17 @@ import { changeYaml, fixture, runCli, updateYaml, write } from '../helpers.js';
  * updated and a classification written before the interface moved are the same observation from
  * opposite directions, and the CLI cannot tell them apart.
  */
+/**
+ * The shipped `solid`, unmodified.
+ *
+ * This used to patch a contract-delta Artifact, `syncContracts` and `contractImpact: allowed` into
+ * `solid` at fixture time, because none of the three was there. All three ship in it since 0.8.4,
+ * and the patch became a duplicate Artifact id that failed `install` before a single assertion ran.
+ * Reading the shipped Flow is also the stronger test: a fixture that builds its own Flow can pass
+ * while the one every project runs does not.
+ */
 async function contractFlowFixture(): Promise<string> {
-  const root = await fixture();
-  await updateYaml(root, 'xforge/flows/solid.yaml', (flow: any) => {
-    flow.artifacts.push({
-      id: 'contract-delta',
-      generates: 'contracts/**/*.md',
-      validator: 'contract-delta',
-      description: 'Declare this Change\'s delta to the module interface baseline',
-      instruction: 'List every contract element this Change adds, modifies or removes.',
-      outline: '## ADDED Contract Elements\n',
-    });
-    flow.stages.find((stage: any) => stage.id === 'design').produces.push('contract-delta');
-    flow.terminal.archive.syncContracts = true;
-    /* A Flow that collects and merges interface deltas is one a Change may declare a module contract
-       on. The shipped `solid` refuses the claim precisely because it does neither. */
-    flow.policy.eligibleWhen.contractImpact = 'allowed';
-  });
-  return root;
+  return fixture();
 }
 
 const observations = (json: any): Array<{ code: string; message: string }> =>

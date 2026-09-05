@@ -333,16 +333,19 @@ describe('Flow eligibility', () => {
     expect(tooWeak.message).toContain('module contract');
   });
 
-  it('refuses a module contract on the shipped Flows that have nowhere to declare one', async () => {
+  it('refuses a module contract only on the shipped Flow that has nowhere to declare one', async () => {
     /*
-     * `quick` was the obvious case and it was not the only one. What decides whether a Flow can carry
-     * an interface change is not whether it has a design Stage -- `solid` and `major` both do -- but
-     * whether it declares a contract-delta Artifact and merges it. None of the three shipped Flows
-     * does either, so a Change classifying itself as moving a module contract on any of them was
-     * accepted, collected no delta, merged nothing, and nobody was told.
+     * What decides whether a Flow can carry an interface change is not whether it has a design Stage
+     * -- `solid` and `major` both do -- but whether it declares a contract-delta Artifact and merges
+     * it. Until 0.8.4 none of the three did, so a Change classifying itself as moving a module
+     * contract on any of them was accepted, collected no delta, merged nothing, and nobody was told.
      *
-     * `solid-contract` is the Flow that carries one, and it says so with `contractImpact: allowed`.
+     * Two of the three now do. `quick` still does not, and that refusal is the structural half of
+     * the arrangement rather than a policy preference: `quick` has no design Stage to write a delta
+     * in and no reviewer to read one, so an interface change on it has nowhere to be recorded. The
+     * refusal names the Flow that can carry it.
      */
+    const carries = { quick: false, solid: true, major: true } as const;
     for (const flow of ['quick', 'solid', 'major'] as const) {
       const root = await fixture();
       const base = `xforge/changes/claims-${flow}`;
@@ -353,6 +356,10 @@ describe('Flow eligibility', () => {
       await write(root, `${base}/specs/fix/spec.md`, deltaSpec('Fix'));
       const result = await checkStructure(await loadProject(root), `claims-${flow}`);
       const tooWeak = result.diagnostics.find((item) => item.code === 'XFORGE_FLOW_TOO_WEAK');
+      if (carries[flow]) {
+        expect(tooWeak, `${flow} refused a module contract it now governs`).toBeUndefined();
+        continue;
+      }
       expect(tooWeak, `${flow} accepted a module contract it cannot govern`).toBeTruthy();
       expect(tooWeak!.message).toContain('module contract');
     }

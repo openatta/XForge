@@ -121,12 +121,21 @@ export interface RuleCoverage {
    * non-empty `approvalRefs` was taken as proof that something was enforcing the Rule: a `must` Rule
    * pointing at `planning-solid` reported as governed under `major`, where no such policy exists and
    * nothing was checking it at all.
+   *
+   * `structural` is the tier between `instructed` and `verified`, and it exists because the contract
+   * work created a real third case. A Rule enforced by an Artifact validator is checked by the CLI
+   * in-process, at the moment the document is read: nothing runs, so there is no Evidence and
+   * nothing revision-bound to record, and calling that `verified` would put it beside a Gate result
+   * it is weaker than. Calling it `instructed` would be worse — it is not a sentence an Agent may
+   * decline to follow, it is a refusal. So it is neither, and says so.
    */
-  coverage: Array<'instructed' | 'guarded' | 'verified' | 'approved' | 'uncovered' | 'unenforceable'>;
+  coverage: Array<'instructed' | 'guarded' | 'structural' | 'verified' | 'approved' | 'uncovered' | 'unenforceable'>;
   gateRefs: string[];
   policyRefs: string[];
   approvalRefs: string[];
-  /** The subset of `gateRefs`/`approvalRefs` that names something this Flow and project actually have. */
+  /** Artifact validators this Rule claims enforce it, by the ids `flow.artifacts[].validator` uses. */
+  validatorRefs: string[];
+  /** The subset of `gateRefs`/`approvalRefs`/`validatorRefs` that names something this Flow and project actually have. */
   enforceableRefs: string[];
 }
 

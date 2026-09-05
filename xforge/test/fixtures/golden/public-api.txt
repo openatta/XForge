@@ -14,6 +14,7 @@ Constitution  <- ./types/manifest.js
 DesiredFile  <- ./types/installation.js
 Diagnostic  <- ./types/protocol.js
 Envelope  <- ./types/protocol.js
+ExitCondition  <- ./types/flow.js
 FileChange  <- ./types/protocol.js
 Flow  <- ./types/flow.js
 FlowAuditPolicy  <- ./types/flow.js

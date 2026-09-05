@@ -210,12 +210,12 @@ exit: 0
       }
     },
     "recordVersion": 2,
-    "scannedSources": 29,
-    "changedSources": 29,
-    "renderedFiles": 167,
+    "scannedSources": 30,
+    "changedSources": 30,
+    "renderedFiles": 170,
     "recordOnly": 0,
     "summary": {
-      "create": 168,
+      "create": 171,
       "modify": 0,
       "delete": 0,
       "skip": 0,
@@ -407,12 +407,12 @@ exit: 0
     {
       "code": "XFORGE_CAPABILITY_CONTENT_UNSUPPORTED",
       "severity": "info",
-      "message": "Target codex does not project rule files; these Rules are not installed for that target: governance-assets-are-integrator-only, observable-requirements-are-tested, design-decisions-need-a-human.",
+      "message": "Target codex does not project rule files; these Rules are not installed for that target: governance-assets-are-integrator-only, observable-requirements-are-tested, design-decisions-need-a-human, interfaces-are-contract-governed.",
       "details": {
         "target": "codex",
         "dimension": "rules",
         "kind": "Rule",
-        "count": 3,
+        "count": 4,
         "resources": [
           {
             "id": "governance-assets-are-integrator-only",
@@ -425,6 +425,10 @@ exit: 0
           {
             "id": "design-decisions-need-a-human",
             "path": "xforge/scaffold/rules/design-decisions-need-a-human.yaml"
+          },
+          {
+            "id": "interfaces-are-contract-governed",
+            "path": "xforge/scaffold/rules/interfaces-are-contract-governed.yaml"
           }
         ]
       }
@@ -432,12 +436,12 @@ exit: 0
     {
       "code": "XFORGE_CAPABILITY_CONTENT_UNSUPPORTED",
       "severity": "info",
-      "message": "Target opencode does not project rule files; these Rules are not installed for that target: governance-assets-are-integrator-only, observable-requirements-are-tested, design-decisions-need-a-human.",
+      "message": "Target opencode does not project rule files; these Rules are not installed for that target: governance-assets-are-integrator-only, observable-requirements-are-tested, design-decisions-need-a-human, interfaces-are-contract-governed.",
       "details": {
         "target": "opencode",
         "dimension": "rules",
         "kind": "Rule",
-        "count": 3,
+        "count": 4,
         "resources": [
           {
             "id": "governance-assets-are-integrator-only",
@@ -450,6 +454,10 @@ exit: 0
           {
             "id": "design-decisions-need-a-human",
             "path": "xforge/scaffold/rules/design-decisions-need-a-human.yaml"
+          },
+          {
+            "id": "interfaces-are-contract-governed",
+            "path": "xforge/scaffold/rules/interfaces-are-contract-governed.yaml"
           }
         ]
       }
@@ -734,6 +742,13 @@ exit: 0
     },
     {
       "action": "create",
+      "path": ".claude/rules/interfaces-are-contract-governed.md",
+      "digest": "<sha256>",
+      "source": "rule:interfaces-are-contract-governed",
+      "target": "claude"
+    },
+    {
+      "action": "create",
       "path": ".claude/rules/observable-requirements-are-tested.md",
       "digest": "<sha256>",
       "source": "rule:observable-requirements-are-tested",
@@ -1003,6 +1018,13 @@ exit: 0
       "path": ".cursor/rules/governance-assets-are-integrator-only.mdc",
       "digest": "<sha256>",
       "source": "rule:governance-assets-are-integrator-only",
+      "target": "cursor"
+    },
+    {
+      "action": "create",
+      "path": ".cursor/rules/interfaces-are-contract-governed.mdc",
+      "digest": "<sha256>",
+      "source": "rule:interfaces-are-contract-governed",
       "target": "cursor"
     },
     {
@@ -1416,6 +1438,13 @@ exit: 0
       "path": ".github/instructions/governance-assets-are-integrator-only.instructions.md",
       "digest": "<sha256>",
       "source": "rule:governance-assets-are-integrator-only",
+      "target": "github-copilot"
+    },
+    {
+      "action": "create",
+      "path": ".github/instructions/interfaces-are-contract-governed.instructions.md",
+      "digest": "<sha256>",
+      "source": "rule:interfaces-are-contract-governed",
       "target": "github-copilot"
     },
     {

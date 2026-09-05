@@ -268,16 +268,27 @@ spec:
 **Rule 从来不会自己拦下任何东西。** 它声明自己**声称**由谁强制执行，
 每次算 `state` 时拿这个声称去核对，产出 `coverage`。
 
-### 5.2 coverage 的六个取值
+### 5.2 coverage 的七个取值
 
 ```text
 instructed    基线：只是一条写下来的指导
 guarded       背后真有 PermissionPolicy
+structural    背后真有 Artifact validator：CLI 在进程内校验，无 Gate 无 Evidence
 verified      背后真有 Gate
 approved      背后真有 Approval
 uncovered     这条 Rule 没有引用任何机制
 unenforceable 它引用了机制，但在当前 Flow 下那个机制不存在
 ```
+
+> **`structural` 夹在 `instructed` 与 `verified` 之间，是契约工作逼出来的真实第三种情况。**
+> 一条由 Artifact validator 强制的 Rule，在文档被读到的那一刻就被 CLI 拒绝——什么都没运行，
+> 所以没有 Evidence、没有任何绑定 revision 的东西可记。叫它 `verified` 就是把它摆在一个
+> 它弱于的 Gate 结果旁边；叫它 `instructed` 更糟——那不是一句 Agent 可以不听的话，那是一次拒绝。
+> 所以它两者都不是，并且直说。
+>
+> 声明方式是 `enforcement.validatorRefs`，用的是 `flow.artifacts[].validator` 的同一套 id。
+> 和 `gateRefs` 一样会被解析：当前 Flow 没有任何 Artifact 带这个 validator，这条引用就解析为空，
+> 不计入 coverage。
 
 > **`unenforceable` 不是更弱的 `uncovered`，是另一句话。**
 > `uncovered` 说这条 Rule 没有引用任何机制；`unenforceable` 说它引用了一个
@@ -289,16 +300,17 @@ unenforceable 它引用了机制，但在当前 Flow 下那个机制不存在
 一条指向 `planning-solid` 的 `must` Rule 在 `major` 下报告为已治理，
 而那里根本没有这条策略，什么都没在检查它。
 
-`state` 里还有 `enforceableRefs` 字段：`gateRefs` / `approvalRefs` 中
+`state` 里还有 `enforceableRefs` 字段：`gateRefs` / `approvalRefs` / `validatorRefs` 中
 **本 Flow 和本项目真的有**的那个子集。
 
-### 5.3 随包的五条 Rule
+### 5.3 随包的四条 Rule
 
 | Rule | severity | enforcement | 说明 |
 | --- | --- | --- | --- |
 | `governance-assets-are-integrator-only` | must | policyRefs: `protected-files`, `protected-manifest` | 与两条策略的 `match.paths` 保持 1:1 对齐 |
 | `observable-requirements-are-tested` | must | gateRefs: `unit-tests` | 只有散文证据的需求不算已验证 |
 | `design-decisions-need-a-human` | must | approvalRefs: `planning-solid`, `implementation-major` | 两个都列，才能在 solid 与 major 下都可强制 |
+| `interfaces-are-contract-governed` | must | policyRefs: `protected-files` + validatorRefs: `contract-delta` | 报 `guarded, structural`；`gateRefs` 留空——四道契约 Gate 都是 `builtin: declared` 默认不选，而引用一道未启用的 Gate 会被 `XFORGE_RULE_GATE_DISABLED` 直接拒绝 |
 
 `design-decisions-need-a-human` 值得单看：它的 `approvalRefs` **同时列了两条策略**，
 因为这两条分别只存在于 solid 和 major。列一条就会在另一个 Flow 下变成 `unenforceable`。

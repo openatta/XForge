@@ -11,7 +11,7 @@ description: 为 Solid 或 Major Change 形成受治理的技术设计、替代�
 
 # 权限
 
-- 只可写 Action 返回的 Artifact 路径。在受契约治理的 Flow 上那是两份文档：Design 与 `contract-delta`，两者都不是 `xforge/contracts/` 本身。
+- 只可写 Action 返回的 Artifact 路径。对声明了 `classification.moduleContract: true` 的 Change 那是两份文档：Design 与 `contract-delta`，两者都不是 `xforge/contracts/` 本身——基线只由 archive 写入，`protected-files` 会拒绝这次写。
 - 不得改 Proposal/Specs/Clarifications、产品代码、Check report、Evidence、任务或 Archive；上游需要修改时返回 rework。
 
 # 执行
@@ -19,7 +19,7 @@ description: 为 Solid 或 Major Change 形成受治理的技术设计、替代�
 1. 建模当前系统、目标行为、集成点、数据与接口边界。
 2. 记录主要决策、可行替代方案及拒绝理由，覆盖失败模式、兼容性、迁移和回滚。
 3. 严格按照`owes` 中 Design Artifact 的 `instruction` 与 outline 执行——Solid 与 Major 的深度差异（例如 Major 的 trust boundaries、风险与缓解、测试策略、rollout、monitoring、stop signals、owner 和并行边界）已经在其中表达，不要补充或省略 Action 未定义的章节。
-4. 当 Action 列出 `contract-delta` Artifact 时，按`owes` 中该 Artifact 的 `instruction` 与 `outline` 写——元素 id 的形式、id 从哪里读、空段落意味着什么，都由它们给出。有一件事不在其中，因为它关乎这个项目而不是这个 Artifact：声明了 `contract-lint` 的 Stage，在项目用 `xforge verification declare --gate-name contract-lint --command '[...]' --by <person>` 记录命令之前不可能通过——declared Gate 在没有声明时是拒绝，不是放行。不要为了绕过它去手改 Manifest。
+4. 当 Action 列出 `contract-delta` Artifact 时，按`owes` 中该 Artifact 的 `instruction` 与 `outline` 写——元素 id 的形式、id 从哪里读、空段落意味着什么，都由它们给出。它只会为声明了 `moduleContract: true` 的 Change 列出；没列出，就是本 Change 说过它不移动任何接口，也就没有东西要写。有一件事不在其中，因为它关乎这个项目而不是这个 Artifact：声明了 `contract-lint` 的 Stage，在项目用 `xforge verification declare --gate-name contract-lint --command '[...]' --by <person>` 记录命令之前不可能通过——declared Gate 在没有声明时是拒绝，不是放行。随包的三个 Flow 都没有声明它；选了它的项目是有意为之。不要为了绕过它去手改 Manifest。
 5. 刷新 State 并运行 `xforge check --change <id>`；只修复 Design 权限内的结构问题，然后调用 typed nextAction 中通往 Check 的 Transition。所有随附 Flow 都不在 Design 出口收取审批——`planning-solid` 与 `implementation-major` 都改在 Check 出口收取——所以不要在这里等一份没人会发起的 receipt，也不要尝试为本 Stage 审批：`xforge approve` 会拒绝任何策略都不治理的 transition。
 
 # 证据

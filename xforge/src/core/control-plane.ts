@@ -9,6 +9,7 @@ import type {
   GovernanceState,
   ProjectContext,
   StageFlow,
+  ExitCondition,
 } from '../types.js';
 import { diagnostic } from './errors.js';
 import { normalizeRule, policyApplies, ruleApplies } from './governance.js';
@@ -38,7 +39,7 @@ export { loadApprovalReceipts, loadTransitionReceipts } from './control-plane/re
 export { legalTransitionTargets } from './control-plane/graph.js';
 
 
-function structuredExit(stage: StageFlow['stages'][number]): { conditions?: Record<string, string>; gates?: string[]; approvals?: string[]; auditEvents?: string[] } {
+function structuredExit(stage: StageFlow['stages'][number]): { conditions?: Record<string, ExitCondition>; gates?: string[]; approvals?: string[]; auditEvents?: string[] } {
   const exit = stage.exit;
   if (!exit || !('conditions' in exit || 'gates' in exit || 'approvals' in exit || 'auditEvents' in exit)) return {};
   return exit;
@@ -132,6 +133,28 @@ export interface ResolvedControlPlane {
  * that has already resolved passes its resolution in to avoid the second read; a caller that has
  * not gets a correct one instead of an empty one.
  */
+/**
+ * What a Stage's declared exit condition asks of *this* Change, or null when it asks nothing.
+ *
+ * A condition used to be a bare string and every Change on the Flow owed it. The object form
+ * narrows the population by the Change's own `classification`, in the same shape the Artifacts use:
+ * `contractDecisions` records who decided a breaking interface change, and a Change that declares
+ * no interface change has no such decision to record. Requiring the ledger anyway would have meant
+ * every Change on the Flow filing `entries: []` -- a turn spent asserting nothing, with the Stage
+ * held open until it was spent.
+ *
+ * Self-declared, and the CLI does not imply otherwise: a Change that moves an interface while
+ * declaring it did not skips this the same way it skips the delta. `contract-compat` is what
+ * compares the declaration with what moved, and it is dialect-specific, so it is selected.
+ */
+function exitConditionExpectation(value: ExitCondition, classification: unknown): string | null {
+  if (typeof value === 'string') return value;
+  const impacts = value.requiredWhen?.anyImpact ?? [];
+  if (impacts.length === 0) return value.expected;
+  const declared = (classification ?? {}) as Record<string, unknown>;
+  return impacts.some((impact) => declared[impact] === true) ? value.expected : null;
+}
+
 export async function resolveControlPlane(
   project: ProjectContext,
   changeId: string,
@@ -214,7 +237,9 @@ export async function resolveControlPlane(
       }
       /* Conditions are evaluated after the Gates, not before: the verification-receipt ledger is
          decided against the Gate Evidence this Stage actually produced, so that set has to exist. */
-      for (const [key, expected] of Object.entries(exit.conditions ?? {})) {
+      for (const [key, declared] of Object.entries(exit.conditions ?? {})) {
+        const expected = exitConditionExpectation(declared, config.classification);
+        if (expected === null) continue;
         const condition = await evaluateStageCondition(project, changeId, key, expected, {
           state, workPackages, contentRevision: revision.contentRevision, gates: gateEvidence, identities, diagnostics,
           reworkCutoff: conditionReworkCutoff(flow, transitions.receipts, current.id),
@@ -270,9 +295,25 @@ export async function resolveControlPlane(
    * treat as coverage.
    */
   const flowPolicyIds = new Set((flow.governance?.approvalPolicies ?? []).map((policy: ApprovalPolicy) => policy.id));
+  /*
+   * The validators this Flow actually runs, which is what makes a `validatorRefs` claim resolvable.
+   *
+   * Named off the Flow's own Artifacts rather than off the enum in the schema: `contract-delta` is
+   * implemented by the CLI on every project, and on a Flow that declares no Artifact carrying that
+   * validator it never runs — so a Rule citing it there is in exactly the position a Rule citing an
+   * absent Gate is, and has to report the same way. Deciding this from the enum would reintroduce
+   * the defect the `enforceableRefs` split was written to close, one field over.
+   */
+  const flowValidators = new Set((flow.artifacts ?? [])
+    .map((artifact: { validator?: string }) => artifact.validator)
+    .filter((validator): validator is string => Boolean(validator)));
   const rules = [...resources.rules.values()].map((item) => normalizeRule(item.value)).filter((rule) => ruleApplies(rule, config, currentStage)).map((rule) => {
     const coverage: GovernanceState['rules'][number]['coverage'] = ['instructed'];
     if (rule.policyRefs.some((id) => resources.policies.has(id))) coverage.push('guarded');
+    /* In-process and unconditional: unlike a Gate, there is no Stage at which this has not run yet,
+       because the validator refuses the document at the moment anything reads it. */
+    const resolvedValidators = rule.validatorRefs.filter((id) => flowValidators.has(id));
+    if (resolvedValidators.length > 0) coverage.push('structural');
     const verified = rule.gateRefs.some((id) => transitionRequirements.get(candidates[0] ?? '')?.gates.some((gate) => gate.gate === id));
     if (verified) coverage.push('verified');
     const approved = rule.approvalRefs.some((id) => approvals.receipts.some((receipt) => receipt.policyId === id && receipt.decision === 'approve'
@@ -281,10 +322,12 @@ export async function resolveControlPlane(
     const enforceableRefs = [
       ...rule.gateRefs.filter((id) => resources.gates.has(id)),
       ...rule.approvalRefs.filter((id) => flowPolicyIds.has(id)),
+      ...resolvedValidators,
     ];
-    if (rule.severity === 'must' && rule.gateRefs.length === 0 && rule.approvalRefs.length === 0) coverage.push('uncovered');
+    const claimsNothing = rule.gateRefs.length === 0 && rule.approvalRefs.length === 0 && rule.validatorRefs.length === 0;
+    if (rule.severity === 'must' && claimsNothing) coverage.push('uncovered');
     else if (rule.severity === 'must' && enforceableRefs.length === 0) coverage.push('unenforceable');
-    return { id: rule.id, severity: rule.severity, instruction: rule.instruction, coverage, gateRefs: rule.gateRefs, policyRefs: rule.policyRefs, approvalRefs: rule.approvalRefs, enforceableRefs };
+    return { id: rule.id, severity: rule.severity, instruction: rule.instruction, coverage, gateRefs: rule.gateRefs, policyRefs: rule.policyRefs, approvalRefs: rule.approvalRefs, validatorRefs: rule.validatorRefs, enforceableRefs };
   });
   /*
    * A `must` Rule this Change never sees, said out loud once.
@@ -699,7 +742,9 @@ export async function terminalGovernanceBlocks(
      * the same hole for the same reason. Only the Flow that declares a condition pays for it.
      */
     const identities = await knownIdentities(project, control.state.id, governance.approvals);
-    for (const [key, expected] of Object.entries(sourceExit.conditions ?? {})) {
+    for (const [key, declared] of Object.entries(sourceExit.conditions ?? {})) {
+      const expected = exitConditionExpectation(declared, control.state.classification);
+      if (expected === null) continue;
       const condition = await evaluateStageCondition(project, control.state.id, key, expected, {
         state: control.state,
         /* The resolve's own plan. Reading it off `control.state` would work today only because the

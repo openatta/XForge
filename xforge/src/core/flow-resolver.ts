@@ -358,6 +358,23 @@ async function artifactOutputs(changeDirectory: string, artifact: ArtifactDefini
  * placeholder or truncated write is an unfinished Artifact, not a completed one, and a delta
  * Spec must additionally parse as a valid requirement delta before it satisfies its Artifact.
  */
+/**
+ * Whether this Change owes this Artifact at all, from the Change's own declared impact.
+ *
+ * A self-declaration, and deliberately not dressed up as more: a Change that moves an interface
+ * while declaring `moduleContract: false` writes no delta and nothing in the zero-configuration
+ * layer notices. `contract-compat` is the Gate that compares the declaration against what actually
+ * moved, and it is dialect-specific, so it is selected rather than shipped on. What the default
+ * layer governs is a *declared* interface change, completely; what it does not govern is an
+ * undeclared one, and saying which is which is the whole point of writing it down here.
+ */
+function artifactIsOwed(artifact: ArtifactDefinition, config: ChangeConfig): boolean {
+  const impacts = artifact.requiredWhen?.anyImpact;
+  if (!impacts || impacts.length === 0) return true;
+  const declared = (config.classification ?? {}) as Record<string, unknown>;
+  return impacts.some((impact) => declared[impact] === true);
+}
+
 async function outputsSatisfyArtifact(
   changeDirectory: string,
   artifact: ArtifactDefinition,
@@ -428,6 +445,20 @@ export async function resolveChangeState(
   for (const artifact of artifacts) {
     const outputs = await artifactOutputs(changeDirectory, artifact);
     rawOutputs.set(artifact.id, outputs);
+    /*
+     * An Artifact this Change does not owe is complete, not pending.
+     *
+     * Nothing needed this until a contract delta existed: every other Artifact is owed by every
+     * Change on the Flow, so an empty glob meant an unfinished Stage and that was always right. A
+     * Change that moves no interface has nothing to declare, and a Stage held open until it writes
+     * a file saying so is friction with no reader on the other end.
+     *
+     * `notOwed` rather than a separate status: the Stage's question is whether it may leave, and
+     * "there was nothing to write" answers it the same way "it is written" does. What distinguishes
+     * them is `outputPaths`, which stays empty, so anything that wants to know whether a document
+     * exists still asks the right question.
+     */
+    if (!artifactIsOwed(artifact, config)) { completed.add(artifact.id); continue; }
     let done = await outputsSatisfyArtifact(changeDirectory, artifact, outputs);
     if (!isStageFlow(flow) && artifact.id === 'approval' && done) done = await approvalGranted(changeDirectory, outputs);
     if (done) completed.add(artifact.id);

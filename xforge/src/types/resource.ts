@@ -49,6 +49,8 @@ export interface RuleResource {
       gateRefs: string[];
       policyRefs: string[];
       approvalRefs?: string[];
+      /** Artifact validators, by the ids `flow.artifacts[].validator` uses. */
+      validatorRefs?: string[];
     };
   };
 }

@@ -38,6 +38,16 @@ scaffold:
     - governance-assets-are-integrator-only
     - observable-requirements-are-tested
     - design-decisions-need-a-human
+    # Selected since 0.8.4, and enforced without a Gate: `protected-files` refuses a write to the
+    # contract baseline at the tool call, and the `contract-delta` validator refuses a malformed
+    # delta in-process. `xforge state` reports that pair as `guarded, structural`.
+    #
+    # The four contract Gates stay out of `scaffold.gates` on purpose: every one is
+    # `builtin: declared`, so shipping them enabled would block every project at a Stage exit until
+    # it declared a command for a check it never asked for. Selecting them -- and then naming them
+    # in the Rule's `gateRefs`, in that order -- is how a project upgrades `structural` to
+    # `verified`.
+    - interfaces-are-contract-governed
   policies:
     - protected-files
     - protected-manifest

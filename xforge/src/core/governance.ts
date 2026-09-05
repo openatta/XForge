@@ -14,6 +14,7 @@ interface NormalizedRule {
   gateRefs: string[];
   policyRefs: string[];
   approvalRefs: string[];
+  validatorRefs: string[];
   constitutionCompatibility: 'compatible' | 'conflict';
   legacyWritePolicy: 'integrator-only' | null;
 }
@@ -30,6 +31,7 @@ export function normalizeRule(rule: RuleResource): NormalizedRule {
     gateRefs: rule.spec.enforcement?.gateRefs ?? (rule.spec.gate ? [rule.spec.gate] : []),
     policyRefs: rule.spec.enforcement?.policyRefs ?? [],
     approvalRefs: rule.spec.enforcement?.approvalRefs ?? [],
+    validatorRefs: rule.spec.enforcement?.validatorRefs ?? [],
     constitutionCompatibility: rule.spec.constitutionCompatibility ?? 'compatible',
     legacyWritePolicy: legacy && rule.spec.writePolicy === 'integrator-only' ? 'integrator-only' : null,
   };

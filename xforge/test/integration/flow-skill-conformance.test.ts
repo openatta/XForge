@@ -178,22 +178,17 @@ describe('a Flow that collects contract deltas and never merges them', () => {
      */
     const root = await fixture();
     const flowPath = path.join(root, 'xforge', 'flows', 'solid.yaml');
-    const flow = await readFile(flowPath, 'utf8');
-    await write(root, 'xforge/flows/solid.yaml', flow.replace('  - id: check-report\n', [
-      '  - id: contract-delta',
-      '    generates: contracts/**/*.md',
-      '    validator: contract-delta',
-      '    description: Declare the interface delta',
-      '    instruction: List every contract element this Change adds, modifies or removes.',
-      '    outline: |',
-      '      ## ADDED Contract Elements',
-      '  - id: check-report\n',
-    ].join('\n')).replace('    produces: [design]', '    produces: [design, contract-delta]'));
+    const shipped = await readFile(flowPath, 'utf8');
 
-    expect(await doctorCodes(root)).toContain('XFORGE_FLOW_CONTRACT_DELTA_UNMERGED');
-
-    /* And silent once the Flow merges what it collects. */
-    await write(root, 'xforge/flows/solid.yaml', (await readFile(flowPath, 'utf8')).replace('    syncSpecs: true', '    syncSpecs: true\n    syncContracts: true'));
+    /* Silent as shipped: `solid` has collected an interface delta and merged it at archive since
+       0.8.4, so the two halves match and there is nothing to report. */
     expect(await doctorCodes(root)).not.toContain('XFORGE_FLOW_CONTRACT_DELTA_UNMERGED');
+
+    /* Break exactly one of them. This used to add the Artifact to a Flow that had neither; taking
+       the merge away from a Flow that has both is the same defect approached from the other side,
+       and it is the one a project can actually produce -- by editing its own Flow, or by adopting a
+       delta-collecting Stage from somewhere without the archive line that goes with it. */
+    await write(root, 'xforge/flows/solid.yaml', shipped.replace('    syncContracts: true\n', ''));
+    expect(await doctorCodes(root)).toContain('XFORGE_FLOW_CONTRACT_DELTA_UNMERGED');
   });
 });

@@ -15,7 +15,7 @@ exit: 0
       "unusedFlows": 2,
       "unusableApprovals": 0,
       "conformance": 0,
-      "suggestions": 5
+      "suggestions": 6
     },
     "danglingReferences": [],
     "deadCode": [],
@@ -70,6 +70,14 @@ exit: 0
         "severity": "info"
       },
       {
+        "scope": "rules",
+        "code": "XFORGE_DOCTOR_RULE_SCOPE_EMPTY",
+        "id": "interfaces-are-contract-governed",
+        "message": "Rule interfaces-are-contract-governed is scoped to src/**, migrations/**, which matches no file in this repository. XForge compares that list with the paths a Change declares in change.yaml, and the installed Adapters hand it to the host as a file matcher; on this layout both come up empty, so the Rule is registered, enforceable, and reaching nothing. Rewrite scope.paths to the paths this repository actually uses, or drop it to have the Rule apply everywhere.",
+        "path": "xforge/scaffold/rules/interfaces-are-contract-governed.yaml",
+        "severity": "info"
+      },
+      {
         "scope": "approvals",
         "code": "XFORGE_DOCTOR_APPROVALS_INTERACTIVE_ONLY",
         "id": "local",
@@ -114,6 +122,12 @@ exit: 0
       "severity": "info",
       "message": "Rule observable-requirements-are-tested is scoped to src/**, tests/**, which matches no file in this repository. XForge compares that list with the paths a Change declares in change.yaml, and the installed Adapters hand it to the host as a file matcher; on this layout both come up empty, so the Rule is registered, enforceable, and reaching nothing. Rewrite scope.paths to the paths this repository actually uses, or drop it to have the Rule apply everywhere.",
       "path": "xforge/scaffold/rules/observable-requirements-are-tested.yaml"
+    },
+    {
+      "code": "XFORGE_DOCTOR_RULE_SCOPE_EMPTY",
+      "severity": "info",
+      "message": "Rule interfaces-are-contract-governed is scoped to src/**, migrations/**, which matches no file in this repository. XForge compares that list with the paths a Change declares in change.yaml, and the installed Adapters hand it to the host as a file matcher; on this layout both come up empty, so the Rule is registered, enforceable, and reaching nothing. Rewrite scope.paths to the paths this repository actually uses, or drop it to have the Rule apply everywhere.",
+      "path": "xforge/scaffold/rules/interfaces-are-contract-governed.yaml"
     },
     {
       "code": "XFORGE_DOCTOR_APPROVALS_INTERACTIVE_ONLY",

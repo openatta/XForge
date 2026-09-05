@@ -45,7 +45,32 @@
         "instruction": { "type": "string", "minLength": 1 },
         "outline": { "type": "string" },
         "validator": { "$ref": "#/$defs/artifactValidator" },
-        "markers": { "$ref": "#/$defs/artifactMarkers" }
+        "markers": { "$ref": "#/$defs/artifactMarkers" },
+        "requiredWhen": { "$ref": "#/$defs/artifactCondition" }
+      }
+    },
+    "exitCondition": {
+      "oneOf": [
+        { "type": "string", "minLength": 1, "description": "The status the condition ledger must declare. Every Change on this Flow owes it." },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["expected", "requiredWhen"],
+          "description": "A condition only some Changes owe. Same `requiredWhen` shape the Artifacts use, read off the Change's own `classification` — a Change that does not match owes no ledger, and its absence is not a block. Written this way rather than as a ledger every Change files empty: an `entries: []` file that no Change with nothing to record could skip is a required turn spent asserting nothing, and a Stage held open until it is spent.",
+          "properties": {
+            "expected": { "type": "string", "minLength": 1 },
+            "requiredWhen": { "$ref": "#/$defs/artifactCondition" }
+          }
+        }
+      ]
+    },
+    "artifactCondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "description": "When this Artifact is owed at all. Absent means always, which is every Artifact the shipped Flows had before contracts existed. `anyImpact` reads the Change's own `classification` block, in the same vocabulary `policy.requiredWhen` uses -- so a Change that declares no interface change does not owe a contract delta, and its Stage is not held open waiting for a document that would say nothing.\n\nThis is a self-declaration, and the CLI says so rather than implying otherwise: nothing in the zero-configuration layer catches a Change that moves an interface while declaring it did not. That is what the `contract-compat` Gate is for, and it is dialect-specific, so it stays opt-in. A project that needs the stronger property selects it; a project that does not still gets a governed baseline, a validated delta and a merge it did not have to configure.",
+      "properties": {
+        "anyImpact": { "type": "array", "uniqueItems": true, "minItems": 1, "items": { "enum": ["security", "privacy", "publicApi", "dataMigration", "moduleContract"] } }
       }
     },
     "artifactValidator": { "enum": ["spec-delta", "contract-delta", "outline"] },
@@ -186,7 +211,7 @@
                     "minProperties": 1,
                     "additionalProperties": false,
                     "properties": {
-                      "conditions": { "type": "object", "minProperties": 1, "additionalProperties": { "type": "string", "minLength": 1 } },
+                      "conditions": { "type": "object", "minProperties": 1, "additionalProperties": { "$ref": "#/$defs/exitCondition" } },
                       "gates": { "$ref": "#/$defs/idList" },
                       "approvals": { "$ref": "#/$defs/idList" },
                       "auditEvents": { "$ref": "#/$defs/stringList" }

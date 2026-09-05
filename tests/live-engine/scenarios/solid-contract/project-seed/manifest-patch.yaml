@@ -6,6 +6,14 @@
 #
 # `solid-contract` ships as a template under xforge/scaffold/flows/; naming it here is what makes the
 # harness adopt it, by the same copy its own header documents.
+#
+# What this scenario is *for* changed in 0.8.4. The contract layer that needs no configuration --
+# a validated delta, a write-protected baseline, a decision ledger, a merge at archive -- is now in
+# the shipped `solid` and `major` Flows, so a project gets it without selecting anything, and
+# `test/integration/contract-default-layer.test.ts` is what holds that behaviour. What is still
+# opt-in, and what this scenario therefore exercises, is the tier above it: the four
+# `builtin: declared` Gates and the Flow that schedules them. `interfaces-are-contract-governed` is
+# no longer named below because `xforge init` now selects it.
 project:
   layout: monorepo
   modules:
@@ -18,5 +26,4 @@ project:
 scaffold:
   flows: [solid-contract]
   gates: [contract-lint, contract-compat, contract-drift, module-boundaries]
-  rules: [interfaces-are-contract-governed]
 flow: solid-contract

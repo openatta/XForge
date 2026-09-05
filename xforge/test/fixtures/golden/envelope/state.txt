@@ -59,7 +59,7 @@ exit: 0
       },
       "language": "en",
       "lockedResources": null,
-      "lockedResourceCount": 25
+      "lockedResourceCount": 26
     },
     "xforge": {
       "declaration": {
@@ -103,7 +103,7 @@ exit: 0
               "high"
             ],
             "criticalImpacts": "allowed",
-            "contractImpact": "forbidden"
+            "contractImpact": "allowed"
           },
           "requiredWhen": {
             "risk": [
@@ -159,7 +159,7 @@ exit: 0
               "medium"
             ],
             "criticalImpacts": "forbidden",
-            "contractImpact": "forbidden"
+            "contractImpact": "allowed"
           }
         },
         "stages": [
@@ -193,7 +193,8 @@ exit: 0
       "rules": [
         "governance-assets-are-integrator-only",
         "observable-requirements-are-tested",
-        "design-decisions-need-a-human"
+        "design-decisions-need-a-human",
+        "interfaces-are-contract-governed"
       ],
       "policies": [
         "protected-files",

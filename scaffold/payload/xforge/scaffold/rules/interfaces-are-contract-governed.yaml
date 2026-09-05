@@ -1,7 +1,17 @@
-# Ships unselected. Add it to `scaffold.rules` in the Manifest, together with the four contract
-# Gates it names, when this project adopts a contract-governed Flow. Selecting the Rule without the
-# Gates leaves it reporting `unenforceable`, which is worse than not selecting it: a Rule that names
-# a mechanism nothing runs reads as governed in every coverage report.
+# Selected by default since 0.8.4, and enforced by two mechanisms that need no configuration: the
+# `protected-files` policy refuses a write to the baseline at the tool call, and the `contract-delta`
+# validator refuses a malformed delta in-process, at the moment anything reads it. `xforge state`
+# reports that pair as `guarded, structural`.
+#
+# `gateRefs` ships empty, and the comment on it says why: naming a Gate the project has not enabled
+# is refused outright, and every contract Gate is `builtin: declared`, so enabling them by default
+# would block every project on a command it never asked to write. Selecting them is how a project
+# upgrades `structural` to `verified`.
+#
+# What the default layer governs, precisely: a *declared* interface change. What it does not:
+# an undeclared one. A Change that moves an interface while classifying itself `moduleContract:
+# false` owes no delta and nothing here notices -- `contract-compat` is the Gate that compares the
+# declaration with what actually moved, and it is the first one to select when that matters.
 apiVersion: xforge.dev/v1alpha2
 kind: Rule
 metadata:
@@ -30,10 +40,29 @@ spec:
       - src/**
       - migrations/**
   enforcement:
-    gateRefs:
-      - contract-compat
-      - contract-drift
-      - module-boundaries
+    # Empty, and not because there is no Gate for this. `contract-compat`, `contract-drift` and
+    # `module-boundaries` are exactly the Gates that would go here -- and `resource-loader.ts`
+    # refuses a Rule naming a Gate the project has not enabled (XFORGE_RULE_GATE_DISABLED, an
+    # error), which is the correct order stated as a refusal: a project selects the Gate first and
+    # names it here second. Since all three are `builtin: declared`, shipping them enabled would
+    # block every project at a Stage exit until it declared a command for a check it never asked
+    # for, so they ship unselected and this list ships empty.
+    #
+    # A project that wants the stronger property does both, in this order:
+    #   1. add contract-compat (and contract-drift, module-boundaries) to `scaffold.gates` in
+    #      xforge/manifest.yaml, add each to the Stage that should run it, and
+    #      `xforge verification declare` its command
+    #   2. add them to `gateRefs` here
+    # `xforge state` then reports this Rule as `verified` rather than `structural`.
+    gateRefs: []
+    # The half of this Rule that holds with nothing selected, and the reason it is not decorative
+    # without the Gates. `contract-delta` is an Artifact validator the CLI runs in-process: a delta
+    # whose element ids do not parse, or whose sections are blank rather than `(none)`, is refused
+    # when it is read, with no Gate and no Evidence -- which is why this reports as `structural`
+    # rather than `verified`. A Flow that declares no Artifact carrying this validator resolves the
+    # ref to nothing, exactly as an absent Gate does.
+    validatorRefs:
+      - contract-delta
     policyRefs:
       # protected-files, not a policy of this Rule's own. The deny list is derived from
       # core/ownership-zones.ts, which is where xforge/contracts/** is claimed; a second policy
