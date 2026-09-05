@@ -247,8 +247,25 @@ if (configured.ANTHROPIC_MODEL) args.push('--model', configured.ANTHROPIC_MODEL)
 if (configured.CLAUDE_CODE_EFFORT_LEVEL) args.push('--effort', configured.CLAUDE_CODE_EFFORT_LEVEL);
 args.push(prompt);
 
+/*
+ * The whitelist is deliberately short -- the engine controls what the spawned CLI can see -- and it
+ * was one category too short: how this machine reaches the network at all.
+ *
+ * A developer behind a proxy has `HTTPS_PROXY` and friends in their shell, and stripping them sent
+ * every request direct. On the gateway path that happened to work; on the subscription path it
+ * produced `403 Request not allowed` on the first call of every stage, retried once, and failed the
+ * suite with `provider_failure` and zero tokens -- a message about authentication for a problem
+ * about routing, which is the hardest kind to read backwards.
+ *
+ * Both cases of each name: the convention is genuinely mixed, tools read one or the other, and a
+ * whitelist that carries only `HTTPS_PROXY` silently drops a machine that sets `https_proxy`.
+ */
 const environment = {};
-for (const name of ['PATH', 'SystemRoot', 'TMPDIR', 'TEMP', 'TMP', 'LANG', 'LC_ALL', 'SHELL']) {
+for (const name of [
+  'PATH', 'SystemRoot', 'TMPDIR', 'TEMP', 'TMP', 'LANG', 'LC_ALL', 'SHELL',
+  'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY',
+  'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy',
+]) {
   if (process.env[name]) environment[name] = process.env[name];
 }
 for (const name of ['ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL', 'ANTHROPIC_MODEL', 'CLAUDE_CODE_EFFORT_LEVEL']) {
