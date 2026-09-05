@@ -197,7 +197,7 @@ const declared = compatibility.cli
 /*
  * The lock has to agree too, not just the version.
  *
- * `cli.matches` compares declared version with running version, and both can say 0.8.3 while
+ * `cli.matches` compares declared version with running version, and both can say the same number while
  * `lock.yaml` still pins the integrity digest of a different build of it -- which is the normal
  * case here, because the probe installs the working tree's CLI and the fixture was captured against
  * whatever build made it. This guard passed on that, and the run then met XFORGE_LOCK_CLI_MISMATCH
