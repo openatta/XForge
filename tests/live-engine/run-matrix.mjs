@@ -1,5 +1,5 @@
 import { mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
-import { readFileSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -432,6 +432,25 @@ const OPTION_DEFAULTS = { 'cli-source': 'npm', 'suite-budget': '30', budget: '3'
  * part of what a turn costs. It runs in the scratch directory rather than the repository, so the
  * probe does not load this project's CLAUDE.md and time it as if it were provider latency.
  */
+
+/**
+ * Whether the archived Change said it moves an interface, read off its own `change.yaml`.
+ *
+ * Absent or false is an answer, not a gap: nine Changes in ten move no interface between modules,
+ * and a Flow that merges contracts still has nothing to merge for those.
+ */
+function archivedChangeDeclaresInterfaceChange(projectRoot, changeId) {
+  const archiveRoot = path.join(projectRoot, 'xforge', 'changes', 'archive');
+  let directory;
+  try { directory = readdirSync(archiveRoot).find((name) => name.endsWith(changeId)); }
+  catch { return false; }
+  if (!directory) return false;
+  try {
+    const config = parse(readFileSync(path.join(archiveRoot, directory, 'change.yaml'), 'utf8'));
+    return config?.classification?.moduleContract === true;
+  } catch { return false; }
+}
+
 async function probeCliLatency() {
   const started = Date.now();
   const result = spawnSync('claude', ['-p', '--output-format', 'json', 'ok'], {
@@ -1611,9 +1630,22 @@ if (stillActive || canonicalSpecs === 0) {
   throw new Error(`Archive did not complete for ${scenarioName}:${changeId} (stillActive=${stillActive}, canonicalSpecs=${canonicalSpecs}).`);
 }
 
-/* Only where the Flow actually merges one. Asking this of `quick` or `solid` would be asserting a
-   mechanism they do not declare, which is how a check becomes noise nobody can act on. */
-if (flow.terminal?.archive?.syncContracts) {
+/*
+ * Only where the Flow merges one *and this Change had one to merge*.
+ *
+ * The Flow half used to be the whole condition, and its comment said asking this of `solid` would
+ * assert a mechanism it does not declare. Since 0.8.4 `solid` and `major` both declare
+ * `syncContracts`, so the Flow half stopped separating anything -- and the first run after that
+ * failed the `solid` scenario for archiving with no `contracts/` directory, which is exactly correct
+ * behaviour: its Change classifies itself `moduleContract: false`, owes no delta, and has no
+ * baseline to advance.
+ *
+ * The Change's own declaration is the second half, and it is the same predicate the Flow uses to
+ * decide whether the Artifact is owed at all. Read from the archived `change.yaml` rather than from
+ * a list here: a fixture that names which scenarios move an interface stops testing whether the
+ * Change said so.
+ */
+if (flow.terminal?.archive?.syncContracts && archivedChangeDeclaresInterfaceChange(projectRoot, changeId)) {
   contractBaseline = assertContractBaselineAdvanced({ projectRoot, changeId, scenarioName });
 }
 }
