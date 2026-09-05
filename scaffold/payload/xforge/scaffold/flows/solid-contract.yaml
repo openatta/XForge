@@ -182,10 +182,18 @@ artifacts:
     generates: evidence/constitution-check.yaml
     description: Answer every Constitution principle for this Change
     instruction: >-
-      One entry per `## ` principle in xforge/constitution.md, in document order, each with status
-      compliant|violation|not-applicable. Every entry must cite at least one machine-locatable
-      reference in `references` — a Requirement id from this Change's delta Specs, a file path that
-      exists, or `gate:<name>` for a Gate that passed. A violation additionally needs a
+      Skip the observability principle and the parallel-development principle: the Gate decides both
+      from evidence it reads itself — unit-tests Gate Evidence, and the structural checks `structure`
+      runs over work-packages.yaml — records its decision and its basis in the Evidence, and does not
+      ask you. Writing an entry for one of them is still accepted and still evaluated, so declare a
+      violation there if you have one; a compliant paragraph restating what a Gate already proved is
+      the cost this skip exists to remove.
+
+
+      For every other `## ` principle in xforge/constitution.md, one entry, in document order, each
+      with status compliant|violation|not-applicable. Every entry must cite at least one
+      machine-locatable reference in `references` — a Requirement id from this Change's delta Specs,
+      a file path that exists, or `gate:<name>` for a Gate that passed. A violation additionally needs a
       justification and a named approvedBy; not-applicable needs a justification. A general claim of
       compliance does not satisfy the Gate, and neither does an approval receipt on its own — a
       receipt records that someone approved a transition, not why this Change satisfies the

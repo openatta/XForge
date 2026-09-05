@@ -87,7 +87,7 @@ resources:
     kind: skill
     license: project
     version: "1"
-  - digest: fd87b7310469d06083fb89d9e03b102702453cca7f353379b9b426e07de4e4b2
+  - digest: 46855a2ec7c09fe7f6496d11a00805b22e556a471fd329308c5f3a075ac8ecd9
     id: xforge-check
     kind: skill
     license: project
