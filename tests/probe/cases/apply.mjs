@@ -79,16 +79,20 @@ export async function assert({ projectRoot, change, repositoryRoot, flow }) {
     /* Every `done_when` criterion answered once. The delivery schema requires this, so a record that
        parses and omits one is a record the CLI would refuse — asserting it here says the Agent
        produced something acceptable rather than merely present. */
-    const answered = Object.keys(record?.done_when_evidence ?? {});
+    const answered = (record?.done_when_evidence ?? []).map((mapping) => mapping?.criterion).filter(Boolean);
     checks.push({
       name: `${entry.id}: every done_when criterion is mapped to evidence`,
       ok: (entry.done_when ?? []).every((criterion) => answered.some((key) => criterion.startsWith(key) || key.startsWith(criterion))),
       detail: { declared: entry.done_when ?? [], answered },
     });
+    /* Run, and passed. `validation` records an `exit_code` per command precisely so a delivery cannot
+       claim a command it watched fail, and a check that only counted entries would accept one. */
+    const validation = Array.isArray(record?.validation) ? record.validation : [];
+    const declared = (entry.verify ?? []).map((command) => (Array.isArray(command) ? command.join(' ') : String(command)));
     checks.push({
       name: `${entry.id}: the declared verify commands were run and recorded`,
-      ok: Array.isArray(record?.validation_commands) && record.validation_commands.length > 0,
-      detail: record?.validation_commands ?? 'no validation_commands in the delivery record',
+      ok: declared.length > 0 && declared.every((command) => validation.some((run) => run?.command === command && run?.exit_code === 0)),
+      detail: { declared, recorded: validation },
     });
     /* Written where it said it would write. The write boundary is the one thing a delivery cannot
        be trusted to self-report, and it is what an Integrator and the archive both rely on. */

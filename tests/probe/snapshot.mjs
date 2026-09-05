@@ -39,6 +39,12 @@ function git(args, cwd) {
   return result.stdout;
 }
 
+/* A commit that predates a path simply does not have it, which is an answer, not a failure. */
+function gitTry(args, cwd) {
+  const result = spawnSync('git', args, { cwd, encoding: 'utf8' });
+  return result.status === 0 ? result.stdout : '';
+}
+
 function options(argv) {
   const parsed = {};
   for (let index = 0; index < argv.length; index += 2) {
@@ -59,17 +65,57 @@ const source = path.resolve(selected.from);
 if (!existsSync(source)) throw new Error(`No project at ${source}.`);
 
 /*
- * What a finished run still holds. Printed rather than guessed at, because the Stage labels come
- * from the run itself and a scenario that reworked visits some of them more than once -- the later
- * visit is a different starting point, and only the operator knows which one they mean.
+ * What a finished run still holds, listed by the Stage each commit *stands in* rather than by the
+ * commit subjects.
+ *
+ * The subjects are the trap. A run commits "Live engine stage complete: solid:check" when the check
+ * Stage finishes, and reading that as "the check fixture" is off by one Stage in one direction and,
+ * worse, off by an approval in the other. The Agent self-transitions at the end of its Stage, so
+ * that commit usually already stands in the *next* Stage; but where a Flow requires a human approval
+ * between them -- solid's check -> apply -- the transition is a separate commit later, and the
+ * stage-complete commit still stands in check with the approval pending. A fixture frozen there
+ * cannot enter the Stage it claims to be: an Agent given the apply prompt spends its whole run
+ * against an approval it has no authority to grant, and the probe reports a failed check that says
+ * nothing about the change under test. That cost a measured $2.98 and one wasted probe.
+ *
+ * So the Stage is read from the Change's own transition receipts -- the highest sequence wins --
+ * which is the same answer `xforge stage` would give, without provisioning a CLI to ask.
+ *
+ * Default to the earliest commit standing in the Stage you want: that is the point after the Change
+ * entered it and before its Artifacts were written, and later commits at the same Stage already hold
+ * the work. The exception is a scenario that injects an event mid-Stage -- an upstream requirement
+ * edit, an owner answering findings -- which the Stage was meant to face. The subjects are printed
+ * so that choice stays the operator's; they are just not what the Stage is read from.
  */
 if (selected.list === 'true') {
-  const log = git(['log', '--format=%H%x09%s', '--grep=Live engine stage complete'], source).trim();
+  const changeAt = (commit) => {
+    const roots = selected.change
+      ? [selected.change]
+      : gitTry(['ls-tree', '--name-only', `${commit}:xforge/changes`], source).split('\n').filter(Boolean);
+    for (const change of roots) {
+      const base = `xforge/changes/${change.replace(/\/$/, '')}/evidence/receipts/transitions`;
+      /* Zero-padded sequence filenames, so the lexicographic last is the latest Transition. */
+      const receipts = gitTry(['ls-tree', '--name-only', `${commit}:${base}`], source).split('\n').filter(Boolean).sort();
+      const latest = receipts.at(-1);
+      if (!latest) continue;
+      try {
+        return { change: change.replace(/\/$/, ''), stage: JSON.parse(gitTry(['show', `${commit}:${base}/${latest}`], source)).to };
+      } catch { /* Not a receipt this tool understands; fall through to the next Change. */ }
+    }
+    return { change: roots[0]?.replace(/\/$/, '') ?? null, stage: null };
+  };
+
+  const log = git(['log', '--format=%H%x09%s'], source).trim();
   const rows = log ? log.split('\n').map((line) => {
     const [commit, subject] = line.split('\t');
-    return { commit, ref: commit.slice(0, 12), stage: subject.replace(/^Live engine stage complete:\s*/, '') };
+    return { commit, ref: commit.slice(0, 12), ...changeAt(commit), subject };
   }) : [];
-  process.stdout.write(`${JSON.stringify({ ok: true, source: path.relative(process.cwd(), source), available: rows }, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify({
+    ok: true,
+    source: path.relative(process.cwd(), source),
+    note: 'Freeze from the earliest commit standing in the Stage you want -- later ones already hold its work, and a "stage complete: X" subject usually already stands in the Stage after X. Prefer a later commit only to keep a scenario event the Stage was meant to face.',
+    available: rows,
+  }, null, 2)}\n`);
   process.exit(0);
 }
 
