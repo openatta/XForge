@@ -1,5 +1,5 @@
 import { mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
-import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, mkdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -452,9 +452,21 @@ function archivedChangeDeclaresInterfaceChange(projectRoot, changeId) {
 }
 
 async function probeCliLatency() {
+  /*
+   * The scratch directory has to exist before anything can run in it, and on a fresh checkout it
+   * does not.
+   *
+   * A baseline run in a new git worktree found this: `spawnSync` failed on the missing cwd, the
+   * probe returned null, and the whole suite silently fell back to the unscaled 900s per-stage
+   * timeout while the run it was being compared against had scaled itself to 3600s. Two runs with
+   * different deadlines are not a comparison, and nothing said so -- `probedLatencyMs: null` is the
+   * only trace, in a line nobody reads when the run appears to start normally.
+   */
+  const scratch = path.join(repositoryRoot, 'tests', '.tmp');
+  try { mkdirSync(scratch, { recursive: true }); } catch { /* fall through; the spawn reports it */ }
   const started = Date.now();
   const result = spawnSync('claude', ['-p', '--output-format', 'json', 'ok'], {
-    cwd: path.join(repositoryRoot, 'tests', '.tmp'),
+    cwd: scratch,
     encoding: 'utf8',
     timeout: PROBE_TIMEOUT_MS,
     stdio: ['ignore', 'pipe', 'pipe'],
