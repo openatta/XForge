@@ -116,7 +116,6 @@ describe('what the table derives', () => {
      * Change history looking like fair game to the one Agent most likely to rewrite it.
      */
     expect(neverTouchPaths).toContain('xforge/changes/**');
-    expect(neverTouchPaths).toContain('xforge/architecture.md');
     /*
      * And the reverse: `deny` does not imply never-touch either. `xforge/flows/**` is denied to an
      * Agent's ordinary tool call and is still a tree this merge carries, so listing it under "Never"

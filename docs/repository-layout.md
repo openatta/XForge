@@ -37,12 +37,11 @@ xforge/
 │  ── project-owned ──  项目自己写的。升级只推进 Manifest 里的版本锚点，别的一个字不动
 ├── manifest.yaml               ← 唯一的启用清单（Agent 写入要人确认）
 ├── constitution.md             ← 长期工程原则（Agent 写入被 deny）
-├── architecture.md             ← 可选，跨 Change 的架构决策（≤50 行 / 6 条）
 ├── XFORGE.md                   ← 给 Agent 的项目引导
 │
 │  ── derived ──  输出而不是输入。不进事务，靠重新投影再生
 ├── lock.yaml                   ← CLI/Scaffold 身份与完整性（Agent 写入被 deny）
-├── .state.json                 ← 运行期缓存，无权威，gitignored
+├── .install.json               ← 运行期缓存，无权威，gitignored
 │
 │  ── record ──  发生过什么。升级既不读也不写它，任何方向都不
 ├── changes/<change-id>/        ← 见 §2
@@ -71,7 +70,7 @@ xforge/
 | --- | --- | --- | --- | --- |
 | `managed-source` | **整树快照** | 否 | 否 | `scaffold/` `scripts/` 开放；`flows/` deny |
 | `project-owned` | 仅版本锚点 | 否 | 否 | `manifest.yaml` 要确认；`constitution.md` deny；其余开放 |
-| `derived` | 不进 | **是**（重新投影） | 否 | `lock.yaml` deny；`.state.json` 开放 |
+| `derived` | 不进 | **是**（重新投影） | 否 | `lock.yaml` deny；`.install.json` 开放 |
 | `record` | 不进 | 否 | **是** | `changes/` 开放；`specs/` `.audit/` deny |
 | `transient` | 不进（它就是事务） | 否 | 否 | `snapshot/` `UPGRADING.md` deny；`incoming/` 与计划文档开放（合并 Agent 要读） |
 
@@ -251,7 +250,7 @@ principles:
 按文档顺序为每个 `## ` 标题写一条。**至少一条机器可定位的 `references`：**
 本 Change delta Specs 中的 Requirement id、**仓库里任意真实存在的路径**
 （先按 Change 相对解析，再按项目相对解析——`xforge/constitution.md` 和
-`xforge/architecture.md` 都是合法引用，对架构类与治理类原则往往正是最恰当的），
+`src/` 下的源码路径都是合法引用，对治理类与架构类原则往往正是最恰当的），
 或 `gate:<name>`（该 Change 已有通过的 Gate Evidence）。
 
 > **只写 `compliant` 而不引用任何东西，正是这个 Gate 要拒绝的笼统声明。**
@@ -523,7 +522,7 @@ Constitution 的修改（它们会改变 `policySnapshotDigest`）**不影响已
 ```gitignore
 xforge/.audit/               # 随包的 xforge/.audit/.gitignore 内容是 `*` + `!.gitignore`
 xforge/.upgrade/             # 同法：CLI 暂存时往里写一份自己的 .gitignore
-**/xforge/.state.json
+**/xforge/.install.json
 **/.xforge-archive-*
 ```
 

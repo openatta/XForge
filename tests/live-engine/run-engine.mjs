@@ -1,4 +1,4 @@
-import { mkdir, readFile, realpath, rename, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, realpath, rename, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { cliBinDirectory } from './xforge-cli.mjs';
@@ -96,14 +96,56 @@ const outputPath = bounded(selected.output, 'Engine output');
 const policyPath = bounded(selected.policy ?? path.join(path.dirname(outputPath), 'live-engine-policy.json'), 'Policy file');
 const stage = selected.stage ?? inferStage(outputPath);
 
-const configured = dotenv(await readFile(path.join(repositoryRoot, '.env'), 'utf8'));
-for (const required of ['ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL']) {
-  if (!configured[required]) throw new Error(`Missing required engine setting: ${required}`);
+const configured = dotenv(await readFile(path.join(repositoryRoot, '.env'), 'utf8').catch(() => ''));
+/*
+ * Two ways to reach a model, and the harness no longer insists on the expensive one.
+ *
+ * It used to require `ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_BASE_URL` and refuse to start without
+ * them, which meant every live run this repository has ever recorded went through a paid gateway —
+ * all 130-odd transcripts, one third-party model. That was never a decision about measurement; it
+ * was a required setting nobody could opt out of.
+ *
+ * With neither set, the spawned CLI authenticates the way the developer's own does. `HOME` is still
+ * redirected below, so the credentials have to be placed where the redirected home can see them:
+ * `seedCredentials` copies the one file that carries them and nothing else, which keeps sessions,
+ * projects, caches and history isolated exactly as before.
+ *
+ * A subscription run still reports `total_cost_usd`, so `policy.mjs`'s accounting stays complete and
+ * the suite budget still stops a runaway. The figure is notional — the money was already spent on
+ * the subscription — so a run on this path wants `--suite-budget` raised to a number that reflects
+ * how far it should get, not how much it may spend.
+ */
+const gatewayConfigured = Boolean(configured.ANTHROPIC_AUTH_TOKEN && configured.ANTHROPIC_BASE_URL);
+if (!gatewayConfigured && (configured.ANTHROPIC_AUTH_TOKEN || configured.ANTHROPIC_BASE_URL)) {
+  throw new Error('Set both ANTHROPIC_AUTH_TOKEN and ANTHROPIC_BASE_URL to use a gateway, or neither to use the developer credentials. One without the other reaches nothing.');
 }
 const redact = redactor(configured);
 const prompt = await readFile(promptPath, 'utf8');
 await mkdir(path.dirname(outputPath), { recursive: true });
 await mkdir(claudeConfigRoot, { recursive: true });
+
+/*
+ * The one file the redirected home needs, and only that one.
+ *
+ * Without a gateway token the spawned CLI has to authenticate as the developer does, and under a
+ * redirected `HOME` it finds nothing: a probe with the home pointed at an empty directory returned
+ * `Not logged in · Please run /login` before a single token was spent. Copying the credential file
+ * is what closes that, and copying *only* it is what keeps the isolation the redirect exists for —
+ * sessions, projects, shell snapshots and history all stay in the scenario's own directory.
+ *
+ * Absence is not an error here. A machine with no credential file may still be reaching a gateway,
+ * or may be about to fail with the CLI's own login message, which says more than anything this
+ * script could say in its place.
+ */
+async function seedCredentials() {
+  if (gatewayConfigured) return;
+  const home = process.env.HOME ?? process.env.USERPROFILE;
+  if (!home) return;
+  const source = path.join(home, '.claude', '.credentials.json');
+  try { await copyFile(source, path.join(claudeConfigRoot, '.credentials.json')); }
+  catch { /* see above: the CLI's own refusal is the better message. */ }
+}
+await seedCredentials();
 
 /*
  * The limits an existing policy must already agree with, and nothing else.

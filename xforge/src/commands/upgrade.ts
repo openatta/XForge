@@ -7,7 +7,7 @@ import { atomicWrite } from '../core/files.js';
 import { sha256 } from '../core/hash.js';
 import { assertManaged, loadProject, writeScaffoldVersion } from '../core/project-loader.js';
 import { executeProjection } from './projection.js';
-import { installedTargets, readOwnership } from '../install/ownership.js';
+import { OWNERSHIP_PATH, installedTargets, readOwnership } from '../install/ownership.js';
 import { loadBundledScaffold } from '../core/bundled-scaffold.js';
 import {
   LEGACY_SNAPSHOT_DIRECTORY, LEGACY_SNAPSHOT_ROOT, LEGACY_STAGED_DIRECTORY, LEGACY_UPGRADE_STATE,
@@ -276,7 +276,7 @@ function sentinelText(span: StagedUpgrade, toVersion: string): string {
  * The projection is not snapshotted, for the same reason it can be replayed: every file it writes
  * is a function of the Scaffold sources, the Manifest and the adapter version, so restoring the
  * inputs and rendering again arrives at the same bytes that saving the outputs would have. Saving
- * them would also put two records of one installation on disk — the snapshot and `.state.json` —
+ * them would also put two records of one installation on disk — the snapshot and `.install.json` —
  * and leave nothing to say which of them was right.
  *
  * `update` rather than `install` on purpose. A project that was never installed has no projection
@@ -542,7 +542,7 @@ async function complete(project: ProjectContext, options: UpgradeOptions): Promi
     projected.diagnostics.push(diagnostic(
       'XFORGE_UPGRADE_REPROJECTION_SKIPPED',
       `The merge is recorded as complete, but the reprojection did not run — see the errors above — so every target still renders the ${record.fromVersion} Scaffold. Fix those, then run \`xforge install\`.`,
-      'xforge/.state.json',
+      OWNERSHIP_PATH,
       'warning',
     ));
   }

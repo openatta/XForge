@@ -195,9 +195,9 @@ artifacts:
 
 
       A cited path may be any path in the repository, resolved Change-relative first and then
-      project-relative, so xforge/constitution.md and xforge/architecture.md are valid citations and
-      are often the right ones for an architecture or governance principle. Do not confine yourself
-      to Change-local paths. Write every justification as a folded block scalar, because a plain
+      project-relative, so xforge/constitution.md and a source path under src/ are valid citations
+      and are often the right ones for a governance or architecture principle. Do not confine
+      yourself to Change-local paths. Write every justification as a folded block scalar, because a plain
       YAML scalar breaks on a colon followed by a space, or on a leading bracket or brace.
     outline: |
       principles:

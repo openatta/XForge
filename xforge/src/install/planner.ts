@@ -33,6 +33,7 @@ import {
   type RecordedFragment,
 } from './fragments.js';
 import {
+  OWNERSHIP_PATH,
   declaredCliIdentity,
   installedTargets,
   manifestSelectionDigest,
@@ -511,7 +512,7 @@ export interface ProjectionOptions {
 }
 
 function notInstalled(project: ProjectContext, command: ProjectionMode): never {
-  throw new XForgeError(diagnostic('XFORGE_NOT_INSTALLED', `${command} requires an existing installation record.`, 'xforge/.state.json'), {
+  throw new XForgeError(diagnostic('XFORGE_NOT_INSTALLED', `${command} requires an existing installation record.`, OWNERSHIP_PATH), {
     root: project.root,
     nextActions: [{ action: 'install', reason: 'Create the initial managed installation record.', command: ['xforge', 'install', '--dry-run'] }],
   });
@@ -543,7 +544,7 @@ function assertSyncIdentity(project: ProjectContext, state: OwnershipStateV2): v
     throw new XForgeError(diagnostic(
       'XFORGE_FULL_UPDATE_REQUIRED',
       'Target, Scaffold, CLI, or Adapter identity changed; run a full update before sync.',
-      'xforge/.state.json',
+      OWNERSHIP_PATH,
     ), {
       root: project.root,
       nextActions: [{ action: 'update', reason: 'Reconcile full installation identity.', command: ['xforge', 'update', '--dry-run'] }],
@@ -557,14 +558,14 @@ function resolveTargets(project: ProjectContext, previous: OwnershipState, optio
 
   if (options.mode === 'sync') {
     if (previous.version === 1) {
-      throw new XForgeError(diagnostic('XFORGE_STATE_UPGRADE_REQUIRED', 'sync requires installation record version 2.', 'xforge/.state.json'), {
+      throw new XForgeError(diagnostic('XFORGE_STATE_UPGRADE_REQUIRED', 'sync requires installation record version 2.', OWNERSHIP_PATH), {
         root: project.root,
         nextActions: [{ action: 'update', reason: 'Upgrade and fully reconcile the installation record.', command: ['xforge', 'update', '--dry-run'] }],
       });
     }
     assertSyncIdentity(project, previous);
     if (options.target && !installed.includes(options.target)) {
-      throw new XForgeError(diagnostic('XFORGE_TARGET_NOT_INSTALLED', `Target is not installed: ${options.target}`, 'xforge/.state.json'), { root: project.root });
+      throw new XForgeError(diagnostic('XFORGE_TARGET_NOT_INSTALLED', `Target is not installed: ${options.target}`, OWNERSHIP_PATH), { root: project.root });
     }
     const targets = options.target ? [options.target] : installed.filter((target) => project.manifest.targets.includes(target));
     return { targets, scopeTargets: targets };
@@ -711,7 +712,7 @@ export async function planProjection(project: ProjectContext, options: Projectio
          * An unrecorded destination whose bytes are already exactly what XForge would write is not
          * a file to protect — it is XForge's own output with the record missing, which is precisely
          * what an interrupted first install leaves behind. `writer.ts` writes the generated files
-         * before `xforge/.state.json`, so a Ctrl-C, an OOM kill or a full disk part-way through
+         * before `xforge/.install.json`, so a Ctrl-C, an OOM kill or a full disk part-way through
          * leaves dozens of correct files and no record at all: every one of them then reported
          * "Existing file is not XForge-managed", all at error severity, so install applied nothing,
          * `uninstall` refused with XFORGE_NOT_INSTALLED, and the project had no way forward but

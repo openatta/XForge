@@ -3,7 +3,7 @@ import type { ProjectContext } from '../types.js';
 import { atomicWrite, backup, type Backup } from '../core/files.js';
 import { safeResolve } from '../core/path-safety.js';
 import type { InstallPlan } from './planner.js';
-import { OWNERSHIP_PATH } from './ownership.js';
+import { LEGACY_OWNERSHIP_PATH, OWNERSHIP_PATH, legacyOwnershipPresent } from './ownership.js';
 
 async function restore(project: Pick<ProjectContext, 'root'>, items: Backup[]): Promise<void> {
   for (const item of [...items].reverse()) {
@@ -28,7 +28,13 @@ export async function applyInstallPlan(
       writes.set(change.path, desired.content);
     }
   }
-  if (options.writeOwnership) writes.set(OWNERSHIP_PATH, `${JSON.stringify(plan.next, null, 2)}\n`);
+  if (options.writeOwnership) {
+    writes.set(OWNERSHIP_PATH, `${JSON.stringify(plan.next, null, 2)}\n`);
+    /* The rename completes here rather than in a migration step: the record has just been rewritten
+       under its current name, so the one under the old name is a second copy of a cache, and leaving
+       it would keep `ownershipFilePath`'s fallback live forever on a project that no longer needs it. */
+    if (await legacyOwnershipPresent(project)) writes.set(LEGACY_OWNERSHIP_PATH, null);
+  }
   if (options.writeLock) writes.set('xforge/lock.yaml', lockContent);
   await applyManagedTransaction(project, writes);
 }

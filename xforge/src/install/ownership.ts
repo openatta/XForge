@@ -1,3 +1,4 @@
+import { access } from 'node:fs/promises';
 import path from 'node:path';
 import type {
   LegacyManagedFileRecord,
@@ -16,7 +17,30 @@ import { readJsonIfExists } from '../core/files.js';
 import { sha256, stableStringify } from '../core/hash.js';
 import { getAdapter } from '../adapters/index.js';
 
-export const OWNERSHIP_PATH = 'xforge/.state.json';
+/**
+ * The installation record: which files each target owns, and the digest each was installed at.
+ *
+ * Named `.install.json` and not `.state.json`, which is what it was called until a measured run
+ * showed what that name costs. `xforge state` is the command an Agent reaches for when it wants to
+ * know where a Change stands; `xforge/.state.json` is a 165KB digest map with no bearing on that
+ * question. A live Clarify Stage opened it and paid 67,901 bytes -- about 17k tokens, the largest
+ * single input of that Stage -- for a file whose entire content was irrelevant to what it asked.
+ *
+ * The two names cannot both be right, and this is the one that moves: the command is in every Skill
+ * and every projected rule, and the file is a cache nobody reads on purpose.
+ */
+export const OWNERSHIP_PATH = 'xforge/.install.json';
+
+/**
+ * Where the record lived before, still read and still cleaned up.
+ *
+ * A rename that only changed the writer would report `XFORGE_NOT_INSTALLED` on every installed
+ * project at the first command after upgrading -- the record would be right there on disk under the
+ * name nothing looked for any more. So the reader falls back to it, and the next write removes it,
+ * which makes the migration a side effect of the first `install`/`sync`/`update` rather than a step
+ * anybody has to take.
+ */
+export const LEGACY_OWNERSHIP_PATH = 'xforge/.state.json';
 
 export function manifestSelectionDigest(project: ProjectContext): string {
   return sha256(stableStringify({
@@ -68,7 +92,7 @@ function validV2(value: OwnershipState): value is OwnershipStateV2 {
 /*
  * The one recovery, attached to both refusals.
  *
- * `.state.json` is machine-generated, 165KB, carries a per-file digest map for every installed
+ * The record is machine-generated, 165KB, carries a per-file digest map for every installed
  * target, and is rewritten in full by every `install` -- so two developers who each ran `install`
  * on their own branch produce a merge conflict in it as a matter of course. Conflicted, it stops
  * being JSON, and `state`, `install`, `sync` and `update` all die here at the first read.
@@ -94,8 +118,37 @@ function ownershipRecovery(): NextAction[] {
   }];
 }
 
+/** Absolute path of the record, or of the legacy record when only that one is on disk. */
+export async function ownershipFilePath(project: Pick<ProjectContext, 'root'>): Promise<string> {
+  const current = path.join(project.root, ...OWNERSHIP_PATH.split('/'));
+  const legacy = path.join(project.root, ...LEGACY_OWNERSHIP_PATH.split('/'));
+  try {
+    await access(current);
+    return current;
+  } catch {
+    /* Not "the record is missing" -- an uninstalled project has neither, and returning the current
+       name for that case is what makes `readJsonIfExists` answer null against the right path. */
+  }
+  try {
+    await access(legacy);
+    return legacy;
+  } catch {
+    return current;
+  }
+}
+
+/** Whether a pre-rename record is still on disk, so a write can remove it in the same transaction. */
+export async function legacyOwnershipPresent(project: Pick<ProjectContext, 'root'>): Promise<boolean> {
+  try {
+    await access(path.join(project.root, ...LEGACY_OWNERSHIP_PATH.split('/')));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function readOwnership(project: ProjectContext): Promise<OwnershipState> {
-  const filePath = path.join(project.root, 'xforge', '.state.json');
+  const filePath = await ownershipFilePath(project);
   let state: OwnershipState | null;
   try {
     state = await readJsonIfExists<OwnershipState>(filePath);

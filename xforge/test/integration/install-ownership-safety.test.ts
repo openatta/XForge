@@ -83,7 +83,7 @@ describe('provenance of a partially owned destination', () => {
 
     // Provenance is recorded rather than re-derived, and a destination XForge did not create keeps
     // no seed in the record at all.
-    const state = await json(root, 'xforge/.state.json');
+    const state = await json(root, 'xforge/.install.json');
     expect(state.targets.opencode.files['opencode.json'].fragment.createdByXForge).toBe(false);
     expect(state.targets.opencode.files['opencode.json'].fragment.seed).toBeUndefined();
     expect(state.targets.claude.files['.claude/settings.json'].fragment.createdByXForge).toBe(false);
@@ -103,7 +103,7 @@ describe('provenance of a partially owned destination', () => {
     const root = await fixture();
     await withStaticPolicy(root);
     expect((await install(root)).errors).toEqual([]);
-    expect(await json(root, 'xforge/.state.json'))
+    expect(await json(root, 'xforge/.install.json'))
       .toMatchObject({ targets: { opencode: { files: { 'opencode.json': { fragment: { createdByXForge: true } } } } } });
 
     expect((await uninstall(root)).errors).toEqual([]);
@@ -130,7 +130,7 @@ describe('a value XForge did not write is never overwritten', () => {
     expect(result.diagnostics.find((item) => item.code === 'XFORGE_INSTALL_CONFLICT')?.message).toContain('permission.bash');
     // Nothing is applied, so the denial is still in force and the record was never written.
     expect(await json(root, 'opencode.json')).toEqual(userConfig);
-    expect(await exists(path.join(root, 'xforge', '.state.json'))).toBe(false);
+    expect(await exists(path.join(root, 'xforge', '.install.json'))).toBe(false);
   });
 
   it('refuses when the project already owns the exact leaf XForge would write', async () => {
@@ -258,17 +258,17 @@ describe('re-baselining drifted managed files', () => {
     const refused = await uninstall(root, { target: 'claude' });
     expect(refused.codes).toContain('XFORGE_UNINSTALL_CONFLICT');
     expect(await exists(path.join(root, ...edited.split('/')))).toBe(true);
-    expect(await exists(path.join(root, 'xforge', '.state.json'))).toBe(true);
+    expect(await exists(path.join(root, 'xforge', '.install.json'))).toBe(true);
 
     const forced = await uninstall(root, { target: 'claude', force: true });
     expect(forced.errors).toEqual([]);
     expect(forced.codes).toContain('XFORGE_UNINSTALL_FORCED');
     expect(await exists(path.join(root, ...edited.split('/')))).toBe(false);
-    expect(await exists(path.join(root, 'xforge', '.state.json'))).toBe(false);
+    expect(await exists(path.join(root, 'xforge', '.install.json'))).toBe(false);
   });
 });
 
-// Finding 4: the writer emits the generated files before `xforge/.state.json`, so an interrupted
+// Finding 4: the writer emits the generated files before `xforge/.install.json`, so an interrupted
 // first install left dozens of correct files and no record. Each one then read as "not
 // XForge-managed" at error severity, so nothing could be applied and `uninstall` refused with
 // XFORGE_NOT_INSTALLED — an installation that could only be undone by hand.
@@ -278,13 +278,13 @@ describe('an interrupted first install', () => {
     expect((await install(root, { target: 'claude' })).errors).toEqual([]);
     const before = await readFile(path.join(root, '.claude', 'skills', 'xforge-kanban', 'SKILL.md'), 'utf8');
     // Everything written, no record: exactly the state a Ctrl-C between the two leaves behind.
-    await rm(path.join(root, 'xforge', '.state.json'));
+    await rm(path.join(root, 'xforge', '.install.json'));
 
     const resumed = await install(root, { target: 'claude' });
     expect(resumed.errors).toEqual([]);
     expect(resumed.action('.claude/skills/xforge-kanban/SKILL.md')).toBe('skip');
     expect(await readFile(path.join(root, '.claude', 'skills', 'xforge-kanban', 'SKILL.md'), 'utf8')).toBe(before);
-    expect(await exists(path.join(root, 'xforge', '.state.json'))).toBe(true);
+    expect(await exists(path.join(root, 'xforge', '.install.json'))).toBe(true);
 
     // Adopted for real: the installation is removable again.
     const removed = await uninstall(root, { target: 'claude' });
@@ -298,5 +298,68 @@ describe('an interrupted first install', () => {
     const result = await install(root, { target: 'claude' });
     expect(result.codes).toContain('XFORGE_INSTALL_CONFLICT');
     expect(await readFile(path.join(root, '.claude', 'skills', 'xforge-kanban', 'SKILL.md'), 'utf8')).toBe('human-owned\n');
+  });
+});
+
+/*
+ * The record moved from `xforge/.state.json` to `xforge/.install.json` in 0.8.4, and the reason is
+ * a measurement rather than a preference: `xforge state` is the command an Agent runs to find out
+ * where a Change stands, and a live Clarify Stage read the 165KB install cache that shared its name
+ * — 67,901 bytes, the largest single input that Stage paid for, none of it an answer to what it
+ * asked.
+ *
+ * A rename that only moved the writer would be worse than no rename: every installed project would
+ * report XFORGE_NOT_INSTALLED at the first command after upgrading, with the record sitting on disk
+ * under a name nothing looked for. So the reader falls back, and the next write removes the old
+ * copy — which makes the migration something that happens rather than something anybody does.
+ */
+describe('the installation record\'s rename', () => {
+  it('reads a pre-rename record, then removes it on the next write', async () => {
+    const root = await fixture();
+    await install(root, { target: 'claude' });
+
+    const current = path.join(root, 'xforge', '.install.json');
+    const legacy = path.join(root, 'xforge', '.state.json');
+    const record = await readFile(current, 'utf8');
+
+    /* An installation as it looked before the rename: the record under the old name and nothing
+       under the new one. */
+    await writeFile(legacy, record, 'utf8');
+    await rm(current);
+
+    /* Read through the fallback: the installation is still recognised, so nothing is reinstalled. */
+    const seen = await install(root, { target: 'claude' });
+    expect(seen.errors).toEqual([]);
+    expect(seen.action('.claude/skills/xforge-kanban/SKILL.md')).toBe('skip');
+
+    /* And the write that ran alongside it completed the move in the same transaction. */
+    expect(await exists(current)).toBe(true);
+    expect(await exists(legacy)).toBe(false);
+  });
+
+  it('reports the removal as a change rather than performing it silently', async () => {
+    const root = await fixture();
+    await install(root, { target: 'claude' });
+    const record = await readFile(path.join(root, 'xforge', '.install.json'), 'utf8');
+    await writeFile(path.join(root, 'xforge', '.state.json'), record, 'utf8');
+    await rm(path.join(root, 'xforge', '.install.json'));
+
+    /* A dry run that removes a file without listing it is a dry run nobody can check. */
+    const project = await loadProject(root);
+    const planned = await executeProjection(project, 'install', { target: 'claude', dryRun: true });
+    expect(planned.changes.find((item) => item.path === 'xforge/.state.json')?.action).toBe('delete');
+    expect(await exists(path.join(root, 'xforge', '.state.json'))).toBe(true);
+  });
+
+  it('uninstall removes both names, so nothing is left behind', async () => {
+    const root = await fixture();
+    await install(root, { target: 'claude' });
+    const record = await readFile(path.join(root, 'xforge', '.install.json'), 'utf8');
+    await writeFile(path.join(root, 'xforge', '.state.json'), record, 'utf8');
+
+    const removed = await uninstall(root, { target: 'claude' });
+    expect(removed.errors).toEqual([]);
+    expect(await exists(path.join(root, 'xforge', '.install.json'))).toBe(false);
+    expect(await exists(path.join(root, 'xforge', '.state.json'))).toBe(false);
   });
 });

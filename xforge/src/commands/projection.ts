@@ -8,6 +8,7 @@ import { sha256 } from '../core/hash.js';
 import { resolvedLock } from '../core/lockfile.js';
 import { assertManaged, assertUpdateCompatible } from '../core/project-loader.js';
 import { planProjection, type ProjectionMode } from '../install/planner.js';
+import { LEGACY_OWNERSHIP_PATH, OWNERSHIP_PATH, legacyOwnershipPresent } from '../install/ownership.js';
 import { applyInstallPlan } from '../install/writer.js';
 import { exists } from '../core/files.js';
 
@@ -41,13 +42,31 @@ export async function executeProjection(
     index === all.findIndex((candidate) => candidate.code === item.code && candidate.path === item.path && candidate.message === item.message));
   const lockContent = await resolvedLock(project, plan.resources);
   const changes = [...plan.changes];
-  const statePath = path.join(project.root, 'xforge', '.state.json');
+  const statePath = path.join(project.root, ...OWNERSHIP_PATH.split('/'));
   const stateExists = await exists(statePath);
   const stateContent = `${JSON.stringify(plan.next, null, 2)}\n`;
-  if (plan.stateChanged) changes.push({
+  /*
+   * Where the record lives is part of the recorded state, not a detail beside it.
+   *
+   * `plan.stateChanged` compares *contents*, and a project upgrading across the 0.8.4 rename has
+   * contents that did not move — so gating the migration on it left the record readable through
+   * `readOwnership`'s fallback and never rewritten, which is the fallback becoming permanent rather
+   * than transitional. A record under the previous name is a state that differs from the intended
+   * one, so it is one of the things that makes this write necessary.
+   */
+  const migrating = await legacyOwnershipPresent(project);
+  const stateChanged = plan.stateChanged || migrating;
+  if (stateChanged) changes.push({
     action: stateExists ? 'modify' : 'create',
-    path: 'xforge/.state.json',
+    path: OWNERSHIP_PATH,
     digest: sha256(stateContent),
+    source: 'xforge:ownership',
+  });
+  /* Reported, not silent: a dry run that removes a file without listing it is a dry run nobody can
+     check. `applyInstallPlan` performs the removal; this is the same fact stated where it is read. */
+  if (migrating) changes.push({
+    action: 'delete',
+    path: LEGACY_OWNERSHIP_PATH,
     source: 'xforge:ownership',
   });
 
@@ -63,7 +82,7 @@ export async function executeProjection(
   const hasErrors = diagnostics.some((item) => item.severity === 'error');
   const actionable = changes.some((item) => ['create', 'modify', 'delete'].includes(item.action));
   if (!options.dryRun && !hasErrors && actionable) {
-    await applyInstallPlan(project, plan, lockContent, { writeOwnership: plan.stateChanged, writeLock: lockChanged });
+    await applyInstallPlan(project, plan, lockContent, { writeOwnership: stateChanged, writeLock: lockChanged });
   }
 
   return {

@@ -6,7 +6,7 @@ import type { Diagnostic, FileChange, ProjectContext } from '../types.js';
 import { XForgeError, diagnostic } from '../core/errors.js';
 import { sha256 } from '../core/hash.js';
 import { safeResolve } from '../core/path-safety.js';
-import { installedTargets, readOwnership, toOwnershipV2 } from '../install/ownership.js';
+import { LEGACY_OWNERSHIP_PATH, OWNERSHIP_PATH, installedTargets, legacyOwnershipPresent, readOwnership, toOwnershipV2 } from '../install/ownership.js';
 import { FragmentParseError, fragmentDrifted, normalizeEol, removeFragment } from '../install/fragments.js';
 import { applyManagedTransaction } from '../install/writer.js';
 
@@ -74,10 +74,10 @@ export async function executeUninstall(
   const previous = await readOwnership(project);
   const installed = installedTargets(previous);
   if (installed.length === 0) {
-    throw new XForgeError(diagnostic('XFORGE_NOT_INSTALLED', 'uninstall requires an existing installation record.', 'xforge/.state.json'), { root: project.root });
+    throw new XForgeError(diagnostic('XFORGE_NOT_INSTALLED', 'uninstall requires an existing installation record.', OWNERSHIP_PATH), { root: project.root });
   }
   if (options.target && !installed.includes(options.target)) {
-    throw new XForgeError(diagnostic('XFORGE_TARGET_NOT_INSTALLED', `Target is not installed: ${options.target}`, 'xforge/.state.json'), { root: project.root });
+    throw new XForgeError(diagnostic('XFORGE_TARGET_NOT_INSTALLED', `Target is not installed: ${options.target}`, OWNERSHIP_PATH), { root: project.root });
   }
   const targets = options.target ? [options.target] : installed;
   const next = toOwnershipV2(project, previous);
@@ -139,18 +139,24 @@ export async function executeUninstall(
   for (const target of targets) delete next.targets[target];
   const remainingTargets = installedTargets(next);
   if (remainingTargets.length === 0) {
-    changes.push({ action: 'delete', path: 'xforge/.state.json', source: 'xforge:ownership' });
-    writes.set('xforge/.state.json', null);
+    changes.push({ action: 'delete', path: OWNERSHIP_PATH, source: 'xforge:ownership' });
+    writes.set(OWNERSHIP_PATH, null);
+    /* A project installed before the rename may still hold the old record; uninstall removes what
+       this CLI put there, and that includes the copy under the name it used to write. */
+    if (await legacyOwnershipPresent(project)) {
+      changes.push({ action: 'delete', path: LEGACY_OWNERSHIP_PATH, source: 'xforge:ownership' });
+      writes.set(LEGACY_OWNERSHIP_PATH, null);
+    }
   } else {
     next.generatedAt = new Date().toISOString();
     const content = `${JSON.stringify(next, null, 2)}\n`;
-    changes.push({ action: 'modify', path: 'xforge/.state.json', digest: sha256(content), source: 'xforge:ownership' });
-    writes.set('xforge/.state.json', content);
+    changes.push({ action: 'modify', path: OWNERSHIP_PATH, digest: sha256(content), source: 'xforge:ownership' });
+    writes.set(OWNERSHIP_PATH, content);
   }
 
   if (!options.dryRun && !hasErrors) {
     await applyManagedTransaction(project, writes);
-    await pruneEmptyParents(project, changes.filter((item) => item.action === 'delete' && item.path !== 'xforge/.state.json').map((item) => item.path));
+    await pruneEmptyParents(project, changes.filter((item) => item.action === 'delete' && item.path !== OWNERSHIP_PATH && item.path !== LEGACY_OWNERSHIP_PATH).map((item) => item.path));
   }
   return {
     data: {

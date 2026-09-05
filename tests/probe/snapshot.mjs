@@ -131,7 +131,7 @@ if (selected.at) {
   /*
    * The installation record, which git cannot supply and the fixture is not a project without.
    *
-   * `xforge/.state.json` is ignored on purpose -- it is a rebuildable digest cache, and tracking it
+   * `xforge/.install.json` is ignored on purpose -- it is a rebuildable digest cache, and tracking it
    * turns an ordinary two-branch merge into a hard stop, because a conflicted copy is no longer
    * JSON and `state`, `install`, `sync` and `update` all refuse at the first read. So a fixture
    * materialised from history has every authored file and no record that anything was installed.
@@ -147,8 +147,8 @@ if (selected.at) {
    * this project, `update` rewrites it immediately, and a cache one run out of date is worth far
    * more here than no cache at all.
    */
-  const installRecord = path.join(source, 'xforge', '.state.json');
-  if (existsSync(installRecord)) await cp(installRecord, path.join(target, 'xforge', '.state.json'));
+  const installRecord = path.join(source, 'xforge', '.install.json');
+  if (existsSync(installRecord)) await cp(installRecord, path.join(target, 'xforge', '.install.json'));
 } else {
   await cp(source, target, { recursive: true });
 }

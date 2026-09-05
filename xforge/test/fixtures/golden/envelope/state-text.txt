@@ -5,13 +5,12 @@ Project: xforge-project (single) — scaffold 0.8.3 en
   Specs: xforge/specs    Changes: xforge/changes    Compatibility: managed
   Active Changes: add-feature — solid/verify (medium)
   Selected resources:
-    skills (12): xforge-propose, xforge-clarify, xforge-design, xforge-check, xforge-apply,
+    skills (11): xforge-propose, xforge-clarify, xforge-design, xforge-check, xforge-apply,
     xforge-verify, xforge-status, xforge-revise, xforge-scaffold, xforge-kanban,
-    xforge-architect, xforge-upgrade-scaffold
+    xforge-upgrade-scaffold
     agents (3): worker, integrator, reviewer
-    rules (5): governance-assets-are-integrator-only, observable-requirements-are-tested,
-    design-decisions-need-a-human, prefer-small-explicit-contracts,
-    design-within-the-declared-architecture
+    rules (3): governance-assets-are-integrator-only, observable-requirements-are-tested,
+    design-decisions-need-a-human
     policies (2): protected-files, protected-manifest
     hooks (0): (none)
     gates (5): structure, check-findings, constitution-check, unit-tests, security-scan

@@ -210,12 +210,12 @@ exit: 0
       }
     },
     "recordVersion": 2,
-    "scannedSources": 32,
-    "changedSources": 32,
-    "renderedFiles": 182,
+    "scannedSources": 29,
+    "changedSources": 29,
+    "renderedFiles": 167,
     "recordOnly": 0,
     "summary": {
-      "create": 183,
+      "create": 168,
       "modify": 0,
       "delete": 0,
       "skip": 0,
@@ -350,12 +350,12 @@ exit: 0
     {
       "code": "XFORGE_CAPABILITY_CONTENT_UNSUPPORTED",
       "severity": "info",
-      "message": "Target codex does not project Skill command files; these Skills install without a command entry point: xforge-propose, xforge-clarify, xforge-design, xforge-check, xforge-apply, xforge-verify, xforge-status, xforge-revise, xforge-scaffold, xforge-kanban, xforge-architect, xforge-upgrade-scaffold.",
+      "message": "Target codex does not project Skill command files; these Skills install without a command entry point: xforge-propose, xforge-clarify, xforge-design, xforge-check, xforge-apply, xforge-verify, xforge-status, xforge-revise, xforge-scaffold, xforge-kanban, xforge-upgrade-scaffold.",
       "details": {
         "target": "codex",
         "dimension": "commands",
         "kind": "Skill",
-        "count": 12,
+        "count": 11,
         "resources": [
           {
             "id": "xforge-propose",
@@ -398,10 +398,6 @@ exit: 0
             "path": "xforge/scaffold/skills/xforge-kanban/SKILL.md"
           },
           {
-            "id": "xforge-architect",
-            "path": "xforge/scaffold/skills/xforge-architect/SKILL.md"
-          },
-          {
             "id": "xforge-upgrade-scaffold",
             "path": "xforge/scaffold/skills/xforge-upgrade-scaffold/SKILL.md"
           }
@@ -411,12 +407,12 @@ exit: 0
     {
       "code": "XFORGE_CAPABILITY_CONTENT_UNSUPPORTED",
       "severity": "info",
-      "message": "Target codex does not project rule files; these Rules are not installed for that target: governance-assets-are-integrator-only, observable-requirements-are-tested, design-decisions-need-a-human, prefer-small-explicit-contracts, design-within-the-declared-architecture.",
+      "message": "Target codex does not project rule files; these Rules are not installed for that target: governance-assets-are-integrator-only, observable-requirements-are-tested, design-decisions-need-a-human.",
       "details": {
         "target": "codex",
         "dimension": "rules",
         "kind": "Rule",
-        "count": 5,
+        "count": 3,
         "resources": [
           {
             "id": "governance-assets-are-integrator-only",
@@ -429,14 +425,6 @@ exit: 0
           {
             "id": "design-decisions-need-a-human",
             "path": "xforge/scaffold/rules/design-decisions-need-a-human.yaml"
-          },
-          {
-            "id": "prefer-small-explicit-contracts",
-            "path": "xforge/scaffold/rules/prefer-small-explicit-contracts.yaml"
-          },
-          {
-            "id": "design-within-the-declared-architecture",
-            "path": "xforge/scaffold/rules/design-within-the-declared-architecture.yaml"
           }
         ]
       }
@@ -444,12 +432,12 @@ exit: 0
     {
       "code": "XFORGE_CAPABILITY_CONTENT_UNSUPPORTED",
       "severity": "info",
-      "message": "Target opencode does not project rule files; these Rules are not installed for that target: governance-assets-are-integrator-only, observable-requirements-are-tested, design-decisions-need-a-human, prefer-small-explicit-contracts, design-within-the-declared-architecture.",
+      "message": "Target opencode does not project rule files; these Rules are not installed for that target: governance-assets-are-integrator-only, observable-requirements-are-tested, design-decisions-need-a-human.",
       "details": {
         "target": "opencode",
         "dimension": "rules",
         "kind": "Rule",
-        "count": 5,
+        "count": 3,
         "resources": [
           {
             "id": "governance-assets-are-integrator-only",
@@ -462,14 +450,6 @@ exit: 0
           {
             "id": "design-decisions-need-a-human",
             "path": "xforge/scaffold/rules/design-decisions-need-a-human.yaml"
-          },
-          {
-            "id": "prefer-small-explicit-contracts",
-            "path": "xforge/scaffold/rules/prefer-small-explicit-contracts.yaml"
-          },
-          {
-            "id": "design-within-the-declared-architecture",
-            "path": "xforge/scaffold/rules/design-within-the-declared-architecture.yaml"
           }
         ]
       }
@@ -491,13 +471,6 @@ exit: 0
       "path": ".agents/skills/xforge-apply/SKILL.md",
       "digest": "<sha256>",
       "source": "skill:xforge-apply:SKILL.md",
-      "target": "codex"
-    },
-    {
-      "action": "create",
-      "path": ".agents/skills/xforge-architect/SKILL.md",
-      "digest": "<sha256>",
-      "source": "skill:xforge-architect:SKILL.md",
       "target": "codex"
     },
     {
@@ -677,13 +650,6 @@ exit: 0
     },
     {
       "action": "create",
-      "path": ".claude/commands/xforge/architect.md",
-      "digest": "<sha256>",
-      "source": "skill-command:xforge-architect",
-      "target": "claude"
-    },
-    {
-      "action": "create",
       "path": ".claude/commands/xforge/check.md",
       "digest": "<sha256>",
       "source": "skill-command:xforge-check",
@@ -761,13 +727,6 @@ exit: 0
     },
     {
       "action": "create",
-      "path": ".claude/rules/design-within-the-declared-architecture.md",
-      "digest": "<sha256>",
-      "source": "rule:design-within-the-declared-architecture",
-      "target": "claude"
-    },
-    {
-      "action": "create",
       "path": ".claude/rules/governance-assets-are-integrator-only.md",
       "digest": "<sha256>",
       "source": "rule:governance-assets-are-integrator-only",
@@ -778,13 +737,6 @@ exit: 0
       "path": ".claude/rules/observable-requirements-are-tested.md",
       "digest": "<sha256>",
       "source": "rule:observable-requirements-are-tested",
-      "target": "claude"
-    },
-    {
-      "action": "create",
-      "path": ".claude/rules/prefer-small-explicit-contracts.md",
-      "digest": "<sha256>",
-      "source": "rule:prefer-small-explicit-contracts",
       "target": "claude"
     },
     {
@@ -806,13 +758,6 @@ exit: 0
       "path": ".claude/skills/xforge-apply/SKILL.md",
       "digest": "<sha256>",
       "source": "skill:xforge-apply:SKILL.md",
-      "target": "claude"
-    },
-    {
-      "action": "create",
-      "path": ".claude/skills/xforge-architect/SKILL.md",
-      "digest": "<sha256>",
-      "source": "skill:xforge-architect:SKILL.md",
       "target": "claude"
     },
     {
@@ -971,13 +916,6 @@ exit: 0
     },
     {
       "action": "create",
-      "path": ".cursor/commands/xforge-architect.md",
-      "digest": "<sha256>",
-      "source": "skill-command:xforge-architect",
-      "target": "cursor"
-    },
-    {
-      "action": "create",
       "path": ".cursor/commands/xforge-check.md",
       "digest": "<sha256>",
       "source": "skill-command:xforge-check",
@@ -1062,13 +1000,6 @@ exit: 0
     },
     {
       "action": "create",
-      "path": ".cursor/rules/design-within-the-declared-architecture.mdc",
-      "digest": "<sha256>",
-      "source": "rule:design-within-the-declared-architecture",
-      "target": "cursor"
-    },
-    {
-      "action": "create",
       "path": ".cursor/rules/governance-assets-are-integrator-only.mdc",
       "digest": "<sha256>",
       "source": "rule:governance-assets-are-integrator-only",
@@ -1083,13 +1014,6 @@ exit: 0
     },
     {
       "action": "create",
-      "path": ".cursor/rules/prefer-small-explicit-contracts.mdc",
-      "digest": "<sha256>",
-      "source": "rule:prefer-small-explicit-contracts",
-      "target": "cursor"
-    },
-    {
-      "action": "create",
       "path": ".cursor/rules/xforge-bootstrap.mdc",
       "digest": "<sha256>",
       "source": "builtin:bootstrap",
@@ -1100,13 +1024,6 @@ exit: 0
       "path": ".cursor/skills/xforge-apply/SKILL.md",
       "digest": "<sha256>",
       "source": "skill:xforge-apply:SKILL.md",
-      "target": "cursor"
-    },
-    {
-      "action": "create",
-      "path": ".cursor/skills/xforge-architect/SKILL.md",
-      "digest": "<sha256>",
-      "source": "skill:xforge-architect:SKILL.md",
       "target": "cursor"
     },
     {
@@ -1258,13 +1175,6 @@ exit: 0
     },
     {
       "action": "create",
-      "path": ".opencode/commands/xforge-architect.md",
-      "digest": "<sha256>",
-      "source": "skill-command:xforge-architect",
-      "target": "opencode"
-    },
-    {
-      "action": "create",
       "path": ".opencode/commands/xforge-check.md",
       "digest": "<sha256>",
       "source": "skill-command:xforge-check",
@@ -1345,13 +1255,6 @@ exit: 0
       "path": ".opencode/skills/xforge-apply/SKILL.md",
       "digest": "<sha256>",
       "source": "skill:xforge-apply:SKILL.md",
-      "target": "opencode"
-    },
-    {
-      "action": "create",
-      "path": ".opencode/skills/xforge-architect/SKILL.md",
-      "digest": "<sha256>",
-      "source": "skill:xforge-architect:SKILL.md",
       "target": "opencode"
     },
     {
@@ -1510,13 +1413,6 @@ exit: 0
     },
     {
       "action": "create",
-      "path": ".github/instructions/design-within-the-declared-architecture.instructions.md",
-      "digest": "<sha256>",
-      "source": "rule:design-within-the-declared-architecture",
-      "target": "github-copilot"
-    },
-    {
-      "action": "create",
       "path": ".github/instructions/governance-assets-are-integrator-only.instructions.md",
       "digest": "<sha256>",
       "source": "rule:governance-assets-are-integrator-only",
@@ -1531,13 +1427,6 @@ exit: 0
     },
     {
       "action": "create",
-      "path": ".github/instructions/prefer-small-explicit-contracts.instructions.md",
-      "digest": "<sha256>",
-      "source": "rule:prefer-small-explicit-contracts",
-      "target": "github-copilot"
-    },
-    {
-      "action": "create",
       "path": ".github/instructions/xforge-bootstrap.instructions.md",
       "digest": "<sha256>",
       "source": "builtin:bootstrap",
@@ -1548,13 +1437,6 @@ exit: 0
       "path": ".github/prompts/xforge-apply.prompt.md",
       "digest": "<sha256>",
       "source": "skill-command:xforge-apply",
-      "target": "github-copilot"
-    },
-    {
-      "action": "create",
-      "path": ".github/prompts/xforge-architect.prompt.md",
-      "digest": "<sha256>",
-      "source": "skill-command:xforge-architect",
       "target": "github-copilot"
     },
     {
@@ -1632,13 +1514,6 @@ exit: 0
       "path": ".github/skills/xforge-apply/SKILL.md",
       "digest": "<sha256>",
       "source": "skill:xforge-apply:SKILL.md",
-      "target": "github-copilot"
-    },
-    {
-      "action": "create",
-      "path": ".github/skills/xforge-architect/SKILL.md",
-      "digest": "<sha256>",
-      "source": "skill:xforge-architect:SKILL.md",
       "target": "github-copilot"
     },
     {
@@ -1762,7 +1637,7 @@ exit: 0
     },
     {
       "action": "create",
-      "path": "xforge/.state.json",
+      "path": "xforge/.install.json",
       "digest": "<sha256>",
       "source": "xforge:ownership"
     }

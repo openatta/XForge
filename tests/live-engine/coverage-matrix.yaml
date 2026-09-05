@@ -54,9 +54,6 @@ entries:
   - skill: xforge-scaffold
     scenarios:
       - { scenario: standalone-scaffold, flow: null, stage: null, note: "runs against a fresh project, no active Change" }
-  - skill: xforge-architect
-    scenarios:
-      - { scenario: standalone-architect, flow: null, stage: null, note: "runs against a fresh project with no architecture file; covers writing one by questioning and reporting that absence blocks nothing" }
   - skill: xforge-upgrade-scaffold
     scenarios:
       - { scenario: standalone-upgrade-scaffold, flow: null, stage: null, note: "runs against a project aged onto an older Scaffold with a hand-adapted Gate; covers keeping the project's own command while adopting a new Rule" }

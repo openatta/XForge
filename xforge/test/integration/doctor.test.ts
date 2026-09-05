@@ -140,7 +140,7 @@ describe('doctor', () => {
   /**
    * The most ordinary team event there is, and the one `doctor` did not notice.
    *
-   * `xforge/.state.json` is rewritten in full by every install, so two branches that both installed
+   * `xforge/.install.json` is rewritten in full by every install, so two branches that both installed
    * conflict in it. Conflicted, it is no longer JSON: `state`, `install`, `sync` and `update` all
    * refused at the first read with `Next actions: []`, while `check` passed and `doctor` reported
    * unused Flows. Both halves are asserted -- the tool that says what is wrong must say it, and the
@@ -230,7 +230,7 @@ describe('doctor', () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
     expect((await runCli(root, ['install'])).code).toBe(0);
-    const statePath = path.join(root, 'xforge', '.state.json');
+    const statePath = path.join(root, 'xforge', '.install.json');
     const original = await readFile(statePath, 'utf8');
     await writeFile(statePath, `<<<<<<< HEAD\n${original}=======\n${original}>>>>>>> other\n`);
 

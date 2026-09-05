@@ -34,7 +34,6 @@ export const FLOW_SCENARIO_IDS = [
  */
 export const STANDALONE_SCENARIO_IDS = [
   'standalone-scaffold',
-  'standalone-architect',
   'standalone-kanban',
   'standalone-upgrade-scaffold',
 ];

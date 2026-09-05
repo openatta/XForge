@@ -69,8 +69,6 @@ state  <- flows/major.yaml
 state  <- flows/quick.yaml
 state  <- flows/solid-contract.yaml
 state  <- flows/solid.yaml
-state  <- xforge-architect/SKILL.md
-state  <- xforge-architect/SKILL_cn.md
 state  <- xforge-kanban/SKILL.md
 state  <- xforge-kanban/SKILL_cn.md
 state  <- xforge-propose/SKILL.md

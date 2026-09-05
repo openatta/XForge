@@ -181,7 +181,7 @@ node tests/live-engine/run-matrix.mjs --scenario quick --cli-source local
 - **Flow 场景**（走完整 Stage 图）：`quick` · `quick-python` · `quick-undeclared` ·
   `solid` · `solid-rework` · `major` · **`major-cold`**
 - **standalone 场景**（准备一个项目 + 一次模型调用 + 一条断言，没有 Change）：
-  `standalone-scaffold` · `standalone-architect` · `standalone-kanban` ·
+  `standalone-scaffold` · `standalone-kanban` ·
   `standalone-upgrade-scaffold`
 
 注意 `solid-rework` 与 `solid` 共用一个 Flow，所以**必须用 `--scenario` 而不是 `--flow`**。

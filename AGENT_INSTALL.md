@@ -190,7 +190,7 @@ Require:
 - `project.compatibility.mode: "managed"`;
 - CLI and Protocol `matches: true`;
 - no schema, path, secret, identity, Lockfile, ownership, or digest error;
-- expected target files recorded in `xforge/.state.json`;
+- expected target files recorded in `xforge/.install.json`;
 - no unexplained capability degradation.
 
 Generated runtime Hooks use `xforge`, so they resolve the exact

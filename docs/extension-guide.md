@@ -479,9 +479,10 @@ instructed → guarded / verified / approved → uncovered / unenforceable
 2. **与它声称的策略保持 1:1 对齐。** `governance-assets-are-integrator-only` 的
    `scope.paths` 与 `protected-files` / `protected-manifest` 的 `match.paths` 精确对齐——
    一条 Rule 声称一个策略不覆盖的路径，会把它误报为 guarded。
-3. **只是判断指导就明说。** `prefer-small-explicit-contracts` 和
-   `design-within-the-declared-architecture` 的 instruction 里直接写着
-   「Judgement guidance only; XForge does not claim to enforce it」。
+3. **只是判断指导就明说。** 随包的两条纯指导 Rule 在 0.8.4 被删了——不是因为写错了，
+   而是因为它们说的话宪法的「架构原则」已经在一道必过 Gate 下逐条回答过一遍，
+   三份文字治的是同一件事而没有一份有牙。真要新增一条纯指导的，
+   在 instruction 里直接写「Judgement guidance only; XForge does not claim to enforce it」：
    **诚实地标 `uncovered`，好过假装被强制。**
 
 ---
@@ -778,7 +779,7 @@ spec:
 | 在工具事件上插逻辑 | `scaffold/hooks/<id>.yaml` + `kind: Script` | 是（脚本） |
 | 把标准写下来并让它诚实 | `scaffold/rules/<id>.yaml` | 否 |
 | 定制子 Agent 行为 | `scaffold/agents/<id>.yaml` + `<id>.md` | 否 |
-| 记住跨 Change 的架构决策 | `xforge/architecture.md`（唯一写者 `xforge-architect`） | 否 |
+| 约束模块依赖方向 | `scaffold/gates/module-boundaries.yaml` + `xforge verification declare` | 否 |
 | 支持一个新编程工具 | Adapter | **是**（改 CLI） |
 | 第四档保证级别 | `flow.schema.json` | **是** |
 

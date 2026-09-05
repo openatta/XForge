@@ -28,7 +28,7 @@ describe('install lifecycle', () => {
     expect(dry.stderr).toBe('');
     expect(dry.json.ok).toBe(true);
     expect(await exists(path.join(root, '.agents'))).toBe(false);
-    expect(await exists(path.join(root, 'xforge', '.state.json'))).toBe(false);
+    expect(await exists(path.join(root, 'xforge', '.install.json'))).toBe(false);
 
     const first = await runCli(root, ['install']);
     expect(first.code).toBe(0);
@@ -41,13 +41,13 @@ describe('install lifecycle', () => {
     expect(await exists(path.join(root, '.claude', 'agents', 'integrator.md'))).toBe(true);
     expect(await exists(path.join(root, '.claude', 'agents', 'reviewer.md'))).toBe(true);
     expect(await exists(path.join(root, '.agents', 'agents', 'worker.md'))).toBe(false);
-    const stateBefore = await readFile(path.join(root, 'xforge', '.state.json'), 'utf8');
+    const stateBefore = await readFile(path.join(root, 'xforge', '.install.json'), 'utf8');
     const lockBefore = await readFile(path.join(root, 'xforge', 'lock.yaml'), 'utf8');
 
     const second = await runCli(root, ['install']);
     expect(second.code).toBe(0);
     expect(second.json.changes.every((item: any) => item.action === 'skip')).toBe(true);
-    expect(await readFile(path.join(root, 'xforge', '.state.json'), 'utf8')).toBe(stateBefore);
+    expect(await readFile(path.join(root, 'xforge', '.install.json'), 'utf8')).toBe(stateBefore);
     expect(await readFile(path.join(root, 'xforge', 'lock.yaml'), 'utf8')).toBe(lockBefore);
   });
 
@@ -59,7 +59,7 @@ describe('install lifecycle', () => {
     expect(result.code).toBe(1);
     expect(result.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_INSTALL_CONFLICT');
     expect(await readFile(path.join(root, ...destination.split('/')), 'utf8')).toBe('human-owned\n');
-    expect(await exists(path.join(root, 'xforge', '.state.json'))).toBe(false);
+    expect(await exists(path.join(root, 'xforge', '.install.json'))).toBe(false);
   });
 
   it('protects human modifications and only prunes digest-matching managed files', async () => {
@@ -124,13 +124,13 @@ describe('install lifecycle', () => {
     // Exactly three summaries for the whole install: codex commands, codex rules, opencode rules.
     expect(gaps.map((item: any) => `${item.details.target}:${item.details.dimension}`).sort())
       .toEqual(['codex:commands', 'codex:rules', 'opencode:rules']);
-    // 12 shipped Skills and 5 shipped Rules today; the ids are cross-checked against the manifest
+    // 11 shipped Skills and 3 shipped Rules today; the ids are cross-checked against the manifest
     // so a scaffold change moves both numbers together instead of quietly shrinking coverage.
-    expect(gap('codex', 'commands').details.count).toBe(12);
+    expect(gap('codex', 'commands').details.count).toBe(11);
     expect(ids(gap('codex', 'commands')).sort()).toEqual([...manifest.scaffold.skills].sort());
-    expect(gap('codex', 'rules').details.count).toBe(5);
+    expect(gap('codex', 'rules').details.count).toBe(3);
     expect(ids(gap('codex', 'rules')).sort()).toEqual([...manifest.scaffold.rules].sort());
-    expect(gap('opencode', 'rules').details.count).toBe(5);
+    expect(gap('opencode', 'rules').details.count).toBe(3);
     expect(ids(gap('opencode', 'rules')).sort()).toEqual([...manifest.scaffold.rules].sort());
 
     // claude, cursor and github-copilot project every dimension; opencode projects commands; no
@@ -186,14 +186,14 @@ describe('partially owned host configuration', () => {
     const root = await fixture();
     await write(root, '.claude/settings.json', `${JSON.stringify(USER_SETTINGS, null, 2)}\n`);
     expect((await runCli(root, ['install', '--target', 'claude'])).code).toBe(0);
-    const stateBefore = await readFile(path.join(root, 'xforge', '.state.json'), 'utf8');
+    const stateBefore = await readFile(path.join(root, 'xforge', '.install.json'), 'utf8');
 
     const second = await runCli(root, ['install', '--target', 'claude']);
     expect(second.code).toBe(0);
     expect(second.json.changes.filter((item: any) => item.path === '.claude/settings.json')).toEqual([
       expect.objectContaining({ action: 'skip' }),
     ]);
-    expect(await readFile(path.join(root, 'xforge', '.state.json'), 'utf8')).toBe(stateBefore);
+    expect(await readFile(path.join(root, 'xforge', '.install.json'), 'utf8')).toBe(stateBefore);
 
     const edited = await json(root, '.claude/settings.json');
     edited.model = 'sonnet';
@@ -207,7 +207,7 @@ describe('partially owned host configuration', () => {
     expect(settings.model).toBe('sonnet');
     expect(settings.permissions.deny).toEqual(['Read(./.env)', 'Read(./secrets/**)']);
     // The record tracks the owned material only, so an unowned edit must not churn it.
-    expect(await readFile(path.join(root, 'xforge', '.state.json'), 'utf8')).toBe(stateBefore);
+    expect(await readFile(path.join(root, 'xforge', '.install.json'), 'utf8')).toBe(stateBefore);
   });
 
   it('still refuses to proceed when a user rewrites material XForge owns', async () => {

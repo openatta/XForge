@@ -7,7 +7,7 @@ description: Produce a governed technical design for a Solid or Major Change, in
 
 - **Enter** with `xforge stage --change <id>`. It returns where the Change stands, the ready Action with its `writes` and `requiredSections`, and under `owes` every Artifact this Stage still owes with its `instruction` and `outline`, the text of that Action's `inputs`, the Constitution, and the diagnostics — in one reply. Do not open those inputs separately; they arrived. Re-run it after each Artifact rather than asking what changed. It also carries what this Stage declares — what it produces, its Gates, its exit conditions, its rework routes — so `xforge/flows/*.yaml` does not need opening: the Flow file is 400 lines and the Action already holds the outline you would go there for.
 - Design explains HOW, decisions, and boundaries. It does not repeat Proposal or become a file-by-file task list or persistent plan.
-- Constitution, Rules, current architecture, and Specs constrain the design; summarize their implications instead of copying them mechanically.
+- Constitution, Rules and Specs constrain the design; summarize their implications instead of copying them mechanically.
 
 # Authority
 
@@ -24,7 +24,6 @@ description: Produce a governed technical design for a Solid or Major Change, in
 
 # Evidence
 
-- Read `xforge/architecture.md` when it exists, and say how this Change stands against each decision it touches — within it, or departing from it with a stated reason. When the design needs a decision *changed*, write the proposal into the Design Artifact you own and stop for a human. Do not write `evidence/conditions/architectureDeltas.yaml` yourself: that entry names a `decidedBy`, and an Agent filling in a human's name records an authorisation nobody gave. Nothing will stop you: no Flow declares this ledger as an exit condition, so no Gate reads it and no transition blocks on it. That is the reason to keep the rule, not a reason to relax it — the entry is the only trace the decision leaves, and a fabricated one is indistinguishable from a real one forever after. A human authorises and invokes `xforge-architect`, which is the only writer of the architecture file and its ledger. When the file does not exist, say so once and proceed: it is a project that has not written its architecture down, not a project in violation.
 - Map each major decision to a Requirement, project constraint, or code fact and state the verifiable result.
 - Report coverage, residual risk, and the next legal Action against Action `doneWhen`.
 - If a project's own Flow does declare an approval at the Design exit (none of the shipped Flows do), run `xforge check --change <id>` and put its `XFORGE_RECONCILE_*` entries to the user before they sign. Each is one stated difference; do not reword it.

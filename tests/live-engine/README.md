@@ -81,7 +81,7 @@ tests/live-engine/scenarios/
   major/        propose -> clarify -> design -> check -> apply -> verify (credential-store:
                 risk high, security + dataMigration impact, a deliberately unresolved
                 material question for Clarify to formally resolve)
-  standalone/   scaffold, architect, kanban, upgrade-scaffold — each its own selectable
+  standalone/   scaffold, kanban, upgrade-scaffold — each its own selectable
                 scenario: one prepared project, one model call, one assertion on what the
                 Skill left on disk; and
                 status, status-blocked, revise (not selectable — they piggyback on an
@@ -113,7 +113,6 @@ once.
 | `solid-contract` | solid-contract | contract-governance | archived, **exactly 0 reworks**, and `xforge/contracts/` records every element the delta declared |
 | `major` | major | adversarial | archived **or** `stopped-at-check` |
 | `standalone-scaffold` | — | authoring | a project-owned Rule written **and** registered in the Manifest |
-| `standalone-architect` | — | authoring | `xforge/architecture.md` written with real sections |
 | `standalone-kanban` | — | read-only | reported without writing any governance state |
 | `standalone-upgrade-scaffold` | — | merge | the project's own test command survived the merge, and no staged directory left behind |
 
@@ -205,6 +204,39 @@ Chasing every one is not required for a passing regression; one clean
 propose→check pass with a correctly-attributed blocker (or a clean
 check-findings pass) is sufficient evidence the governance chain works.
 
+## Two ways to reach a model
+
+The engine spawns `claude`, and there are two ways for that process to
+authenticate. Which one is in force is decided entirely by the repository-root
+`.env`:
+
+| `.env` holds | The engine uses | What it costs |
+| --- | --- | --- |
+| `ANTHROPIC_AUTH_TOKEN` **and** `ANTHROPIC_BASE_URL` | that gateway, with `ANTHROPIC_MODEL` if set | real money at the gateway's rate card |
+| neither | the developer's own credentials | subscription usage |
+
+One without the other is refused rather than half-applied: it reaches nothing,
+and failing at startup is cheaper than failing on the first stage.
+
+On the subscription path `HOME` is still redirected per scenario, so the engine
+copies `~/.claude/.credentials.json` into the scenario's config directory and
+nothing else — sessions, projects, caches and history stay isolated exactly as
+they were. Without that copy the spawned CLI answers `Not logged in`.
+
+**Raise `--suite-budget` on the subscription path.** `total_cost_usd` still
+arrives, so `policy.mjs`'s accounting stays complete and the budget still stops
+a runaway — but the figure is the API-equivalent price of a subscription call,
+and on Opus a trivial call reports around $0.07. The 30 USD default was sized
+against a gateway that charged a tenth of that, so a run left on the default
+will stop mid-suite with `LIVE_SUITE_BUDGET_EXHAUSTED` having done nothing
+wrong.
+
+Every live transcript recorded in this repository before 0.8.4 was produced on
+the gateway path, on one third-party model. Behavioural findings drawn from
+them — which commands an Agent reached for, which files it opened — are
+findings about that model, and are worth re-checking before they are treated as
+findings about the product.
+
 ## Running the matrix
 
 ```bash
@@ -262,14 +294,14 @@ rather than the whole matrix:
 
 | Changed | Run |
 |---|---|
-| A standalone Skill (`architect`, `upgrade-scaffold`, `scaffold`, `kanban`) | that Skill's own `standalone-*` scenario — one run, minutes |
+| A standalone Skill (`upgrade-scaffold`, `scaffold`, `kanban`) | that Skill's own `standalone-*` scenario — one run, minutes |
 | A Skill a Flow Stage names (`design`, `apply`, `check`, `verify`…) | one scenario that walks that Flow |
 | A Flow, Gate, or the control plane | several, chosen for what they touch |
 | Preparing a release | all six, deliberately |
 
-The `Rejected` fix of 2026-08-17 is the worked example: it changed
-`xforge-architect` alone, `standalone-architect` alone validated it in four
-minutes, and both halves of the new rule were observed. The other five scenarios
+The 2026-08 Scaffold-adoption fix is the worked example: it changed
+`xforge-upgrade-scaffold` alone, `standalone-upgrade-scaffold` alone validated it
+in minutes, and both halves of the new rule were observed. The other scenarios
 would have added nothing.
 
 **A named scenario is a runnable one.** `coverage-matrix.yaml` may only name scenarios listed in

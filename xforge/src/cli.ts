@@ -488,7 +488,7 @@ function parseArguments(argv: string[]): ParsedArguments {
      * learn that the thing it wanted was not there at all.
      */
     const skillNamed = parsed.command && !COMMANDS.includes(parsed.command as CommandName)
-      ? ['propose', 'clarify', 'design', 'check', 'apply', 'verify', 'status', 'revise', 'scaffold', 'kanban', 'architect', 'upgrade-scaffold'].includes(parsed.command)
+      ? ['propose', 'clarify', 'design', 'check', 'apply', 'verify', 'status', 'revise', 'scaffold', 'kanban', 'upgrade-scaffold'].includes(parsed.command)
       : false;
     throw new XForgeError(diagnostic(
       parsed.command ? 'XFORGE_COMMAND_UNKNOWN' : 'XFORGE_COMMAND_REQUIRED',

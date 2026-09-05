@@ -72,13 +72,13 @@ describe('assets the payload ships and the project has not selected', () => {
   it('reports them by kind and id', () => {
     const found = unselectedAssets(manifest({ skills: ['kept'] }), new Map([
       [skill('kept'), file('1')],
-      [skill('xforge-architect'), file('1')],
-      ['xforge/scaffold/skills/xforge-architect/SKILL_cn.md', file('1')],
-      [rule('design-within-the-declared-architecture'), file('1')],
+      [skill('xforge-unselected'), file('1')],
+      ['xforge/scaffold/skills/xforge-unselected/SKILL_cn.md', file('1')],
+      [rule('an-unselected-rule'), file('1')],
     ]));
     expect(found).toEqual([
-      { kind: 'skill', id: 'xforge-architect', path: 'xforge/scaffold/skills/xforge-architect' },
-      { kind: 'rule', id: 'design-within-the-declared-architecture', path: rule('design-within-the-declared-architecture') },
+      { kind: 'skill', id: 'xforge-unselected', path: 'xforge/scaffold/skills/xforge-unselected' },
+      { kind: 'rule', id: 'an-unselected-rule', path: rule('an-unselected-rule') },
     ]);
   });
 

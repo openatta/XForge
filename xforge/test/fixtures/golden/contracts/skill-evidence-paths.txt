@@ -14,12 +14,6 @@ evidence/check-findings.yaml  <- xforge-check/SKILL.md
 evidence/check-findings.yaml  <- xforge-check/SKILL_cn.md
 evidence/check-findings.yaml  <- xforge-verify/SKILL.md
 evidence/check-findings.yaml  <- xforge-verify/SKILL_cn.md
-evidence/conditions/architectureDeltas.yaml  <- xforge-apply/SKILL.md
-evidence/conditions/architectureDeltas.yaml  <- xforge-apply/SKILL_cn.md
-evidence/conditions/architectureDeltas.yaml  <- xforge-architect/SKILL.md
-evidence/conditions/architectureDeltas.yaml  <- xforge-architect/SKILL_cn.md
-evidence/conditions/architectureDeltas.yaml  <- xforge-design/SKILL.md
-evidence/conditions/architectureDeltas.yaml  <- xforge-design/SKILL_cn.md
 evidence/conditions/contractDecisions.yaml  <- xforge-check/SKILL.md
 evidence/conditions/contractDecisions.yaml  <- xforge-check/SKILL_cn.md
 evidence/conditions/materialQuestions.yaml  <- xforge-clarify/SKILL.md

@@ -270,7 +270,6 @@ xforge check --text
 | `xforge-propose` / `clarify` / `design` / `check` / `apply` / `verify` | 处理当前活跃阶段 |
 | `xforge-revise` | 修改规划产物并保持它们相互一致 |
 | `xforge-scaffold` | 定制项目自有的 Agent 资产 |
-| `xforge-architect` | 写 `xforge/architecture.md`（跨 Change 的架构决策，上限 50 行 / 6 条） |
 | `xforge-kanban` | 把 `git log` 变成 Markdown 活动看板；**完全在 Change 生命周期之外，随时可跑** |
 | `xforge-upgrade-scaffold` | 合并更新的 Scaffold |
 
@@ -371,7 +370,7 @@ xforge uninstall --target <target> --dry-run
 6. 不要往 `xforge/manifest.yaml` 里加任何东西。一个随发布到达的文件不等于一个运行它的决定。
    把到达但未被选中的列出来，让我选。
 7. 绝不删除任何标记为 `project-only` 的文件；绝不碰 `xforge/changes/`、
-   `xforge/specs/`、审计链、approvals、`constitution.md` 或 `architecture.md`。
+   `xforge/specs/`、审计链、approvals 或 `constitution.md`。
 8. 以 `xforge upgrade-scaffold --complete` 收尾，然后 `xforge install`，然后 `xforge doctor`。
 9. 报告：每个变更文件你站了哪一边、为什么；第 8 步的采纳计数逐字引用、不加评价；
    以及还有什么在等我决定。

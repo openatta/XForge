@@ -59,7 +59,7 @@ exit: 0
       },
       "language": "en",
       "lockedResources": null,
-      "lockedResourceCount": 28
+      "lockedResourceCount": 25
     },
     "xforge": {
       "declaration": {
@@ -289,7 +289,6 @@ exit: 0
         "xforge-revise",
         "xforge-scaffold",
         "xforge-kanban",
-        "xforge-architect",
         "xforge-upgrade-scaffold"
       ],
       "agents": [
@@ -300,9 +299,7 @@ exit: 0
       "rules": [
         "governance-assets-are-integrator-only",
         "observable-requirements-are-tested",
-        "design-decisions-need-a-human",
-        "prefer-small-explicit-contracts",
-        "design-within-the-declared-architecture"
+        "design-decisions-need-a-human"
       ],
       "policies": [
         "protected-files",
@@ -615,30 +612,6 @@ exit: 0
             "enforceableRefs": [
               "unit-tests"
             ]
-          },
-          {
-            "id": "prefer-small-explicit-contracts",
-            "severity": "should",
-            "instruction": "Prefer small, testable modules with explicit contracts over broad shared helpers. Judgement guidance only; XForge does not claim to enforce it.",
-            "coverage": [
-              "instructed"
-            ],
-            "gateRefs": [],
-            "policyRefs": [],
-            "approvalRefs": [],
-            "enforceableRefs": []
-          },
-          {
-            "id": "design-within-the-declared-architecture",
-            "severity": "should",
-            "instruction": "When xforge/architecture.md exists, read it before designing or implementing, and state in the Stage's Artifact how this Change stands against each decision it touches: within it, deliberately departing from it (say why), or proposing to change it. A departure that is written down is a fact somebody can act on; the same departure recorded in a build-file comment is one nobody will find. Proposing a change is a legitimate third answer, not a failure — an architecture that can only be complied with is one every Change will quietly route around. When the file does not exist, proceed normally and say so once: it is a project that has not written its architecture down, not a project in violation. Judgement guidance only; XForge does not claim to enforce it.",
-            "coverage": [
-              "instructed"
-            ],
-            "gateRefs": [],
-            "policyRefs": [],
-            "approvalRefs": [],
-            "enforceableRefs": []
           }
         ],
         "policies": [

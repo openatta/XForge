@@ -17,7 +17,7 @@ description: Merge a staged newer XForge Scaffold into this project's own, prese
 # Authority
 
 - Write `xforge/scaffold/**` and `xforge/scripts/**`, and `xforge/manifest.yaml` only to record selections a person explicitly approved. **You cannot write `xforge/flows/**` at all** — the `protected-files` PermissionPolicy denies it, so the deny is a refused tool call rather than a rule you could decide to break.
-- Do not touch `xforge/changes/**`, `xforge/specs/**`, the audit chain, approvals, `xforge/constitution.md`, or `xforge/architecture.md`. The Scaffold can be regenerated; the governance record cannot, and an audit chain that could be rebuilt would not be worth keeping.
+- Do not touch `xforge/changes/**`, `xforge/specs/**`, the audit chain, approvals, or `xforge/constitution.md`. The Scaffold can be regenerated; the governance record cannot, and an audit chain that could be rebuilt would not be worth keeping.
 - Never delete a `project-only` file. Nothing distinguishes an asset upstream dropped from one this project wrote, so deleting on that reading destroys somebody's work on the strength of a guess.
 
 # Execution
@@ -42,5 +42,5 @@ description: Merge a staged newer XForge Scaffold into this project's own, prese
 # Judgment calls
 
 - A file that differs only in wording still deserves the question. Upstream rewrites a Skill's prose because the old wording misled an Agent, so "it means the same thing" is exactly the claim the rewrite disputes.
-- Selection is a separate decision from content, and it is the one that changes behaviour. Copying `xforge-architect` in changes nothing; adding it to `scaffold.skills` changes what every Agent on the project is told to do. Bring the file, report the choice.
+- Selection is a separate decision from content, and it is the one that changes behaviour. Copying `xforge-kanban` in changes nothing; adding it to `scaffold.skills` changes what every Agent on the project is told to do. Bring the file, report the choice.
 - A merge with no conflicts is a normal outcome, not a suspicious one. Most releases change files no project has touched, and inventing a difficulty to look thorough wastes the reader's attention on the one that matters.

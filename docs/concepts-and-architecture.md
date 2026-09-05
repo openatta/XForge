@@ -62,7 +62,7 @@ XForge 在你的仓库里其实只有两样东西。分清它们能解释掉后�
                     ▼
   xforge/                                     ← 规范源，项目所有，进 Git
   ├── manifest.yaml · lock.yaml
-  ├── constitution.md · XFORGE.md · architecture.md(可选)
+  ├── constitution.md · XFORGE.md
   ├── specs/ · changes/ · flows/
   └── scaffold/  skills · agents · rules · policies · hooks · gates · mcp-servers
                     │
@@ -330,8 +330,11 @@ Gate 重跑后**重新 plan**，再执行原子事务。任何中间错误都保
 而控制面没有任何一处会发现——跨 Change 的一致性从设计上就不在判定范围内。基线把「上次约定的是什么」
 变成一份持久记录，`xforge contract status` 则把「在途的几个 Change 各自打算怎么改它」摆到一起。
 
-架构决策没有这两条路，所以才有 `xforge/architecture.md` 这个独立的持久记录
-（上限 50 行、6 条决策，唯一写者是 `xforge-architect`）。
+架构决策曾经也有过第三条路——一份 `xforge/architecture.md` 加一条 `architectureDeltas` 台账。
+它在 0.8.4 被删掉了，因为没有任何 Flow 把那份台账声明为 exit condition：没有 Gate 读它，
+没有转移会因它被阻，一次审计去问「哪段代码在抓」，答案是没有。留下的是能执行的那一半——
+`module-boundaries` Gate 比对 `project.modules[].dependsOn` 声明的方向与代码实际的 import，
+现在归在接口治理下。
 
 ---
 
@@ -349,10 +352,10 @@ Gate 重跑后**重新 plan**，再执行原子事务。任何中间错误都保
 | **Evidence** | 要报告什么、对照哪个 `doneWhen` / `requiredEvidence` |
 | **Stop and rework** | 什么时候必须停下、由哪个 Skill 负责修 |
 
-内置 12 个，分三类：
+内置 11 个，分三类：
 
 - **生命周期**：`xforge-propose` / `clarify` / `design` / `check` / `apply` / `verify`
-- **治理工具**：`xforge-revise`、`xforge-scaffold`、`xforge-architect`、`xforge-upgrade-scaffold`
+- **治理工具**：`xforge-revise`、`xforge-scaffold`、`xforge-upgrade-scaffold`
 - **只读报告**：`xforge-status`、`xforge-kanban`（不读也不需要任何 Change，随时可跑）
 
 > 调查代码、Specs 与选项**不需要专门的 Skill**——阅读与检索是每个被投影目标的原生能力。

@@ -38,7 +38,7 @@ const BOOKKEEPING = [
      the action succeeds, so a plan that listed the audit append would be describing itself. */
   'xforge/.audit/',
   /* Installation ownership, rewritten by the writer rather than planned by the planner. */
-  'xforge/.state.json',
+  'xforge/.install.json',
 ];
 
 /**

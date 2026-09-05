@@ -57,8 +57,8 @@ describe('diagnostic catalogue', () => {
      * key: `indirectCodes` reads the literal, so a code behind a `const` is invisible here.
      */
     const indirect = sites.filter((site) => site.severity === 'indirect');
-    expect(indirect.length).toBe(55);
-    expect(new Set(indirect.map((site) => site.code)).size).toBe(45);
+    expect(indirect.length).toBe(54);
+    expect(new Set(indirect.map((site) => site.code)).size).toBe(44);
   });
 
   it('splits arguments at top-level commas only', () => {

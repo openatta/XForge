@@ -33,11 +33,11 @@ const same = (left: Map<string, string>, right: Map<string, string>) =>
  */
 async function agedProject(): Promise<string> {
   const root = await fixture();
-  await rm(scaffold(root, 'skills', 'xforge-architect'), { recursive: true, force: true });
+  await rm(scaffold(root, 'skills', 'xforge-upgrade-scaffold'), { recursive: true, force: true });
   const gate = scaffold(root, 'gates', 'unit-tests.yaml');
   await writeFile(gate, `${await readFile(gate, 'utf8')}\n# This project's real test command.\n`, 'utf8');
   await updateYaml(root, 'xforge/manifest.yaml', (manifest: any) => {
-    manifest.scaffold.skills = manifest.scaffold.skills.filter((id: string) => id !== 'xforge-architect');
+    manifest.scaffold.skills = manifest.scaffold.skills.filter((id: string) => id !== 'xforge-upgrade-scaffold');
   });
   return root;
 }
@@ -137,7 +137,7 @@ describe('staging an upgrade', () => {
     expect(plan.counts.changed).toBeGreaterThan(0);
     expect(plan.counts.added).toBeGreaterThan(0);
     expect(plan.entries.find((entry: any) => entry.path.endsWith('gates/unit-tests.yaml')).disposition).toBe('changed');
-    expect(plan.unselected.some((asset: any) => asset.id === 'xforge-architect')).toBe(true);
+    expect(plan.unselected.some((asset: any) => asset.id === 'xforge-upgrade-scaffold')).toBe(true);
   });
 
   it('keeps its working state in one dotdir and announces it in a visible file', async () => {
@@ -203,9 +203,9 @@ describe('completing an upgrade', () => {
     const root = await agedProject();
     const staged = (await runCli(root, ['upgrade-scaffold'])).json.data.staged;
     /* A merge that adopts the new Skill and keeps the project's own Gate — the intended outcome. */
-    const incoming = await tree(root, `${staged}/skills/xforge-architect`);
-    await mkdir(scaffold(root, 'skills', 'xforge-architect'), { recursive: true });
-    for (const [name, content] of incoming) await writeFile(scaffold(root, 'skills', 'xforge-architect', name), content, 'utf8');
+    const incoming = await tree(root, `${staged}/skills/xforge-upgrade-scaffold`);
+    await mkdir(scaffold(root, 'skills', 'xforge-upgrade-scaffold'), { recursive: true });
+    for (const [name, content] of incoming) await writeFile(scaffold(root, 'skills', 'xforge-upgrade-scaffold', name), content, 'utf8');
 
     const done = await runCli(root, ['upgrade-scaffold', '--complete']);
     expect(done.code).toBe(0);
@@ -229,8 +229,8 @@ describe('rolling back', () => {
     const root = await agedProject();
     const before = await tree(root, 'xforge/scaffold');
     await runCli(root, ['upgrade-scaffold']);
-    await mkdir(scaffold(root, 'skills', 'xforge-architect'), { recursive: true });
-    await writeFile(scaffold(root, 'skills', 'xforge-architect', 'SKILL.md'), 'adopted', 'utf8');
+    await mkdir(scaffold(root, 'skills', 'xforge-upgrade-scaffold'), { recursive: true });
+    await writeFile(scaffold(root, 'skills', 'xforge-upgrade-scaffold', 'SKILL.md'), 'adopted', 'utf8');
     await runCli(root, ['upgrade-scaffold', '--complete']);
 
     const back = await runCli(root, ['upgrade-scaffold', '--rollback']);
@@ -271,8 +271,8 @@ describe('rolling back', () => {
     /* What a merge does with a `added` Flow: copies it in. The Manifest is deliberately not told,
        which is exactly why nothing else would ever notice the file again. */
     await writeFile(path.join(root, 'xforge', 'flows', 'adopted.yaml'), 'apiVersion: xforge.dev/v1alpha2\n', 'utf8');
-    await mkdir(scaffold(root, 'skills', 'xforge-architect'), { recursive: true });
-    await writeFile(scaffold(root, 'skills', 'xforge-architect', 'SKILL.md'), 'adopted', 'utf8');
+    await mkdir(scaffold(root, 'skills', 'xforge-upgrade-scaffold'), { recursive: true });
+    await writeFile(scaffold(root, 'skills', 'xforge-upgrade-scaffold', 'SKILL.md'), 'adopted', 'utf8');
     await runCli(root, ['upgrade-scaffold', '--complete']);
 
     expect((await runCli(root, ['upgrade-scaffold', '--rollback'])).code).toBe(0);

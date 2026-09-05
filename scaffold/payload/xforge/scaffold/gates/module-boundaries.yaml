@@ -6,11 +6,17 @@
 # it checks its own contracts, and it refuses until the project has.
 #
 # Reads project.modules[].dependsOn and refuses an import that runs against it. A contract says what
-# a module may assume of another; this says which modules may assume anything at all -- which makes
-# this an architecture check that arrived with the contract work, not a contract check. It is listed
-# under `design-within-the-declared-architecture`'s gateRefs for that reason, and can be selected on
-# its own: a project wanting dependency directions enforced does not have to adopt a contract
-# baseline to get them.
+# a module may assume of another; this says which modules may assume anything at all. Both questions
+# are about the same thing -- what crosses a module boundary -- which is why this Gate is named in
+# `interfaces-are-contract-governed`'s gateRefs.
+#
+# It was described here as an architecture check sitting under a separate architecture Rule. That
+# Rule is gone: it had `gateRefs: []`, nothing evaluated the ledger it named, and an audit that asked
+# which code did the catching found none, so what it governed was a sentence rather than a mechanism.
+# This Gate is the part of it that could ever execute, and it belongs with the interface work.
+#
+# Still selectable on its own: a project wanting dependency directions enforced does not have to
+# adopt a contract baseline to get them.
 #
 # `dependsOn` did not exist until recently. This comment named it from the day the Gate shipped
 # while the Manifest schema was additionalProperties: false over {id, path, kind}, so a project

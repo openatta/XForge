@@ -299,8 +299,6 @@ unenforceable 它引用了机制，但在当前 Flow 下那个机制不存在
 | `governance-assets-are-integrator-only` | must | policyRefs: `protected-files`, `protected-manifest` | 与两条策略的 `match.paths` 保持 1:1 对齐 |
 | `observable-requirements-are-tested` | must | gateRefs: `unit-tests` | 只有散文证据的需求不算已验证 |
 | `design-decisions-need-a-human` | must | approvalRefs: `planning-solid`, `implementation-major` | 两个都列，才能在 solid 与 major 下都可强制 |
-| `prefer-small-explicit-contracts` | should | 无 | 明说「judgement guidance only」 |
-| `design-within-the-declared-architecture` | should | 无 | 同上；文件不存在时说明一次并继续 |
 
 `design-decisions-need-a-human` 值得单看：它的 `approvalRefs` **同时列了两条策略**，
 因为这两条分别只存在于 solid 和 major。列一条就会在另一个 Flow 下变成 `unenforceable`。

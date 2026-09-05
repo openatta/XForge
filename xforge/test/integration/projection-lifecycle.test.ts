@@ -8,7 +8,7 @@ async function exists(filePath: string): Promise<boolean> {
 }
 
 async function ownership(root: string): Promise<any> {
-  return JSON.parse(await readFile(path.join(root, 'xforge', '.state.json'), 'utf8'));
+  return JSON.parse(await readFile(path.join(root, 'xforge', '.install.json'), 'utf8'));
 }
 
 describe('projection lifecycle v2', () => {
@@ -37,7 +37,7 @@ describe('projection lifecycle v2', () => {
     const sourcePath = 'xforge/scaffold/skills/xforge-kanban/SKILL.md';
     const targetPath = '.agents/skills/xforge-kanban/SKILL.md';
     const source = await readFile(path.join(root, ...sourcePath.split('/')), 'utf8');
-    const stateBefore = await readFile(path.join(root, 'xforge', '.state.json'), 'utf8');
+    const stateBefore = await readFile(path.join(root, 'xforge', '.install.json'), 'utf8');
     const lockBefore = await readFile(path.join(root, 'xforge', 'lock.yaml'), 'utf8');
     await write(root, sourcePath, `${source}\n<!-- project customization -->\n`);
 
@@ -46,7 +46,7 @@ describe('projection lifecycle v2', () => {
     expect(dry.json.data.changedSources).toBeGreaterThan(0);
     expect(dry.json.changes).toContainEqual(expect.objectContaining({ action: 'modify', path: targetPath }));
     expect(await readFile(path.join(root, ...targetPath.split('/')), 'utf8')).toBe(source);
-    expect(await readFile(path.join(root, 'xforge', '.state.json'), 'utf8')).toBe(stateBefore);
+    expect(await readFile(path.join(root, 'xforge', '.install.json'), 'utf8')).toBe(stateBefore);
     expect(await readFile(path.join(root, 'xforge', 'lock.yaml'), 'utf8')).toBe(lockBefore);
 
     const synced = await runCli(root, ['sync', '--target', 'codex']);
@@ -89,7 +89,7 @@ describe('projection lifecycle v2', () => {
     const uninstall = await runCli(syncRoot, ['uninstall', '--target', 'codex']);
     expect(uninstall.code).toBe(1);
     expect(uninstall.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_UNINSTALL_CONFLICT');
-    expect(await exists(path.join(syncRoot, 'xforge', '.state.json'))).toBe(true);
+    expect(await exists(path.join(syncRoot, 'xforge', '.install.json'))).toBe(true);
   });
 
   it('requires full update for Target identity changes and installs newly enabled targets', async () => {
@@ -124,7 +124,7 @@ describe('projection lifecycle v2', () => {
       digest: value.desiredDigest,
       lastInstalledDigest: value.lastInstalledDigest,
     }]));
-    await write(root, 'xforge/.state.json', `${JSON.stringify({ version: 1, generatedAt: current.generatedAt, files }, null, 2)}\n`);
+    await write(root, 'xforge/.install.json', `${JSON.stringify({ version: 1, generatedAt: current.generatedAt, files }, null, 2)}\n`);
     await updateYaml(root, 'xforge/lock.yaml', (lock) => {
       lock.xforge.version = '0.2.0';
       lock.xforge.integrity = `sha256:${'0'.repeat(64)}`;
@@ -201,7 +201,7 @@ describe('projection lifecycle v2', () => {
 
     expect((await runCli(root, ['uninstall'])).code).toBe(0);
     expect(await exists(claudePath)).toBe(false);
-    expect(await exists(path.join(root, 'xforge', '.state.json'))).toBe(false);
+    expect(await exists(path.join(root, 'xforge', '.install.json'))).toBe(false);
     expect(await exists(path.join(root, 'xforge', 'manifest.yaml'))).toBe(true);
     expect(await exists(path.join(root, 'xforge', 'lock.yaml'))).toBe(true);
   });
@@ -213,7 +213,7 @@ describe('projection lifecycle v2', () => {
     const result = await runCli(root, ['uninstall', '--target', 'codex']);
     expect(result.code).toBe(0);
     expect(await exists(path.join(root, '.agents'))).toBe(false);
-    expect(await exists(path.join(root, 'xforge', '.state.json'))).toBe(false);
+    expect(await exists(path.join(root, 'xforge', '.install.json'))).toBe(false);
   });
 
   it('uses an explicit exact project root and never falls back to its parent', async () => {

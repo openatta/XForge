@@ -246,22 +246,6 @@ const SCENARIOS = {
       ];
     },
   },
-  'standalone-architect': {
-    standalone: true,
-    seed: 'standalone',
-    prompt: 'standalone/architect.md',
-    intent: 'authoring',
-    /* The Skill's whole point is that a project with no architecture file is not in violation: it
-       writes one by questioning, and says the absence blocked nothing. */
-    assert: async (projectRoot) => {
-      const architecturePath = path.join(projectRoot, 'xforge', 'architecture.md');
-      const written = existsSync(architecturePath) ? await readFile(architecturePath, 'utf8') : '';
-      return [
-        { name: 'architecture-written', ok: written.trim().length > 0, detail: 'xforge/architecture.md' },
-        { name: 'has-sections', ok: /^##\s/m.test(written), detail: 'at least one ## section' },
-      ];
-    },
-  },
   'standalone-kanban': {
     standalone: true,
     seed: 'standalone',
@@ -432,6 +416,26 @@ const OPTION_DEFAULTS = { 'cli-source': 'npm', 'suite-budget': '30', budget: '3'
  * `--timeout-seconds` and is never second-guessed (see `explicit` above). This only replaces a
  * default that was calibrated against a provider this run may not be using.
  */
+/**
+ * One trivial `claude -p` round trip, timed, for the subscription path.
+ *
+ * `spawnSync` rather than the fetch above, because the thing being measured is the same executable
+ * the stages spawn — including its own startup, which the HTTP probe never saw and which is a real
+ * part of what a turn costs. It runs in the scratch directory rather than the repository, so the
+ * probe does not load this project's CLAUDE.md and time it as if it were provider latency.
+ */
+async function probeCliLatency() {
+  const started = Date.now();
+  const result = spawnSync('claude', ['-p', '--output-format', 'json', 'ok'], {
+    cwd: path.join(repositoryRoot, 'tests', '.tmp'),
+    encoding: 'utf8',
+    timeout: PROBE_TIMEOUT_MS,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  if (result.status !== 0) return null;
+  return Date.now() - started;
+}
+
 async function probeProviderLatency() {
   try {
     const source = await readFile(path.join(repositoryRoot, '.env'), 'utf8');
@@ -445,7 +449,16 @@ async function probeProviderLatency() {
       if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) value = value.slice(1, -1);
       config[match[1]] = value;
     }
-    if (!config.ANTHROPIC_AUTH_TOKEN || !config.ANTHROPIC_BASE_URL) return null;
+    /*
+     * No gateway means the engine authenticates as the developer does, and the same question still
+     * needs an answer: how slow is one trivial round trip, so the per-stage timeout can be sized
+     * from it. Returning null here would leave every subscription run on the unscaled 900s default —
+     * the fixed ceiling that killed `major`'s check stage twice, having produced nothing.
+     *
+     * The shape of the probe changes because the reachable surface does. There is no base URL to
+     * POST to, so it times the CLI itself, which is what the stages run anyway.
+     */
+    if (!config.ANTHROPIC_AUTH_TOKEN || !config.ANTHROPIC_BASE_URL) return await probeCliLatency();
     const started = Date.now();
     const response = await fetch(`${config.ANTHROPIC_BASE_URL.replace(/\/$/, '')}/v1/messages`, {
       method: 'POST',

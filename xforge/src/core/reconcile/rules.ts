@@ -223,10 +223,11 @@ function decidedOn(value: string): string {
  * "Resolves" has to mean here exactly what it means in `constitution-check.ts`'s `resolveReference`,
  * which is the Gate that decides whether the same citation is acceptable. It did not: that function
  * tries the reference Change-relative and then project-relative, while this one consulted a set built
- * only from the Change's own Artifacts. A principle citing `xforge/architecture.md` — a real file,
- * and the most natural thing an architecture principle can cite — passed the Gate and was reported
- * here as neither a Requirement nor a file that exists. The observed cost was not confusion but a
- * worse Constitution: the citation was rewritten to a Change-local path to silence a false alarm.
+ * only from the Change's own Artifacts. A principle citing a project file outside the Change —
+ * `xforge/constitution.md` itself is the commonest, and the most natural thing a governance
+ * principle can cite — passed the Gate and was reported here as neither a Requirement nor a file
+ * that exists. The observed cost was not confusion but a worse Constitution: the citation was
+ * rewritten to a Change-local path to silence a false alarm.
  *
  * `resolvesOnDisk` is supplied by the caller, which has already awaited the same two candidate
  * spellings the Gate tries. Keep the two in step; a divergence here reads to everyone as a defect in

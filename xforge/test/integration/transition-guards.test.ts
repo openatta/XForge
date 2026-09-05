@@ -370,7 +370,7 @@ describe('recovering from ready-to-archive', () => {
     await advanceSolidToReadyToArchive(root);
 
     /* A governed resource changes; every Artifact is left exactly as approved. */
-    await updateYaml(root, 'xforge/scaffold/rules/prefer-small-explicit-contracts.yaml', (rule) => {
+    await updateYaml(root, 'xforge/scaffold/rules/observable-requirements-are-tested.yaml', (rule) => {
       rule.spec.instruction = `${rule.spec.instruction} An extra sentence that changes the policy snapshot.`;
     });
     expect((await runCli(root, ['install'])).code).toBe(0);
@@ -404,7 +404,7 @@ describe('recovering from ready-to-archive', () => {
     await createCompleteSolidChange(root);
     await advanceSolidToReadyToArchive(root);
 
-    await updateYaml(root, 'xforge/scaffold/rules/prefer-small-explicit-contracts.yaml', (rule) => {
+    await updateYaml(root, 'xforge/scaffold/rules/observable-requirements-are-tested.yaml', (rule) => {
       rule.spec.instruction = `${rule.spec.instruction} An extra sentence that changes the policy snapshot.`;
     });
     expect((await runCli(root, ['install'])).code).toBe(0);

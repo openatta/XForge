@@ -35,12 +35,14 @@ describe('the readable form of a result', () => {
     expect(text.stdout).not.toContain('"installation"');
     expect(json.stdout.trim().startsWith('{')).toBe(true);
     expect(Object.keys(json.json.data)).toContain('installation');
-    /* Two fifths, not a third, and not the quarter it started at. Each cut to the envelope closes
-       this gap without the readable form changing at all: the JSON no longer carries the Flow
-       definitions, the capability matrix, the lockfile digests, the Constitution's text, the
-       receipt chain, or the `context` block that repeated `change` and `specs`. The property this
-       is reaching for is that the summary is a fraction of the envelope, not which fraction. */
-    expect(text.stdout.length).toBeLessThan(json.stdout.length / 2.5);
+    /* Five twelfths, having been two fifths, a third, and the quarter it started at. Each cut to
+       the envelope closes this gap without the readable form changing at all: the JSON no longer
+       carries the Flow definitions, the capability matrix, the lockfile digests, the Constitution's
+       text, the receipt chain, the `context` block that repeated `change` and `specs`, or — since
+       0.8.4 — the two architecture Rules that were removed with the layer they governed. The
+       property this is reaching for is that the summary is a fraction of the envelope, not which
+       fraction, so the divisor follows the envelope down rather than the assertion being dropped. */
+    expect(text.stdout.length).toBeLessThan(json.stdout.length / 2.4);
   });
 
   it('names each active Change by id, Flow and Stage rather than joining objects', async () => {

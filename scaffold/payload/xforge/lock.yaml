@@ -62,11 +62,6 @@ resources:
     kind: rule
     license: project
     version: 3
-  - digest: d9bde26bcc8b25d0402318eda2172b708804a7f3c04259dcf5eeac48e7b2424f
-    id: design-within-the-declared-architecture
-    kind: rule
-    license: project
-    version: 1
   - digest: 86c3a46185dc02dc3729a5f582f98ede3d175b3913de7ed9d445b7db63ff68e0
     id: governance-assets-are-integrator-only
     kind: rule
@@ -77,23 +72,13 @@ resources:
     kind: rule
     license: project
     version: 1
-  - digest: 538a4c60fdfea1325c283370a7aaeef42c9e6cca4246d4adbb16d1fec056db42
-    id: prefer-small-explicit-contracts
-    kind: rule
-    license: project
-    version: 1
   - digest: ec29d19d015fe53c97000a6a2a673bc1fae0cd0236a7b2c200062cc8efb419e4
     id: project-context
     kind: script
     license: project
     version: 1
-  - digest: 79b34e341de77772bf5341942c71f99092732c44c695c3ecb09144eca0263678
+  - digest: 38b29f8a18fe791f354a212e462faf72818f465c2f0c8948320d812bc565bce6
     id: xforge-apply
-    kind: skill
-    license: project
-    version: "1"
-  - digest: f906af889b33aab776d861fa07d8428cc66bb9b5a42dcf7b270ac32ea5b1d47b
-    id: xforge-architect
     kind: skill
     license: project
     version: "1"
@@ -107,7 +92,7 @@ resources:
     kind: skill
     license: project
     version: "1"
-  - digest: eef86b9bbf3018eda16de9e6b799e474e56ca91c03276d6623c34e92270916cb
+  - digest: 4b142109b777a8f414aad88664920a900a412c9bad2f5f5fce79f1d57ab56636
     id: xforge-design
     kind: skill
     license: project
@@ -137,7 +122,7 @@ resources:
     kind: skill
     license: project
     version: "1"
-  - digest: 9fa845129699f7ea4b459f2567221267acb2f42641e5fa234b2481812dfbe0ae
+  - digest: 8494c39238461735ab0c80844ca9214738d6d6fbfd02e3b641f26d51c82f10e6
     id: xforge-upgrade-scaffold
     kind: skill
     license: project
@@ -161,7 +146,7 @@ targets:
   - opencode
   - github-copilot
 xforge:
-  integrity: sha256:8f37d57953d9142182abf0c65fa4b78fdb711e847e3e874bb4740ef0d17f5170
+  integrity: sha256:18aaaec27392819ca5cb2f777e9779d19831fa2b5ea8bace504e81de6e6c2a6c
   package: "@xforge/cli"
   protocol: "2"
   source: npm

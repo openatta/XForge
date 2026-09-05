@@ -227,7 +227,7 @@ if (lockErrors.length > 0) {
     `The fixture's lockfile still disagrees with the CLI the probe provisioned (${cli.version}).`,
     ...lockErrors.map((item) => `  ${item.code}: ${item.message}`),
     '',
-    '  `xforge update` rewrites the lock, and needs xforge/.state.json to run. A fixture frozen with',
+    '  `xforge update` rewrites the lock, and needs xforge/.install.json to run. A fixture frozen with',
     '  `snapshot.mjs --at <ref>` gets that file only if the snapshot copied it -- git cannot, because',
     '  it is ignored by design. Re-freeze the fixture with a current snapshot.mjs.',
     '',

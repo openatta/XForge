@@ -15,7 +15,7 @@ exit: 0
       "unusedFlows": 2,
       "unusableApprovals": 0,
       "conformance": 0,
-      "suggestions": 8
+      "suggestions": 5
     },
     "danglingReferences": [],
     "deadCode": [],
@@ -39,14 +39,6 @@ exit: 0
     "unusableApprovals": [],
     "conformance": [],
     "suggestions": [
-      {
-        "scope": "skills",
-        "code": "XFORGE_DOCTOR_ARCHITECTURE_ABSENT",
-        "id": "xforge-architect",
-        "message": "This project has no xforge/architecture.md, so each Change designs without a durable record of the decisions the last one made. Run the xforge-architect Skill to write one — from the existing code, by answering a few questions, or from a description. It is a suggestion, not a requirement: nothing is blocked without it.",
-        "path": "xforge/architecture.md",
-        "severity": "info"
-      },
       {
         "scope": "policies",
         "code": "XFORGE_DOCTOR_POLICY_EXEMPTION_UNENFORCEABLE",
@@ -78,22 +70,6 @@ exit: 0
         "severity": "info"
       },
       {
-        "scope": "rules",
-        "code": "XFORGE_DOCTOR_RULE_SCOPE_EMPTY",
-        "id": "prefer-small-explicit-contracts",
-        "message": "Rule prefer-small-explicit-contracts is scoped to src/**, which matches no file in this repository. XForge compares that list with the paths a Change declares in change.yaml, and the installed Adapters hand it to the host as a file matcher; on this layout both come up empty, so the Rule is registered, enforceable, and reaching nothing. Rewrite scope.paths to the paths this repository actually uses, or drop it to have the Rule apply everywhere.",
-        "path": "xforge/scaffold/rules/prefer-small-explicit-contracts.yaml",
-        "severity": "info"
-      },
-      {
-        "scope": "rules",
-        "code": "XFORGE_DOCTOR_RULE_SCOPE_EMPTY",
-        "id": "design-within-the-declared-architecture",
-        "message": "Rule design-within-the-declared-architecture is scoped to src/**, which matches no file in this repository. XForge compares that list with the paths a Change declares in change.yaml, and the installed Adapters hand it to the host as a file matcher; on this layout both come up empty, so the Rule is registered, enforceable, and reaching nothing. Rewrite scope.paths to the paths this repository actually uses, or drop it to have the Rule apply everywhere.",
-        "path": "xforge/scaffold/rules/design-within-the-declared-architecture.yaml",
-        "severity": "info"
-      },
-      {
         "scope": "approvals",
         "code": "XFORGE_DOCTOR_APPROVALS_INTERACTIVE_ONLY",
         "id": "local",
@@ -117,12 +93,6 @@ exit: 0
       "path": "xforge/flows/quick.yaml"
     },
     {
-      "code": "XFORGE_DOCTOR_ARCHITECTURE_ABSENT",
-      "severity": "info",
-      "message": "This project has no xforge/architecture.md, so each Change designs without a durable record of the decisions the last one made. Run the xforge-architect Skill to write one — from the existing code, by answering a few questions, or from a description. It is a suggestion, not a requirement: nothing is blocked without it.",
-      "path": "xforge/architecture.md"
-    },
-    {
       "code": "XFORGE_DOCTOR_POLICY_EXEMPTION_UNENFORCEABLE",
       "severity": "info",
       "message": "PermissionPolicy protected-files exempts integrator, and none of this project's targets (codex, claude, cursor, opencode, github-copilot) can express an actor exemption in its own permission layer. The exemption therefore lives only in the XForge runtime Hook bridge, which applies it only when the host reports the calling sub-agent's identity — so wherever it does not, this policy is an unconditional deny for every actor including the exempted one. Confirm the exempted actors are registered sub-agents of a target that reports them, or write the policy so it does not rely on an exemption.",
@@ -144,18 +114,6 @@ exit: 0
       "severity": "info",
       "message": "Rule observable-requirements-are-tested is scoped to src/**, tests/**, which matches no file in this repository. XForge compares that list with the paths a Change declares in change.yaml, and the installed Adapters hand it to the host as a file matcher; on this layout both come up empty, so the Rule is registered, enforceable, and reaching nothing. Rewrite scope.paths to the paths this repository actually uses, or drop it to have the Rule apply everywhere.",
       "path": "xforge/scaffold/rules/observable-requirements-are-tested.yaml"
-    },
-    {
-      "code": "XFORGE_DOCTOR_RULE_SCOPE_EMPTY",
-      "severity": "info",
-      "message": "Rule prefer-small-explicit-contracts is scoped to src/**, which matches no file in this repository. XForge compares that list with the paths a Change declares in change.yaml, and the installed Adapters hand it to the host as a file matcher; on this layout both come up empty, so the Rule is registered, enforceable, and reaching nothing. Rewrite scope.paths to the paths this repository actually uses, or drop it to have the Rule apply everywhere.",
-      "path": "xforge/scaffold/rules/prefer-small-explicit-contracts.yaml"
-    },
-    {
-      "code": "XFORGE_DOCTOR_RULE_SCOPE_EMPTY",
-      "severity": "info",
-      "message": "Rule design-within-the-declared-architecture is scoped to src/**, which matches no file in this repository. XForge compares that list with the paths a Change declares in change.yaml, and the installed Adapters hand it to the host as a file matcher; on this layout both come up empty, so the Rule is registered, enforceable, and reaching nothing. Rewrite scope.paths to the paths this repository actually uses, or drop it to have the Rule apply everywhere.",
-      "path": "xforge/scaffold/rules/design-within-the-declared-architecture.yaml"
     },
     {
       "code": "XFORGE_DOCTOR_APPROVALS_INTERACTIVE_ONLY",

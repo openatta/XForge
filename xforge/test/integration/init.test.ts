@@ -54,7 +54,7 @@ describe('npm-bundled project initialization', () => {
     expect(result.json.data.projection.targets).toEqual(['claude']);
     expect(await exists(path.join(root, 'xforge', 'manifest.yaml'))).toBe(true);
     expect(await exists(path.join(root, '.claude', 'skills', 'xforge-kanban', 'SKILL.md'))).toBe(true);
-    expect(await exists(path.join(root, 'xforge', '.state.json'))).toBe(true);
+    expect(await exists(path.join(root, 'xforge', '.install.json'))).toBe(true);
   });
 
   it('pins an explicit Chinese language and projects only Chinese Agent and Skill entries', async () => {

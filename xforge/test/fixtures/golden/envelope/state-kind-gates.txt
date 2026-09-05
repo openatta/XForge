@@ -59,7 +59,7 @@ exit: 0
       },
       "language": "en",
       "lockedResources": null,
-      "lockedResourceCount": 28
+      "lockedResourceCount": 25
     },
     "xforge": {
       "declaration": {

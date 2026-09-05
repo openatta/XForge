@@ -116,14 +116,13 @@ export const OWNERSHIP_ZONES: readonly OwnershipZone[] = [
      * `scaffold.skills`/`rules`/`gates` to select a resource and no CLI command does it — a deny
      * there refuses the only path to the job. The Constitution is `deny` because it is the document
      * every Gate measures work against, so an Agent that may edit it may edit its own passing
-     * criteria. `architecture.md` and `XFORGE.md` are `open`: `xforge-architect` writes the first and
-     * the second is the projected entry point Agents are expected to keep current.
+     * criteria. `XFORGE.md` is `open`: it is the projected entry point Agents are expected to keep
+     * current.
      */
     id: 'project-owned',
     entries: [
       { path: 'xforge/manifest.yaml', kind: 'file', agentWrite: 'ask' },
       { path: 'xforge/constitution.md', kind: 'file', agentWrite: 'deny' },
-      { path: 'xforge/architecture.md', kind: 'file', agentWrite: 'open' },
       { path: 'xforge/XFORGE.md', kind: 'file', agentWrite: 'open' },
     ],
     inTransaction: 'pin-only',
@@ -139,13 +138,13 @@ export const OWNERSHIP_ZONES: readonly OwnershipZone[] = [
      *
      * `lock.yaml` is `deny` because it records the digest of every projected file: an Agent that can
      * write it can make a drifted projection look reconciled, which is precisely the drift `doctor`
-     * exists to find. `.state.json` is `open` because it is a cache with no authority — nothing
+     * exists to find. `.install.json` is `open` because it is a cache with no authority — nothing
      * trusts it, and it is rebuilt from the record whenever it disagrees.
      */
     id: 'derived',
     entries: [
       { path: 'xforge/lock.yaml', kind: 'file', agentWrite: 'deny' },
-      { path: 'xforge/.state.json', kind: 'file', agentWrite: 'open' },
+      { path: 'xforge/.install.json', kind: 'file', agentWrite: 'open' },
     ],
     inTransaction: 'none',
     regenerable: true,
@@ -283,9 +282,8 @@ export const askPaths: readonly string[] = globsWhere((entry) => entry.agentWrit
  * nothing else. So the list is every path outside `inTransaction: 'full'` — which is wider than
  * `guardedPaths` on purpose, because a denied path is a path an Agent is *stopped* at and several of
  * these are places an Agent is not stopped. `xforge/changes/` is `open`, since the lifecycle Skills
- * belong there; `xforge/architecture.md` is `open`, since `xforge-architect` writes it. Neither is
- * any business of a Scaffold merge, and telling the merging Agent only the denied paths would leave
- * the Change history and the architecture record looking like fair game.
+ * belong there. That is no business of a Scaffold merge, and telling the merging Agent only the
+ * denied paths would leave the Change history looking like fair game.
  *
  * Two exclusions, each because a narrower rule already covers the path and "never" would misstate
  * it:

@@ -17,7 +17,7 @@ description: 把已暂存的新版 XForge 脚手架合并进本项目自己的�
 # 权限
 
 - 可写 `xforge/scaffold/**` 与 `xforge/scripts/**`；`xforge/manifest.yaml` 仅在记录人**明确批准过**的选择时可写。**`xforge/flows/**` 你根本写不了**——`protected-files` PermissionPolicy 会拒绝，所以那是一次被拒的工具调用，不是一条你可以决定要不要违反的规矩。
-- 不得触碰 `xforge/changes/**`、`xforge/specs/**`、审计链、审批、`xforge/constitution.md`、`xforge/architecture.md`。脚手架可以重新生成，治理记录不能——一条能被重建的审计链，本来就不值得保留。
+- 不得触碰 `xforge/changes/**`、`xforge/specs/**`、审计链、审批、`xforge/constitution.md`。脚手架可以重新生成，治理记录不能——一条能被重建的审计链，本来就不值得保留。
 - **绝不删除 `project-only` 文件。** 没有任何依据能区分"上游删掉的资产"和"本项目自己写的资产"，按前一种理解去删，就是凭猜测销毁别人的工作。
 
 # 执行
@@ -42,5 +42,5 @@ description: 把已暂存的新版 XForge 脚手架合并进本项目自己的�
 # 判断要点
 
 - 只是措辞不同的文件，同样值得问一句。上游重写一段 Skill 正文，往往正是因为旧措辞把 Agent 带偏了——所以"意思一样"恰恰是这次重写要反驳的那个说法。
-- **选择与内容是两个决定，而改变行为的是前者。** 把 `xforge-architect` 拷进来什么也没改变；把它加进 `scaffold.skills`，改变的是项目里每一个 Agent 被告知要做什么。把文件带进来，把选择报上去。
+- **选择与内容是两个决定，而改变行为的是前者。** 把 `xforge-kanban` 拷进来什么也没改变；把它加进 `scaffold.skills`，改变的是项目里每一个 Agent 被告知要做什么。把文件带进来，把选择报上去。
 - 没有冲突的合并是正常结果，不是可疑结果。多数发行版改动的文件是没有项目动过的；为了显得尽责而编造一个难点，只会把读者的注意力从真正要紧的那一个上面挪开。

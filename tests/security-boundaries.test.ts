@@ -19,7 +19,7 @@ describe('black-box security boundaries', () => {
       const result = await runCli(root, ['install']);
       expect(result.code).toBe(1);
       expect(result.json.changes).toEqual([]);
-      expect(await exists(path.join(root, 'xforge', '.state.json'))).toBe(false);
+      expect(await exists(path.join(root, 'xforge', '.install.json'))).toBe(false);
       expect(await exists(path.join(root, '.agents'))).toBe(false);
     }
   });

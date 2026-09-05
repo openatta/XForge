@@ -29,7 +29,6 @@ scaffold:
     - xforge-revise
     - xforge-scaffold
     - xforge-kanban
-    - xforge-architect
     - xforge-upgrade-scaffold
   agents:
     - worker
@@ -39,8 +38,6 @@ scaffold:
     - governance-assets-are-integrator-only
     - observable-requirements-are-tested
     - design-decisions-need-a-human
-    - prefer-small-explicit-contracts
-    - design-within-the-declared-architecture
   policies:
     - protected-files
     - protected-manifest
