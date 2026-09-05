@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readFile, realpath, rename, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { cliBinDirectory } from './xforge-cli.mjs';
@@ -163,7 +163,25 @@ async function seedCredentials() {
   const home = process.env.HOME ?? process.env.USERPROFILE;
   if (!home) return;
   const source = path.join(home, '.claude', '.credentials.json');
-  try { await copyFile(source, path.join(claudeConfigRoot, '.credentials.json')); }
+  const destination = path.join(claudeConfigRoot, '.credentials.json');
+  /*
+   * A link, not a copy, and the difference is a whole run.
+   *
+   * An OAuth refresh token rotates: the first process to use one invalidates it server-side. Four
+   * scenarios running in parallel each held their own snapshot of the same token, so the first
+   * refresh revoked every other copy -- one of them mid-stage, twenty-one turns into a Major design
+   * that had to be re-run. `401 OAuth access token has been revoked` is what the engine reported,
+   * classified `provider_failure`, and it is not a provider failure at all.
+   *
+   * Linking makes every spawned CLI read and refresh the one file, which is what the CLI already
+   * expects when several of its own sessions run at once. Nothing else about the isolation changes:
+   * sessions, projects, caches and history stay in the scenario's own directory. The copy remains
+   * as the fallback for a filesystem that refuses links -- it is what ran before, races and all.
+   */
+  await rm(destination, { force: true }).catch(() => {});
+  try { await symlink(source, destination); return; }
+  catch { /* fall through to the snapshot */ }
+  try { await copyFile(source, destination); }
   catch { /* see above: the CLI's own refusal is the better message. */ }
 }
 await seedCredentials();
