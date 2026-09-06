@@ -12,7 +12,7 @@ import type {
   ExitCondition,
 } from '../types.js';
 import { diagnostic } from './errors.js';
-import { normalizeRule, policyApplies, ruleApplies } from './governance.js';
+import { normalizeRule, policyApplies, resolveRuleEnforcement, ruleApplies } from './governance.js';
 import { sha256, stableStringify } from './hash.js';
 import { safeResolve } from './path-safety.js';
 import type { SelectedResources } from './resource-loader.js';
@@ -312,8 +312,14 @@ export async function resolveControlPlane(
     .map((artifact: { validator?: string }) => artifact.validator)
     .filter((validator): validator is string => Boolean(validator)));
   const rules = [...resources.rules.values()].map((item) => normalizeRule(item.value)).filter((rule) => ruleApplies(rule, config, currentStage)).map((rule) => {
+    const enforcement = resolveRuleEnforcement(rule, {
+      gates: new Set(resources.gates.keys()),
+      policies: new Set(resources.policies.keys()),
+      flowApprovalPolicies: flowPolicyIds,
+      flowValidators,
+    });
     const coverage: GovernanceState['rules'][number]['coverage'] = ['instructed'];
-    if (rule.policyRefs.some((id) => resources.policies.has(id))) coverage.push('guarded');
+    if (enforcement.resolvedPolicies.length > 0) coverage.push('guarded');
     /* In-process and unconditional: unlike a Gate, there is no Stage at which this has not run yet,
        because the validator refuses the document at the moment anything reads it. */
     const resolvedValidators = rule.validatorRefs.filter((id) => flowValidators.has(id));
@@ -323,14 +329,9 @@ export async function resolveControlPlane(
     const approved = rule.approvalRefs.some((id) => approvals.receipts.some((receipt) => receipt.policyId === id && receipt.decision === 'approve'
       && boundToRevision(receipt, { governingRevision: revision.governingRevision!, stateRevision: revision.stateRevision })));
     if (approved) coverage.push('approved');
-    const enforceableRefs = [
-      ...rule.gateRefs.filter((id) => resources.gates.has(id)),
-      ...rule.approvalRefs.filter((id) => flowPolicyIds.has(id)),
-      ...resolvedValidators,
-    ];
-    const claimsNothing = rule.gateRefs.length === 0 && rule.approvalRefs.length === 0 && rule.validatorRefs.length === 0;
-    if (rule.severity === 'must' && claimsNothing) coverage.push('uncovered');
-    else if (rule.severity === 'must' && enforceableRefs.length === 0) coverage.push('unenforceable');
+    const { enforceableRefs } = enforcement;
+    if (rule.severity === 'must' && enforcement.claimsNothing) coverage.push('uncovered');
+    else if (enforcement.unenforceable) coverage.push('unenforceable');
     return { id: rule.id, severity: rule.severity, instruction: rule.instruction, coverage, gateRefs: rule.gateRefs, policyRefs: rule.policyRefs, approvalRefs: rule.approvalRefs, validatorRefs: rule.validatorRefs, enforceableRefs };
   });
   /*
@@ -380,7 +381,7 @@ export async function resolveControlPlane(
     if (!rule.coverage.includes('unenforceable')) continue;
     diagnostics.push(diagnostic(
       'XFORGE_RULE_ENFORCEMENT_UNAVAILABLE',
-      `Rule ${rule.id} is severity must and its enforcement cites ${[...rule.gateRefs, ...rule.approvalRefs].join(', ')}, none of which exists under Flow ${flow.metadata.name}: the Rule is instruction only here. Either declare enforcement this Flow can apply, or word the Rule so it does not promise a mechanism that depends on which Flow a Change happens to run.`,
+      `Rule ${rule.id} is severity must and its enforcement cites ${[...rule.gateRefs, ...rule.policyRefs, ...rule.approvalRefs, ...rule.validatorRefs].join(', ')}, none of which exists under Flow ${flow.metadata.name}: the Rule is instruction only here. Either declare enforcement this Flow can apply, or word the Rule so it does not promise a mechanism that depends on which Flow a Change happens to run.`,
       [...resources.rules.values()].find((item) => item.value.metadata.name === rule.id)?.yamlPath ?? 'xforge/scaffold/rules',
       'warning',
     ));

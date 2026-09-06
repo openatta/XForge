@@ -6,9 +6,9 @@
    6  UPGRADE
    5  ARCHIVE
    5  LOCK
-   5  RULE
    4  RESOURCE
    4  REVIEW
+   4  RULE
    3  CONSTITUTION
    3  DOCTOR
    3  FINDINGS

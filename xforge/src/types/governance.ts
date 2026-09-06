@@ -135,7 +135,11 @@ export interface RuleCoverage {
   approvalRefs: string[];
   /** Artifact validators this Rule claims enforce it, by the ids `flow.artifacts[].validator` uses. */
   validatorRefs: string[];
-  /** The subset of `gateRefs`/`approvalRefs`/`validatorRefs` that names something this Flow and project actually have. */
+  /** The subset of `gateRefs`/`approvalRefs`/`validatorRefs` that names something this Flow and
+   *  project actually have. `policyRefs` is deliberately absent: a selected PermissionPolicy is
+   *  enforcement, and `guarded` reports it, but it is not one of the three revision-bound kinds
+   *  this field has always meant. Whether a guard exists is what suppresses `unenforceable`, not
+   *  membership here — see `resolveRuleEnforcement`. */
   enforceableRefs: string[];
 }
 

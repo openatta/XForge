@@ -14,9 +14,14 @@ import { diagnostic } from './errors.js';
 import { assertResourceId, normalizeRelative, safeResolve } from './path-safety.js';
 import { validateSchema, type SchemaName } from './validator.js';
 import { loadYaml } from './yaml.js';
-import { normalizeRule } from './governance.js';
+import { normalizeRule, resolveRuleEnforcement } from './governance.js';
 import { localizedVariant } from './language.js';
 import { exists } from './files.js';
+
+/* No Flow is in scope when Resources load, so approval policies and validators cannot be resolved
+   here. Passing nothing for them is the honest answer, and the only thing this call site reads —
+   whether the Rule declares any enforcement at all — does not depend on resolution. */
+const EMPTY_INVENTORY = { gates: new Set<string>(), policies: new Set<string>() };
 
 export interface SelectedResources {
   skills: Map<string, string>;
@@ -112,10 +117,14 @@ export async function loadSelectedResources(project: ProjectContext): Promise<Se
       if (normalized.constitutionCompatibility === 'conflict') diagnostics.push(diagnostic('XFORGE_CONSTITUTION_RULE_CONFLICT', `Rule ${id} declares a Constitution conflict.`, loaded.yamlPath));
       /* A policy-guarded Rule is enforced — the PreToolUse bridge refuses the call — so counting
          only Gates and Approvals reported "remains guidance" for a Rule that actively denies. The
-         three coverage kinds are not equivalent in strength, but they are all enforcement; only a
-         Rule backed by none of them is guidance alone. */
-      if (normalized.severity === 'must' && normalized.gateRefs.length === 0 && normalized.approvalRefs.length === 0 && normalized.policyRefs.length === 0) {
-        diagnostics.push(diagnostic('XFORGE_RULE_NOT_ENFORCED', `Must Rule ${id} declares no Gate, PermissionPolicy, or Approval coverage and remains guidance.`, loaded.yamlPath, 'warning'));
+         four coverage kinds are not equivalent in strength, but they are all enforcement; only a
+         Rule backed by none of them is guidance alone.
+
+         Which four they are is `resolveRuleEnforcement`'s to say, not this call site's: the list
+         here was hand-maintained and fell one field behind when validators arrived. Only the
+         declared-nothing answer is read, because there is no Flow in scope to resolve against. */
+      if (normalized.severity === 'must' && resolveRuleEnforcement(normalized, EMPTY_INVENTORY).claimsNothing) {
+        diagnostics.push(diagnostic('XFORGE_RULE_NOT_ENFORCED', `Must Rule ${id} declares no Gate, PermissionPolicy, Approval, or validator coverage and remains guidance.`, loaded.yamlPath, 'warning'));
       }
       for (const gate of normalized.gateRefs) if (!project.manifest.scaffold.gates.includes(gate)) diagnostics.push(diagnostic('XFORGE_RULE_GATE_DISABLED', `Rule ${id} references non-enabled Gate ${gate}.`, loaded.yamlPath));
       rules.set(id, { value: loaded.value, yamlPath: loaded.yamlPath });

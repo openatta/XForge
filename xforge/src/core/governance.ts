@@ -37,6 +37,58 @@ export function normalizeRule(rule: RuleResource): NormalizedRule {
   };
 }
 
+/**
+ * What a Rule's enforcement refs actually resolve to, computed once for every caller that asks.
+ *
+ * There were two of these, and they disagreed about *which fields count as citing a mechanism* —
+ * the loader read `policyRefs` and not `validatorRefs`, `state` read `validatorRefs` and not
+ * `policyRefs`. Each omission produced a report that contradicted itself: a Rule whose only
+ * enforcement is a live PermissionPolicy came back `guarded` and `uncovered` at once, and a Rule
+ * enforced only by an Artifact validator was called "remains guidance" by the loader while `state`
+ * called it `structural`. The second of those was the same mistake made twice — `validatorRefs` was
+ * added here when the contract work landed and never added there.
+ *
+ * How strongly a ref resolves may legitimately differ by caller: a caller with no Flow in scope
+ * cannot know whether an approval policy or a validator exists, and omits those sets to get the
+ * coarser project-level answer. Which fields are counted may not differ, which is why
+ * `claimsNothing` is a pure function of what the Rule declares and lives only here.
+ */
+interface EnforcementInventory {
+  gates: ReadonlySet<string>;
+  policies: ReadonlySet<string>;
+  /** The approval policies this Flow defines. Omit when no Flow is in scope. */
+  flowApprovalPolicies?: ReadonlySet<string>;
+  /** The validators this Flow's Artifacts actually run. Omit when no Flow is in scope. */
+  flowValidators?: ReadonlySet<string>;
+}
+
+interface RuleEnforcement {
+  /** The subset of `gateRefs`/`approvalRefs`/`validatorRefs` that names something the inventory has. */
+  enforceableRefs: string[];
+  /** The subset of `policyRefs` the project selected. Kept apart from `enforceableRefs`, whose
+   *  documented meaning is the three revision-bound kinds; a guard is enforcement but is not one
+   *  of those, and folding it in would change what `state` has always reported. */
+  resolvedPolicies: string[];
+  /** The Rule cites no mechanism of any kind. Declared-only: nothing here is resolved. */
+  claimsNothing: boolean;
+  /** Severity `must`, cites something, and none of it exists here. Never true alongside a guard. */
+  unenforceable: boolean;
+}
+
+export function resolveRuleEnforcement(rule: NormalizedRule, have: EnforcementInventory): RuleEnforcement {
+  const resolvedPolicies = rule.policyRefs.filter((id) => have.policies.has(id));
+  const enforceableRefs = [
+    ...rule.gateRefs.filter((id) => have.gates.has(id)),
+    ...rule.approvalRefs.filter((id) => have.flowApprovalPolicies?.has(id) ?? false),
+    ...rule.validatorRefs.filter((id) => have.flowValidators?.has(id) ?? false),
+  ];
+  const claimsNothing = rule.gateRefs.length === 0 && rule.policyRefs.length === 0
+    && rule.approvalRefs.length === 0 && rule.validatorRefs.length === 0;
+  const unenforceable = rule.severity === 'must' && !claimsNothing
+    && enforceableRefs.length === 0 && resolvedPolicies.length === 0;
+  return { enforceableRefs, resolvedPolicies, claimsNothing, unenforceable };
+}
+
 export function ruleApplies(rule: NormalizedRule, config: ChangeConfig, stage?: string): boolean {
   if (rule.modules.length > 0 && !rule.modules.some((module) => config.scope.modules.includes(module))) return false;
   if (rule.stages.length > 0 && stage && !rule.stages.includes(stage)) return false;
