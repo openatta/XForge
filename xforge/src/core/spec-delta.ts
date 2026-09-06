@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import fg from 'fast-glob';
 import type { ArtifactDefinition, Diagnostic, ProjectContext } from '../types.js';
 import { diagnostic } from './errors.js';
+import { maskFencedCode } from './markdown-fences.js';
 import { safeResolve } from './path-safety.js';
 
 type DeltaOperation = 'ADDED' | 'MODIFIED' | 'REMOVED' | 'RENAMED';
@@ -50,7 +51,7 @@ const WHEN_LINE = /^[ \t]*(?:[-*+][ \t]+)?(?:\*\*|__|\*|_)?[ \t]*WHEN(?:\*\*|__|
 const THEN_LINE = /^[ \t]*(?:[-*+][ \t]+)?(?:\*\*|__|\*|_)?[ \t]*THEN(?:\*\*|__|\*|_)?[ \t]*:?[ \t]*(\S.*)$/i;
 
 export function hasDeltaSections(source: string): boolean {
-  return source.split(/\r?\n/).some((line) => SECTION_HEADER.test(line));
+  return maskFencedCode(source).split(/\r?\n/).some((line) => SECTION_HEADER.test(line));
 }
 
 /**
@@ -62,7 +63,7 @@ export function parseRenameEntries(source: string): RenameEntries {
   const unmatchedFrom: string[] = [];
   const unmatchedTo: string[] = [];
   let from: string | null = null;
-  for (const line of source.split(/\r?\n/)) {
+  for (const line of maskFencedCode(source).split(/\r?\n/)) {
     const fromMatch = line.match(/FROM:\s*(?:`?### Requirement:\s*)?(.+?)`?\s*$/i);
     if (fromMatch) {
       if (from !== null) unmatchedFrom.push(from);
@@ -103,10 +104,26 @@ export function parseSpecDelta(source: string): ParsedSpecDelta {
     else orphanRequirements.push(value);
   };
 
+  /*
+   * Structure is found in the masked copy; content is taken from the original.
+   *
+   * A delta Spec documents behaviour, and documenting behaviour means showing it -- a Requirement
+   * about a template prints the template, and the template is a `## ` heading and a
+   * `### Requirement:` line inside a fence. Scanned raw, those are read as a second section and a
+   * second Requirement, and the document is then refused for duplicating structure it never had.
+   *
+   * `core/contract-delta.ts` has masked fences since it was written, and this is the same scheme
+   * with the same shape -- the two parsers correspond function for function. The Spec half simply
+   * never got it. `maskFencedCode` preserves line count, so an index into the masked lines is the
+   * same index into the source, which is what makes taking the body from the original safe.
+   */
   const lines = source.split(/\r?\n/);
-  for (const [index, line] of lines.entries()) {
+  const masked = maskFencedCode(source).split(/\r?\n/);
+  for (const [index, maskedLine] of masked.entries()) {
+    const line = lines[index] ?? maskedLine;
     const number = index + 1;
-    const sectionMatch = SECTION_HEADER.exec(line);
+    /* Structure is matched on the masked line; `line` is the original and is what the body keeps. */
+    const sectionMatch = SECTION_HEADER.exec(maskedLine);
     if (sectionMatch) {
       closeSection();
       requirement = null;
@@ -114,38 +131,38 @@ export function parseSpecDelta(source: string): ParsedSpecDelta {
       section = { operation: sectionMatch[1] as DeltaOperation, line: number, body: '', requirements: [] };
       continue;
     }
-    if (OTHER_SECTION_HEADER.test(line)) {
+    if (OTHER_SECTION_HEADER.test(maskedLine)) {
       closeSection();
       requirement = null;
       scenario = null;
       continue;
     }
     if (section) bodyLines.push(line);
-    const requirementMatch = REQUIREMENT_HEADER.exec(line);
+    const requirementMatch = REQUIREMENT_HEADER.exec(maskedLine);
     if (requirementMatch) {
       scenario = null;
       requirement = { name: requirementMatch[1]!.trim(), line: number, scenarios: [] };
       pushRequirement(requirement);
       continue;
     }
-    if (OTHER_REQUIREMENT_HEADER.test(line)) {
+    if (OTHER_REQUIREMENT_HEADER.test(maskedLine)) {
       requirement = null;
       scenario = null;
       continue;
     }
-    const scenarioMatch = SCENARIO_HEADER.exec(line);
+    const scenarioMatch = SCENARIO_HEADER.exec(maskedLine);
     if (scenarioMatch) {
       scenario = { name: scenarioMatch[1]!.trim(), line: number, hasWhen: false, hasThen: false };
       requirement?.scenarios.push(scenario);
       continue;
     }
-    if (OTHER_SCENARIO_HEADER.test(line)) {
+    if (OTHER_SCENARIO_HEADER.test(maskedLine)) {
       scenario = null;
       continue;
     }
     if (!scenario) continue;
-    if (WHEN_LINE.test(line)) scenario.hasWhen = true;
-    else if (THEN_LINE.test(line)) scenario.hasThen = true;
+    if (WHEN_LINE.test(maskedLine)) scenario.hasWhen = true;
+    else if (THEN_LINE.test(maskedLine)) scenario.hasThen = true;
   }
   closeSection();
   return { sections, orphanRequirements };

@@ -152,7 +152,12 @@ describe('xforge stage-bundle', () => {
 
     const text = await runCli(root, ['stage-bundle', '--change', CHANGE, '--text']);
     expect(text.stdout).toContain('READ IN FULL');
-    expect(text.stdout).toContain('UNCHANGED — digest stands in for re-reading');
+    /* "Unchanged since this Stage began", not "you already have this". The digest is decisive on a
+       re-run inside one session and decides nothing for a caller who has never opened the file --
+       and under this product's model that caller is the common case, since the Stages of one Change
+       are separate invocations by separate people. */
+    expect(text.stdout).toContain('UNCHANGED SINCE THIS STAGE BEGAN');
+    expect(text.stdout).not.toContain('stands in');
     /* A digest is permission to skip, never a prohibition on looking. */
     expect(text.stdout).toContain('not that reading it is forbidden');
   }, 600_000);

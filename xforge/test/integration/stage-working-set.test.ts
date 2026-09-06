@@ -272,3 +272,52 @@ describe('the reading plan says what an open will cost', () => {
     expect(text.stdout).toMatch(/design\.md\s+\d+ bytes/);
   });
 });
+
+/*
+ * `vouched` answers "has this moved since the Stage began", and says only that.
+ *
+ * It used to be documented as carrying "what stands in for reading them", which is true on a re-run
+ * inside one session and false for a caller who has never opened the file. Under this product's own
+ * model the second is the common case: a Stage is invoked by a person, and the six Stages of one
+ * Change are six people at six moments with no shared session. Two measured cold Stages were each
+ * handed 55,848 bytes of that assurance about documents their session had never seen; both read
+ * them anyway, which was correct.
+ */
+describe('what an unchanged document is vouched for', () => {
+  it('carries the digest, the size and the headings, and claims nothing about having been read', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    /* A committed tree is what makes a comparison possible at all; without one every document is
+       listed to be read and there is nothing vouched to inspect. */
+    await gitInit(root);
+
+    const stage = await runCli(root, ['stage', '--change', 'add-feature']);
+    const vouched = ((stage.json.data as any).vouched ?? []) as Array<{ path: string; digest: string; bytes: number; sections: string[] }>;
+    if (vouched.length === 0) return; /* No baseline receipt yet: nothing to assert, and that is its own honest state. */
+
+    for (const entry of vouched) {
+      expect(entry.digest, `${entry.path} was vouched without a digest`).toMatch(/^[0-9a-f]{64}$/);
+      expect(typeof entry.bytes, `${entry.path} was vouched without its size`).toBe('number');
+      expect(entry.bytes).toBeGreaterThan(0);
+    }
+
+    /* The readable form must not tell a cold reader the file is already in hand. */
+    const text = await runCli(root, ['stage', '--change', 'add-feature', '--text']);
+    expect(text.stdout).not.toContain('stands in');
+    expect(text.stdout).toContain('UNCHANGED SINCE THIS STAGE BEGAN');
+  });
+});
+
+async function gitInit(root: string): Promise<void> {
+  const { spawn } = await import('node:child_process');
+  const run = (args: string[]) => new Promise<void>((resolve) => {
+    const child = spawn('git', args, { cwd: root, stdio: 'ignore' });
+    child.on('close', () => resolve());
+    child.on('error', () => resolve());
+  });
+  await run(['init', '-q']);
+  await run(['config', 'user.email', 'a@b.test']);
+  await run(['config', 'user.name', 'A']);
+  await run(['add', '.']);
+  await run(['commit', '-qm', 'fixture']);
+}

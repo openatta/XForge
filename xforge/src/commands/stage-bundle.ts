@@ -70,8 +70,21 @@ interface StageBundleResult {
      * about to be read in full cost more than half of what this field added.
      */
     read: Array<{ path: string; reason: 'changed-since-stage-entered' | 'written-by-this-stage' | 'always' | 'no-baseline' | 'worktree-dirty' | 'comparison-unavailable' | 'declared-input'; bytes: number; text?: string }>;
-    /** Unchanged since this Stage was entered, with what stands in for reading them. */
-    vouched: Array<{ path: string; digest: string; sections: string[] }>;
+    /**
+     * Unchanged since this Stage was entered — which is not the same as "you have read this".
+     *
+     * The digest answers one question: has this document moved since the Stage began. That is
+     * decisive on a re-run inside one session, where the caller read the file an hour ago and wants
+     * to know whether to open it again. It decides nothing for a caller who has never opened it,
+     * and under this product's own model that is the common case: a Stage is invoked by a person,
+     * and the six Stages of one Change are six people at six moments with no shared session.
+     *
+     * This said "with what stands in for reading them", and two measured cold Stages were each
+     * handed 55,848 bytes of that assurance about files their session had never seen. Both read
+     * them anyway, correctly. `bytes` is here for the same reason it is on `read`: a caller who does
+     * have to open one needs to know what opening it costs.
+     */
+    vouched: Array<{ path: string; digest: string; bytes: number; sections: string[] }>;
     bytes: { read: number; vouched: number };
   };
   diagnostics: Diagnostic[];
@@ -199,6 +212,7 @@ export async function executeStageBundle(
     vouched.push({
       path: relative,
       digest: sha256(source),
+      bytes: size,
       /* The `## ` headings, which say what the document covers without saying what it says. Enough
          to decide whether it needs opening; not enough to stand in for having opened it. */
       sections: [...documentSections(source).keys()],
@@ -250,7 +264,7 @@ export function renderStageBundleText(data: StageBundleResult['data']): string {
   lines.push(`READ IN FULL (${data.read.length}, ${data.bytes.read} bytes)`);
   for (const entry of data.read) lines.push(`    ${entry.path}  ${entry.bytes} bytes  [${entry.reason}]`);
   lines.push('');
-  lines.push(`UNCHANGED — digest stands in for re-reading (${data.vouched.length}, ${data.bytes.vouched} bytes)`);
+  lines.push(`UNCHANGED SINCE THIS STAGE BEGAN — open if you have not (${data.vouched.length}, ${data.bytes.vouched} bytes)`);
   for (const entry of data.vouched) {
     lines.push(`    ${entry.path}  ${entry.digest.slice(0, 12)}`);
     if (entry.sections.length > 0) lines.push(`      covers: ${entry.sections.join(', ')}`);
@@ -293,7 +307,7 @@ export function renderStageText(data: {
   stageDeclares: { produces: string[]; gates: string[]; exitConditions: string[]; reworkTo: string[]; authority: string | null } | null;
   blockedBy: string[]; worktreeClean: boolean;
   read: Array<{ path: string; reason: string; bytes: number; text?: string }>;
-  vouched: Array<{ path: string; sections: string[] }>;
+  vouched: Array<{ path: string; bytes: number; sections: string[] }>;
   bytes: { read: number; vouched: number };
 }): string {
   const lines = [`Stage ${data.stage} — ${data.change} on ${data.flow ?? 'an unknown Flow'}`];
@@ -361,12 +375,12 @@ export function renderStageText(data: {
     lines.push('', `--- ${entry.path} ---`, entry.text.replace(/\n+$/, ''), `--- end ${entry.path} ---`);
   }
   if (data.vouched.length) {
-    lines.push('', `UNCHANGED — a digest stands in (${data.vouched.length}, ${data.bytes.vouched} bytes)`);
+    lines.push('', `UNCHANGED SINCE THIS STAGE BEGAN — open if you have not (${data.vouched.length}, ${data.bytes.vouched} bytes)`);
     for (const entry of data.vouched) lines.push(`    ${entry.path}${entry.sections.length ? `  covers: ${entry.sections.join(', ')}` : ''}`);
   }
   if (!data.worktreeClean) lines.push('', 'The Change directory has uncommitted edits, so nothing could be vouched for.');
   lines.push('', carried
-    ? 'Everything printed under READ arrived with this reply and does not need opening again. Files marked otherwise, and the UNCHANGED list, are the ones still on disk.'
+    ? 'Everything printed under READ arrived with this reply and does not need opening again. Files marked otherwise, and everything under UNCHANGED, are still on disk — UNCHANGED means the document has not moved since this Stage began, not that you have read it.'
     : 'No contents came with this reply; READ names what to open.');
   return `${lines.join('\n')}\n`;
 }

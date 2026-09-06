@@ -3,6 +3,7 @@ import path from 'node:path';
 import fg from 'fast-glob';
 import type { Diagnostic, FileChange, ProjectContext } from '../types.js';
 import { XForgeError, diagnostic } from './errors.js';
+import { maskFencedCode } from './markdown-fences.js';
 import { sha256 } from './hash.js';
 import { safeResolve } from './path-safety.js';
 import { hasDeltaSections, renamePairs } from './spec-delta.js';
@@ -34,22 +35,37 @@ type ConflictSink = (item: Diagnostic) => void;
 /** The archive reading: the first conflict ends the plan. */
 const THROW_ON_CONFLICT: ConflictSink = (item) => { throw new XForgeError(item); };
 
-function section(source: string, name: string): string | null {
+/*
+ * Every slice below finds its boundary in a fence-masked copy and cuts from the original.
+ *
+ * A Spec documents behaviour, and documenting behaviour means showing it: a Requirement about a
+ * template prints the template, and the template is a `## ` heading and a `### Requirement:` line
+ * inside a fence. Read raw, the fenced heading ends the section early and the fenced Requirement
+ * becomes a second block -- so a merge would carry away half a Requirement and record a Requirement
+ * nobody wrote. `maskFencedCode` blanks fenced content while preserving every offset, which is what
+ * makes an index found in the masked copy safe to slice from the source.
+ *
+ * `core/contract-merger.ts` has done this since it was written. The two mergers correspond function
+ * for function; this half simply never got it.
+ */
+function section(source: string, name: string, masked = maskFencedCode(source)): string | null {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const header = new RegExp(`^## ${escaped}\\s*$`, 'm').exec(source);
+  const header = new RegExp(`^## ${escaped}\\s*$`, 'm').exec(masked);
   if (!header || header.index === undefined) return null;
-  const bodyStart = source.indexOf('\n', header.index + header[0].length);
+  const bodyStart = masked.indexOf('\n', header.index + header[0].length);
   if (bodyStart < 0) return '';
+  const next = /^## /m.exec(masked.slice(bodyStart + 1));
   const remainder = source.slice(bodyStart + 1);
-  const next = /^## /m.exec(remainder);
   return next?.index === undefined ? remainder : remainder.slice(0, next.index);
 }
 
-function requirements(source: string): RequirementBlock[] {
-  const headers = [...source.matchAll(/^### Requirement:\s*(.+?)\s*$/gm)];
+function requirements(source: string, masked = maskFencedCode(source)): RequirementBlock[] {
+  const headers = [...masked.matchAll(/^### Requirement:\s*(.+?)\s*$/gm)];
   return headers.map((match, index) => {
     const start = match.index!;
     const end = headers[index + 1]?.index ?? source.length;
+    /* The name comes from the masked match, which is identical to the source there -- a heading
+       outside a fence is untouched by the mask. The content comes from the source. */
     return { name: match[1]!.trim(), content: source.slice(start, end).trimEnd() };
   });
 }
@@ -95,13 +111,14 @@ function mergeConflict(message: string, relative: string, active: Map<string, Re
 }
 
 function mainParts(source: string): { before: string; after: string; blocks: RequirementBlock[] } {
-  const match = /^## Requirements\s*$/m.exec(source);
+  const masked = maskFencedCode(source);
+  const match = /^## Requirements\s*$/m.exec(masked);
   if (!match || match.index === undefined) throw new XForgeError(diagnostic('XFORGE_SPEC_MAIN_INVALID', 'Existing main Spec requires a ## Requirements section.'));
   const start = match.index;
-  const bodyStart = source.indexOf('\n', start + match[0].length);
+  const bodyStart = masked.indexOf('\n', start + match[0].length);
   const remainderStart = bodyStart < 0 ? source.length : bodyStart + 1;
+  const next = /^## /m.exec(masked.slice(remainderStart));
   const remainder = source.slice(remainderStart);
-  const next = /^## /m.exec(remainder);
   const body = next?.index === undefined ? remainder : remainder.slice(0, next.index);
   const after = next?.index === undefined ? '' : remainder.slice(next.index).trim();
   return { before: source.slice(0, start).trimEnd(), after, blocks: requirements(body) };
