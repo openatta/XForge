@@ -12,6 +12,7 @@ import { executeApprove, type ApprovalTerminal } from './commands/approve.js';
 import { executeAudit } from './commands/audit.js';
 import { executeCheck } from './commands/check.js';
 import { executeStageBundle, renderStageBundleText, renderStageText } from './commands/stage-bundle.js';
+import { loadSelectedResources } from './core/resource-loader.js';
 import { CLASSIFICATION_KEYS, changeTemplate } from './core/change-template.js';
 import { WORK_PACKAGE_PLAN_HEADER_KEYS, workPackagePlanTemplate } from './core/work-package-template.js';
 import { knownIdentities } from './core/ledger-identity.js';
@@ -938,14 +939,35 @@ async function nextActionsFor(
     .flatMap((entry: any) => entry.blockedBy ?? [])
     .filter((block: string) => block.startsWith('gate:') && block.endsWith(':missing'))
     .map((block: string) => block.slice('gate:'.length, -':missing'.length)))] as string[];
-  if (changeId) for (const gateId of missingGates) nextActions.push({
-    action: 'run-gates', type: 'gate', id: gateId, actor: 'main', status: 'ready',
-    inputs: [], writes: [`${stateChange?.path ?? ''}/evidence/${gateId}.json`],
-    doneWhen: [`Gate ${gateId} has Evidence bound to the current content revision.`],
-    requiredEvidence: [`evidence/${gateId}.json written by xforge check at the current content revision`],
-    reason: `Gate ${gateId} has not run at this content revision, which is what blocks the Transition.`,
-    command: ['xforge', 'check', '--change', changeId, '--gate', gateId],
-  });
+  /*
+   * The Evidence filename comes from the Gate, not from the Gate's name.
+   *
+   * This built `evidence/<gate>.json`, and `unit-tests` writes `tests.json` -- the Gate resource
+   * declares its own `spec.evidence` and `core/state-reader.ts` says so in as many words. A live
+   * Verify believed the prediction, wrote `evidence/unit-tests.json` into its assurance document,
+   * found the real path later, and the correcting edit moved the content revision: the Gates it had
+   * just run went stale, and the verification receipt it had just filed had to be re-drafted. One
+   * wrong path in a `writes` field cost a re-gate and a re-finalize.
+   *
+   * Loaded only when a Gate is actually missing, which is the branch that emits these actions --
+   * the common reply pays nothing.
+   */
+  if (changeId && missingGates.length > 0) {
+    const { gates } = await loadSelectedResources(project);
+    for (const gateId of missingGates) {
+      /* A Gate the project does not have cannot be named here at all, so falling back to the
+         convention is the honest answer rather than a guess: `check` will refuse it by name. */
+      const evidence = gates.get(gateId)?.value.spec.evidence ?? `${gateId}.json`;
+      nextActions.push({
+        action: 'run-gates', type: 'gate', id: gateId, actor: 'main', status: 'ready',
+        inputs: [], writes: [`${stateChange?.path ?? ''}/evidence/${evidence}`],
+        doneWhen: [`Gate ${gateId} has Evidence bound to the current content revision.`],
+        requiredEvidence: [`evidence/${evidence} written by xforge check at the current content revision`],
+        reason: `Gate ${gateId} has not run at this content revision, which is what blocks the Transition.`,
+        command: ['xforge', 'check', '--change', changeId, '--gate', gateId],
+      });
+    }
+  }
 
   for (const transition of governance?.readyTransitions ?? []) nextActions.push({
     action: 'transition', type: 'transition', id: transition.to, actor: 'main', status: transition.ready ? 'ready' : 'blocked',

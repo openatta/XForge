@@ -562,3 +562,31 @@ describe('check and Gate evidence', () => {
     });
   });
 });
+
+/*
+ * A Gate's Evidence is named by the Gate, not after it.
+ *
+ * `unit-tests` writes `tests.json`, which `core/state-reader.ts` states in as many words while
+ * `nextActionsFor` was building `evidence/<gate>.json` from the id. A live Verify believed the
+ * prediction, wrote `evidence/unit-tests.json` into its assurance document, discovered the real
+ * path afterwards, and the correcting edit moved the content revision -- staling the Gates it had
+ * just run and the verification receipt it had just filed. One wrong path in a `writes` field cost
+ * a re-gate and a re-finalize.
+ */
+describe('the Evidence path a next Action predicts', () => {
+  it('is the one the Gate declares, not the one its name suggests', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+    await advanceSolidToApply(root, 'add-feature');
+    await runCli(root, ['transition', '--change', 'add-feature', '--to', 'verify']);
+
+    const state = await runCli(root, ['state', '--change', 'add-feature']);
+    const action = (state.json.nextActions as any[]).find((item) => item.type === 'gate' && item.id === 'unit-tests');
+    expect(action, JSON.stringify((state.json.nextActions as any[]).map((item) => [item.type, item.id]))).toBeTruthy();
+
+    /* The Gate resource says `evidence: tests.json`; the prediction must agree with it. */
+    expect(action.writes).toEqual(['xforge/changes/add-feature/evidence/tests.json']);
+    expect(action.requiredEvidence.join(' ')).toContain('evidence/tests.json');
+    expect(JSON.stringify(action)).not.toContain('unit-tests.json');
+  });
+});
