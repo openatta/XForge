@@ -363,7 +363,7 @@ describe('Claude memory bootstrap', () => {
     const project = bootstrapProject();
     (project as unknown as { manifest: Record<string, unknown> }).manifest = {
       project: { modules: [{ id: 'root', kind: 'application', path: '.' }] },
-      verification: { 'unit-tests': [{ command: ['npm', 'test'], declaredBy: 'a@b.test', declaredAt: '2026-01-01T00:00:00Z' }] },
+      verification: { 'unit-tests': [{ command: ['npm', 'test'], declaredBy: 'fixture@example.test', declaredAt: '2026-01-01T00:00:00Z' }] },
     };
     const body = claudeMemory(project);
     expect(body).not.toContain('npm test');

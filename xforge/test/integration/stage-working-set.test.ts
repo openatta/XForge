@@ -335,7 +335,7 @@ async function git(root: string, args: string[]): Promise<void> {
 
 async function gitInit(root: string): Promise<void> {
   await git(root, ['init', '-q']);
-  await git(root, ['config', 'user.email', 'a@b.test']);
+  await git(root, ['config', 'user.email', 'fixture@example.test']);
   await git(root, ['config', 'user.name', 'A']);
   await gitCommit(root, 'fixture');
 }
