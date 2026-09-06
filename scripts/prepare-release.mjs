@@ -142,6 +142,36 @@ function assertNoStaleVersion(previousVersion) {
       'xforge/src/cli.ts',
       'xforge/src/commands/hook.ts',
       'xforge/test/integration/stale-cli-deny-reason.test.ts',
+      /*
+       * - **Records of when a behaviour changed**, which is the fourth kind and the one that arrives
+       *   in bulk. Every entry below says "since 0.8.4", "in 0.8.4" or "until 0.8.4" about a change
+       *   that release made: the contract layer becoming a default, the two architecture Rules being
+       *   deleted, the install record's rename. Rewriting the number would make each sentence claim
+       *   the change happened in whichever release is being cut, which is the one thing a history
+       *   note must not say.
+       *
+       *   These go inert rather than stale: the search only ever looks for the version being
+       *   superseded, so once 0.8.4 is two releases back nothing here matches and the entries cost
+       *   nothing. They are still listed individually, because "it mentions an old version" is not
+       *   on its own a reason to skip a file -- the previous release cut had one document that named
+       *   the old version because nobody had updated it, and that is the case this guard exists for.
+       */
+      'docs/extension-guide.md',
+      'scaffold/payload/xforge/flows/major.yaml',
+      'scaffold/payload/xforge/flows/solid.yaml',
+      'scaffold/payload/xforge/scaffold/rules/interfaces-are-contract-governed.yaml',
+      'tests/live-engine/README.md',
+      'tests/live-engine/run-matrix.mjs',
+      'tests/live-engine/scenarios/solid-contract/project-seed/manifest-patch.yaml',
+      'xforge/src/commands/projection.ts',
+      'xforge/test/integration/archive.test.ts',
+      'xforge/test/integration/contract-default-layer.test.ts',
+      'xforge/test/integration/contract-reconciliation.test.ts',
+      'xforge/test/integration/flow-escalation-route.test.ts',
+      'xforge/test/integration/flow-skill-conformance.test.ts',
+      'xforge/test/integration/install-ownership-safety.test.ts',
+      'xforge/test/integration/text-form-readability.test.ts',
+      'xforge/test/unit/flows.test.ts',
     ].includes(file));
   if (remaining.length > 0) {
     fail(`These tracked files still name ${previousVersion} after the rewrite: ${remaining.join(', ')}. Add each to versionedTextFiles, or record here why it keeps the old version.`);
