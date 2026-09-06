@@ -12,12 +12,12 @@ project:
       path: .
       kind: application
 scaffold:
-  version: 0.8.4
+  version: 0.8.5
   language: en
   source:
     type: npm
     package: "@xforge/cli"
-    version: 0.8.4
+    version: 0.8.5
   skills:
     - xforge-propose
     - xforge-clarify
@@ -38,7 +38,7 @@ scaffold:
     - governance-assets-are-integrator-only
     - observable-requirements-are-tested
     - design-decisions-need-a-human
-    # Selected since 0.8.4, and enforced without a Gate: `protected-files` refuses a write to the
+    # Selected since 0.8.5, and enforced without a Gate: `protected-files` refuses a write to the
     # contract baseline at the tool call, and the `contract-delta` validator refuses a malformed
     # delta in-process. `xforge state` reports that pair as `guarded, structural`.
     #
@@ -73,7 +73,7 @@ scripts:
 xforge:
   source: npm
   package: "@xforge/cli"
-  version: 0.8.4
+  version: 0.8.5
   protocol: "2"
 flow: solid
 targets:
