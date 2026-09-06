@@ -55,7 +55,21 @@ interface StageBundleResult {
      * re-sends the whole conversation; a second file read inside one process does not. So the text
      * travels with the plan.
      */
-    read: Array<{ path: string; reason: 'changed-since-stage-entered' | 'written-by-this-stage' | 'always' | 'no-baseline' | 'worktree-dirty' | 'comparison-unavailable' | 'declared-input'; text?: string }>;
+    /**
+     * What to open, with what it costs to open it.
+     *
+     * `bytes` and `sections` are here because the plan is acted on with a shell, and a shell read of
+     * a large document does not fail cleanly: a measured run `cat`-ed a 30KB Design, overflowed the
+     * host's tool-result cap, got a 2KB preview plus a spill-file path, and spent one to three
+     * further calls reading it back in slices -- once overflowing the slice as well and producing a
+     * second spill file. Across three Stages that recovery was 113KB, and in one Stage it was 40% of
+     * every byte the Stage read. The size is what lets a reader slice on the first attempt.
+     *
+     * The size and nothing else. `sections` belongs on `vouched`, where the question is whether to
+     * open the file at all; here the answer is already yes, and carrying the headings of a document
+     * about to be read in full cost more than half of what this field added.
+     */
+    read: Array<{ path: string; reason: 'changed-since-stage-entered' | 'written-by-this-stage' | 'always' | 'no-baseline' | 'worktree-dirty' | 'comparison-unavailable' | 'declared-input'; bytes: number; text?: string }>;
     /** Unchanged since this Stage was entered, with what stands in for reading them. */
     vouched: Array<{ path: string; digest: string; sections: string[] }>;
     bytes: { read: number; vouched: number };
@@ -178,7 +192,7 @@ export async function executeStageBundle(
               : changed.has(relative) ? 'changed-since-stage-entered'
                 : null;
     if (reason) {
-      read.push({ path: relative, reason, ...(content === 'none' ? {} : { text: source }) });
+      read.push({ path: relative, reason, bytes: size, ...(content === 'none' ? {} : { text: source }) });
       readBytes += size;
       continue;
     }
@@ -193,7 +207,12 @@ export async function executeStageBundle(
   }
 
   /* The Constitution is always read, and is not under the Change. */
-  read.push({ path: project.constitution.path, reason: 'always', ...(content === 'none' ? {} : { text: project.constitution.content }) });
+  read.push({
+    path: project.constitution.path,
+    reason: 'always',
+    bytes: Buffer.byteLength(project.constitution.content),
+    ...(content === 'none' ? {} : { text: project.constitution.content }),
+  });
 
   readBytes += Buffer.byteLength(project.constitution.content);
 
@@ -229,7 +248,7 @@ export function renderStageBundleText(data: StageBundleResult['data']): string {
     : '  No earlier Stage to compare against.');
   lines.push('');
   lines.push(`READ IN FULL (${data.read.length}, ${data.bytes.read} bytes)`);
-  for (const entry of data.read) lines.push(`    ${entry.path}  [${entry.reason}]`);
+  for (const entry of data.read) lines.push(`    ${entry.path}  ${entry.bytes} bytes  [${entry.reason}]`);
   lines.push('');
   lines.push(`UNCHANGED — digest stands in for re-reading (${data.vouched.length}, ${data.bytes.vouched} bytes)`);
   for (const entry of data.vouched) {
@@ -273,7 +292,7 @@ export function renderStageText(data: {
   ledgerIdentities?: string[];
   stageDeclares: { produces: string[]; gates: string[]; exitConditions: string[]; reworkTo: string[]; authority: string | null } | null;
   blockedBy: string[]; worktreeClean: boolean;
-  read: Array<{ path: string; reason: string; text?: string }>;
+  read: Array<{ path: string; reason: string; bytes: number; text?: string }>;
   vouched: Array<{ path: string; sections: string[] }>;
   bytes: { read: number; vouched: number };
 }): string {
@@ -336,7 +355,7 @@ export function renderStageText(data: {
   const carried = data.read.filter((entry) => typeof entry.text === 'string').length;
   const withheld = data.read.length - carried;
   lines.push('', `READ (${data.read.length}, ${data.bytes.read} bytes) — ${carried} sent below${withheld ? `, ${withheld} too large to send and listed by path` : ''}`);
-  for (const entry of data.read) lines.push(`    ${entry.path}  [${entry.reason}]${typeof entry.text === 'string' ? '' : '  — not in this reply, open it'}`);
+  for (const entry of data.read) lines.push(`    ${entry.path}  ${entry.bytes} bytes  [${entry.reason}]${typeof entry.text === 'string' ? '' : '  — not in this reply, open it'}`);
   for (const entry of data.read) {
     if (typeof entry.text !== 'string') continue;
     lines.push('', `--- ${entry.path} ---`, entry.text.replace(/\n+$/, ''), `--- end ${entry.path} ---`);

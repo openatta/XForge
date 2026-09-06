@@ -203,27 +203,33 @@ exit: 0
     "read": [
       {
         "path": "xforge/changes/add-feature/change.yaml",
-        "reason": "worktree-dirty"
+        "reason": "worktree-dirty",
+        "bytes": 171
       },
       {
         "path": "xforge/changes/add-feature/check-report.md",
-        "reason": "worktree-dirty"
+        "reason": "worktree-dirty",
+        "bytes": 87
       },
       {
         "path": "xforge/changes/add-feature/design.md",
-        "reason": "worktree-dirty"
+        "reason": "worktree-dirty",
+        "bytes": 42
       },
       {
         "path": "xforge/changes/add-feature/proposal.md",
-        "reason": "worktree-dirty"
+        "reason": "worktree-dirty",
+        "bytes": 34
       },
       {
         "path": "xforge/changes/add-feature/specs/widget/spec.md",
-        "reason": "worktree-dirty"
+        "reason": "worktree-dirty",
+        "bytes": 113
       },
       {
         "path": "xforge/constitution.md",
-        "reason": "always"
+        "reason": "always",
+        "bytes": 1869
       }
     ],
     "vouched": [],

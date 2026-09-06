@@ -1481,7 +1481,7 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
         if (carried.has(relative)) continue;
         try {
           const source = await readFile(await safeResolve(project.root, relative), 'utf8');
-          stageData.read.push({ path: relative, reason: 'declared-input', ...(parsed.content === 'none' ? {} : { text: source }) });
+          stageData.read.push({ path: relative, reason: 'declared-input', bytes: Buffer.byteLength(source), ...(parsed.content === 'none' ? {} : { text: source }) });
           stageData.bytes.read += Buffer.byteLength(source);
         } catch {
           /* An input the plan names but the tree does not have is the plan's problem, and

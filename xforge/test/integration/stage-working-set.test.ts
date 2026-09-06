@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { CHECK_FINDINGS_PATH } from '../../src/core/check-findings.js';
 import { CONSTITUTION_CHECK_PATH } from '../../src/core/constitution-check.js';
@@ -223,5 +225,50 @@ describe('xforge stage working set', () => {
     const whole = await runCli(root, ['stage', '--change', 'add-feature']);
     expect((whole.json.data as any).action.id).toBe('delta-specs');
     expect((whole.json.data as any).read, 'the working set still arrives in full').toBeTruthy();
+  });
+});
+
+/*
+ * The plan says how big each document is, because the plan is acted on with a shell.
+ *
+ * A shell read of a large document does not fail cleanly. A measured run `cat`-ed a 30KB Design,
+ * overflowed the host's tool-result cap, received a 2KB preview plus a spill-file path, and spent
+ * one to three further calls reading it back in slices -- one of those slices overflowing in turn
+ * and producing a second spill file. Across three Stages that recovery cost 113KB, and in Apply it
+ * was 40% of every byte the Stage read. The size is the fact that lets a reader slice on the first
+ * attempt; the headings say where the slices are.
+ */
+describe('the reading plan says what an open will cost', () => {
+  it('gives every entry its byte count, and nothing it does not need', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+
+    const stage = await runCli(root, ['stage', '--change', 'add-feature']);
+    const read = (stage.json.data as any).read as Array<{ path: string; bytes: number }>;
+    expect(read.length).toBeGreaterThan(0);
+
+    for (const entry of read) {
+      expect(typeof entry.bytes, `${entry.path} has no byte count`).toBe('number');
+      expect(entry.bytes, `${entry.path} reported ${entry.bytes} bytes`).toBeGreaterThan(0);
+    }
+    /* Only the size. `sections` stays on `vouched`, where the question is whether to open the file;
+       these are the files the plan has already decided are to be opened. */
+    expect(read.every((entry) => (entry as { sections?: unknown }).sections === undefined)).toBe(true);
+
+    /* The number is the file's real size, not the size of what the reply carries -- the default
+       reply carries no text at all, and a plan whose numbers described the reply would be useless
+       for deciding how to open the file. */
+    const design = read.find((entry) => entry.path.endsWith('design.md'));
+    expect(design).toBeTruthy();
+    const onDisk = await readFile(path.join(root, ...design!.path.split('/')), 'utf8');
+    expect(design!.bytes).toBe(Buffer.byteLength(onDisk));
+  });
+
+  it('shows the size in the readable form too', async () => {
+    const root = await fixture();
+    await createCompleteSolidChange(root);
+
+    const text = await runCli(root, ['stage', '--change', 'add-feature', '--text']);
+    expect(text.stdout).toMatch(/design\.md\s+\d+ bytes/);
   });
 });
