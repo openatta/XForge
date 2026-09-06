@@ -287,37 +287,60 @@ describe('what an unchanged document is vouched for', () => {
   it('carries the digest, the size and the headings, and claims nothing about having been read', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
-    /* A committed tree is what makes a comparison possible at all; without one every document is
-       listed to be read and there is nothing vouched to inspect. */
+    /*
+     * Three things have to be true before anything is vouched at all, and an earlier version of
+     * this test had only the first: the tree must be committed, a Transition receipt must exist to
+     * be the baseline, and the documents must be committed at or before that receipt's `gitHead`.
+     * Without the receipt `since` is null, every document is listed `no-baseline`, `vouched` is
+     * empty — and the assertions below never run. That version passed while asserting nothing.
+     */
     await gitInit(root);
+    await runCli(root, ['check', '--change', 'add-feature', '--gate', 'structure']);
+    const moved = await runCli(root, ['transition', '--change', 'add-feature', '--to', 'design']);
+    expect(moved.code, JSON.stringify(moved.json?.diagnostics)).toBe(0);
+    await gitCommit(root, 'the transition receipt');
 
     const stage = await runCli(root, ['stage', '--change', 'add-feature']);
-    const vouched = ((stage.json.data as any).vouched ?? []) as Array<{ path: string; digest: string; bytes: number; sections: string[] }>;
-    if (vouched.length === 0) return; /* No baseline receipt yet: nothing to assert, and that is its own honest state. */
+    const data = stage.json.data as any;
+    expect(data.since, 'no baseline receipt, so nothing can be vouched and this test proves nothing').toBeTruthy();
+
+    const vouched = (data.vouched ?? []) as Array<{ path: string; digest: string; bytes: number; sections: string[] }>;
+    expect(vouched.length, 'nothing was vouched, so the assertions below would not run').toBeGreaterThan(0);
 
     for (const entry of vouched) {
       expect(entry.digest, `${entry.path} was vouched without a digest`).toMatch(/^[0-9a-f]{64}$/);
       expect(typeof entry.bytes, `${entry.path} was vouched without its size`).toBe('number');
-      expect(entry.bytes).toBeGreaterThan(0);
+      const onDisk = await readFile(path.join(root, ...entry.path.split('/')), 'utf8');
+      expect(entry.bytes, `${entry.path} reported a size that is not the file's`).toBe(Buffer.byteLength(onDisk));
     }
+    /* The totals have to agree with the entries, or the summary line is its own separate claim. */
+    expect(data.bytes.vouched).toBe(vouched.reduce((total, entry) => total + entry.bytes, 0));
 
-    /* The readable form must not tell a cold reader the file is already in hand. */
+    /* And nothing in either form may tell a cold reader the document is already in hand. */
+    expect(JSON.stringify(vouched)).not.toContain('stands in');
     const text = await runCli(root, ['stage', '--change', 'add-feature', '--text']);
     expect(text.stdout).not.toContain('stands in');
     expect(text.stdout).toContain('UNCHANGED SINCE THIS STAGE BEGAN');
   });
 });
 
-async function gitInit(root: string): Promise<void> {
+async function git(root: string, args: string[]): Promise<void> {
   const { spawn } = await import('node:child_process');
-  const run = (args: string[]) => new Promise<void>((resolve) => {
+  await new Promise<void>((resolve, reject) => {
     const child = spawn('git', args, { cwd: root, stdio: 'ignore' });
-    child.on('close', () => resolve());
-    child.on('error', () => resolve());
+    child.on('close', (code) => code === 0 ? resolve() : reject(new Error(`git ${args.join(' ')} exited ${code}`)));
+    child.on('error', reject);
   });
-  await run(['init', '-q']);
-  await run(['config', 'user.email', 'a@b.test']);
-  await run(['config', 'user.name', 'A']);
-  await run(['add', '.']);
-  await run(['commit', '-qm', 'fixture']);
+}
+
+async function gitInit(root: string): Promise<void> {
+  await git(root, ['init', '-q']);
+  await git(root, ['config', 'user.email', 'a@b.test']);
+  await git(root, ['config', 'user.name', 'A']);
+  await gitCommit(root, 'fixture');
+}
+
+async function gitCommit(root: string, message: string): Promise<void> {
+  await git(root, ['add', '.']);
+  await git(root, ['commit', '-qm', message]);
 }

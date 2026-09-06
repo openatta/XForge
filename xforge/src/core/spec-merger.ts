@@ -125,10 +125,14 @@ function mainParts(source: string): { before: string; after: string; blocks: Req
 }
 
 function convertNewDelta(delta: string, relative: string, raise: ConflictSink): string | null {
-  const added = section(delta, 'ADDED Requirements');
-  const modified = section(delta, 'MODIFIED Requirements');
-  const removed = section(delta, 'REMOVED Requirements');
-  const renamed = section(delta, 'RENAMED Requirements');
+  /* One mask for the four slices: `maskFencedCode` walks the whole document, and this asked for it
+     four times over the same string. The parameter exists so callers can share it; this is the
+     caller that has four. */
+  const deltaMasked = maskFencedCode(delta);
+  const added = section(delta, 'ADDED Requirements', deltaMasked);
+  const modified = section(delta, 'MODIFIED Requirements', deltaMasked);
+  const removed = section(delta, 'REMOVED Requirements', deltaMasked);
+  const renamed = section(delta, 'RENAMED Requirements', deltaMasked);
   if ((modified && requirements(modified).length > 0) || (removed && requirements(removed).length > 0) || (renamed && renamePairs(renamed).length > 0)) {
     raise(diagnostic('XFORGE_SPEC_MERGE_CONFLICT', `A new capability cannot modify, remove, or rename requirements that do not exist. No main Spec exists at ${relative.replace(/^specs\//, '')} yet, so this delta may only ADD.`, relative));
     return null;
@@ -151,10 +155,11 @@ function convertNewDelta(delta: string, relative: string, raise: ConflictSink): 
 function mergeExisting(main: string, delta: string, relative: string, raise: ConflictSink): string | null {
   const parts = mainParts(main);
   const active = uniqueRequirements(parts.blocks, 'main', relative, raise);
-  const additions = uniqueRequirements(requirements(section(delta, 'ADDED Requirements') ?? ''), 'added', relative, raise);
-  const modifications = uniqueRequirements(requirements(section(delta, 'MODIFIED Requirements') ?? ''), 'modified', relative, raise);
-  const removals = requirements(section(delta, 'REMOVED Requirements') ?? '');
-  const renames = renamePairs(section(delta, 'RENAMED Requirements') ?? '');
+  const deltaMasked = maskFencedCode(delta);
+  const additions = uniqueRequirements(requirements(section(delta, 'ADDED Requirements', deltaMasked) ?? ''), 'added', relative, raise);
+  const modifications = uniqueRequirements(requirements(section(delta, 'MODIFIED Requirements', deltaMasked) ?? ''), 'modified', relative, raise);
+  const removals = requirements(section(delta, 'REMOVED Requirements', deltaMasked) ?? '');
+  const renames = renamePairs(section(delta, 'RENAMED Requirements', deltaMasked) ?? '');
 
   for (const [name, block] of additions) {
     if (active.has(name)) {
