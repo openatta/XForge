@@ -144,15 +144,16 @@ function assertNoStaleVersion(previousVersion) {
       'xforge/test/integration/stale-cli-deny-reason.test.ts',
       /*
        * - **Records of when a behaviour changed**, which is the fourth kind and the one that arrives
-       *   in bulk. Every entry below says "since 0.8.4", "in 0.8.4" or "until 0.8.4" about a change
-       *   that release made: the contract layer becoming a default, the two architecture Rules being
-       *   deleted, the install record's rename. Rewriting the number would make each sentence claim
-       *   the change happened in whichever release is being cut, which is the one thing a history
-       *   note must not say.
+       *   in bulk. Every entry below says "since", "in" or "until" the release it names, about a
+       *   change that release made: the contract layer becoming a default, the two architecture
+       *   Rules being deleted, the install record's rename. Rewriting the number would make each
+       *   sentence claim the change happened in whichever release is being cut, which is the one
+       *   thing a history note must not say. (Spelled without the literal version for the same
+       *   reason the note above gives: this file would otherwise report itself, and did.)
        *
        *   These go inert rather than stale: the search only ever looks for the version being
-       *   superseded, so once 0.8.4 is two releases back nothing here matches and the entries cost
-       *   nothing. They are still listed individually, because "it mentions an old version" is not
+       *   superseded, so once that release is two cuts back nothing here matches and the entries
+       *   cost nothing. They are still listed individually, because "it mentions an old version" is not
        *   on its own a reason to skip a file -- the previous release cut had one document that named
        *   the old version because nobody had updated it, and that is the case this guard exists for.
        */
