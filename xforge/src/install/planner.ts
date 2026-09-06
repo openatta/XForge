@@ -218,7 +218,7 @@ async function buildDesired(
   for (const target of targets) {
     const adapter = getAdapter(target);
     const dropped: Record<ProjectionDimension, DroppedResource[]> = { commands: [], rules: [], agents: [] };
-    for (const bootstrap of adapter.bootstrap()) addDesired(desired, bootstrap);
+    for (const bootstrap of adapter.bootstrap(project)) addDesired(desired, bootstrap);
 
     for (const [id, directory] of resources.skills) {
       for (const file of await localizedSourceFiles(directory, project.manifest.scaffold.language)) {

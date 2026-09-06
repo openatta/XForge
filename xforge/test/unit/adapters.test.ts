@@ -3,6 +3,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { capabilityMatrix, getAdapter } from '../../src/adapters/index.js';
 import { TARGETS } from '../../src/constants.js';
+import type { ProjectContext } from '../../src/types.js';
 import { targetToolNames } from '../../src/core/tool-capability.js';
 import type { AgentResource, PermissionPolicyResource, RuleResource } from '../../src/types.js';
 import { xforgeRoot } from '../helpers.js';
@@ -286,6 +287,27 @@ describe('PermissionPolicy projection', () => {
 
 // P0-4: Claude Code reads CLAUDE.md, not AGENTS.md, and the CLI invocation contract lives only in
 // AGENTS.md.
+/**
+ * A project as `bootstrap()` reads one: the module map and the two paths, and nothing more.
+ *
+ * Built by hand rather than loaded from a fixture -- these are unit tests over the adapters, and
+ * reaching for a project on disk would make them integration tests of the loader instead. Typed
+ * through `ProjectContext` rather than cast through `unknown`, so a field the fragment starts
+ * reading tomorrow fails here rather than at render time.
+ */
+function bootstrapProject(overrides: { modules?: Array<{ id: string; kind: string; path: string }> } = {}): ProjectContext {
+  const modules = overrides.modules ?? [{ id: 'root', kind: 'application', path: '.' }];
+  return {
+    manifest: { project: { modules } },
+    specsPath: 'xforge/specs',
+    changesPath: 'xforge/changes',
+  } as Pick<ProjectContext, 'specsPath' | 'changesPath'> & { manifest: unknown } as ProjectContext;
+}
+
+function claudeMemory(project: ProjectContext): string {
+  return getAdapter('claude').bootstrap(project).find((item) => item.path === 'CLAUDE.md')!.content.toString('utf8');
+}
+
 describe('Claude memory bootstrap', () => {
   /*
    * CLAUDE.md used to import AGENTS.md so the two could not fork. Both now point at
@@ -293,7 +315,7 @@ describe('Claude memory bootstrap', () => {
    * need not have an AGENTS.md, and the import was dangling whenever it did not.
    */
   it('projects a marker-owned CLAUDE.md that points at xforge/XFORGE.md, not at AGENTS.md', () => {
-    const file = getAdapter('claude').bootstrap().find((item) => item.path === 'CLAUDE.md')!;
+    const file = getAdapter('claude').bootstrap(bootstrapProject()).find((item) => item.path === 'CLAUDE.md')!;
     const body = file.content.toString('utf8');
     expect(body).toContain('xforge/XFORGE.md');
     expect(body).not.toContain('@AGENTS.md');
@@ -302,9 +324,55 @@ describe('Claude memory bootstrap', () => {
     expect(file.fragment).toMatchObject({ format: 'markers' });
   });
 
+
+  /*
+   * The module map is the whole point of the project-shape paragraph: a measured Solid run listed
+   * the directory tree 18 times across six Stages to learn a fact the Manifest already held.
+   */
+  it('names the project\'s modules so a session does not have to list the tree for them', () => {
+    const body = claudeMemory(bootstrapProject({ modules: [
+      { id: 'store', kind: 'library', path: 'src/store' },
+      { id: 'api', kind: 'service', path: 'src/api' },
+    ] }));
+    expect(body).toContain('`store` (library) at `src/store`');
+    expect(body).toContain('`api` (service) at `src/api`');
+    expect(body).toContain('Specs `xforge/specs` · Changes `xforge/changes`');
+  });
+
+  /*
+   * Bounded, because this text rides on every turn of every session. A monorepo must not turn the
+   * always-loaded fragment into the listing it exists to replace.
+   */
+  it('caps the module list and names the command that prints the rest', () => {
+    const modules = Array.from({ length: 15 }, (_, index) => ({ id: `mod-${index}`, kind: 'library', path: `packages/mod-${index}` }));
+    const body = claudeMemory(bootstrapProject({ modules }));
+    expect(body).toContain('`mod-11` (library) at `packages/mod-11`');
+    expect(body).not.toContain('`mod-12`');
+    expect(body).toContain('…and 3 more');
+    expect(body).toContain('xforge state --field project.modules');
+  });
+
+  /*
+   * Never the verification commands. A first draft rendered them and an independent review found
+   * four defects in that one paragraph -- retired entries printed as live, only the first of several
+   * shown, `workingDirectory` dropped, and argv joined on spaces into a line no shell accepts. The
+   * fragment is the file an Agent trusts without checking, so a command that is wrong in it is
+   * worse than no command at all.
+   */
+  it('never renders a verification command, which it cannot render correctly', () => {
+    const project = bootstrapProject();
+    (project as unknown as { manifest: Record<string, unknown> }).manifest = {
+      project: { modules: [{ id: 'root', kind: 'application', path: '.' }] },
+      verification: { 'unit-tests': [{ command: ['npm', 'test'], declaredBy: 'a@b.test', declaredAt: '2026-01-01T00:00:00Z' }] },
+    };
+    const body = claudeMemory(project);
+    expect(body).not.toContain('npm test');
+    expect(body).not.toContain('Declared verification');
+  });
+
   it('does not project CLAUDE.md for any other target', () => {
     for (const target of TARGETS.filter((item) => item !== 'claude')) {
-      expect(getAdapter(target).bootstrap().map((item) => item.path)).not.toContain('CLAUDE.md');
+      expect(getAdapter(target).bootstrap(bootstrapProject()).map((item) => item.path)).not.toContain('CLAUDE.md');
     }
   });
 });

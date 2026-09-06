@@ -19,4 +19,11 @@ prompt guidance as guidance.
 
 `xforge/XFORGE.md` carries what only one Stage needs: Flow selection and the spec-driven
 parallel development policy. Per-topic XForge guidance is installed under `.claude/rules/`.
+
+This project's modules, from `xforge/manifest.yaml` — this does not have to be found by
+listing the tree.
+
+- `root` (application) at `.`
+
+Specs `xforge/specs` · Changes `xforge/changes`
 <!-- XFORGE:END -->

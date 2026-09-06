@@ -2,7 +2,7 @@ import type { Adapter } from './types.js';
 import {
   BOOTSTRAP_BODY,
   CLAUDE_MEMORY_BEGIN,
-  CLAUDE_MEMORY_BODY,
+  claudeMemoryBody,
   CLAUDE_MEMORY_END,
   actionId,
   artifactTrace,
@@ -35,17 +35,20 @@ export const claudeAdapter: Adapter = {
   // session unconditionally. `description` is not a key Claude rules recognise, so it is dropped.
   renderRule: (rule) => renderRuleMarkdown(rule, { paths: rulePaths(rule) }, { description: false }),
   renderGovernance: (input) => renderGovernance('claude', '3', input),
-  bootstrap: () => [
+  bootstrap: (project) => {
+    const memory = claudeMemoryBody(project);
+    return [
     {
       path: '.claude/rules/xforge-bootstrap.md', content: Buffer.from(BOOTSTRAP_BODY),
       source: 'builtin:bootstrap', target: 'claude',
       resource: { kind: 'builtin', id: 'bootstrap' }, sourcePaths: [], renderVersion: 'claude:builtin:3',
     },
     {
-      path: 'CLAUDE.md', content: Buffer.from(`${CLAUDE_MEMORY_BEGIN}\n${CLAUDE_MEMORY_BODY}\n${CLAUDE_MEMORY_END}\n`),
+      path: 'CLAUDE.md', content: Buffer.from(`${CLAUDE_MEMORY_BEGIN}\n${memory}\n${CLAUDE_MEMORY_END}\n`),
       source: 'builtin:claude-memory', target: 'claude',
       resource: { kind: 'builtin', id: 'claude-memory' }, sourcePaths: [], renderVersion: 'claude:builtin:3',
-      fragment: { format: 'markers', begin: CLAUDE_MEMORY_BEGIN, end: CLAUDE_MEMORY_END, body: CLAUDE_MEMORY_BODY },
+      fragment: { format: 'markers', begin: CLAUDE_MEMORY_BEGIN, end: CLAUDE_MEMORY_END, body: memory },
     },
-  ],
+    ];
+  },
 };

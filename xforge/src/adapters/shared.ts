@@ -1,4 +1,4 @@
-import type { AgentResource, DesiredFile, RuleResource } from '../types.js';
+import type { AgentResource, DesiredFile, ProjectContext, RuleResource } from '../types.js';
 import type { TargetId } from '../constants.js';
 import { normalizeRule } from '../core/governance.js';
 
@@ -205,7 +205,47 @@ export const CLAUDE_MEMORY_END = '<!-- XFORGE:END -->';
  * read and costs 200 tokens x 191 turns is not a saving. Anything that does not remove a read or
  * prevent a wrong call belongs in XFORGE.md.
  */
-export const CLAUDE_MEMORY_BODY = [
+/**
+ * What this project *is*, from the Manifest, for the guidance every session already loads.
+ *
+ * Measured over one complete Solid run: 18 tree listings, spread across six Stages that each began
+ * by rediscovering the same unchanging fact. The Agent lists the tree because nothing has told it
+ * the shape; the listing costs a turn, and its 4-6KB result is then re-read by every turn that
+ * follows it in that Stage.
+ *
+ * The module map and the two paths, and nothing else. A first draft also rendered
+ * `manifest.verification`, and an independent review found four separate defects in that one
+ * paragraph: it printed retired commands as live and let them shadow the command actually in force,
+ * it printed only the first of several, it dropped the `workingDirectory` each command is bound to,
+ * and it joined argv on spaces into a string that is neither argv nor a runnable shell line -- the
+ * golden fixture shipped `node -e console.log("fixture verification ok")`, which `bash` rejects with
+ * a syntax error. A command shown without where it runs is worse than no command, and this file is
+ * the one an Agent trusts without checking. `xforge check` already refuses an undeclared Gate with
+ * the exact `verification declare` line, which is the moment that question actually gets asked.
+ *
+ * Bounded on purpose: twelve modules, then the command that prints the rest. This text rides on
+ * every turn of every session, so the growth has to have a ceiling. `manifest.verification` had
+ * none -- a project declaring twenty Gates rendered three kilobytes -- which is the other half of
+ * why it is gone.
+ */
+function projectShapeBody(project: ProjectContext): string[] {
+  const modules = project.manifest.project.modules ?? [];
+  const shown = modules.slice(0, 12);
+  return [
+    'This project\'s modules, from `xforge/manifest.yaml` — this does not have to be found by',
+    'listing the tree.',
+    '',
+    ...shown.map((module: { id: string; kind: string; path: string }) => `- \`${module.id}\` (${module.kind}) at \`${module.path}\``),
+    ...(modules.length > shown.length
+      ? [`- …and ${modules.length - shown.length} more; \`xforge state --field project.modules\` lists them all`]
+      : []),
+    '',
+    `Specs \`${project.specsPath}\` · Changes \`${project.changesPath}\``,
+  ];
+}
+
+export function claudeMemoryBody(project: ProjectContext): string {
+  return [
   '## XForge',
   '',
   'This project is governed by XForge. The CLI is `xforge`, already installed and on PATH.',
@@ -224,6 +264,9 @@ export const CLAUDE_MEMORY_BODY = [
   'assembling one from a usage string. Treat CLI JSON and Gate evidence as deterministic facts, and',
   'prompt guidance as guidance.',
   '',
-  '`xforge/XFORGE.md` carries what only one Stage needs: Flow selection and the spec-driven',
-  'parallel development policy. Per-topic XForge guidance is installed under `.claude/rules/`.',
-].join('\n');
+    '`xforge/XFORGE.md` carries what only one Stage needs: Flow selection and the spec-driven',
+    'parallel development policy. Per-topic XForge guidance is installed under `.claude/rules/`.',
+    '',
+    ...projectShapeBody(project),
+  ].join('\n');
+}

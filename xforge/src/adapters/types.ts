@@ -3,6 +3,7 @@ import type {
   AgentResource,
   DesiredFile,
   Diagnostic,
+  ProjectContext,
   RuleResource,
   HookResource,
   PermissionPolicyResource,
@@ -22,7 +23,9 @@ export interface Adapter {
   rulePath(ruleId: string): string | null;
   renderRule(rule: RuleResource): string | null;
   renderGovernance(input: GovernanceProjectionInput): GovernanceProjection;
-  bootstrap(): DesiredFile[];
+  /* Takes the project because the guidance it emits names the project's own modules and
+     declared verification commands -- facts a session otherwise spends turns rediscovering. */
+  bootstrap(project: ProjectContext): DesiredFile[];
 }
 
 export interface GovernanceProjectionInput {
