@@ -5,12 +5,14 @@ This project is governed by XForge. The CLI is `xforge`, already installed and o
 Never `npx xforge` — npm carries an unrelated package of that name.
 
 On a Change, `xforge stage --change <id>` is the first call: it returns the ready Action with
-its `writes`, `requiredSections` and outline, the text of that Action's inputs, the Constitution,
-and the diagnostics. Re-run it after each Artifact rather than asking what changed. Outside a
-Change, `xforge state` reports project facts and names the active Changes.
+its `writes`, `requiredSections` and outline, and a reading plan naming every input with its
+byte size. It does not carry their text — open the ones you need, once each. Re-run it after
+each Artifact rather than asking what changed. Outside a Change, `xforge state` reports project
+facts and names the active Changes.
 
 Read commands take `--field <dotted.path>`, repeatable, to return one value instead of the whole
-envelope; one path that does not resolve fails the call. Chain commands that do not read each
+envelope; one path that does not resolve fails the call. **Every path starts inside `data`, so it
+is `change.governance…`, never `data.change.governance…`.** Chain commands that do not read each
 other onto one line — a turn costs far more than a process.
 
 Run the command a reply gives you in `nextActions[].command` or `remedy.commands` rather than

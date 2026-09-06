@@ -174,7 +174,7 @@ export function rulePaths(rule: RuleResource): string[] {
 
 /* The same contract for the hosts that read `AGENTS.md` rather than `CLAUDE.md`. It named four
    files to open before starting; the entry call returns three of them, so it names the call. */
-export const BOOTSTRAP_BODY = `# XForge bootstrap\n\nThis project is governed by XForge. The CLI is \`xforge\`, already installed and on PATH; never \`npx xforge\`.\n\nOn a Change, \`xforge stage --change <id>\` is the first call: it returns the ready Action with its \`writes\`, \`requiredSections\` and outline, the text of that Action's inputs, the Constitution, and the diagnostics. Outside a Change, \`xforge state\` reports project facts and names the active Changes. Read commands take \`--field <dotted.path>\`, repeatable, to return one value instead of the whole envelope.\n\nUse the installed \`xforge-*\` Skills, take commands from \`nextActions[].command\`, and treat only matching CLI/Gate evidence as enforced facts. \`xforge/XFORGE.md\` carries Flow selection and the parallel development policy.\n`;
+export const BOOTSTRAP_BODY = `# XForge bootstrap\n\nThis project is governed by XForge. The CLI is \`xforge\`, already installed and on PATH; never \`npx xforge\`.\n\nOn a Change, \`xforge stage --change <id>\` is the first call: it returns the ready Action with its \`writes\`, \`requiredSections\` and outline, and a reading plan naming each input with its byte size — open those yourself, once each. Everything a read command returns lives under \`data\`, so a \`--field\` path starts \`change.…\`, never \`data.change.…\`. Outside a Change, \`xforge state\` reports project facts and names the active Changes. Read commands take \`--field <dotted.path>\`, repeatable, to return one value instead of the whole envelope.\n\nUse the installed \`xforge-*\` Skills, take commands from \`nextActions[].command\`, and treat only matching CLI/Gate evidence as enforced facts. \`xforge/XFORGE.md\` carries Flow selection and the parallel development policy.\n`;
 
 /**
  * Claude Code loads `CLAUDE.md`, never `AGENTS.md`, so its block used to import `AGENTS.md` to
@@ -251,14 +251,16 @@ export function claudeMemoryBody(project: ProjectContext): string {
   'This project is governed by XForge. The CLI is `xforge`, already installed and on PATH.',
   'Never `npx xforge` — npm carries an unrelated package of that name.',
   '',
-  'On a Change, `xforge stage --change <id>` is the first call: it returns the ready Action with',
-  'its `writes`, `requiredSections` and outline, the text of that Action\'s inputs, the Constitution,',
-  'and the diagnostics. Re-run it after each Artifact rather than asking what changed. Outside a',
-  'Change, `xforge state` reports project facts and names the active Changes.',
-  '',
-  'Read commands take `--field <dotted.path>`, repeatable, to return one value instead of the whole',
-  'envelope; one path that does not resolve fails the call. Chain commands that do not read each',
-  'other onto one line — a turn costs far more than a process.',
+    'On a Change, `xforge stage --change <id>` is the first call: it returns the ready Action with',
+    'its `writes`, `requiredSections` and outline, and a reading plan naming every input with its',
+    'byte size. It does not carry their text — open the ones you need, once each. Re-run it after',
+    'each Artifact rather than asking what changed. Outside a Change, `xforge state` reports project',
+    'facts and names the active Changes.',
+    '',
+    'Read commands take `--field <dotted.path>`, repeatable, to return one value instead of the whole',
+    'envelope; one path that does not resolve fails the call. **Every path starts inside `data`, so it',
+    'is `change.governance…`, never `data.change.governance…`.** Chain commands that do not read each',
+    'other onto one line — a turn costs far more than a process.',
   '',
   'Run the command a reply gives you in `nextActions[].command` or `remedy.commands` rather than',
   'assembling one from a usage string. Treat CLI JSON and Gate evidence as deterministic facts, and',
