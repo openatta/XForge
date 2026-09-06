@@ -6,7 +6,7 @@ description: 创建受治理的 Change，并且只写 Propose Stage 允许的 ch
 # 不变量
 
 - **进入**用 `xforge state --field nextActions --field diagnostics --field constitution --field project --field flows --field changes --field specs`：读取 ready 的 `create-change` Action（它携带 `change.yaml` 模板以及写到哪里）、Constitution 的版本与路径、Changes 路径、项目模块、Specs，以及每个 Flow 及其用于判定 eligibility 的 `policy`。Constitution 按这里报告的路径去读文件：State 只携带它的版本与路径，不携带正文。**本 Stage 用 `state` 进入而不是 `stage`，是因为此时还没有 Change；从第 3 步起，入口是 `xforge stage --change <id>`，它会把 Action 的输入正文一起带来。**
-- `change.yaml` 存在之后，后续每一次读取都是 `xforge stage --change <id>`：它返回 Change 在哪、ready 的 Action 及其 `writes`/`requiredSections`，以及 `owes` 下这个 Stage 仍欠的每个 Artifact 及其 `instruction`/`outline`、**该 Action `inputs` 的正文**、Constitution 正文，以及诊断。不要再单独去打开那些输入——它们已经到了。
+- `change.yaml` 存在之后，后续每一次读取都是 `xforge stage --change <id>`：它返回 Change 在哪、ready 的 Action 及其 `writes`/`requiredSections`，以及 `owes` 下这个 Stage 仍欠的每个 Artifact 及其 `instruction`/`outline`、**该 Action `inputs` 的路径（每份附摘要与章节清单）**、Constitution 正文，以及诊断。只打开你真正需要的那几份，且每份只打开一次；回复里已经写明它们是哪些、以及自本 Stage 开始以来哪些动过，因此不需要靠列目录树去找。
 - **命令一律运行 `state.nextActions[].command` 给出的那条，不要自己拼装。** 第 3 步是唯一的例外，因为没有任何 Action 会创建 Change。
 - 只消费 `xforge-propose` 对应的 ready Action；每次写入前从磁盘重读它的 `inputs`。
 - Flow 的选择依据是 State 报告的各 Flow `policy.eligibleWhen`，绝不依据 Flow 的名字或印象。分类与可用 Flow 冲突时，升级或请求决定。

@@ -117,38 +117,31 @@ exit: 0
     "read": [
       {
         "path": "xforge/changes/add-feature/assurance.md",
-        "reason": "written-by-this-stage",
-        "text": "## Completeness\nAll requirements are covered.\n"
+        "reason": "written-by-this-stage"
       },
       {
         "path": "xforge/changes/add-feature/change.yaml",
-        "reason": "worktree-dirty",
-        "text": "classification:\n  dataMigration: false\n  privacy: false\n  publicApi: false\n  risk: medium\n  security: false\nflow: solid\nscope:\n  modules:\n    - root\n  paths:\n    - src/**\n"
+        "reason": "worktree-dirty"
       },
       {
         "path": "xforge/changes/add-feature/check-report.md",
-        "reason": "worktree-dirty",
-        "text": "## Reviewed\nCompleteness, consistency, testability, feasibility and risk; no findings.\n"
+        "reason": "worktree-dirty"
       },
       {
         "path": "xforge/changes/add-feature/design.md",
-        "reason": "worktree-dirty",
-        "text": "## Decisions\nUse a deterministic fixture.\n"
+        "reason": "worktree-dirty"
       },
       {
         "path": "xforge/changes/add-feature/proposal.md",
-        "reason": "worktree-dirty",
-        "text": "## Why\nTest\n\n## Flow choice\nsolid\n"
+        "reason": "worktree-dirty"
       },
       {
         "path": "xforge/changes/add-feature/specs/widget/spec.md",
-        "reason": "worktree-dirty",
-        "text": "## ADDED Requirements\n\n### Requirement: Widget works\n\n#### Scenario: success\n- **WHEN** used\n- **THEN** it works\n"
+        "reason": "worktree-dirty"
       },
       {
         "path": "xforge/constitution.md",
-        "reason": "always",
-        "text": "---\nversion: 1.1.0\nratified: 2026-08-08\nlastAmended: 2026-08-08\n---\n\n# Project Constitution\n\n## Mission and boundaries\n\nDeliver the project's declared behavior without silently expanding scope,\nauthority, data collection, or dependencies.\n\n## Architecture principles\n\nPrefer small, testable modules and explicit contracts. Preserve existing\nproject layout and compatibility unless an approved Change says otherwise.\n\n## Security, privacy, and compliance\n\nUse least privilege, keep secrets out of repository assets and output, validate\nall trust-boundary input, and record security/privacy impact explicitly.\n\n## Quality and observability\n\nExternally observable requirements need automated verification. Failures must\nbe diagnosable without exposing sensitive data. No Change is complete without\ncurrent evidence from its mandatory gates.\n\n## Parallel Development\n\nParallelize only dependency-ready work packages whose write paths do not\noverlap and whose shared resources can be isolated. Every write-capable Worker\nuses an assigned worktree and fixed base commit, and each path has a single\nwriter at a time. Shared contracts, migrations, generated files, and lock files\nhave one Integrator writer. Accept delivery only from verified Git diffs,\ndeclared verification commands, and current Gate Evidence; Agent prose is not\nproof. No Agent may approve its own exception.\n\n## Compatibility and versioning\n\nPublic interfaces, stored data, and protocols change deliberately with a\ndocumented migration and rollback strategy.\n\n## Governance\n\nThis Constitution outranks ordinary Rules. Amend it through an independently\nreviewed Change and update its semantic version: MAJOR for breaking principles,\nMINOR for new or materially broader principles, PATCH for clarification.\nHumans or authorized external systems grant approvals; an AI Agent cannot\nself-approve an exception.\n"
+        "reason": "always"
       }
     ],
     "vouched": [],

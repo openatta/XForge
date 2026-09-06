@@ -16,7 +16,17 @@ import { approveCurrentRevision, changeYaml, checkFindings, constitutionLedger, 
  * content; what it does not declare does not.
  */
 describe('xforge stage working set', () => {
-  it('carries the text of every input the ready Action declares', async () => {
+  /*
+   * The reply names every input; it no longer carries them.
+   *
+   * Carrying the text was meant to stop a Stage re-opening its own inputs, and measured over a full
+   * Solid run it did not: `stage` delivered 75,774 bytes of input text and the Agent re-opened the
+   * same documents 29 times for 220,839 bytes more. Both copies stay in context for the rest of the
+   * Stage, so together they were 52% of everything that run paid to re-read. The text is still one
+   * flag away -- `--content changed` is the behaviour this test used to assert, and the two tests
+   * below still hold it.
+   */
+  it('names every input the ready Action declares, without carrying it', async () => {
     const root = await fixture();
     /* A Change stopped part-way, because a finished one has no next Artifact and so no inputs to
        be sufficient about. With the Proposal written, `delta-specs` is ready and declares it. */
@@ -28,12 +38,21 @@ describe('xforge stage working set', () => {
     const data = stage.json.data as any;
     expect(data.action, JSON.stringify(data, null, 2)).toBeTruthy();
 
-    const withText = new Map((data.read as Array<{ path: string; text?: string }>)
+    const listed = new Set((data.read as Array<{ path: string }>).map((entry) => entry.path));
+    for (const input of data.action.inputs as string[]) {
+      expect(listed.has(input), `${input} was declared an input of the ready Action and was not named in the reading plan`).toBe(true);
+    }
+    /* Named, not inlined: an input the Stage does not need never enters context at all. */
+    expect((data.read as Array<{ text?: string }>).every((entry) => entry.text === undefined)).toBe(true);
+
+    /* And the text is one flag away for a caller that wants it. */
+    const withText = await runCli(root, ['stage', '--change', 'add-feature', '--content', 'changed']);
+    const carried = new Map(((withText.json.data as any).read as Array<{ path: string; text?: string }>)
       .filter((entry) => typeof entry.text === 'string')
       .map((entry) => [entry.path, entry.text!]));
     for (const input of data.action.inputs as string[]) {
-      expect(withText.has(input), `${input} was declared an input of the ready Action and arrived without its text`).toBe(true);
-      expect(withText.get(input)!.length).toBeGreaterThan(0);
+      expect(carried.has(input), `${input} did not arrive even under --content changed`).toBe(true);
+      expect(carried.get(input)!.length).toBeGreaterThan(0);
     }
   });
 
@@ -76,7 +95,7 @@ describe('xforge stage working set', () => {
        it back. */
     await write(root, 'xforge/changes/add-feature/design.md', `## Decisions\n${'Deterministic prose. '.repeat(2000)}\n`);
 
-    const stage = await runCli(root, ['stage', '--change', 'add-feature']);
+    const stage = await runCli(root, ['stage', '--change', 'add-feature', '--content', 'changed']);
     const data = stage.json.data as any;
     const overBudget = (stage.json.diagnostics as Array<{ code: string; message: string }>)
       .find((entry) => entry.code === 'XFORGE_STAGE_CONTENT_OVER_BUDGET');
@@ -131,8 +150,8 @@ describe('xforge stage working set', () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
 
-    const json = await runCli(root, ['stage', '--change', 'add-feature']);
-    const text = await runCli(root, ['stage', '--change', 'add-feature', '--text']);
+    const json = await runCli(root, ['stage', '--change', 'add-feature', '--content', 'changed']);
+    const text = await runCli(root, ['stage', '--change', 'add-feature', '--text', '--content', 'changed']);
 
     /*
      * Still a summary first: the plan is at the top and the Stage's state is readable before any

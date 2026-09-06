@@ -1258,7 +1258,22 @@ async function dispatch(parsed: ParsedArguments): Promise<Envelope> {
      */
     const bundle = await executeStageBundle(project, {
       change: parsed.change!,
-      content: parsed.content as 'none' | 'changed' | 'full' | undefined,
+      /*
+       * `none` by default: the reading plan, not the documents.
+       *
+       * Sending the text was meant to save the Stage from re-opening its own inputs, and measured
+       * over one full Solid run it did not: `stage` delivered 75,774 bytes of input text and the
+       * Agent then re-opened the same documents 29 times for 220,839 bytes more. Both copies sit in
+       * context for the rest of the Stage, so together they were 52% of everything the run paid to
+       * re-read -- and the second, larger copy cost 3.3x the first.
+       *
+       * Every Skill has said "do not open those inputs separately; they arrived" since the day the
+       * text was added, and every Stage but Propose opened them anyway. So this is the other design
+       * rather than the same design asked for more firmly: the reply names the inputs, gives a
+       * digest and the section headings of each, and says which moved since the Stage began. What
+       * the Agent needs it opens once; what it does not need is never in context at all.
+       */
+      content: (parsed.content ?? 'none') as 'none' | 'changed' | 'full',
     });
     const state = await executeState(project, { change: parsed.change });
     const actions = await nextActionsFor(project, state.data as Record<string, any>, parsed.change);
