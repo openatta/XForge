@@ -6,6 +6,11 @@
 > **元素记录**，这两条补丁都不再需要——记录只由归档推进，drift 在归档后自然归零。
 >
 > §0 的结论没有变，而且正是它推着实施走到这一步：**P1 自己走不到 archive。**
+>
+> **F5 后来有了第三个答案。** 当时只能在「实测 `guarded`」与「期望 `verified`」之间二选一，
+> 而两者都不对：validator 的强制是在进程内、读到文档那一刻发生的，没有 Evidence 可记。
+> 后来补了 `structural` 这一档，`interfaces-are-contract-governed` 在 solid / major 下报
+> `guarded, structural`。见 [治理模型](governance-model.md) §5.2。
 
 
 > **目的**：设计文档 §1.4 说「单人单模块项目是纯税收」，§10 R5 说最大的一次性成本是首次基线抽取。

@@ -38,9 +38,14 @@ scaffold:
     - governance-assets-are-integrator-only
     - observable-requirements-are-tested
     - design-decisions-need-a-human
-    # Selected since 0.8.5, and enforced without a Gate: `protected-files` refuses a write to the
-    # contract baseline at the tool call, and the `contract-delta` validator refuses a malformed
-    # delta in-process. `xforge state` reports that pair as `guarded, structural`.
+    # Enforced without a Gate: `protected-files` refuses a write to the contract baseline at the
+    # tool call, and the `contract-delta` validator refuses a malformed delta in-process. `xforge
+    # state` reports that pair as `guarded, structural` on a Flow that runs the validator.
+    #
+    # Which release selected it is stated in the Rule file and deliberately not here: this Manifest
+    # is on `prepare-release.mjs`'s rewrite list because `scaffold.version` and `source.version` are
+    # genuinely the release's, and the blanket substitution reached into this comment and moved a
+    # "since 0.8.4" forward with them -- silently turning a history note into a false one.
     #
     # The four contract Gates stay out of `scaffold.gates` on purpose: every one is
     # `builtin: declared`, so shipping them enabled would block every project at a Stage exit until

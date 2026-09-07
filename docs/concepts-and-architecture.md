@@ -627,8 +627,9 @@ Adapter 报告 `guidance`、`permissionPolicy`、`runtimeHook.*`、`auditDeliver
    **Gate refuse ≠ Gate fail**：refuse 是「你还没告诉我这个项目怎么验证自己」。
 4. **Gate 必须在最后一次写入之后、一次性运行。** 先跑一个 Gate、再改 Artifact、再跑下一个，
    会让先跑的变陈旧——所有 Gate 都报 `passed`，Stage 却仍然出不去。
-5. **想让一条标准真的生效，别只写 Rule。** 给它接上 Gate / Policy / Approval，
-   否则 `state` 会诚实地把它标成 `uncovered` 或 `unenforceable`。
+5. **想让一条标准真的生效，别只写 Rule。** 给它接上 Gate / Policy / Approval / validator，
+   否则 `state` 会诚实地把它标成 `uncovered` 或 `unenforceable`。四种强度不等价，
+   但都算强制：只接了一道 PermissionPolicy 的 Rule 报 `guarded`，两个否定档都不出现。
 6. **改治理资产不属于一个进行中的 Change**——它会让所有活跃 Change 的 revision 漂移。
 7. **要定制，改 `xforge/scaffold/**` 并 `xforge sync`**，永远不要手改 `.claude/` 等生成目录；
    同时记得去 `manifest.yaml` 里登记，否则文件写了也不会被投影。

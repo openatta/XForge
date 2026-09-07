@@ -280,6 +280,10 @@ uncovered     这条 Rule 没有引用任何机制
 unenforceable 它引用了机制，但在当前 Flow 下那个机制不存在
 ```
 
+后两个是「什么都没有」的两种说法，所以**只要有一道真实存在的 PermissionPolicy，两个都不出现**。
+一条只靠 `policyRefs` 强制的 Rule 报 `guarded`，不报 `uncovered`——那道守卫是真的在拒绝写入，
+说它「没有引用任何机制」等于在同一个数组里同时说 P 和非 P。
+
 > **`structural` 夹在 `instructed` 与 `verified` 之间，是契约工作逼出来的真实第三种情况。**
 > 一条由 Artifact validator 强制的 Rule，在文档被读到的那一刻就被 CLI 拒绝——什么都没运行，
 > 所以没有 Evidence、没有任何绑定 revision 的东西可记。叫它 `verified` 就是把它摆在一个
@@ -294,6 +298,11 @@ unenforceable 它引用了机制，但在当前 Flow 下那个机制不存在
 > `uncovered` 说这条 Rule 没有引用任何机制；`unenforceable` 说它引用了一个
 > **在这个 Change 正在跑的 Flow 下并不存在**的机制——项目没有的 Gate，
 > 或只有另一条 Flow 才定义的审批策略。
+>
+> 两者都以「有没有一道解析得到的守卫」为前提：有守卫就两个都不报。
+> `interfaces-are-contract-governed` 在 `quick` 下曾同时报 `guarded` 与 `unenforceable`——
+> 它的 `contract-delta` validator 在那条 Flow 上解析为空，而 `protected-files` 明明还在守着。
+> 这不是一个偏保守的读数，是一份自相矛盾的报告。
 
 这个区分是补出来的。在有区分之前，第二种情况**读起来是 covered**，
 因为非空的 `approvalRefs` 被当成了「有东西在强制它」的证明——
@@ -301,7 +310,16 @@ unenforceable 它引用了机制，但在当前 Flow 下那个机制不存在
 而那里根本没有这条策略，什么都没在检查它。
 
 `state` 里还有 `enforceableRefs` 字段：`gateRefs` / `approvalRefs` / `validatorRefs` 中
-**本 Flow 和本项目真的有**的那个子集。
+**本 Flow 和本项目真的有**的那个子集。`policyRefs` 故意不在其中：一道被选中的
+PermissionPolicy 是强制，`guarded` 报的就是它，但它不是这个字段一直以来的那三种绑定
+revision 的强制，混进去会改变 `state` 一直在报的东西。守卫的作用在别处——它让
+`unenforceable` 不成立。
+
+判断「这条 Rule 有没有引用机制」的算法只有一份（`core/governance.ts` 的
+`resolveRuleEnforcement`），资源加载与 `state` 共用。它们**可以**在解析强度上不同——
+加载资源时没有 Flow 在场，解析不了审批策略与 validator，得到的是更粗的项目级答案——
+但**不可以**在「数哪几个字段」上不同。之前是两份手工维护的清单，它们分别漏了
+`validatorRefs` 和 `policyRefs`，各自产出一种自相矛盾的报告。
 
 ### 5.3 随包的四条 Rule
 
@@ -310,15 +328,18 @@ unenforceable 它引用了机制，但在当前 Flow 下那个机制不存在
 | `governance-assets-are-integrator-only` | must | policyRefs: `protected-files`, `protected-manifest` | 与两条策略的 `match.paths` 保持 1:1 对齐 |
 | `observable-requirements-are-tested` | must | gateRefs: `unit-tests` | 只有散文证据的需求不算已验证 |
 | `design-decisions-need-a-human` | must | approvalRefs: `planning-solid`, `implementation-major` | 两个都列，才能在 solid 与 major 下都可强制 |
-| `interfaces-are-contract-governed` | must | policyRefs: `protected-files` + validatorRefs: `contract-delta` | 报 `guarded, structural`；`gateRefs` 留空——四道契约 Gate 都是 `builtin: declared` 默认不选，而引用一道未启用的 Gate 会被 `XFORGE_RULE_GATE_DISABLED` 直接拒绝 |
+| `interfaces-are-contract-governed` | must | policyRefs: `protected-files` + validatorRefs: `contract-delta` | 在跑这个 validator 的 Flow（solid / major）下报 `guarded, structural`，`quick` 下只报 `guarded`；`gateRefs` 留空——四道契约 Gate 都是 `builtin: declared` 默认不选，而引用一道未启用的 Gate 会被 `XFORGE_RULE_GATE_DISABLED` 直接拒绝 |
 
 `design-decisions-need-a-human` 值得单看：它的 `approvalRefs` **同时列了两条策略**，
 因为这两条分别只存在于 solid 和 major。列一条就会在另一个 Flow 下变成 `unenforceable`。
-而在 `quick` 下这条 Rule 只是指导——`xforge state` 会直接说 `coverage: unenforceable`，
-而不是报告一个不可能触发的强制。
+
+在 `quick` 下它压根不出现。它的 `scope.stages` 是 `design, check`，而 `quick` 的三段是
+`propose / apply / verify`，`ruleApplies` 在算 coverage 之前就把它滤掉了——`governance.rules`
+里没有这一条，不是有一条报着 `unenforceable`。（这份文档此前写的是后者。`unenforceable`
+这一档当初正是为它设计的，而它从来走不到；真正走到那一档的是两条它不该管的 Rule。）
 
 > `xforge/scaffold/rules/` 在这七类资源里是唯一**为项目留白**的：
-> 随包的五条是示例与自我治理，你的工程标准要自己写。
+> 随包的四条是示例与自我治理，你的工程标准要自己写。
 
 ### 5.4 `scope.paths` 有两个读者，读法不一样
 

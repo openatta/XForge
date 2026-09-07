@@ -86,7 +86,7 @@ A 类句子的问题不是啰嗦，是**它没有校验者**。
 
 | 事故记忆 | 现在在哪 | 该在哪 |
 | --- | --- | --- |
-| `moduleContract` 答 `false` 是唯一能让接口变更溜进弱 Flow 的动作 | `xforge-propose` 正文 7 行 | `XFORGE_FLOW_TOO_WEAK` |
+| `moduleContract` 答 `false` 是唯一能让接口变更溜进弱 Flow 的动作 | `xforge-propose` 正文 7 行 | `XFORGE_FLOW_TOO_WEAK`；那 7 行现在还多了一道机制——模板不再预填这个键，带占位符的 Change 加载不了，问题写在 `XFORGE_CLASSIFICATION_UNANSWERED` 里 |
 | 手写 `manifest.verification` 缩进少一级，之后治理调度器拒绝了每一个工具调用 | `xforge-verify` / `xforge-scaffold` 正文 | `XFORGE_VERIFICATION_NOT_DECLARED` |
 | 复核记录写成 `.yaml` 会被当成交付记录解析 | `xforge-apply` 正文 | 对应的路径诊断码 |
 

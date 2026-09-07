@@ -10,6 +10,16 @@
 > 补读第二轮：`core/{reconcile,reconcile/model,reconcile/rules,reconcile/sources,files,errors,hash,path-safety,lockfile,verification-receipt}.ts`、
 > `runners/gate.ts`、`core/work-packages/globs.ts`。
 >
+> ⚠️ **这是实施前的设计文档，落地形态与它不同。** 它写在 0.7.21 上，把契约治理整体当作
+> 一件项目要主动选进来的事（§8.2 的落地形态表、`solid-contract` / `major-contract` 两条
+> 新 Flow、`manifest.flow: solid-contract`）。实际发布把这一层劈成了两半：需要零配置的那半
+> ——被校验的 contract-delta、写保护的基线、决策台账、归档时的合并——直接进了随包的
+> `solid` 与 `major`，`solid-contract` 只剩下调度四道 `builtin: declared` Gate 的模板。
+> 现状看 [概念与架构](concepts-and-architecture.md) 的「默认给到什么、不给到什么」和
+> [治理模型](governance-model.md) §5；差异的理由看
+> [落地方案](xforge-contract-governance-adoption-plan.md) 开头那张表。
+> 本文原样保留，因为字段级的源码核实与设计推导仍然有用。
+>
 > **仍未读到**（实施时需自行确认）：`core/{identity,audit,redaction,approval-receipt,review-acknowledgement,check-findings,constitution-check,language}.ts`、
 > `src/cli.ts`、`install/**`、`test/**`。凡依赖它们的结论，本文标注 **【未读】**。
 

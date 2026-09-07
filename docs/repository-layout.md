@@ -161,21 +161,30 @@ classification:
   privacy: false
   publicApi: false
   dataMigration: false
-  moduleContract: false # 可选：本 Change 是否移动了模块之间的接口
+  moduleContract: true  # 本 Change 是否移动了模块之间的接口
 scope:
-  modules: [root]
-  paths: [src/**]
+  modules: [store, api]
+  paths: [src/store/**, src/api/**]
 ```
 
 必填：`flow`、`classification`（五个字段全要）、`scope`（`modules` + `paths`）。
 
-`moduleContract` **可选**，缺省当 false——加进必填会让契约出现之前写的每一份 `change.yaml`
-在同一刻全部失效，而且对已经在途的 Change 没有任何前进的路。它由 `eligibleWhen.contractImpact`
-消费：随包三个 Flow 都写 `forbidden`，因为它们都没有可以承载这份声明的 Artifact。
+`moduleContract` 在 schema 上**可选**，缺省当 false——加进必填会让契约出现之前写的每一份
+`change.yaml` 在同一刻全部失效，而且对已经在途的 Change 没有任何前进的路。它由
+`eligibleWhen.contractImpact` 消费：`quick` 写 `forbidden`，因为它没有可以承载这份声明的
+Artifact；`solid` 与 `major` 写 `allowed`，两者都带条件的 contract-delta。
 
-它是**自报**的，没有任何东西拿它跟 diff 比对。它买到的东西很窄，但值得有：一个**确实这么说了**的
-Change，无法在治理不了它的 Flow 上继续走。而 `check` 的 RC-7 会把这份自报与 Change 自己写的
-contract-delta 摆在一起——只陈述差异，不判定哪一份记录是错的。
+**但 `create-change` 给出的模板不替你回答它。** 其余四个布尔键预填 `false`，因为「没答的标记
+必须什么都不声称」，而这条成立的前提是答错了别处会抓住——risk 错了 Flow 资格会拒，security
+错了有扫描 Gate，dataMigration 错了迁移路径对不上。这一个没有别处：`checker.ts` 说它是唯一
+没有旁证的资格键，而唯一拿它跟 diff 对照的 `contract-compat` 是默认不选的 `builtin: declared`
+Gate。所以预填的 `false` 不是「什么都不声称」，而是把整层契约治理关掉的那个答案，预先写好
+递给那个没有下一段能再问一次的问题。模板给的是 `<true|false>`，带着占位符的 Change 加载不了
+（`XFORGE_CLASSIFICATION_UNANSWERED`），而那句拒绝里带着问题本身。
+
+它仍然是**自报**的，默认层没有任何东西拿它跟 diff 比对。它买到的东西很窄，但值得有：一个
+**确实这么说了**的 Change，无法在治理不了它的 Flow 上继续走。而 `check` 的 RC-7 会把这份自报
+与 Change 自己写的 contract-delta 摆在一起——只陈述差异，不判定哪一份记录是错的。
 
 ### 2.3 `generates` 与 `writePath`
 
