@@ -1,0 +1,28 @@
+# What this scenario selects on top of what `xforge init` produced.
+#
+# Only the additions. The Scaffold version, the CLI pin and the target list are init's to decide, and
+# a seed that shipped a whole Manifest would freeze all three into a fixture with no business knowing
+# them -- silently, because the file stays valid as they move.
+#
+# There is no `scaffold:` block here, and its absence is the entire point of this scenario.
+#
+# `solid-contract` selects four `builtin: declared` Gates and a Flow to schedule them, and proves the
+# tier a project opts into. What had never been proved is the tier below it: since 0.8.4 the shipped
+# `solid` and `major` Flows both carry a validated interface delta, a write-protected baseline, a
+# decision ledger and a merge at archive, with nothing selected. Every live run of those two Flows
+# classified itself `moduleContract: false` -- correctly, since their fixtures are single-module --
+# so the conditional Artifact took its negative branch every time and the default layer has never
+# once executed on a shipped Flow.
+#
+# So this seed declares two modules and nothing else. The Flow is whatever `xforge init` defaults to,
+# which is the shipped `solid`. If contract governance needs a line of configuration to work, this
+# scenario fails, and that is the answer it exists to give.
+project:
+  layout: monorepo
+  modules:
+    - id: store
+      path: src/store
+      kind: library
+    - id: api
+      path: src/api
+      kind: service

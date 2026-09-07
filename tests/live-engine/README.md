@@ -78,6 +78,11 @@ tests/live-engine/scenarios/
                 project whose interface between them is governed by a contract baseline, so the
                 run has to declare an interface delta, record four declared Gate commands, and
                 leave the baseline advanced
+  solid-interface/
+                the same order-ledger workload on the *shipped* solid Flow with nothing
+                selected -- no contract Gates, no template Flow, only two declared modules.
+                Nothing tells the Agent the Change moves an interface; deriving that from the
+                request is what the run is measuring
   major/        propose -> clarify -> design -> check -> apply -> verify (credential-store:
                 risk high, security + dataMigration impact, a deliberately unresolved
                 material question for Clarify to formally resolve)
@@ -111,6 +116,7 @@ once.
 | `solid` | solid | happy-path | archived, **exactly 0 reworks** |
 | `solid-rework` | solid | rework | archived, **exactly 1 rework** |
 | `solid-contract` | solid-contract | contract-governance | archived, **exactly 0 reworks**, and `xforge/contracts/` records every element the delta declared |
+| `solid-interface` | solid | contract-governance | the same, on the shipped Flow with **nothing selected** — the default contract layer reached without configuration |
 | `major` | major | adversarial | archived **or** `stopped-at-check` |
 | `standalone-scaffold` | — | authoring | a project-owned Rule written **and** registered in the Manifest |
 | `standalone-kanban` | — | read-only | reported without writing any governance state |

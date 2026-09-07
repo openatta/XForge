@@ -177,6 +177,43 @@ const SCENARIOS = {
      */
     limits: { timeoutSeconds: 2700 },
   },
+  /*
+   * The default contract layer, on the Flow that ships it, with nothing selected.
+   *
+   * `solid-contract` proves the tier a project opts into: four `builtin: declared` Gates and a Flow
+   * to schedule them. The tier below it had never run at all. Since 0.8.4 the shipped `solid` and
+   * `major` both carry a validated interface delta, a write-protected baseline, a decision ledger
+   * and a merge at archive, and every live run of either archived with `moduleContract: false` --
+   * correctly, since both fixtures are single-module -- so the conditional Artifact took its
+   * negative branch every time and `assertContractBaselineAdvanced` short-circuited on its second
+   * clause. Two byte-identical `contract-delta` blocks, and no evidence either one works.
+   *
+   * So this is `solid`'s Flow, `solid-contract`'s workload, and `solid-contract`'s seed minus every
+   * line that selects anything. Nothing here is a new assertion: the existing guard fires on its own
+   * the moment a Change on a `syncContracts` Flow declares it moves an interface.
+   *
+   * Nothing tells the Agent to declare it, either. `TEST_REQUEST.md` describes a two-module layout
+   * and a change that adds an endpoint one module serves and a state the other persists; deriving
+   * the classification from that is the Propose Skill's job, and a prompt that named the key would
+   * be testing this file instead. If the run archives with a null contract baseline, the honest
+   * reading is that the default layer does not reach a project that did not go looking for it.
+   *
+   * It runs beside `solid` and does not replace it: `solid` is the only carrier of the injected
+   * `standalone-revise` Skill, it is the fixture every cost comparison is keyed to, and its
+   * `moduleContract: false` run is what proves the negative branch -- which is nine Changes in ten.
+   */
+  'solid-interface': {
+    flow: 'solid',
+    seed: 'solid-interface',
+    prompts: 'solid-interface',
+    changeId: 'order-cancel',
+    intent: 'contract-governance',
+    expect: { reworks: 0, outcome: 'archived' },
+    /* Its design Stage carries the same load `solid-contract`'s does, minus the Gate declaration:
+       more than one Artifact, and the Stage's Gates after the last write. The probe times a trivial
+       call and cannot see that coming. */
+    limits: { timeoutSeconds: 2700 },
+  },
   major: {
     flow: 'major',
     changeId: 'credential-store',
