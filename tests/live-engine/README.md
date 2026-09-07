@@ -116,7 +116,7 @@ once.
 | `solid` | solid | happy-path | archived, **exactly 0 reworks** |
 | `solid-rework` | solid | rework | archived, **exactly 1 rework** |
 | `solid-contract` | solid-contract | contract-governance | archived, **exactly 0 reworks**, and `xforge/contracts/` records every element the delta declared |
-| `solid-interface` | solid | contract-governance | the same, on the shipped Flow with **nothing selected** — the default contract layer reached without configuration |
+| `solid-interface` | solid | contract-governance | archived with `xforge/contracts/` advanced, on the shipped Flow with **nothing selected**, in at most 2 reworks |
 | `major` | major | adversarial | archived **or** `stopped-at-check` |
 | `standalone-scaffold` | — | authoring | a project-owned Rule written **and** registered in the Manifest |
 | `standalone-kanban` | — | read-only | reported without writing any governance state |

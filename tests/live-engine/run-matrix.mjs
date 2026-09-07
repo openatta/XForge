@@ -208,7 +208,27 @@ const SCENARIOS = {
     prompts: 'solid-interface',
     changeId: 'order-cancel',
     intent: 'contract-governance',
-    expect: { reworks: 0, outcome: 'archived' },
+    /*
+     * Archived, with room for the Check Stage to send work back, and not `reworks: 0`.
+     *
+     * It shipped as `reworks: 0`, copied from `solid-contract`, and the first run failed on it --
+     * correctly. Check raised two blockers of one kind: the delta published a `409` body and a
+     * repeat-cancellation answer that no Requirement asserted and no planned test reached, so an
+     * implementation could satisfy every Requirement with every Gate green and still contradict a
+     * published contract element. That is the contract layer working, found by the Stage that
+     * exists to find it, and a scenario that failed the run for it was asserting the wrong thing.
+     *
+     * The difference from `solid` is structural rather than incidental, which is why the bar
+     * differs: `solid`'s Design writes only a design against a seeded Spec, while this one invents
+     * an interface delta against a fixed acceptance suite and has to carry every element it
+     * publishes into verification notes. That is the same setup `major` has, and `major` bounds
+     * reworks instead of forbidding them for the same reason.
+     *
+     * Two rather than one: a genuine finding costs a round, and recovering from it can cost
+     * another. A run needing a third is oscillating, which is worth failing on.
+     */
+    maxReworks: 2,
+    expect: { outcome: 'archived' },
     /* Its design Stage carries the same load `solid-contract`'s does, minus the Gate declaration:
        more than one Artifact, and the Stage's Gates after the last write. The probe times a trivial
        call and cannot see that coming. */
