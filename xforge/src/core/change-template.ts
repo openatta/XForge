@@ -29,6 +29,24 @@ type ClassificationKey = keyof ChangeConfig['classification'];
  * would be adopted unread and would quietly qualify a Change for `quick`, and `high` mandates
  * `major` by policy. The booleans are `false` because an unanswered flag has to be the one that
  * claims nothing — a template that pre-declared `security: true` would put every Change on Major.
+ *
+ * `moduleContract` is the exception, and the reason it is one is the reason it was wrong here.
+ *
+ * "An unanswered flag claims nothing" is a sound default only where answering it wrongly is caught
+ * somewhere else: a wrong `risk` is refused by Flow eligibility, a wrong `security` by the Gate that
+ * scans, a wrong `dataMigration` by the migration paths the Change does not declare. `checker.ts`
+ * says what is different about this one -- it is the only eligibility key nothing else can
+ * corroborate, and `contract-compat`, the one check that compares the word with the diff, is a
+ * `builtin: declared` Gate no default project has selected. So `false` here is not "claims
+ * nothing": it is the answer that switches off the whole contract layer, offered pre-written, to
+ * the one question no later Stage can re-ask.
+ *
+ * Three live runs of `solid` and `major` archived with `moduleContract: false` and a null contract
+ * baseline. Nothing about that was a defect -- those fixtures are single-module and the answer was
+ * true -- but nothing in any of them was an answer either, and there is no run in which it was.
+ * A placeholder makes the file refuse to load until somebody says, which is the only shape that
+ * has ever changed what an Agent does: not another sentence telling it to consider the question,
+ * but a Change that does not exist until the question is answered.
  */
 const CLASSIFICATION_PLACEHOLDERS: Required<Record<ClassificationKey, string>> = {
   risk: 'medium',
@@ -36,8 +54,31 @@ const CLASSIFICATION_PLACEHOLDERS: Required<Record<ClassificationKey, string>> =
   privacy: 'false',
   publicApi: 'false',
   dataMigration: 'false',
-  moduleContract: 'false',
+  moduleContract: '<true|false>',
 };
+
+/**
+ * The question each placeholder stands for, kept beside the placeholder it belongs to.
+ *
+ * The refusal reads from here rather than restating the semantics, which are also in
+ * `xforge-propose`: two copies of "what does this key mean" is exactly the drift the
+ * `create-change` Action was extracted to end.
+ */
+export const CLASSIFICATION_QUESTIONS: Partial<Record<ClassificationKey, string>> = {
+  moduleContract: 'It is true when this Change moves an interface between modules — a signature, an endpoint, or a stored shape another module reads. It is not `publicApi`, and a rename behind a module boundary is neither.',
+};
+
+/**
+ * Recognises a classification value that is still the template's, so the refusal can say so.
+ *
+ * Keyed on the leading `<` rather than on the exact placeholder text: the same shape marks
+ * `paths` and `<change-id>`, and a reader who edits the wording of one should not silently turn
+ * off the check that reads it. A value that is any other string is a different mistake -- quoting
+ * a boolean, most likely -- and the caller distinguishes them.
+ */
+export function isUnansweredPlaceholder(value: unknown): value is string {
+  return typeof value === 'string' && value.trimStart().startsWith('<');
+}
 
 /**
  * The template, with the project's own facts substituted where the project has them.

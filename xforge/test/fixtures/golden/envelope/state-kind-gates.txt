@@ -203,7 +203,7 @@ exit: 0
       "writes": [
         "xforge/changes/<change-id>/change.yaml"
       ],
-      "template": "flow: solid\nclassification:\n  risk: medium\n  security: false\n  privacy: false\n  publicApi: false\n  dataMigration: false\n  moduleContract: false\nscope:\n  modules: [root]\n  paths: [<project-relative glob>]\n",
+      "template": "flow: solid\nclassification:\n  risk: medium\n  security: false\n  privacy: false\n  publicApi: false\n  dataMigration: false\n  moduleContract: <true|false>\nscope:\n  modules: [root]\n  paths: [<project-relative glob>]\n",
       "doneWhen": [
         "change.yaml exists under a new kebab-case Change id in the resolved Changes directory.",
         "Every classification key is answered from the work: risk, security, privacy, publicApi, dataMigration, moduleContract."

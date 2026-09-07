@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { scaffoldPayload, repositoryRoot } from '../helpers.js';
+import { fixture, runCli, scaffoldPayload, repositoryRoot, write } from '../helpers.js';
 import { workPackagePlanTemplate } from '../../src/core/work-package-template.js';
 import { changeTemplate } from '../../src/core/change-template.js';
 
@@ -47,6 +47,55 @@ describe('Skill and classification contract', () => {
        than one that left them blank. */
     expect(template).toContain('flow: solid');
     expect(template).toContain('modules: [root]');
+  });
+
+  /**
+   * The one classification key that is offered unanswered, and the refusal that makes it stick.
+   *
+   * Every other key ships pre-written `false` on the sound reading that an unanswered flag must
+   * claim nothing -- sound because answering any of them wrongly is caught somewhere else. This one
+   * is not: `checker.ts` calls it the only eligibility key nothing can corroborate, and the single
+   * check that compares the word with the diff is a `builtin: declared` Gate no default project has
+   * selected. So a pre-written `false` was not a claim of nothing; it was the answer that switches
+   * the contract layer off, supplied to the one question no later Stage re-asks.
+   *
+   * Three live runs archived with it `false` and a null contract baseline. The answer was right in
+   * all three -- those fixtures are single-module -- and in none of them was it an answer.
+   */
+  it('offers moduleContract unanswered, and refuses a Change that leaves it that way', async () => {
+    const template = changeTemplate('solid', ['root']);
+    expect(template, 'the key ships pre-answered again, so nothing forces the question').toContain('moduleContract: <true|false>');
+    for (const answered of ['security', 'privacy', 'publicApi', 'dataMigration']) {
+      expect(template, `${answered} must stay pre-written false: answering it wrongly is caught elsewhere`).toContain(`${answered}: false`);
+    }
+
+    const root = await fixture();
+    /* `[src]` rather than a glob: the catalogue scan strips block comments with a regex, and a
+       `src/`+`**` literal opens one that swallows the assertion below -- which then reports this
+       code as untested. The scan errs toward over-reporting debt, so it is not worth changing;
+       writing a path that is not also a comment opener is. */
+    await write(root, 'xforge/changes/unclassified/change.yaml', template.replace('[<project-relative glob>]', '[src]'));
+    const state = await runCli(root, ['state', '--change', 'unclassified']);
+    expect(state.json.ok).toBe(false);
+    const found = (state.json.diagnostics ?? []).find((item: any) => item.code === 'XFORGE_CLASSIFICATION_UNANSWERED');
+    expect(found, `the raw schema complaint is what this refusal exists to replace; got ${JSON.stringify((state.json.diagnostics ?? []).map((d: any) => d.code))}`).toBeTruthy();
+    /* The refusal carries the question, because a message saying only "must be boolean" leaves the
+       reader to guess which of true or false is the honest answer -- and a guess resolves to the
+       one that switches the layer off. */
+    expect(found.message).toContain('moduleContract');
+    expect(found.message).toContain('between modules');
+  });
+
+  it('accepts the same Change once the key is answered', async () => {
+    const root = await fixture();
+    const answered = changeTemplate('solid', ['root'])
+      .replace('[<project-relative glob>]', '[src]')
+      .replace('moduleContract: <true|false>', 'moduleContract: false');
+    await write(root, 'xforge/changes/classified/change.yaml', answered);
+    const state = await runCli(root, ['state', '--change', 'classified']);
+    const codes = (state.json.diagnostics ?? []).map((item: any) => item.code);
+    expect(codes, 'answering the key must not leave the refusal standing').not.toContain('XFORGE_CLASSIFICATION_UNANSWERED');
+    expect((state.json.data as any)?.change?.governance, 'the Change resolves once classified').toBeTruthy();
   });
 
   /**

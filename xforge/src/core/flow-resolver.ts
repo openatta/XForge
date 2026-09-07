@@ -13,6 +13,7 @@ import type {
 } from '../types.js';
 import { XForgeError, diagnostic } from './errors.js';
 import { assertResourceId, normalizeRelative, safeResolve, toProjectPath } from './path-safety.js';
+import { CLASSIFICATION_KEYS, CLASSIFICATION_QUESTIONS, isUnansweredPlaceholder } from './change-template.js';
 import { contractDeltaIsValid, isContractDeltaArtifact } from './contract-delta.js';
 import { isSpecDeltaArtifact, specDeltaIsValid } from './spec-delta.js';
 import { validateSchema } from './validator.js';
@@ -421,6 +422,25 @@ export async function resolveChangeState(
   }
   const configPath = path.join(changeDirectory, 'change.yaml');
   const config = await loadYaml<ChangeConfig>(configPath, `${changeRelative}/change.yaml`);
+  /*
+   * Said before the schema says it, because the schema can only say what the value is not.
+   *
+   * A classification still carrying the template's placeholder fails validation anyway -- `<true|
+   * false>` is not a boolean -- but it fails as "must be boolean", which is a true statement about
+   * a file whose actual problem is that nobody answered the question. The key this reaches is the
+   * one no later Stage can re-ask, so the single message it gets has to carry the question rather
+   * than the type.
+   */
+  const unanswered = CLASSIFICATION_KEYS.filter(
+    (key) => isUnansweredPlaceholder((config?.classification as Record<string, unknown> | undefined)?.[key]),
+  );
+  if (unanswered.length > 0) {
+    throw new XForgeError(unanswered.map((key) => diagnostic(
+      'XFORGE_CLASSIFICATION_UNANSWERED',
+      `classification.${key} is still the template placeholder, so this Change has not been classified. ${CLASSIFICATION_QUESTIONS[key] ?? ''} Answer it from the work rather than from the Flow you would rather run: a key answered untruthfully to clear a refusal is the one failure no later Stage can catch.`.replace(/\s+/g, ' '),
+      `${changeRelative}/change.yaml`,
+    )), { root: project.root });
+  }
   const diagnostics = await validateSchema('change', config, `${changeRelative}/change.yaml`);
   if (diagnostics.some((item) => item.severity === 'error')) {
     throw new XForgeError(diagnostics, { root: project.root });

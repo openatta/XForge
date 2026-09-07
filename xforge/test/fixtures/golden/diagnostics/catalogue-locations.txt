@@ -80,6 +80,7 @@ XFORGE_CHANGES_DIRECTORY_UNREADABLE  src/commands/upgrade.ts
 XFORGE_CHECK_NO_GATES_AT_STAGE  src/commands/check.ts
 XFORGE_CHECK_PASSED_WITH_WARNINGS  src/commands/check.ts
 XFORGE_CHECK_STAGE_UNKNOWN  src/commands/check.ts
+XFORGE_CLASSIFICATION_UNANSWERED  src/core/flow-resolver.ts
 XFORGE_CLI_IDENTITY_MISMATCH  src/core/project-loader.ts
 XFORGE_CONDITION_LEDGER_STALE_REMEDY  src/core/control-plane.ts
 XFORGE_CONDITION_LEDGER_UNDECIDED_REMEDY  src/core/control-plane/conditions.ts
