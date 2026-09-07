@@ -40,3 +40,7 @@ Established by archived XForge Changes.
 
 - module: api
 - `PENDING | PAID | SHIPPED`
+- The value set is open. A consumer reads a value it does not recognise as a state it does not
+  handle, and must not switch exhaustively over the recorded values or reject a document for
+  carrying one that is absent here. Adding a value is therefore additive under this contract;
+  removing or redefining one is not.

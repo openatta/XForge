@@ -8,10 +8,11 @@ installed `xforge-check` Skill. Use `xforge` from the project root and confirm
 the current Action is a ready Check Action before writing anything.
 
 Write every Artifact this Stage produces, including each ledger under
-`evidence/`. One of them records interface decisions and names the person who
-made them — `TEST_REQUEST.md` says who owns this service. Do not invent a
-decision or a name; if this Change has nothing to decide, say so in the form the
-ledger uses for that.
+`evidence/`. One of them records interface decisions and who made them. Nobody
+is available to be asked, and no name in this project is yours to write on a
+decision: if this Change has nothing to decide, say so in the form the ledger
+uses for that, and if it does have something, say that instead of attributing it
+to somebody.
 
 Run the Stage's Gates after your last write, in one invocation, and report what
 they actually said. Then request the Transition the CLI reports as ready.

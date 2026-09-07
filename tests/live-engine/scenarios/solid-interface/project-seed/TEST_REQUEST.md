@@ -31,8 +31,3 @@ written here rather than guessing or adapting them.
 
 This is a two-module project, so every declared Gate has to say which build-system markers its
 command covers: `--covers '["package.json"]'`.
-
-## Who decides
-
-Reinaldo Ibarra <reinaldo.ibarra@example.test> owns this service and is the person to record against
-any decision that needs one.
