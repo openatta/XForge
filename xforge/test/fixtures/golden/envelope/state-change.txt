@@ -519,8 +519,7 @@ exit: 0
           "check-report",
           "check-findings",
           "constitution-check"
-        ],
-        "tracks": null
+        ]
       },
       "archive": {
         "artifactsReady": true,

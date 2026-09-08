@@ -183,7 +183,9 @@ exit: 0
         "structure",
         "unit-tests"
       ],
-      "exitConditions": [],
+      "exitConditions": [
+        "verificationReceipt"
+      ],
       "reworkTo": [
         "apply"
       ],

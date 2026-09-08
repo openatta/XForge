@@ -25,7 +25,6 @@ GateResource  <- ./types/resource.js
 GovernanceRevision  <- ./types/governance.js
 GovernanceState  <- ./types/governance.js
 HookResource  <- ./types/resource.js
-LegacyFlow  <- ./types/flow.js
 LegacyManagedFileRecord  <- ./types/installation.js
 Lockfile  <- ./types/manifest.js
 ManagedFileRecord  <- ./types/installation.js
