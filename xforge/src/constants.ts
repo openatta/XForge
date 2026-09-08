@@ -39,6 +39,16 @@ export const DEFAULT_CONTRACTS_PATH = 'xforge/contracts';
  * so three copies is three chances for a rename to move two of them: the lock directory and the log
  * would part company silently, and the only symptom would be a lock nobody contends for.
  */
+/**
+ * The only Flow document version this CLI reads.
+ *
+ * A closed set of one, and named so that `loadFlows` can refuse everything else by comparison
+ * rather than by listing the versions it happens to know are wrong. v1alpha1 was the other member
+ * until it was removed; the guard that replaced it named v1alpha1 exactly, which let a typo or a
+ * future version through into a map whose every reader assumes the Stage-Flow shape.
+ */
+export const FLOW_API_VERSION = 'xforge.dev/v1alpha2';
+
 export const AUDIT_DIRECTORY = 'xforge/.audit';
 export const MAX_GATE_OUTPUT_BYTES = 65_536;
 export const WORK_PACKAGE_VERIFY_TIMEOUT_SECONDS = 900;

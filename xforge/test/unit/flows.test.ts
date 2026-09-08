@@ -274,6 +274,96 @@ describe('Flow artifact graph', () => {
   });
 
   /*
+   * Every apiVersion that is not v1alpha2, not merely v1alpha1.
+   *
+   * The first version of this guard named v1alpha1 exactly. `isStageFlow` used to stand between the
+   * Flow map and its readers; with it gone every reader takes `stages`, `policy` and `terminal` as
+   * present, so a flat document under any other version was admitted and then dereferenced --
+   * `xforge state` answered XFORGE_INTERNAL_ERROR "Cannot read properties of undefined (reading
+   * 'map')", naming no file and reporting no schema problem. A crash where there had been a
+   * diagnostic.
+   */
+  it('refuses a Flow whose apiVersion is neither v1alpha2 nor v1alpha1, rather than admitting it', async () => {
+    const root = await fixture();
+    await write(root, 'xforge/flows/solid.yaml', [
+      'apiVersion: xforge.dev/v1alpha3',
+      'kind: Flow',
+      'metadata:', '  name: solid', '  version: 1', '  description: A shape this CLI does not know',
+      'artifacts: []',
+      'operations:',
+      '  apply: { requires: [], tracks: tasks.md }',
+      '  archive: { requires: [], syncSpecs: false, mandatoryGates: [] }',
+      '',
+    ].join('\n'));
+    const { flows, diagnostics } = await loadFlows(await loadProject(root));
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: 'XFORGE_FLOW_API_VERSION_UNSUPPORTED',
+      severity: 'error',
+      path: 'xforge/flows/solid.yaml',
+    }));
+    /* The version it found and the one version there is, so the reader can tell a typo from a file
+       written for a later XForge. */
+    const message = diagnostics.find((item) => item.code === 'XFORGE_FLOW_API_VERSION_UNSUPPORTED')?.message ?? '';
+    expect(message).toContain('xforge.dev/v1alpha3');
+    expect(message).toContain('xforge.dev/v1alpha2');
+    expect(flows.has('solid')).toBe(false);
+    /* And nothing else fires: not the Manifest-default report, and not a schema dump about a
+       document that was never going to be read. */
+    expect(diagnostics.map((item) => item.code)).not.toContain('XFORGE_FLOW_NOT_FOUND');
+    expect(diagnostics.filter((item) => item.path === 'xforge/flows/solid.yaml').map((item) => item.code))
+      .toEqual(['XFORGE_FLOW_API_VERSION_UNSUPPORTED']);
+  });
+
+  /*
+   * A refused file is remembered under both its filename and the name it declares.
+   *
+   * The map is keyed by `metadata.name` and the Manifest selects by the same string, but the check
+   * that the two agree runs only for a Flow that loads. So a `solid.yaml` declaring `name: legacy`
+   * remembered `legacy`, missed the Manifest's `solid`, and drew XFORGE_FLOW_NOT_FOUND on top of
+   * the refusal -- pointing at manifest.yaml for a defect wholly inside the Flow, which is the one
+   * thing this suppression exists to prevent.
+   */
+  it('suppresses the Manifest-default report even when the refused file declares another name', async () => {
+    const root = await fixture();
+    await write(root, 'xforge/flows/solid.yaml', [
+      'apiVersion: xforge.dev/v1alpha1',
+      'kind: Flow',
+      'metadata:', '  name: legacy', '  version: 1', '  description: Legacy Artifact Flow',
+      'artifacts: []',
+      'operations:',
+      '  apply: { requires: [], tracks: tasks.md }',
+      '  archive: { requires: [], syncSpecs: false, mandatoryGates: [] }',
+      '',
+    ].join('\n'));
+    const { diagnostics } = await loadFlows(await loadProject(root));
+    expect(diagnostics.map((item) => item.code)).toContain('XFORGE_FLOW_API_VERSION_UNSUPPORTED');
+    expect(diagnostics.map((item) => item.code)).not.toContain('XFORGE_FLOW_NOT_FOUND');
+  });
+
+  /*
+   * A key the schema used to accept, named instead of left to `additionalProperties`.
+   *
+   * Three v1alpha2 keys were removed alongside v1alpha1, having been documented for several
+   * releases as accepted and unread. The schema is `additionalProperties: false`, so a project that
+   * upgraded and kept its Flow verbatim gets `/policy must NOT have additional properties` -- which
+   * does not name the key, does not say it was removed, and offers no step, while the v1alpha1
+   * refusal a few lines away in the same loader gets a full rewrite instruction.
+   */
+  it('names a removed Flow field rather than leaving the schema to call it unexpected', async () => {
+    const root = await fixture();
+    const solid = await readFile(path.join(root, 'xforge', 'flows', 'solid.yaml'), 'utf8');
+    await write(root, 'xforge/flows/solid.yaml', solid.replace('policy:\n', 'policy:\n  onUncertain: escalate\n'));
+    const { diagnostics } = await loadFlows(await loadProject(root));
+    const removed = diagnostics.find((item) => item.code === 'XFORGE_FLOW_FIELD_REMOVED');
+    expect(removed?.severity).toBe('warning');
+    expect(removed?.path).toBe('xforge/flows/solid.yaml');
+    expect(removed?.message).toContain('policy.onUncertain');
+    /* The schema still refuses it. This says which key and that deleting the line is the whole
+       migration -- the schema's own sentence names neither. */
+    expect(diagnostics.map((item) => item.code)).toContain('XFORGE_SCHEMA_INVALID');
+  });
+
+  /*
    * A Flow file with no `metadata.name` is dropped, and until now it was dropped in silence.
    *
    * The schema reports the missing required property and stops there, which reads like one more

@@ -16,6 +16,7 @@ import { assertResourceId, normalizeRelative, safeResolve, toProjectPath } from 
 import { CLASSIFICATION_KEYS, CLASSIFICATION_QUESTIONS, isUnansweredPlaceholder } from './change-template.js';
 import { contractDeltaIsValid, isContractDeltaArtifact } from './contract-delta.js';
 import { isSpecDeltaArtifact, specDeltaIsValid } from './spec-delta.js';
+import { FLOW_API_VERSION } from '../constants.js';
 import { validateSchema } from './validator.js';
 import { loadYaml } from './yaml.js';
 import { STRUCTURED_EXIT_KEYS, stageGates } from './flow-query.js';
@@ -243,6 +244,23 @@ function graphDiagnostics(flow: Flow, filePath: string): Diagnostic[] {
   return diagnostics;
 }
 
+/**
+ * The Flow keys this schema used to accept and no longer does, with where each one sat.
+ *
+ * A list rather than a scan for unexpected properties: `additionalProperties: false` already
+ * refuses anything unknown, and the point here is to say *these three* were once legal, which a
+ * generic "unexpected property" cannot.
+ */
+function removedFlowFields(flow: unknown): Array<[string, boolean]> {
+  const document = (flow ?? {}) as { policy?: Record<string, unknown>; stages?: unknown; terminal?: { archive?: Record<string, unknown> } };
+  const stages = Array.isArray(document.stages) ? document.stages as Array<Record<string, unknown>> : [];
+  return [
+    ['policy.onUncertain', document.policy?.onUncertain !== undefined],
+    ['stages[].execution', stages.some((stage) => stage?.execution !== undefined)],
+    ['terminal.archive.evidencePolicy', document.terminal?.archive?.evidencePolicy !== undefined],
+  ];
+}
+
 export async function loadFlows(project: ProjectContext): Promise<{ flows: Map<string, Flow>; diagnostics: Diagnostic[] }> {
   const flowsDirectory = await safeResolve(project.root, 'xforge/flows');
   let names: string[];
@@ -274,17 +292,61 @@ export async function loadFlows(project: ProjectContext): Promise<{ flows: Map<s
   for (const name of names) {
     const relative = `xforge/flows/${name}`;
     const flow = await loadYaml<Flow>(path.join(flowsDirectory, name), relative);
-    if ((flow as { apiVersion?: string }).apiVersion === 'xforge.dev/v1alpha1') {
-      refused.add(flow.metadata?.name ?? name.slice(0, -5));
+    /*
+     * Anything that is not v1alpha2 is refused, not merely v1alpha1.
+     *
+     * The first version of this guard named v1alpha1 exactly, which let every other apiVersion --
+     * a typo, a future version, a missing key -- through to be registered. That was survivable
+     * while `isStageFlow` stood between the map and its readers; it is not now. Every reader takes
+     * `flow.stages`, `flow.policy` and `flow.terminal` as present, so a flat document under
+     * `xforge.dev/v1alpha3` reached `flowCatalogue` and answered `XFORGE_INTERNAL_ERROR: Cannot
+     * read properties of undefined (reading 'map')` -- no file named, no schema report, a crash
+     * where there had been a diagnostic. The version this CLI reads is a closed set of one.
+     *
+     * Both spellings of the name are remembered. The map is keyed by `metadata.name` and the
+     * Manifest selects by the same string, but a refused file's declared name is never checked
+     * against its filename -- that check runs only for a Flow that loads -- so a `solid.yaml`
+     * declaring `name: legacy` would remember `legacy`, miss the Manifest's `solid`, and report
+     * XFORGE_FLOW_NOT_FOUND on top of the refusal. Which is the misdirection this set exists to
+     * prevent.
+     */
+    const declaredVersion = (flow as { apiVersion?: string }).apiVersion;
+    if (declaredVersion !== FLOW_API_VERSION) {
+      refused.add(name.slice(0, -5));
+      if (flow.metadata?.name) refused.add(flow.metadata.name);
       diagnostics.push(diagnostic(
         'XFORGE_FLOW_API_VERSION_UNSUPPORTED',
-        `${relative} declares apiVersion xforge.dev/v1alpha1. The v1alpha1 Artifact Flow -- a flat Artifact DAG with \`operations.apply\` and \`operations.archive\` -- was removed, and nothing in the CLI reads it any more. Rewrite the file as a v1alpha2 Stage Flow: give it a \`policy\` block, a \`stages\` list that defines at least propose, apply and verify, and a \`terminal.archive\`, then move each Artifact under the Stage that produces it. \`xforge/flows/quick.yaml\` in a freshly scaffolded project is the smallest complete example.`,
+        declaredVersion === 'xforge.dev/v1alpha1'
+          ? `${relative} declares apiVersion xforge.dev/v1alpha1. The v1alpha1 Artifact Flow -- a flat Artifact DAG with \`operations.apply\` and \`operations.archive\` -- was removed, and nothing in the CLI reads it any more. Rewrite the file as a v1alpha2 Stage Flow: give it a \`policy\` block, a \`stages\` list that defines at least propose, apply and verify, and a \`terminal.archive\`, then move each Artifact under the Stage that produces it. \`xforge/flows/quick.yaml\` in a freshly scaffolded project is the smallest complete example.`
+          : `${relative} declares apiVersion ${declaredVersion === undefined ? '(none)' : declaredVersion}, and ${FLOW_API_VERSION} is the only one this CLI reads. Nothing in the file is loaded: a Flow of an unknown version cannot be assumed to have the Stages, policy and terminal block every reader takes for granted, so it is refused here rather than admitted and dereferenced further along. Correct the apiVersion if it is a typo; if the file was written for a later XForge, this CLI is the older half of the pair.`,
         relative,
       ));
       continue;
     }
     const schemaDiagnostics = await validateSchema('flow', flow, relative);
     diagnostics.push(...schemaDiagnostics);
+    /*
+     * A key the schema used to accept, named rather than left to `additionalProperties`.
+     *
+     * These three were removed from `flow.schema.json` together, having been documented for
+     * several releases as accepted and unread. The schema is `additionalProperties: false`, so a
+     * project that upgraded and kept its Flow file verbatim now fails on `/policy must NOT have
+     * additional properties` -- which does not name the key, does not say it was removed, and
+     * offers no step. That is a worse refusal than the one for a v1alpha1 document sitting a few
+     * lines above it, and this loader should not hold two standards.
+     *
+     * Not an error on its own: the schema already raised one, and this says what it costs, which
+     * here is nothing. Deleting the line is the whole migration.
+     */
+    for (const [key, present] of removedFlowFields(flow)) {
+      if (!present) continue;
+      diagnostics.push(diagnostic(
+        'XFORGE_FLOW_FIELD_REMOVED',
+        `${relative} sets \`${key}\`, which was removed from the Flow schema. It was accepted and read by nothing for several releases, and \`src/types/flow.ts\` never declared it, so a Flow could set it, validate, and have it invisible to every reader including the type. Delete the line: there is no replacement and nothing else about this Flow changes. The schema reports it as an unexpected property, which does not name it.`,
+        relative,
+        'warning',
+      ));
+    }
     if (flow.metadata?.name) {
       if (flow.metadata.name !== name.slice(0, -5)) diagnostics.push(diagnostic('XFORGE_FLOW_FILENAME_MISMATCH', 'Flow metadata.name must match its filename.', relative));
       if (flows.has(flow.metadata.name)) diagnostics.push(diagnostic('XFORGE_FLOW_DUPLICATE', `Duplicate Flow ${flow.metadata.name}.`, relative));
