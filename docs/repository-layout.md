@@ -628,9 +628,21 @@ spec:
 - 当前资源：`apiVersion: xforge.dev/v1alpha2`（Gate、Script、WorkPackagePlan 仍是 `v1alpha1`）
 - **CLI 与 Scaffold source 都固定为 `@xforge/cli` 的 npm 精确版本。**
   Protocol 2 不接受 Git checkout、HTTP Scaffold 或 source-built 安装身份。
-- Protocol 1 的 Flow / Rule / Agent 资源可在迁移期读取。
+- Protocol 1 的 Rule / Agent 资源可在迁移期读取。
+  **Flow 不在其列：`apiVersion: xforge.dev/v1alpha1` 的 Artifact Flow 已移除**，
+  加载时以 `XFORGE_FLOW_API_VERSION_UNSUPPORTED` 拒绝，必须改写成 v1alpha2 的 Stage Flow。
   声明的 CLI 身份不匹配的 Protocol 1 项目运行在 Portable 模式，
   受管的 install / check / transition / approval / archive 写入被拒绝。
+- **Flow 文件缺少 `metadata.name` 时以 `XFORGE_FLOW_NAME_MISSING` 拒绝。**
+  Flow 以它声明的名字入册，无名文件进不了任何映射、图也不会被走查。
+  这条诊断说的是"这个文件整体没有被加载"，而 schema 只说少了哪个必填字段；
+  该名字同时被记为"已拒绝"，所以 Manifest 的默认 Flow 不会再被额外报一次
+  `XFORGE_FLOW_NOT_FOUND`——那会把读者引向 manifest.yaml，而缺陷完全在 Flow 文件里。
+- **`stages[].execution` 已从 Flow schema 移除。** 它早已不再被任何读取者使用，
+  `src/types/flow.ts` 从未声明过它，所以设置了它的 Flow 能通过校验而对每个读取者不可见。
+  schema 是 `additionalProperties: false`，因此仍然设置该字段的 Flow 现在会被拒绝；
+  删掉这一行即可，没有替代字段。同批移除的还有 `policy.onUncertain` 与
+  `terminal.archive.evidencePolicy`，三者是同一类"接受但无人读"的遗留字段。
 - **Protocol 1 的 Gate Evidence 不会被提升为当前证据。** 重跑该 Gate 会产生
   Protocol 2 的、绑定 revision 的证据。
 - Protocol 2 的输出不会静默降级为 Protocol 1。

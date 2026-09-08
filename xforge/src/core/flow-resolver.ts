@@ -18,13 +18,10 @@ import { contractDeltaIsValid, isContractDeltaArtifact } from './contract-delta.
 import { isSpecDeltaArtifact, specDeltaIsValid } from './spec-delta.js';
 import { validateSchema } from './validator.js';
 import { loadYaml } from './yaml.js';
+import { STRUCTURED_EXIT_KEYS, stageGates } from './flow-query.js';
 
 async function pathExists(filePath: string): Promise<boolean> {
   try { await access(filePath); return true; } catch { return false; }
-}
-
-export function isStageFlow(flow: Flow): flow is StageFlow {
-  return flow.apiVersion === 'xforge.dev/v1alpha2';
 }
 
 function transitiveStageIds(flow: StageFlow, ids: string[]): Set<string> {
@@ -45,7 +42,6 @@ function artifactsForStages(flow: StageFlow, stageIds: string[], transitive = fa
 }
 
 export function flowArtifacts(flow: Flow): ArtifactDefinition[] {
-  if (!isStageFlow(flow)) return flow.artifacts;
   const definitions = new Map(flow.artifacts.map((artifact) => [artifact.id, artifact]));
   const result: ArtifactDefinition[] = [];
   for (const stage of flow.stages) {
@@ -62,27 +58,15 @@ export function flowArtifacts(flow: Flow): ArtifactDefinition[] {
 }
 
 function flowPlanningArtifactIds(flow: Flow): Set<string> {
-  if (!isStageFlow(flow)) return new Set(flow.artifacts.map((artifact) => artifact.id));
   const applyIndex = flow.stages.findIndex((stage) => stage.id === 'apply');
   return new Set(flow.stages
     .filter((_stage, index) => applyIndex < 0 || index < applyIndex)
     .flatMap((stage) => stage.produces));
 }
 
-/**
- * `tracks` is legacy-only and stays in the shape on purpose.
- *
- * It names a v1alpha1 Flow's task-tracker file, which `core/archiver.ts` still reads behind an
- * `if (tracker)` to refuse an archive with tasks left open. A Stage Flow has no such file — Stages
- * carry that meaning now — so it is null there, and null is the value `archiver` reads as "this
- * Flow does not track tasks". Dropping the key rather than nulling it would change the documented
- * `xforge state` shape (`docs/concepts-and-architecture.md` prints `apply: { ready, requires,
- * tracks }`) for the v1alpha1 Flows that still populate it. It goes when v1alpha1 goes, not before.
- */
-export function flowApplyOperation(flow: Flow): { requires: string[]; tracks: string | null } {
-  if (!isStageFlow(flow)) return flow.operations.apply;
+export function flowApplyOperation(flow: Flow): { requires: string[] } {
   const apply = flow.stages.find((stage) => stage.id === 'apply');
-  return { requires: apply ? artifactsForStages(flow, apply.requires) : [], tracks: null };
+  return { requires: apply ? artifactsForStages(flow, apply.requires) : [] };
 }
 
 export function flowArchiveOperation(flow: Flow): {
@@ -91,18 +75,17 @@ export function flowArchiveOperation(flow: Flow): {
   syncContracts: boolean;
   mandatoryGates: string[];
 } {
-  /* `syncContracts` is optional in both schemas, so a Flow written before contracts existed reads
-     as false here rather than as undefined -- archive branches on it directly. */
-  if (!isStageFlow(flow)) return { ...flow.operations.archive, syncContracts: flow.operations.archive.syncContracts ?? false };
   /*
    * Declared if the Flow says so, inferred from the Stage named `verify` if it does not.
    *
-   * v1alpha1 required this set as `mandatoryGates`; v1alpha2 dropped the field and inferred it
-   * here, which is correct for every shipped Flow and silent when it is wrong. A Flow with a Stage
-   * after Verify contributes none of that Stage's Gates to the archive re-check and gets no
+   * The inference is correct for every shipped Flow and silent when it is wrong: a Flow with a
+   * Stage after Verify contributes none of that Stage's Gates to the archive re-check and gets no
    * diagnostic -- the Gates simply are not in the set. `graphDiagnostics` reports that case now;
    * this reads the declaration when there is one and keeps the inference when there is not, so no
    * existing Flow changes behaviour.
+   *
+   * `syncContracts` is optional, so a Flow written before contracts existed reads as false here
+   * rather than as undefined -- archive branches on it directly.
    */
   const verify = flow.stages.find((stage) => stage.id === 'verify');
   return {
@@ -125,14 +108,11 @@ export function flowArchiveOperation(flow: Flow): {
  */
 export function stageGateReferences(flow: StageFlow): Array<{ stage: string; gate: string }> {
   return flow.stages.flatMap((stage) =>
-    [...new Set([...(stage.gates ?? []), ...(stage.exit?.gates ?? [])])].map((gate) => ({ stage: stage.id, gate })),
+    stageGates(stage).map((gate) => ({ stage: stage.id, gate })),
   );
 }
 
-/** The keys that make a stage `exit` legible to the control plane. Mirrors `structuredExit`. */
-const STRUCTURED_EXIT_KEYS = ['conditions', 'gates', 'approvals', 'auditEvents'] as const;
-
-function stageGraphDiagnostics(flow: StageFlow, filePath: string): Diagnostic[] {
+function graphDiagnostics(flow: Flow, filePath: string): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
   const artifactIds = flow.artifacts.map((item) => item.id);
   const stageIds = flow.stages.map((item) => item.id);
@@ -263,47 +243,6 @@ function stageGraphDiagnostics(flow: StageFlow, filePath: string): Diagnostic[] 
   return diagnostics;
 }
 
-function legacyGraphDiagnostics(flow: Exclude<Flow, StageFlow>, filePath: string): Diagnostic[] {
-  const diagnostics: Diagnostic[] = [];
-  const ids = flow.artifacts.map((item) => item.id);
-  const unique = new Set(ids);
-  if (unique.size !== ids.length) {
-    diagnostics.push(diagnostic('XFORGE_FLOW_ARTIFACT_DUPLICATE', 'Flow Artifact IDs must be unique.', filePath));
-  }
-  for (const artifact of flow.artifacts) {
-    try { normalizeRelative(artifact.generates, `Artifact ${artifact.id} output`); } catch (error) {
-      if (error instanceof XForgeError) diagnostics.push(...error.diagnostics);
-    }
-    for (const dependency of artifact.requires) {
-      if (!unique.has(dependency)) diagnostics.push(diagnostic('XFORGE_FLOW_DEPENDENCY_UNKNOWN', `Artifact ${artifact.id} requires unknown Artifact ${dependency}.`, filePath));
-      if (dependency === artifact.id) diagnostics.push(diagnostic('XFORGE_FLOW_DEPENDENCY_CYCLE', `Artifact ${artifact.id} requires itself.`, filePath));
-    }
-  }
-  const visiting = new Set<string>();
-  const visited = new Set<string>();
-  const byId = new Map(flow.artifacts.map((item) => [item.id, item]));
-  const visit = (id: string): void => {
-    if (visiting.has(id)) {
-      diagnostics.push(diagnostic('XFORGE_FLOW_DEPENDENCY_CYCLE', `Flow contains a dependency cycle at ${id}.`, filePath));
-      return;
-    }
-    if (visited.has(id)) return;
-    visiting.add(id);
-    for (const dependency of byId.get(id)?.requires ?? []) visit(dependency);
-    visiting.delete(id);
-    visited.add(id);
-  };
-  for (const id of ids) visit(id);
-  for (const id of [...flow.operations.apply.requires, ...flow.operations.archive.requires]) {
-    if (!unique.has(id)) diagnostics.push(diagnostic('XFORGE_FLOW_OPERATION_REFERENCE_UNKNOWN', `Flow operation references unknown Artifact ${id}.`, filePath));
-  }
-  return diagnostics;
-}
-
-function graphDiagnostics(flow: Flow, filePath: string): Diagnostic[] {
-  return isStageFlow(flow) ? stageGraphDiagnostics(flow, filePath) : legacyGraphDiagnostics(flow, filePath);
-}
-
 export async function loadFlows(project: ProjectContext): Promise<{ flows: Map<string, Flow>; diagnostics: Diagnostic[] }> {
   const flowsDirectory = await safeResolve(project.root, 'xforge/flows');
   let names: string[];
@@ -315,9 +254,35 @@ export async function loadFlows(project: ProjectContext): Promise<{ flows: Map<s
 
   const flows = new Map<string, Flow>();
   const diagnostics: Diagnostic[] = [];
+  /*
+   * Refused by apiVersion, before the schema gets a word in.
+   *
+   * `flow.schema.json` describes the v1alpha2 Stage Flow and nothing else now, so a v1alpha1
+   * document meets it as a pile of unrecognised keys and one missing required property per Stage
+   * Flow field -- a true report of what the file is not, and no statement at all about what
+   * happened to the shape it is. The version is the one fact that identifies the file, so it is
+   * read first and answered first.
+   *
+   * The Flow is not registered afterwards. Every reader below this point takes `flow.stages` and
+   * `flow.terminal` as present, and a v1alpha1 document has neither; admitting it to the map would
+   * turn one legible refusal into a crash somewhere further along. Its name is remembered instead,
+   * so the Manifest default check does not go on to report the file as missing -- it is there, and
+   * saying it is not would send the reader to look for it. The same holds for a file with no
+   * `metadata.name` below, which is why the set is named for the refusal and not for the version.
+   */
+  const refused = new Set<string>();
   for (const name of names) {
     const relative = `xforge/flows/${name}`;
     const flow = await loadYaml<Flow>(path.join(flowsDirectory, name), relative);
+    if ((flow as { apiVersion?: string }).apiVersion === 'xforge.dev/v1alpha1') {
+      refused.add(flow.metadata?.name ?? name.slice(0, -5));
+      diagnostics.push(diagnostic(
+        'XFORGE_FLOW_API_VERSION_UNSUPPORTED',
+        `${relative} declares apiVersion xforge.dev/v1alpha1. The v1alpha1 Artifact Flow -- a flat Artifact DAG with \`operations.apply\` and \`operations.archive\` -- was removed, and nothing in the CLI reads it any more. Rewrite the file as a v1alpha2 Stage Flow: give it a \`policy\` block, a \`stages\` list that defines at least propose, apply and verify, and a \`terminal.archive\`, then move each Artifact under the Stage that produces it. \`xforge/flows/quick.yaml\` in a freshly scaffolded project is the smallest complete example.`,
+        relative,
+      ));
+      continue;
+    }
     const schemaDiagnostics = await validateSchema('flow', flow, relative);
     diagnostics.push(...schemaDiagnostics);
     if (flow.metadata?.name) {
@@ -325,9 +290,27 @@ export async function loadFlows(project: ProjectContext): Promise<{ flows: Map<s
       if (flows.has(flow.metadata.name)) diagnostics.push(diagnostic('XFORGE_FLOW_DUPLICATE', `Duplicate Flow ${flow.metadata.name}.`, relative));
       flows.set(flow.metadata.name, flow);
       if (!schemaDiagnostics.some((item) => item.severity === 'error')) diagnostics.push(...graphDiagnostics(flow, relative));
+    } else {
+      /*
+       * No `metadata.name`, so the file is not loaded -- and that is the fact the schema cannot say.
+       *
+       * `flow.schema.json` reports the missing required property, which reads like one more field
+       * to fill in. What actually happens is that a Flow is keyed by the name it declares, so this
+       * file enters no map: its Stage graph is never walked, and every dangling Artifact, forward
+       * dependency and unstructured exit inside it stays unreported until a name exists. The
+       * Manifest default then reported XFORGE_FLOW_NOT_FOUND on top, naming `xforge/manifest.yaml`
+       * for a problem wholly inside the Flow file -- so the filename is remembered here the same
+       * way a v1alpha1 refusal remembers it, and that second, misdirecting report does not fire.
+       */
+      refused.add(name.slice(0, -5));
+      diagnostics.push(diagnostic(
+        'XFORGE_FLOW_NAME_MISSING',
+        `${relative} declares no \`metadata.name\`, so nothing in it is loaded. A Flow is registered under the name it declares, and that name must match its filename, so this file is not a Flow the Manifest or a Change can select and its Stage graph is not checked at all -- anything else wrong inside it stays unreported until the name is there. Add \`name: ${name.slice(0, -5)}\` under \`metadata\`.`,
+        relative,
+      ));
     }
   }
-  if (!flows.has(project.manifest.flow)) {
+  if (!flows.has(project.manifest.flow) && !refused.has(project.manifest.flow)) {
     diagnostics.push(diagnostic('XFORGE_FLOW_NOT_FOUND', `Manifest default Flow does not exist: ${project.manifest.flow}`, 'xforge/manifest.yaml'));
   }
   return { flows, diagnostics };
@@ -398,15 +381,6 @@ async function outputsSatisfyArtifact(
     if (validateContract && !contractDeltaIsValid(content)) return false;
   }
   return true;
-}
-
-async function approvalGranted(changeDirectory: string, outputs: string[]): Promise<boolean> {
-  if (outputs.length === 0) return false;
-  const content = await readFile(await safeResolve(changeDirectory, outputs[0]!), 'utf8');
-  const approved = /(?:^|\n)\s*(?:[-*]\s*)?Status:\s*(?:approved|granted)\s*(?:\n|$)/i.test(content);
-  const approver = /(?:^|\n)\s*(?:[-*]\s*)?Approver:\s*\S.+(?:\n|$)/i.test(content);
-  const timestamp = /(?:^|\n)\s*(?:[-*]\s*)?Decision timestamp:\s*\d{4}-\d{2}-\d{2}T\S+(?:\n|$)/i.test(content);
-  return approved && approver && timestamp;
 }
 
 export async function resolveChangeState(
@@ -481,9 +455,7 @@ export async function resolveChangeState(
      * exists still asks the right question.
      */
     if (!artifactIsOwed(artifact, config)) { completed.add(artifact.id); notOwed.add(artifact.id); continue; }
-    let done = await outputsSatisfyArtifact(changeDirectory, artifact, outputs);
-    if (!isStageFlow(flow) && artifact.id === 'approval' && done) done = await approvalGranted(changeDirectory, outputs);
-    if (done) completed.add(artifact.id);
+    if (await outputsSatisfyArtifact(changeDirectory, artifact, outputs)) completed.add(artifact.id);
   }
   for (const artifact of artifacts) {
     const missingDependencies = artifact.requires.filter((id) => !completed.has(id));
@@ -510,7 +482,7 @@ export async function resolveChangeState(
     id: changeId,
     path: toProjectPath(project.root, changeDirectory),
     flow: flow.metadata.name,
-    /* Filled in where governance resolves; null for a Flow that declares no Stages. */
+    /* Filled in where governance resolves; null until the control plane reads the receipts. */
     stage: null,
     classification: config.classification,
     scope: config.scope,
@@ -520,7 +492,7 @@ export async function resolveChangeState(
        exist, and nothing about Gates, conditions or approvals. Three separate live runs read a bare
        `ready: true` beside a blocked `readyTransitions` entry as a contradiction; it was two
        questions sharing one word. */
-    apply: { artifactsReady: applyReady, requires: apply.requires, tracks: apply.tracks },
+    apply: { artifactsReady: applyReady, requires: apply.requires },
     archive: {
       artifactsReady: archiveReady,
       requires: archive.requires,

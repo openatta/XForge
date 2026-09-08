@@ -1,10 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://xforge.dev/schemas/flow.schema.json",
-  "oneOf": [
-    { "$ref": "#/$defs/v1alpha1" },
-    { "$ref": "#/$defs/v1alpha2" }
-  ],
+  "$ref": "#/$defs/v1alpha2",
   "$defs": {
     "id": { "type": "string", "pattern": "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$" },
     "idList": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/id" } },
@@ -17,21 +14,6 @@
         "name": { "$ref": "#/$defs/id" },
         "version": { "type": ["string", "integer"] },
         "description": { "type": "string", "minLength": 1 }
-      }
-    },
-    "legacyArtifact": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "generates", "description", "instruction", "outline", "requires"],
-      "properties": {
-        "id": { "$ref": "#/$defs/id" },
-        "generates": { "$ref": "#/$defs/path" },
-        "description": { "type": "string", "minLength": 1 },
-        "instruction": { "type": "string", "minLength": 1 },
-        "outline": { "type": "string" },
-        "requires": { "$ref": "#/$defs/idList" },
-        "validator": { "$ref": "#/$defs/artifactValidator" },
-        "markers": { "$ref": "#/$defs/artifactMarkers" }
       }
     },
     "stageArtifact": {
@@ -90,44 +72,6 @@
         "minOccurrences": { "type": "integer", "minimum": 0 }
       }
     },
-    "v1alpha1": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["apiVersion", "kind", "metadata", "artifacts", "operations"],
-      "properties": {
-        "apiVersion": { "const": "xforge.dev/v1alpha1" },
-        "kind": { "const": "Flow" },
-        "metadata": { "$ref": "#/$defs/metadata" },
-        "artifacts": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/legacyArtifact" } },
-        "operations": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["apply", "archive"],
-          "properties": {
-            "apply": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["requires", "tracks"],
-              "properties": {
-                "requires": { "$ref": "#/$defs/idList" },
-                "tracks": { "$ref": "#/$defs/path" }
-              }
-            },
-            "archive": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["requires", "syncSpecs", "mandatoryGates"],
-              "properties": {
-                "requires": { "$ref": "#/$defs/idList" },
-                "syncSpecs": { "type": "boolean" },
-                "syncContracts": { "type": "boolean", "description": "Merge this Change's contract deltas into the contract baseline at archive. Optional and absent means false, so every Flow written before contracts existed keeps working unchanged." },
-                "mandatoryGates": { "$ref": "#/$defs/idList" }
-              }
-            }
-          }
-        }
-      }
-    },
     "v1alpha2": {
       "type": "object",
       "additionalProperties": false,
@@ -165,8 +109,7 @@
                   "items": { "enum": ["security", "privacy", "publicApi", "dataMigration", "moduleContract"] }
                 }
               }
-            },
-            "onUncertain": { "enum": ["escalate", "request-decision"], "description": "Accepted for compatibility with Flows written before v0.7.9 and no longer read by the CLI; escalation is decided by eligibleWhen/requiredWhen. The shipped Flows omit it." }
+            }
           }
         },
         "artifacts": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/stageArtifact" } },
@@ -218,16 +161,6 @@
                     }
                   }
                 ]
-              },
-              "execution": {
-                "type": "object",
-                "description": "Accepted for compatibility with Flows written before v0.7.9 and no longer read by the CLI; xforge-apply decides plan shape from the work at hand. The shipped Flows omit it.",
-                "additionalProperties": false,
-                "required": ["planning", "workPackages"],
-                "properties": {
-                  "planning": { "const": "just-in-time" },
-                  "workPackages": { "enum": ["internal", "adaptive", "required"] }
-                }
               }
             }
           }
@@ -248,7 +181,6 @@
                 "syncSpecs": { "type": "boolean" },
                 "gates": { "$ref": "#/$defs/idList", "description": "Gates archive re-runs before closing the Change. Absent falls back to the Gates of the Stage named `verify`, which is what v1alpha2 has always inferred. State it explicitly on any Flow whose closing Stage is not named `verify`, or that Stage's Gates are silently left out of the archive check." },
                 "syncContracts": { "type": "boolean", "description": "Merge this Change's contract deltas into the contract baseline at archive. Deliberately absent from `required`: a Flow written before contracts existed is still a valid Flow, and adding this to the required set would invalidate every one of them at once." },
-                "evidencePolicy": { "const": "current-revision", "description": "Accepted for compatibility with Flows written before v0.7.9 and no longer read by the CLI; archive always binds Evidence to the current revision. The shipped Flows omit it." },
                 "approvals": { "$ref": "#/$defs/idList" },
                 "auditPolicy": { "$ref": "#/$defs/auditPolicy" }
               }

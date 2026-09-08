@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { CHECK_FINDINGS_PATH } from '../../src/core/check-findings.js';
 import { CONSTITUTION_CHECK_PATH } from '../../src/core/constitution-check.js';
 import { checkStructure } from '../../src/core/checker.js';
-import { flowArchiveOperation, isStageFlow, loadFlows, resolveChangeState } from '../../src/core/flow-resolver.js';
+import { flowArchiveOperation, loadFlows, resolveChangeState } from '../../src/core/flow-resolver.js';
 import { legalTransitionTargets } from '../../src/core/control-plane.js';
 import { loadProject } from '../../src/core/project-loader.js';
 import { changeYaml, checkFindings, constitutionLedger, fixture, runCli, updateYaml, write, xforgeRoot } from '../helpers.js';
@@ -25,8 +25,7 @@ describe('Flow artifact graph', () => {
     const { flows, diagnostics } = await loadFlows(project);
     expect(diagnostics.filter((item) => item.severity === 'error')).toEqual([]);
     const actual = Object.fromEntries([...flows].sort(([a], [b]) => a.localeCompare(b)).map(([id, flow]) => {
-      expect(isStageFlow(flow)).toBe(true);
-      if (!isStageFlow(flow)) throw new Error('official flows must use v1alpha2');
+      expect(flow.apiVersion).toBe('xforge.dev/v1alpha2');
       return [id, {
         assuranceLevel: flow.policy.assuranceLevel,
         stages: flow.stages.map((stage) => [stage.id, stage.requires]),
@@ -111,10 +110,11 @@ describe('Flow artifact graph', () => {
     const root = await fixture();
     const project = await loadProject(root);
     const { flows } = await loadFlows(project);
+    /* No `isStageFlow` narrowing: every Flow is a Stage Flow now, so the guard that used to stand
+       here — and the `unreachable` throw beside it — described a case the loader no longer admits. */
     const reachable = [...flows]
-      .filter(([, flow]) => isStageFlow(flow) && flow.stages.some((stage) => stage.id === 'check'))
+      .filter(([, flow]) => flow.stages.some((stage) => stage.id === 'check'))
       .map(([id, flow]) => {
-        if (!isStageFlow(flow)) throw new Error('unreachable');
         const apply = flow.stages.find((stage) => stage.id === 'apply')!;
         return [id, legalTransitionTargets(flow, apply.id).includes('check')];
       });
@@ -214,19 +214,94 @@ describe('Flow artifact graph', () => {
     expect(ready.archive.artifactsReady).toBe(false);
   });
 
-  it('keeps v1alpha1 Artifact Flow projects readable during migration', async () => {
+  /*
+   * The v1alpha1 Artifact Flow is gone, and the file that declares one is told so by name.
+   *
+   * `flow.schema.json` describes the Stage Flow alone now, so without this the project would meet
+   * a dozen `must have required property` lines about keys it has never heard of -- an accurate
+   * report of what the file is not, and no word about what happened to the shape it is. The
+   * apiVersion is read before the schema for that reason, and the Flow is not registered, so
+   * nothing downstream reaches for the `stages` a v1alpha1 document does not have.
+   */
+  it('refuses a v1alpha1 Artifact Flow by name rather than as a schema mismatch', async () => {
     const root = await fixture();
-    const legacyQuick = await readFile(path.join(xforgeRoot, 'test', 'fixtures', 'minimal-project', 'xforge', 'flows', 'quick.yaml'), 'utf8');
-    await write(root, 'xforge/flows/quick.yaml', legacyQuick);
-    const base = 'xforge/changes/legacy-fix';
-    await write(root, `${base}/change.yaml`, changeYaml('quick'));
-    await write(root, `${base}/proposal.md`, '## Why\nLegacy project\n');
-    await write(root, `${base}/specs/fix/spec.md`, deltaSpec('Fix'));
-    const project = await loadProject(root);
-    const state = (await resolveChangeState(project, 'legacy-fix')).state;
-    expect(state.nextArtifact?.id).toBe('tasks');
-    expect(state.apply.artifactsReady).toBe(false);
-    expect(state.apply.tracks).toBe('tasks.md');
+    /* `solid`, because it is the Manifest's default Flow. The first version of this test rewrote
+       `quick.yaml` and then asserted that XFORGE_FLOW_NOT_FOUND was absent -- which it was, and
+       would have been with the suppression deleted, because nothing was looking for `quick`. An
+       assertion that cannot fail is worse than none: it reads as cover for the branch it names. */
+    await write(root, 'xforge/flows/solid.yaml', [
+      'apiVersion: xforge.dev/v1alpha1',
+      'kind: Flow',
+      'metadata:',
+      '  name: solid',
+      '  version: 1',
+      '  description: Legacy Artifact Flow',
+      'artifacts:',
+      '  - id: proposal',
+      '    generates: proposal.md',
+      '    description: Explain the change',
+      '    instruction: Explain scope and rollback.',
+      '    outline: |',
+      '      ## Why',
+      '    requires: []',
+      'operations:',
+      '  apply:',
+      '    requires: [proposal]',
+      '    tracks: tasks.md',
+      '  archive:',
+      '    requires: [proposal]',
+      '    syncSpecs: true',
+      '    mandatoryGates: [structure]',
+      '',
+    ].join('\n'));
+    const { flows, diagnostics } = await loadFlows(await loadProject(root));
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: 'XFORGE_FLOW_API_VERSION_UNSUPPORTED',
+      severity: 'error',
+      path: 'xforge/flows/solid.yaml',
+    }));
+    expect(diagnostics.find((item) => item.code === 'XFORGE_FLOW_API_VERSION_UNSUPPORTED')?.message)
+      .toContain('v1alpha2 Stage Flow');
+    expect(flows.has('solid')).toBe(false);
+    /* Not registered, and therefore not reported as missing either. The Manifest names `solid` and
+       the file is on disk, so XFORGE_FLOW_NOT_FOUND would send the reader to the Manifest for a
+       defect that is wholly inside the Flow. This is the assertion the `quick` version could not
+       make. */
+    expect(diagnostics.map((item) => item.code)).not.toContain('XFORGE_FLOW_NOT_FOUND');
+    /* And no schema noise on top of the sentence that says what to do. */
+    expect(diagnostics.filter((item) => item.path === 'xforge/flows/solid.yaml').map((item) => item.code))
+      .toEqual(['XFORGE_FLOW_API_VERSION_UNSUPPORTED']);
+  });
+
+  /*
+   * A Flow file with no `metadata.name` is dropped, and until now it was dropped in silence.
+   *
+   * The schema reports the missing required property and stops there, which reads like one more
+   * field to fill in. The consequence is larger: the Flow is keyed by the name it declares, so an
+   * unnamed file enters no map and its graph is never walked. The Manifest's default Flow then
+   * reported XFORGE_FLOW_NOT_FOUND as well, pointing at `xforge/manifest.yaml` for a file that is
+   * sitting on disk -- which is why the name is remembered as refused, exactly as v1alpha1 is.
+   */
+  it('says the Flow file was ignored when it declares no metadata.name', async () => {
+    const root = await fixture();
+    /* The Manifest's own default Flow, with its one identifying line removed and every other line
+       intact: a graph that would check clean if the file were loaded at all. */
+    const solid = await readFile(path.join(root, 'xforge', 'flows', 'solid.yaml'), 'utf8');
+    await write(root, 'xforge/flows/solid.yaml', solid.replace('\n  name: solid\n', '\n'));
+    const { flows, diagnostics } = await loadFlows(await loadProject(root));
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: 'XFORGE_FLOW_NAME_MISSING',
+      severity: 'error',
+      path: 'xforge/flows/solid.yaml',
+    }));
+    expect(diagnostics.find((item) => item.code === 'XFORGE_FLOW_NAME_MISSING')?.message)
+      .toContain('nothing in it is loaded');
+    expect(flows.has('solid')).toBe(false);
+    /* The schema still says which property is missing; this says what that costs. */
+    expect(diagnostics.filter((item) => item.path === 'xforge/flows/solid.yaml').map((item) => item.code))
+      .toContain('XFORGE_SCHEMA_INVALID');
+    /* And the Manifest is not blamed for it: `solid` is the default Flow and the file is there. */
+    expect(diagnostics.map((item) => item.code)).not.toContain('XFORGE_FLOW_NOT_FOUND');
   });
 });
 
@@ -390,25 +465,6 @@ describe('Flow eligibility', () => {
     const codes = result.diagnostics.map((item) => item.code);
     expect(codes).not.toContain('XFORGE_FLOW_TOO_WEAK');
     expect(codes).not.toContain('XFORGE_FLOW_REQUIRED_POLICY');
-  });
-
-  it('derives the escalation target from Flow policy on the legacy Artifact Flow path', async () => {
-    const root = await fixture();
-    const legacyQuick = await readFile(path.join(xforgeRoot, 'test', 'fixtures', 'minimal-project', 'xforge', 'flows', 'quick.yaml'), 'utf8');
-    await write(root, 'xforge/flows/quick.yaml', legacyQuick);
-    const base = 'xforge/changes/legacy-risky';
-    await write(root, `${base}/change.yaml`, changeYaml('quick', {
-      classification: { risk: 'high', security: true, privacy: false, publicApi: false, dataMigration: false },
-    }));
-    await write(root, `${base}/proposal.md`, '## Why\nLegacy project\n');
-    await write(root, `${base}/specs/fix/spec.md`, deltaSpec('Fix'));
-    const result = await checkStructure(await loadProject(root), 'legacy-risky');
-    const codes = result.diagnostics.map((item) => item.code);
-    expect(codes).not.toContain('XFORGE_FLOW_PRIME_REQUIRED');
-    expect(result.diagnostics).toContainEqual(expect.objectContaining({
-      code: 'XFORGE_FLOW_REQUIRED_POLICY',
-      message: expect.stringContaining('major'),
-    }));
   });
 });
 

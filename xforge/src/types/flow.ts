@@ -1,10 +1,14 @@
 import type { Metadata } from './resource.js';
 
 /**
- * The Flow graph: Artifacts, Stages, and the two Flow shapes that have existed.
+ * The Flow graph: Artifacts and Stages.
  *
- * `LegacyFlow` and `StageFlow` are a union rather than a version field because the two are read by
- * different code paths -- `isStageFlow` narrows, and Protocol 1 projects still load.
+ * `Flow` is an alias for `StageFlow` rather than the union it used to be. The v1alpha1 Artifact
+ * Flow -- a flat Artifact DAG with `operations.apply`/`operations.archive` and no Stages -- was
+ * removed, and with it the narrowing every reader used to do. The alias stays because `Flow` is
+ * the name the rest of the codebase and the public type surface say; nothing narrows to reach a
+ * Stage any more. `loadFlows` refuses a v1alpha1 document by apiVersion with a diagnostic that
+ * says so, so the removal arrives as a sentence rather than as a schema mismatch.
  */
 
 /**
@@ -77,17 +81,6 @@ export interface ArtifactDefinition {
   requiredWhen?: { anyImpact?: Array<'security' | 'privacy' | 'publicApi' | 'dataMigration' | 'moduleContract'> };
 }
 
-export interface LegacyFlow {
-  apiVersion: 'xforge.dev/v1alpha1';
-  kind: 'Flow';
-  metadata: Metadata & { version: string | number; description: string };
-  artifacts: ArtifactDefinition[];
-  operations: {
-    apply: { requires: string[]; tracks: string };
-    archive: { requires: string[]; syncSpecs: boolean; syncContracts?: boolean; mandatoryGates: string[] };
-  };
-}
-
 export type FlowAuthority = 'read-only' | 'planning-write' | 'assurance-write' | 'implementation-write' | 'archive-write';
 
 export interface StageFlowArtifact extends Omit<ArtifactDefinition, 'requires'> {}
@@ -149,8 +142,6 @@ export interface StageFlow {
       risk?: Array<'low' | 'medium' | 'high'>;
       anyImpact?: Array<'security' | 'privacy' | 'publicApi' | 'dataMigration' | 'moduleContract'>;
     };
-    /** Accepted for compatibility with Flows written before it was removed; nothing reads it. */
-    onUncertain?: 'escalate' | 'request-decision';
   };
   artifacts: StageFlowArtifact[];
   governance?: {
@@ -167,20 +158,17 @@ export interface StageFlow {
       /**
        * Gates archive re-runs before it closes the Change.
        *
-       * v1alpha1 required this as `mandatoryGates`; v1alpha2 dropped it and inferred the set from
-       * the Stage literally named `verify`. That inference is invisible when it is wrong: a Flow
-       * with a Stage after Verify contributes none of its Gates to the archive check, and nothing
-       * says so. Optional, and absent still falls back to Verify's Gates, so every Flow written
-       * against v1alpha2 keeps its current behaviour.
+       * Absent, the set is inferred from the Stage literally named `verify`. That inference is
+       * invisible when it is wrong: a Flow with a Stage after Verify contributes none of its Gates
+       * to the archive check, and nothing says so. Optional, and absent still falls back to
+       * Verify's Gates, so every Flow that has never declared it keeps its current behaviour.
        */
       gates?: string[];
       syncContracts?: boolean;
-      /** Accepted for compatibility with Flows written before it was removed; nothing reads it. */
-      evidencePolicy?: 'current-revision';
       approvals?: string[];
       auditPolicy?: FlowAuditPolicy;
     };
   };
 }
 
-export type Flow = LegacyFlow | StageFlow;
+export type Flow = StageFlow;

@@ -6,7 +6,7 @@ import { atomicWrite } from '../core/files.js';
 import { sha256, stableStringify } from '../core/hash.js';
 import { assertManaged } from '../core/project-loader.js';
 import { normalizeRelative, safeResolve } from '../core/path-safety.js';
-import { isStageFlow, resolveChangeState } from '../core/flow-resolver.js';
+import { resolveChangeState } from '../core/flow-resolver.js';
 import { loadSelectedResources } from '../core/resource-loader.js';
 import { resolveControlPlane } from '../core/control-plane.js';
 import { resolveWorkPackages } from '../core/work-packages.js';
@@ -55,7 +55,7 @@ export async function executeReviewAcknowledge(project: ProjectContext, options:
   if (!evidenceStat.isFile()) throw new XForgeError(diagnostic('XFORGE_REVIEW_ACK_EVIDENCE_MISSING', 'Review evidence must be a regular file.', evidence));
 
   const resolved = await resolveChangeState(project, options.change);
-  if (!isStageFlow(resolved.flow) || !resolved.flow.governance) {
+  if (!resolved.flow.governance) {
     throw new XForgeError(diagnostic('XFORGE_GOVERNANCE_FLOW_REQUIRED', 'review acknowledge requires a Protocol 2 governed Flow.'));
   }
   const resources = await loadSelectedResources(project);

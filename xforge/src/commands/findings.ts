@@ -6,7 +6,7 @@ import { resolveControlPlane } from '../core/control-plane.js';
 import { loadApprovalReceipts } from '../core/control-plane/receipts.js';
 import { XForgeError, diagnostic } from '../core/errors.js';
 import { atomicWrite } from '../core/files.js';
-import { isStageFlow, resolveChangeState } from '../core/flow-resolver.js';
+import { resolveChangeState } from '../core/flow-resolver.js';
 import { sha256 } from '../core/hash.js';
 import { knownIdentities, unknownIdentityReason, unverifiableIdentityWarning } from '../core/ledger-identity.js';
 import { safeResolve } from '../core/path-safety.js';
@@ -101,7 +101,7 @@ export async function executeFindingsResolve(
   const resources = await loadSelectedResources(project);
   let currentStage: string | null = null;
   let contentRevision: string | null = null;
-  if (isStageFlow(resolved.flow) && resolved.flow.governance) {
+  if (resolved.flow.governance) {
     const workPackages = await resolveWorkPackages(project, options.change, resolved.config, resources);
     const control = await resolveControlPlane(project, options.change, resolved.flow, resolved.state, resources, resolved.config, { workPackages });
     currentStage = control.governance.currentStage;

@@ -179,16 +179,21 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 > **你可以在一个新文件名下发布完全自定义的 stage graph 和治理策略，
 > 但目前仍必须挂靠三档保证级别之一。** 真正独立的第四档需要改 schema。
 
-### 2.3 已废弃、CLI 不再读取的字段
+### 2.3 已从 schema 移除的字段
 
-保留只为兼容 0.7.9 之前写的 Flow，随包 Flow 都省略了它们。
-**声明它们能通过校验，也什么都不改变。**
+这一档曾经是"保留只为兼容、声明了也什么都不改变"的字段。现已清空：三个都已从
+`flow.schema.json` 删除，而 schema 是 `additionalProperties: false`，
+**仍然声明它们的 Flow 现在会被拒绝**。删掉对应的键即可，没有替代字段。
 
-| 字段 | 说明 |
+| 字段 | 删掉它为什么不改变任何行为 |
 | --- | --- |
+| `stages[].execution` | `xforge-apply` 按手头工作的真实依赖图决定计划形态，从不读这个字段 |
 | `policy.onUncertain` | 升级由 `eligibleWhen` / `requiredWhen` 决定 |
-| `stages[].execution` | `xforge-apply` 按手头工作的真实依赖图决定计划形态 |
-| `terminal.archive.evidencePolicy` | archive 总是绑定当前 revision |
+| `terminal.archive.evidencePolicy` | archive 本来就绑定当前 revision |
+
+留着它们的代价不是运行时的，是认知上的：`src/types/flow.ts` 从未声明过其中任何一个，
+所以一个 Flow 可以设置它、通过校验、然后对每一个读取者不可见——包括类型。
+一个能写下却无人读的字段，读起来像一个可以调的旋钮。
 
 ### 2.4 最有价值的扩展点：自定义 exit condition
 

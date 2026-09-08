@@ -1,3 +1,9 @@
+/*
+ * @red-first coverage-only: this change only *deletes* a test. It asserted that `doctor` counted a
+ * v1alpha1 Flow's `operations.archive.mandatoryGates` as a Gate reference; v1alpha1 Flows are gone,
+ * the branch it exercised is gone with them, and the Flow document it built no longer loads. A
+ * deletion has no fix to fail without, so there is nothing here a red-first run could prove.
+ */
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -370,28 +376,6 @@ describe('doctor', () => {
     expect(result.json.data.deadCode).toEqual(expect.arrayContaining([
       expect.objectContaining({ scope: 'approvals', code: 'XFORGE_DOCTOR_DEAD_CODE', id: 'orphan-approval' }),
     ]));
-  });
-
-  it('counts a legacy v1alpha1 Flow archive mandatoryGates entry as a reference, so that Gate is not reported dead', async () => {
-    const root = await fixture();
-    await createCompleteSolidChange(root);
-    await write(root, 'xforge/scaffold/gates/legacy-only-gate.yaml', [
-      'apiVersion: xforge.dev/v1alpha1', 'kind: Gate', 'metadata:', '  name: legacy-only-gate', '  version: 1',
-      'spec:', '  stage: before-archive', '  required: true', "  command: [npm, test, '--if-present']",
-      '  workingDirectory: .', '  timeoutSeconds: 900', '  maxOutputBytes: 65536', '  evidence: tests.json', '',
-    ].join('\n'));
-    await updateYaml(root, 'xforge/manifest.yaml', (manifest) => { manifest.scaffold.gates.push('legacy-only-gate'); });
-    await write(root, 'xforge/flows/legacy-smoke.yaml', [
-      'apiVersion: xforge.dev/v1alpha1', 'kind: Flow', 'metadata:', '  name: legacy-smoke', '  version: 1',
-      '  description: Test-only legacy Flow exercising doctor Gate reference collection.',
-      'artifacts:', '  - id: note', '    generates: note.md', '    description: Placeholder artifact',
-      '    instruction: Write a short note.', "    outline: '# Note'", '    requires: []',
-      'operations:', '  apply:', '    requires: [note]', '    tracks: note.md',
-      '  archive:', '    requires: [note]', '    syncSpecs: false', '    mandatoryGates: [legacy-only-gate]', '',
-    ].join('\n'));
-    const result = await runCli(root, ['doctor']);
-    expect(result.code).toBe(0);
-    expect(result.json.data.deadCode.map((item: any) => item.id)).not.toContain('legacy-only-gate');
   });
 
   it('does not crash when the Changes directory does not exist', async () => {

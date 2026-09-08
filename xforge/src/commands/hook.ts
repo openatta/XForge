@@ -5,7 +5,7 @@ import { recordAudit } from '../core/audit.js';
 import { XForgeError, diagnostic } from '../core/errors.js';
 import { effectivePolicyEffect, matchPathGlob, matchWildcard } from '../core/governance.js';
 import { parseMcpTool, resolveToolCapability, unknownToolDecision, unknownToolGap, type Capability } from '../core/tool-capability.js';
-import { isStageFlow, resolveChangeState } from '../core/flow-resolver.js';
+import { resolveChangeState } from '../core/flow-resolver.js';
 import { loadSelectedResources, type SelectedResources } from '../core/resource-loader.js';
 import { resolveControlPlane } from '../core/control-plane.js';
 import { resolvedResourceEntries } from '../core/lockfile.js';
@@ -480,7 +480,7 @@ export async function executeHookDispatch(project: ProjectContext, options: { ta
     try {
       const resolved = await resolveChangeState(project, change);
       flow = resolved.flow.metadata.name;
-      if (isStageFlow(resolved.flow) && resolved.flow.governance) {
+      if (resolved.flow.governance) {
         const control = await resolveControlPlane(project, change, resolved.flow, resolved.state, selected, resolved.config);
         stage = control.governance.currentStage;
         revision = control.governance.revision;

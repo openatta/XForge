@@ -1,9 +1,23 @@
-apiVersion: xforge.dev/v1alpha1
+# A v1alpha2 Stage Flow inside a project that declares `xforge.protocol: "1"`, and the combination
+# is deliberate rather than an oversight. The two are independent axes: `protocol` is the Manifest's
+# contract with the CLI, and this fixture pins it to 1 precisely so `minimal-example.test.ts` can
+# assert the portable-mode refusal; `apiVersion` is the Flow document's own shape, and v1alpha1
+# Artifact Flows no longer load at all. There is no version of this file that is both loadable and
+# Protocol-1-era, so the fixture keeps the protocol mismatch it exists to exercise and takes the
+# only Flow shape the CLI still reads.
+apiVersion: xforge.dev/v1alpha2
 kind: Flow
 metadata:
   name: quick
-  version: 1
+  version: 2
   description: Minimal example Flow
+policy:
+  assuranceLevel: quick
+  eligibleWhen:
+    risk: [low]
+    criticalImpacts: forbidden
+    contractImpact: forbidden
+    maxModules: 1
 artifacts:
   - id: proposal
     generates: proposal.md
@@ -12,26 +26,44 @@ artifacts:
     outline: |
       ## Why
       ## Rollback
-    requires: []
   - id: specs
     generates: specs/**/*.md
     description: Define behavior
     instruction: Define observable behavior.
     outline: |
       ## ADDED Requirements
-    requires: [proposal]
-  - id: tasks
-    generates: tasks.md
-    description: Track work
-    instruction: Use verifiable checkboxes.
+  - id: assurance
+    generates: assurance.md
+    description: Record what was verified
+    instruction: Say what was checked and against what.
     outline: |
-      - [ ] Implement
-    requires: [proposal, specs]
-operations:
-  apply:
-    requires: [tasks]
-    tracks: tasks.md
+      ## Findings
+# The Skills and Gates are the ones this fixture's Manifest actually enables. A Flow naming
+# anything else would make `check` report a disabled Skill on a project whose point is to be the
+# smallest one that reads cleanly.
+stages:
+  - id: propose
+    skill: xforge-explore
+    authority: planning-write
+    requires: []
+    produces: [proposal, specs]
+    gates: [structure]
+  - id: apply
+    skill: xforge-explore
+    authority: implementation-write
+    requires: [propose]
+    produces: []
+    reworkTo: [propose]
+  - id: verify
+    skill: xforge-explore
+    authority: assurance-write
+    requires: [apply]
+    produces: [assurance]
+    gates: [structure, unit-tests]
+    reworkTo: [apply]
+terminal:
   archive:
-    requires: [specs, tasks]
+    handler: xforge-explore
+    authority: archive-write
+    requires: [verify]
     syncSpecs: true
-    mandatoryGates: [structure, unit-tests]

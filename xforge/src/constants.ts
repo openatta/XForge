@@ -42,3 +42,18 @@ export const DEFAULT_CONTRACTS_PATH = 'xforge/contracts';
 export const AUDIT_DIRECTORY = 'xforge/.audit';
 export const MAX_GATE_OUTPUT_BYTES = 65_536;
 export const WORK_PACKAGE_VERIFY_TIMEOUT_SECONDS = 900;
+
+/**
+ * The Stage recorded for a Change running under a Flow that declares no `governance` block.
+ *
+ * The word is wrong for what it now marks and is kept anyway. It was written when the fallback was
+ * reached two ways -- a v1alpha1 Artifact Flow, which had no Stages at all, or a v1alpha2 Stage
+ * Flow with no `governance` block. v1alpha1 is refused at load now, so only the second case is
+ * left: a Stage Flow whose Stages are real but ungoverned, which is not legacy in any sense.
+ *
+ * Renaming the value is not available. `xforge audit` has already written `stage: legacy` into
+ * audit chains on disk, and the Gate runner folds it into `stateRevision`; a new spelling would
+ * make recorded events and new events disagree about the same situation and move every digest
+ * derived from it. So the string stays and the identifier carries the meaning.
+ */
+export const UNGOVERNED_STAGE = 'legacy';

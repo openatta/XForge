@@ -12,7 +12,7 @@ import { atomicWrite } from '../core/files.js';
 import { sha256 } from '../core/hash.js';
 import { normalizeRelative } from '../core/path-safety.js';
 import { assertManaged } from '../core/project-loader.js';
-import { isStageFlow, resolveChangeState } from '../core/flow-resolver.js';
+import { resolveChangeState } from '../core/flow-resolver.js';
 import { diagnostic } from '../core/errors.js';
 
 function byTimestamp(events: AuditEvent[]): AuditEvent[] {
@@ -48,7 +48,7 @@ export async function executeAudit(project: ProjectContext, options: { action: '
   let remoteDelivery: Record<string, unknown> | null = null;
   if (options.action === 'verify' && options.change) {
     const resolved = await resolveChangeState(project, options.change);
-    if (isStageFlow(resolved.flow) && resolved.flow.governance) {
+    if (resolved.flow.governance) {
       /*
        * The same resolution `core/control-plane.ts`'s `terminalGovernanceBlocks` uses, and it has to
        * be: this command is what a Skill tells the Agent to run before archiving, so validating a

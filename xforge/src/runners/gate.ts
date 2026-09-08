@@ -1,14 +1,14 @@
 import { spawn } from 'node:child_process';
 import { readFile, rm } from 'node:fs/promises';
 import type { ApprovalReceipt, Diagnostic, FileChange, GateEvidence, GateResource, GovernanceRevision, NextAction, ProjectContext } from '../types.js';
-import { CLI_NAME, CLI_VERSION, MAX_GATE_OUTPUT_BYTES, PROTOCOL_VERSION } from '../constants.js';
+import { CLI_NAME, CLI_VERSION, MAX_GATE_OUTPUT_BYTES, PROTOCOL_VERSION, UNGOVERNED_STAGE } from '../constants.js';
 import { atomicWrite } from '../core/files.js';
 import { sha256, stableStringify } from '../core/hash.js';
 import { normalizeRelative, safeResolve } from '../core/path-safety.js';
 import { XForgeError, diagnostic } from '../core/errors.js';
 import { filterEnvironment } from '../core/env-safety.js';
 import { redact } from '../core/redaction.js';
-import { isStageFlow, resolveChangeState } from '../core/flow-resolver.js';
+import { resolveChangeState } from '../core/flow-resolver.js';
 import { loadSelectedResources } from '../core/resource-loader.js';
 import { resolveControlPlane } from '../core/control-plane.js';
 import { runtimeCliIntegrity } from '../core/identity.js';
@@ -196,16 +196,16 @@ interface GateContext {
 async function resolveGateContext(project: ProjectContext, changeId: string): Promise<GateContext> {
   const resolved = await resolveChangeState(project, changeId);
   const resources = await loadSelectedResources(project);
-  const control = isStageFlow(resolved.flow) && resolved.flow.governance
+  const control = resolved.flow.governance
     ? await resolveControlPlane(project, changeId, resolved.flow, resolved.state, resources, resolved.config)
     : null;
   const flow = resolved.flow.metadata.name;
   const revision = control?.governance.revision ?? {
     contentRevision: sha256(stableStringify({ changeId, flow })),
-    stateRevision: sha256(stableStringify({ changeId, flow, stage: 'legacy' })),
-    policySnapshotDigest: sha256(stableStringify({ legacy: true })), gitBase: 'unknown', gitHead: 'unknown',
+    stateRevision: sha256(stableStringify({ changeId, flow, stage: UNGOVERNED_STAGE })),
+    policySnapshotDigest: sha256(stableStringify({ [UNGOVERNED_STAGE]: true })), gitBase: 'unknown', gitHead: 'unknown',
   };
-  return { flow, revision, stage: control?.governance.currentStage ?? 'legacy', approvals: control?.governance.approvals ?? [] };
+  return { flow, revision, stage: control?.governance.currentStage ?? UNGOVERNED_STAGE, approvals: control?.governance.approvals ?? [] };
 }
 
 /**

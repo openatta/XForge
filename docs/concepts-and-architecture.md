@@ -571,11 +571,18 @@ Adapter 报告 `guidance`、`permissionPolicy`、`runtimeHook.*`、`auditDeliver
 
 ```ts
 {
-  id, path, flow, classification, scope,
+  id, path, flow, stage, classification, scope,
   artifacts: ArtifactState[],       // status / outputPaths / writePath / missingDependencies
   nextArtifact,
-  apply:   { ready, requires, tracks },
-  archive: { ready, requires, mandatoryGates, syncSpecs, syncContracts },
+  apply:   { artifactsReady, requires },
+  archive: { artifactsReady, requires, mandatoryGates, syncSpecs, syncContracts },
+  // `artifactsReady`，不是 `ready`：它只回答"这个操作要求的 Artifact 是否都存在"，
+  // 与 Gate、退出条件、审批无关。三次实跑把裸 `ready: true` 读成了与旁边被阻塞的
+  // `readyTransitions` 矛盾——那是两个问题共用了一个词，字段因此改名。
+  //
+  // 顶层的 `stage` 与 `governance.currentStage` 同值，刻意冗余：四次实跑各花三到四个
+  // 调用才在 governance 下面五层找到当前 Stage。`activeChanges[].stage` 是同一面镜子
+  // 在组合视图上的版本。
   workPackages: WorkPackagePlanState | null,
   governance: GovernanceState,
   mandatoryGateEvidence: [{

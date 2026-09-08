@@ -68,7 +68,7 @@ export interface ChangeState {
   scope: ChangeConfig['scope'];
   artifacts: ArtifactState[];
   nextArtifact: ArtifactState | null;
-  apply: { artifactsReady: boolean; requires: string[]; tracks: string | null };
+  apply: { artifactsReady: boolean; requires: string[] };
   archive: { artifactsReady: boolean; requires: string[]; mandatoryGates: string[]; syncSpecs: boolean; syncContracts: boolean };
   workPackages: WorkPackagePlanState | null;
   governance?: GovernanceState;

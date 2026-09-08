@@ -8,7 +8,7 @@ import { TRANSITION_RECEIPTS_RELATIVE, readTransitionReceiptFiles, transitionRec
 import { XForgeError, diagnostic } from '../core/errors.js';
 import { atomicWrite } from '../core/files.js';
 import { flowEligibilityDiagnostics } from '../core/checker.js';
-import { isStageFlow, loadFlows, resolveChangeState } from '../core/flow-resolver.js';
+import { loadFlows, resolveChangeState } from '../core/flow-resolver.js';
 import { sha256, stableStringify } from '../core/hash.js';
 import { assertManaged } from '../core/project-loader.js';
 import { safeResolve } from '../core/path-safety.js';
@@ -99,7 +99,7 @@ export async function executeTransition(project: ProjectContext, options: { chan
 }> {
   assertManaged(project, 'transition');
   const resolved = await resolveChangeState(project, options.change);
-  if (!isStageFlow(resolved.flow) || !resolved.flow.governance) throw new XForgeError(diagnostic('XFORGE_GOVERNANCE_FLOW_REQUIRED', 'transition requires a Protocol 2 governed Flow.'));
+  if (!resolved.flow.governance) throw new XForgeError(diagnostic('XFORGE_GOVERNANCE_FLOW_REQUIRED', 'transition requires a Protocol 2 governed Flow.'));
   // A Change whose classification outgrew its Flow must fail here, at the first Stage
   // transition, rather than after all implementation work is done at archive time.
   const flowsResult = await loadFlows(project);
@@ -350,7 +350,7 @@ export async function repairTransitionChain(project: ProjectContext, options: { 
 }> {
   assertManaged(project, 'transition repair');
   const resolved = await resolveChangeState(project, options.change);
-  if (!isStageFlow(resolved.flow) || !resolved.flow.governance) {
+  if (!resolved.flow.governance) {
     throw new XForgeError(diagnostic('XFORGE_GOVERNANCE_FLOW_REQUIRED', 'transition repair requires a Protocol 2 governed Flow.'));
   }
   const loaded = await readTransitionReceiptFiles(project, options.change, resolved.flow);

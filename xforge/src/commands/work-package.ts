@@ -5,7 +5,7 @@ import { acknowledgementAttestationDigest, recordAudit } from '../core/audit.js'
 import { resolveControlPlane } from '../core/control-plane.js';
 import { XForgeError, diagnostic } from '../core/errors.js';
 import { atomicWrite } from '../core/files.js';
-import { isStageFlow, resolveChangeState } from '../core/flow-resolver.js';
+import { resolveChangeState } from '../core/flow-resolver.js';
 import { sha256, stableStringify } from '../core/hash.js';
 import { assertManaged } from '../core/project-loader.js';
 import { loadSelectedResources } from '../core/resource-loader.js';
@@ -37,7 +37,7 @@ export async function executeWorkPackageDispatch(project: ProjectContext, option
 }> {
   assertManaged(project, 'work-package dispatch');
   const resolved = await resolveChangeState(project, options.change);
-  if (!isStageFlow(resolved.flow) || !resolved.flow.governance) throw new XForgeError(diagnostic('XFORGE_GOVERNANCE_FLOW_REQUIRED', 'work-package dispatch requires a Protocol 2 governed Flow.'));
+  if (!resolved.flow.governance) throw new XForgeError(diagnostic('XFORGE_GOVERNANCE_FLOW_REQUIRED', 'work-package dispatch requires a Protocol 2 governed Flow.'));
   const resources = await loadSelectedResources(project);
   const workPackages = await resolveWorkPackages(project, options.change, resolved.config, resources);
   if (!workPackages.state) throw new XForgeError(diagnostic('XFORGE_WORK_PACKAGE_PLAN_REQUIRED', 'The Change does not contain work-packages.yaml.'));
@@ -219,7 +219,7 @@ export async function executeWorkPackageDraft(project: ProjectContext, options: 
 }> {
   assertManaged(project, 'work-package draft');
   const resolved = await resolveChangeState(project, options.change);
-  if (!isStageFlow(resolved.flow) || !resolved.flow.governance) throw new XForgeError(diagnostic('XFORGE_GOVERNANCE_FLOW_REQUIRED', 'work-package draft requires a Protocol 2 governed Flow.'));
+  if (!resolved.flow.governance) throw new XForgeError(diagnostic('XFORGE_GOVERNANCE_FLOW_REQUIRED', 'work-package draft requires a Protocol 2 governed Flow.'));
   const resources = await loadSelectedResources(project);
   const workPackages = await resolveWorkPackages(project, options.change, resolved.config, resources);
   if (!workPackages.state) throw new XForgeError(diagnostic('XFORGE_WORK_PACKAGE_PLAN_REQUIRED', 'The Change does not contain work-packages.yaml.'));
@@ -432,7 +432,7 @@ export async function executeWorkPackageAcknowledge(project: ProjectContext, opt
   if (!evidenceStat.isFile()) throw new XForgeError(diagnostic('XFORGE_WORK_PACKAGE_ACK_EVIDENCE_MISSING', 'Acknowledgement evidence must be a regular file.', evidence));
 
   const resolved = await resolveChangeState(project, options.change);
-  if (!isStageFlow(resolved.flow) || !resolved.flow.governance) throw new XForgeError(diagnostic('XFORGE_GOVERNANCE_FLOW_REQUIRED', 'work-package acknowledge requires a Protocol 2 governed Flow.'));
+  if (!resolved.flow.governance) throw new XForgeError(diagnostic('XFORGE_GOVERNANCE_FLOW_REQUIRED', 'work-package acknowledge requires a Protocol 2 governed Flow.'));
   const resources = await loadSelectedResources(project);
   const workPackages = await resolveWorkPackages(project, options.change, resolved.config, resources);
   if (!workPackages.state) throw new XForgeError(diagnostic('XFORGE_WORK_PACKAGE_PLAN_REQUIRED', 'The Change does not contain work-packages.yaml.'));

@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import type { ArtifactMarker, Diagnostic, ProjectContext, StageFlowArtifact } from '../types.js';
 import { diagnostic } from './errors.js';
-import { flowArtifacts, isStageFlow, resolveChangeState } from './flow-resolver.js';
+import { flowArtifacts, resolveChangeState } from './flow-resolver.js';
 import { safeResolve } from './path-safety.js';
 
 /**
@@ -116,7 +116,6 @@ export async function validateArtifactMarkers(
     /* An unresolvable Change is reported far more precisely by the caller that resolved it. */
     return diagnostics;
   }
-  if (!isStageFlow(resolved.flow)) return diagnostics;
 
   for (const artifact of flowArtifacts(resolved.flow) as StageFlowArtifact[]) {
     const markers = artifact.markers ?? [];

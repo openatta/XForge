@@ -4,7 +4,7 @@ import type { Diagnostic, FileChange, ProjectContext, StageFlow } from '../types
 import { checkStructure } from '../core/checker.js';
 import { XForgeError, diagnostic } from '../core/errors.js';
 import { assertManaged } from '../core/project-loader.js';
-import { flowArchiveOperation, isStageFlow, loadFlows, stageGateReferences } from '../core/flow-resolver.js';
+import { flowArchiveOperation, loadFlows, stageGateReferences } from '../core/flow-resolver.js';
 import { listChangeDirectories } from '../core/change-directories.js';
 import { unattestedDeclarer } from '../core/ledger-identity.js';
 import { loadBundledScaffold } from '../core/bundled-scaffold.js';
@@ -175,39 +175,35 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
 
   for (const [name, flow] of flowResult.flows) {
     const filePath = `xforge/flows/${name}.yaml`;
-    if (isStageFlow(flow)) {
-      for (const gate of allGateReferences(flow)) referencedGates.add(gate);
-      for (const stage of flow.stages) referencedSkills.add(stage.skill);
-      referencedSkills.add(flow.terminal.archive.handler);
-      const declaredApprovals = new Set((flow.governance?.approvalPolicies ?? []).map((policy) => policy.id));
-      const referencedApprovals = new Set(stageApprovalReferences(flow));
-      for (const policyId of declaredApprovals) {
-        if (!referencedApprovals.has(policyId)) {
-          deadCode.push({
-            scope: 'approvals',
-            code: 'XFORGE_DOCTOR_DEAD_CODE',
-            id: policyId,
-            message: `Approval policy ${policyId} is declared by Flow ${name} but never referenced by any Stage exit or the archive terminal.`,
-            path: filePath,
-          });
-        }
-      }
-      for (const policy of flow.governance?.approvalPolicies ?? []) {
-        const checks = policy.providers.map((providerId) => ({ providerId, ...providerUsability(providerId) }));
-        if (checks.some((check) => check.usable)) continue;
-        const detail = checks.length
-          ? checks.map((check) => `${check.providerId} (${check.reason})`).join('; ')
-          : 'the policy declares no providers at all';
-        unusableApprovals.push({
+    for (const gate of allGateReferences(flow)) referencedGates.add(gate);
+    for (const stage of flow.stages) referencedSkills.add(stage.skill);
+    referencedSkills.add(flow.terminal.archive.handler);
+    const declaredApprovals = new Set((flow.governance?.approvalPolicies ?? []).map((policy) => policy.id));
+    const referencedApprovals = new Set(stageApprovalReferences(flow));
+    for (const policyId of declaredApprovals) {
+      if (!referencedApprovals.has(policyId)) {
+        deadCode.push({
           scope: 'approvals',
-          code: 'XFORGE_DOCTOR_APPROVAL_POLICY_UNUSABLE',
-          id: policy.id,
-          message: `Approval policy ${policy.id} in Flow ${name} has no usable provider: ${detail}.`,
+          code: 'XFORGE_DOCTOR_DEAD_CODE',
+          id: policyId,
+          message: `Approval policy ${policyId} is declared by Flow ${name} but never referenced by any Stage exit or the archive terminal.`,
           path: filePath,
         });
       }
-    } else {
-      for (const gate of flow.operations.archive.mandatoryGates) referencedGates.add(gate);
+    }
+    for (const policy of flow.governance?.approvalPolicies ?? []) {
+      const checks = policy.providers.map((providerId) => ({ providerId, ...providerUsability(providerId) }));
+      if (checks.some((check) => check.usable)) continue;
+      const detail = checks.length
+        ? checks.map((check) => `${check.providerId} (${check.reason})`).join('; ')
+        : 'the policy declares no providers at all';
+      unusableApprovals.push({
+        scope: 'approvals',
+        code: 'XFORGE_DOCTOR_APPROVAL_POLICY_UNUSABLE',
+        id: policy.id,
+        message: `Approval policy ${policy.id} in Flow ${name} has no usable provider: ${detail}.`,
+        path: filePath,
+      });
     }
   }
 
@@ -305,7 +301,7 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
    */
   const conformance: DoctorFinding[] = [];
   for (const [name, flow] of flowResult.flows) {
-    if (!usedFlows.has(name) || !isStageFlow(flow)) continue;
+    if (!usedFlows.has(name)) continue;
     for (const item of await flowSkillConformanceDiagnostics(flow, structure.resources)) {
       conformance.push({ scope: 'skills', code: item.code, message: item.message, path: item.path });
     }
@@ -528,7 +524,7 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
    */
   const interactiveOnly: string[] = [];
   for (const [name, flow] of flowResult.flows) {
-    if (!usedFlows.has(name) || !isStageFlow(flow)) continue;
+    if (!usedFlows.has(name)) continue;
     for (const policy of flow.governance?.approvalPolicies ?? []) {
       if (policy.providers.some((providerId) => providerId !== 'local' && providerUsability(providerId).usable)) continue;
       /*

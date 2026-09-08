@@ -10,7 +10,7 @@ import { assertManaged } from '../core/project-loader.js';
 import { validateSchema } from '../core/validator.js';
 import { dumpYaml } from '../core/yaml.js';
 import { parse as parseYaml } from 'yaml';
-import { isStageFlow, resolveChangeState } from '../core/flow-resolver.js';
+import { resolveChangeState } from '../core/flow-resolver.js';
 import { loadSelectedResources } from '../core/resource-loader.js';
 import { resolveWorkPackages } from '../core/work-packages.js';
 import { gateBlockReason, legalTransitionTargets, readGateEvidence, resolveControlPlane, type ResolvedControlPlane } from '../core/control-plane.js';
@@ -439,7 +439,7 @@ interface ReceiptFacts {
 async function resolveReceiptFacts(project: ProjectContext, change: string, command: string): Promise<ReceiptFacts> {
   assertManaged(project, command);
   const resolved = await resolveChangeState(project, change);
-  if (!isStageFlow(resolved.flow) || !resolved.flow.governance) {
+  if (!resolved.flow.governance) {
     throw new XForgeError(diagnostic('XFORGE_GOVERNANCE_FLOW_REQUIRED', `${command} requires a Protocol 2 governed Flow.`));
   }
   const resources = await loadSelectedResources(project);

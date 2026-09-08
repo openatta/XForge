@@ -5,7 +5,7 @@ import { XForgeError, diagnostic } from '../core/errors.js';
 import { sha256 } from '../core/hash.js';
 import { safeResolve } from '../core/path-safety.js';
 import { documentSections } from '../core/artifact-markers.js';
-import { isStageFlow, resolveChangeState } from '../core/flow-resolver.js';
+import { resolveChangeState } from '../core/flow-resolver.js';
 import { loadSelectedResources } from '../core/resource-loader.js';
 import { resolveControlPlane } from '../core/control-plane.js';
 import { git } from '../core/work-packages.js';
@@ -118,7 +118,7 @@ export async function executeStageBundle(
    */
   const content = options.content ?? 'changed';
   const resolved = await resolveChangeState(project, options.change);
-  if (!isStageFlow(resolved.flow) || !resolved.flow.governance) {
+  if (!resolved.flow.governance) {
     throw new XForgeError(diagnostic(
       'XFORGE_GOVERNANCE_FLOW_REQUIRED',
       'stage-bundle requires a Protocol 2 governed Flow: without Stages there is no "since the last Stage" to compute.',

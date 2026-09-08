@@ -5,7 +5,7 @@ import { recordAudit } from '../core/audit.js';
 import { resolveControlPlane, type ResolvedControlPlane } from '../core/control-plane.js';
 import { XForgeError, diagnostic } from '../core/errors.js';
 import { atomicWrite } from '../core/files.js';
-import { isStageFlow, resolveChangeState } from '../core/flow-resolver.js';
+import { resolveChangeState } from '../core/flow-resolver.js';
 import { sha256, stableStringify } from '../core/hash.js';
 import { assertManaged } from '../core/project-loader.js';
 import { safeResolve } from '../core/path-safety.js';
@@ -225,7 +225,7 @@ async function collectLocalDecision(
 export async function executeApprove(project: ProjectContext, options: ApproveOptions): Promise<ApproveResult> {
   assertManaged(project, 'approve');
   const resolved = await resolveChangeState(project, options.change);
-  if (!isStageFlow(resolved.flow) || !resolved.flow.governance) throw new XForgeError(diagnostic('XFORGE_GOVERNANCE_FLOW_REQUIRED', 'approve requires a Protocol 2 governed Flow.'));
+  if (!resolved.flow.governance) throw new XForgeError(diagnostic('XFORGE_GOVERNANCE_FLOW_REQUIRED', 'approve requires a Protocol 2 governed Flow.'));
   const resources = await loadSelectedResources(project);
   const control = await resolveControlPlane(project, options.change, resolved.flow, resolved.state, resources, resolved.config);
   assertApprovableTransition(control, options, resolved.flow);
