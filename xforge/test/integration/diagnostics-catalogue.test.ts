@@ -59,10 +59,16 @@ describe('diagnostic catalogue', () => {
      * Fifty-five with `XFORGE_VERIFICATION_UNDECLARED_BLOCKS_START`, the remedy for the block a
      * required declared Gate nobody answered now puts on a Change's first transition. It reaches a
      * reader through `blockRemedy` like the other remedies here.
+     *
+     * Fifty-six, over forty-six codes, with `XFORGE_CONDITION_LEDGER_MISSING_REMEDY`. Same shape
+     * again: a `blockRemedy` return for the condition block that had none. A walk of the Major Flow
+     * found `transition` refusing on a missing ledger with two bare tokens while `stage`, at the
+     * same Stage and moment, reported the ledger among the Artifacts the Stage owes with the
+     * instruction its Flow declares.
      */
     const indirect = sites.filter((site) => site.severity === 'indirect');
-    expect(indirect.length).toBe(55);
-    expect(new Set(indirect.map((site) => site.code)).size).toBe(45);
+    expect(indirect.length).toBe(56);
+    expect(new Set(indirect.map((site) => site.code)).size).toBe(46);
   });
 
   it('splits arguments at top-level commas only', () => {

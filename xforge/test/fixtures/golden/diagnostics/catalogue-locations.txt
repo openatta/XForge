@@ -81,6 +81,7 @@ XFORGE_CHECK_PASSED_WITH_WARNINGS  src/commands/check.ts
 XFORGE_CHECK_STAGE_UNKNOWN  src/commands/check.ts
 XFORGE_CLASSIFICATION_UNANSWERED  src/core/flow-resolver.ts
 XFORGE_CLI_IDENTITY_MISMATCH  src/core/project-loader.ts
+XFORGE_CONDITION_LEDGER_MISSING_REMEDY  src/core/control-plane.ts
 XFORGE_CONDITION_LEDGER_STALE_REMEDY  src/core/control-plane.ts
 XFORGE_CONDITION_LEDGER_UNDECIDED_REMEDY  src/core/control-plane/conditions.ts
 XFORGE_CONSTITUTION_DATE_INVALID  src/core/constitution.ts
@@ -146,6 +147,7 @@ XFORGE_FLOW_CONTRACT_DELTA_UNMERGED  src/core/flow-skill-conformance.ts
 XFORGE_FLOW_DEPENDENCY_CYCLE  src/core/flow-resolver.ts
 XFORGE_FLOW_DUPLICATE  src/core/flow-resolver.ts
 XFORGE_FLOW_EXIT_UNSTRUCTURED  src/core/flow-resolver.ts
+XFORGE_FLOW_FIELD_REMOVED  src/core/flow-resolver.ts
 XFORGE_FLOW_FILENAME_MISMATCH  src/core/flow-resolver.ts
 XFORGE_FLOW_GATE_DISABLED  src/core/checker.ts
 XFORGE_FLOW_GATE_MISSING  src/core/checker.ts
