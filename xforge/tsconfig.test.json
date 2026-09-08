@@ -1,0 +1,17 @@
+{
+  /* The build compiles `tsconfig.json` and nothing else, so the test tree went unchecked: vitest
+     transpiles without typechecking, and a refactor that deleted an exported function left a live
+     call to it in test/unit/flows.test.ts that surfaced only as a runtime ReferenceError. This
+     config exists to put test/** in front of the compiler under the same strict flags. It is
+     `--noEmit` here and in the config, so the inherited `outDir` is never reached and
+     tsconfig.json's rootDir/outDir pair stays exactly as the build needs it. `rootDir` is widened
+     to the package root only because `test/**` sits outside `src`. */
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true,
+    "declaration": false,
+    "sourceMap": false
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}

@@ -1,3 +1,6 @@
+/*
+ * @red-first coverage-only: type-level only. The test tree came under `tsc` for the first time (`npm run typecheck`, tsconfig.test.json) and this file was edited so it compiles. No assertion was added, changed or removed, so there is nothing here that could fail against the base.
+ */
 import { readFile, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -141,7 +144,7 @@ describe('CLI protocol', () => {
     const update = await runCli(root, ['update']);
     expect(update.code, JSON.stringify(update.json.diagnostics)).toBe(0);
     expect(update.json.changes).toContainEqual(expect.objectContaining({ action: 'modify', path: 'xforge/manifest.yaml', source: 'xforge:declared-version-upgrade:0.7.7->0.8.5' }));
-    const manifest = await yamlFile(root, 'xforge/manifest.yaml');
+    const manifest = await yamlFile<Record<string, any>>(root, 'xforge/manifest.yaml');
     expect(manifest.xforge.version).toBe('0.8.5');
     /* Only the CLI pin. The Scaffold's version follows the Scaffold's content, which `update` does
        not merge — see reconcileDeclaredCliVersion. Reconciling the CLI must still leave the project
@@ -165,7 +168,7 @@ describe('CLI protocol', () => {
     const update = await runCli(root, ['update']);
     expect(update.code).toBe(1);
     expect(update.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_CLI_IDENTITY_MISMATCH');
-    const manifest = await yamlFile(root, 'xforge/manifest.yaml');
+    const manifest = await yamlFile<Record<string, any>>(root, 'xforge/manifest.yaml');
     expect(manifest.xforge.version).toBe('9.9.9');
   });
 
@@ -180,7 +183,7 @@ describe('CLI protocol', () => {
     const update = await runCli(root, ['update']);
     expect(update.code).toBe(1);
     expect(update.json.diagnostics.map((item: any) => item.code)).toContain('XFORGE_PROTOCOL_MISMATCH');
-    const manifest = await yamlFile(root, 'xforge/manifest.yaml');
+    const manifest = await yamlFile<Record<string, any>>(root, 'xforge/manifest.yaml');
     expect(manifest.xforge.version).toBe('0.7.7');
   });
 });

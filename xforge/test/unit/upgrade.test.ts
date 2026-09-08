@@ -1,3 +1,6 @@
+/*
+ * @red-first coverage-only: type-level only. The test tree came under `tsc` for the first time (`npm run typecheck`, tsconfig.test.json) and this file was edited so it compiles. No assertion was added, changed or removed, so there is nothing here that could fail against the base.
+ */
 import { describe, expect, it } from 'vitest';
 import {
   adoptionReport, buildUpgradePlan, classifyScaffold, driftedPaths, unselectedAssets,
@@ -41,7 +44,8 @@ describe('classifying a Scaffold against the one the CLI ships', () => {
      * upstream reading of an ambiguous fact and invite deleting somebody's own Skill on the
      * strength of a guess.
      */
-    const [entry] = classifyScaffold(new Map([[skill('ours'), file('ours')]]), new Map());
+    /* One input file, so one classified entry. */
+    const entry = classifyScaffold(new Map([[skill('ours'), file('ours')]]), new Map())[0]!;
     expect(entry.disposition).toBe('project-only');
     expect(entry.incomingDigest).toBeNull();
     expect(entry.currentDigest).not.toBeNull();

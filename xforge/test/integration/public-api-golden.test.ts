@@ -1,3 +1,6 @@
+/*
+ * @red-first coverage-only: type-level only. The test tree came under `tsc` for the first time (`npm run typecheck`, tsconfig.test.json) and this file was edited so it compiles. No assertion was added, changed or removed, so there is nothing here that could fail against the base.
+ */
 import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -120,13 +123,18 @@ async function surfaceOf(file: string, attributed: string, seen = new Set<string
   for (const match of source.matchAll(/^export\s+(?:declare\s+)?(?:async\s+)?(?:function|const|class|interface|type|enum)\s+([A-Za-z_][A-Za-z0-9_]*)/gm)) {
     into.set(match[1]!, attributed);
   }
-  for (const [, exported, module] of source.matchAll(/export\s*\{([^}]*)\}\s*from\s*'([^']+)'/g)) {
+  /* Both groups in each pattern below are unconditional, so a match that exists has them; the
+     assertions are only there because an index into a match array is optional by type. */
+  for (const match of source.matchAll(/export\s*\{([^}]*)\}\s*from\s*'([^']+)'/g)) {
+    const exported = match[1]!;
+    const module = match[2]!;
     for (const entry of exported.split(',')) {
       const name = entry.trim().split(/\s+as\s+/).pop()?.trim();
       if (name && !into.has(name)) into.set(name, module);
     }
   }
-  for (const [, module] of source.matchAll(/export\s+(?:type\s+)?\*\s*from\s*'([^']+)'/g)) {
+  for (const match of source.matchAll(/export\s+(?:type\s+)?\*\s*from\s*'([^']+)'/g)) {
+    const module = match[1]!;
     const target = path.resolve(path.dirname(file), module.replace(/\.js$/, '.ts'));
     await surfaceOf(target, module, seen, into);
   }

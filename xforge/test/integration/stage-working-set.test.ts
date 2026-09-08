@@ -1,9 +1,10 @@
+/*
+ * @red-first coverage-only: type-level only. The test tree came under `tsc` for the first time (`npm run typecheck`, tsconfig.test.json) and this file was edited so it compiles. No assertion was added, changed or removed, so there is nothing here that could fail against the base.
+ */
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { CHECK_FINDINGS_PATH } from '../../src/core/check-findings.js';
-import { CONSTITUTION_CHECK_PATH } from '../../src/core/constitution-check.js';
-import { approveCurrentRevision, changeYaml, checkFindings, constitutionLedger, createCompleteSolidChange, fixture, runCli, write } from '../helpers.js';
+import { changeYaml, createCompleteSolidChange, fixture, runCli, write } from '../helpers.js';
 
 /**
  * The working set has to be sufficient in one call, and has to stop there.

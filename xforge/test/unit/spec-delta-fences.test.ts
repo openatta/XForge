@@ -1,3 +1,6 @@
+/*
+ * @red-first coverage-only: type-level only. The test tree came under `tsc` for the first time (`npm run typecheck`, tsconfig.test.json) and this file was edited so it compiles. No assertion was added, changed or removed, so there is nothing here that could fail against the base.
+ */
 import { describe, expect, it } from 'vitest';
 import { hasDeltaSections, parseSpecDelta, validateSpecDeltaSource } from '../../src/core/spec-delta.js';
 import { planSpecMutations } from '../../src/core/spec-merger.js';
@@ -111,7 +114,9 @@ describe('merging into a canonical Spec that shows a document inside a fence', (
     const merged = mutations.find((entry) => entry.path.endsWith('specs/widget/spec.md'));
     expect(merged, JSON.stringify(mutations.map((entry) => entry.path))).toBeTruthy();
 
-    const content = merged!.content;
+    /* `content: null` is the delete mutation; this one is a merge, and the assertions below read
+       it as text. */
+    const content = merged!.content!;
     /* The fence survives whole — it is documentation, not structure. */
     expect(content).toContain('```markdown');
     expect(content).toContain('### Requirement: <id> <title>');

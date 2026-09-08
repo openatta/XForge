@@ -41,13 +41,14 @@
   "scripts": {
     "clean": "node scripts/clean.mjs",
     "build": "npm run clean && tsc -p tsconfig.json && node scripts/build-diagnostics.mjs && node scripts/copy-license.mjs && node scripts/copy-scaffold.mjs",
-    "test": "npm run build && npm run check:lock && vitest run test",
+    "test": "npm run typecheck && npm run build && npm run check:lock && vitest run test",
     "test:coverage": "npm run build && npm run check:lock && node scripts/run-coverage.mjs",
     "test:product": "npm run build && npm run check:lock && vitest run --root .. tests",
+    "typecheck": "tsc --noEmit -p tsconfig.test.json",
     "check:lock": "node scripts/check-lock-freshness.mjs",
     "check:red-first": "node ../scripts/red-first.mjs --allow-nothing-to-prove",
     "check:scaffold": "node scripts/scaffold-integrity.mjs ../scaffold",
-    "verify": "npm run check:scaffold && npm run build && npm run check:lock && node scripts/run-coverage.mjs && vitest run --root .. tests && npm run check:red-first",
+    "verify": "npm run check:scaffold && npm run typecheck && npm run build && npm run check:lock && node scripts/run-coverage.mjs && vitest run --root .. tests && npm run check:red-first",
     "prepublishOnly": "npm run verify",
     "prepack": "npm run build"
   },

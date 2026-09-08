@@ -119,11 +119,14 @@ async function runCliCore(root: string, args: string[], env: NodeJS.ProcessEnv, 
     });
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
-    child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk));
-    child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk));
+    /* The `stdio` array above is a union type, so the compiler cannot see that slots 1 and 2 are
+       unconditionally 'pipe' and slot 0 is 'pipe' exactly when `stdin` is defined. The assertions
+       restate that; each one is guarded by the same condition that set the descriptor. */
+    child.stdout!.on('data', (chunk: Buffer) => stdout.push(chunk));
+    child.stderr!.on('data', (chunk: Buffer) => stderr.push(chunk));
     child.on('error', reject);
     child.on('close', (code) => resolve({ code: code ?? 1, stdout: Buffer.concat(stdout).toString(), stderr: Buffer.concat(stderr).toString() }));
-    if (stdin !== undefined) child.stdin.end(stdin);
+    if (stdin !== undefined) child.stdin!.end(stdin);
   });
   let json: any = null;
   try { json = JSON.parse(result.stdout); } catch {}

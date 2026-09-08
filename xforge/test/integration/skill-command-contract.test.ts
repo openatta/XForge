@@ -1,3 +1,6 @@
+/*
+ * @red-first coverage-only: type-level only. The test tree came under `tsc` for the first time (`npm run typecheck`, tsconfig.test.json) and this file was edited so it compiles. No assertion was added, changed or removed, so there is nothing here that could fail against the base.
+ */
 import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -313,8 +316,8 @@ describe('Skill and CLI command contract', () => {
       const sets = new Map<string, Set<string>>();
       for (const [variant, body] of files) {
         const found = new Set<string>();
-        for (const [, token] of body.matchAll(/`([^`\n]+)`/gu)) {
-          const value = token.trim();
+        for (const match of body.matchAll(/`([^`\n]+)`/gu)) {
+          const value = match[1]!.trim();
           if (IDENTIFIER.test(value)) found.add(value);
         }
         sets.set(variant, found);

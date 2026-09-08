@@ -1,7 +1,10 @@
+/*
+ * @red-first coverage-only: type-level only. The test tree came under `tsc` for the first time (`npm run typecheck`, tsconfig.test.json) and this file was edited so it compiles. No assertion was added, changed or removed, so there is nothing here that could fail against the base.
+ */
 import { describe, expect, it } from 'vitest';
 import { chmod } from 'node:fs/promises';
 import path from 'node:path';
-import { changeYaml, fixture, runCli, updateYaml, write } from '../helpers.js';
+import { changeYaml, fixture, runCli, write } from '../helpers.js';
 
 /**
  * RC-7 closes the gap `eligibleWhen.contractImpact` leaves open.

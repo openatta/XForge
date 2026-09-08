@@ -1,4 +1,7 @@
-import { readFile, rm } from 'node:fs/promises';
+/*
+ * @red-first coverage-only: type-level only. The test tree came under `tsc` for the first time (`npm run typecheck`, tsconfig.test.json) and this file was edited so it compiles. No assertion was added, changed or removed, so there is nothing here that could fail against the base.
+ */
+import { rm } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { changeYaml, fixture, runCli, updateYaml, write } from '../helpers.js';

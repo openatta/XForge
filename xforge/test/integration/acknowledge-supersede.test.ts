@@ -1,3 +1,6 @@
+/*
+ * @red-first coverage-only: type-level only. The test tree came under `tsc` for the first time (`npm run typecheck`, tsconfig.test.json) and this file was edited so it compiles. No assertion was added, changed or removed, so there is nothing here that could fail against the base.
+ */
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -151,7 +154,7 @@ async function seedAcknowledged(root: string, change: string): Promise<void> {
 
   const drafted = await runCli(root, ['work-package', 'draft', '--change', change, '--package', 'wp-001']);
   expect(drafted.code, JSON.stringify(drafted.json?.diagnostics)).toBe(0);
-  await writeDelivery(root, change, drafted.json.data);
+  await writeDelivery(root, drafted.json.data);
   for (const [role, name] of [['integrator', 'integration'], ['reviewer', 'review']] as Array<[string, string]>) {
     const evidence = `xforge/changes/${change}/evidence/agents/wp-001/review/${name}.md`;
     await write(root, evidence, `# ${name}\n\nRecorded for the fixture.\n`);
@@ -168,7 +171,7 @@ async function seedAcknowledged(root: string, change: string): Promise<void> {
  * to begin with an exact `changed_paths` entry or an exact verify command, which is what keeps a
  * citation pointed at something that happened rather than at a claim.
  */
-async function writeDelivery(root: string, change: string, draft: any): Promise<void> {
+async function writeDelivery(root: string, draft: any): Promise<void> {
   const cited = draft.delivery.changed_paths[0];
   expect(cited, 'the package must have changed something for its evidence to cite').toBeTruthy();
   const delivery = {

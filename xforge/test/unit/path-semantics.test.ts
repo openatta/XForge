@@ -1,3 +1,6 @@
+/*
+ * @red-first coverage-only: type-level only. The test tree came under `tsc` for the first time (`npm run typecheck`, tsconfig.test.json) and this file was edited so it compiles. No assertion was added, changed or removed, so there is nothing here that could fail against the base.
+ */
 import { describe, expect, it } from 'vitest';
 import { matchPathGlob, matchPathGlobFallback, ruleApplies } from '../../src/core/governance.js';
 import { matchesWritePath } from '../../src/core/work-packages/globs.js';
@@ -112,7 +115,9 @@ describe('path-matching semantics', () => {
      * than as prose. `ruleApplies` never sees `apps/web/src/a.ts`; it compares `src/**` with what
      * `change.yaml` declares, and two scopes match only when one root contains the other.
      */
-    const rule = { id: 'r', severity: 'must' as const, instruction: '', modules: [], paths: ['src/**'], stages: [], gateRefs: [], policyRefs: [], approvalRefs: [] };
+    /* `validatorRefs`, `constitutionCompatibility` and `legacyWritePolicy` are the normaliser's own
+       defaults and are inert here: `ruleApplies` decides on scope alone. */
+    const rule = { id: 'r', severity: 'must' as const, instruction: '', modules: [], paths: ['src/**'], stages: [], gateRefs: [], policyRefs: [], approvalRefs: [], validatorRefs: [], constitutionCompatibility: 'compatible' as const, legacyWritePolicy: null };
     const change = (paths: string[]) => ({ flow: 'solid', classification: { risk: 'medium', security: false, privacy: false, publicApi: false, dataMigration: false }, scope: { modules: [], paths } } as never);
 
     /* A Change whose files all live under `src/` — but which declares its scope by module path. */

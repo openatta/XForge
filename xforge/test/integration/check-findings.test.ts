@@ -1,3 +1,6 @@
+/*
+ * @red-first coverage-only: type-level only. The test tree came under `tsc` for the first time (`npm run typecheck`, tsconfig.test.json) and this file was edited so it compiles. No assertion was added, changed or removed, so there is nothing here that could fail against the base.
+ */
 import { describe, expect, it } from 'vitest';
 import { CHECK_FINDINGS_PATH, evaluateCheckFindings } from '../../src/core/check-findings.js';
 import { CONSTITUTION_CHECK_PATH, constitutionPrinciples, evaluateConstitutionCheck } from '../../src/core/constitution-check.js';
@@ -91,7 +94,9 @@ describe('Check findings ledger', () => {
     expect(unattributed.problems.join(' ')).toContain('names no resolvedBy');
 
     /* A project with recorded identities must not accept a resolvedBy that is not one of them. */
-    const known = { values: new Set(['owner@example.test']), empty: false, actors: new Set<string>() };
+    /* `fallback` and `managed` are inert while `empty` is false: both are read only on the empty
+       path, where `values` has nothing to check against. */
+    const known = { values: new Set(['owner@example.test']), empty: false, actors: new Set<string>(), fallback: new Set<string>(), managed: false };
     await write(root, ledgerPath, ledger('    resolvedBy: the team'));
     const unknown = await evaluateCheckFindings(project, CHANGE, known);
     expect(unknown.status).toBe('failed');
@@ -300,7 +305,7 @@ describe('Ledger identity', () => {
     const path2 = `xforge/changes/${CHANGE}/${CONSTITUTION_CHECK_PATH}`;
 
     /* A project with recorded identities must not accept a name that is not one of them. */
-    const known = { values: new Set(['owner@example.test']), empty: false, actors: new Set<string>() };
+    const known = { values: new Set(['owner@example.test']), empty: false, actors: new Set<string>(), fallback: new Set<string>(), managed: false };
     await write(root, path2, ledger('the team'));
     const invented = await evaluateConstitutionCheck(project, CHANGE, known);
     expect(invented.status).toBe('failed');
@@ -311,7 +316,9 @@ describe('Ledger identity', () => {
 
     /* A repository with no recorded identities yet cannot check, and must not block on that. */
     await write(root, path2, ledger('the team'));
-    const fresh = await evaluateConstitutionCheck(project, CHANGE, { values: new Set(), empty: true, actors: new Set() });
+    /* `managed: false` is what makes the empty case permissive, which is the case under test; an
+       empty `fallback` is never reached from there. */
+    const fresh = await evaluateConstitutionCheck(project, CHANGE, { values: new Set(), empty: true, actors: new Set(), fallback: new Set(), managed: false });
     expect(fresh.status).toBe('passed');
   });
 
@@ -365,7 +372,7 @@ describe('Ledger identity', () => {
      * Agent attest to its own decisions. What changed is that the refusal now says which of those
      * two things it is refusing.
      */
-    const known = { values: new Set(['owner@example.test']), empty: false, actors: new Set(['ci-runner']) };
+    const known = { values: new Set(['owner@example.test']), empty: false, actors: new Set(['ci-runner']), fallback: new Set<string>(), managed: false };
     const asActor = unknownIdentityReason('ci-runner', known);
     expect(asActor).toContain('transition receipts');
     expect(asActor).toContain('which process ran the command rather than who decided');
