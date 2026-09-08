@@ -55,10 +55,14 @@ describe('diagnostic catalogue', () => {
      * `DoctorFinding` object literals like every other suggestion. That is the shape this count
      * exists to keep visible -- and the reason the code must stay a string literal on the `code:`
      * key: `indirectCodes` reads the literal, so a code behind a `const` is invisible here.
+     *
+     * Fifty-five with `XFORGE_VERIFICATION_UNDECLARED_BLOCKS_START`, the remedy for the block a
+     * required declared Gate nobody answered now puts on a Change's first transition. It reaches a
+     * reader through `blockRemedy` like the other remedies here.
      */
     const indirect = sites.filter((site) => site.severity === 'indirect');
-    expect(indirect.length).toBe(54);
-    expect(new Set(indirect.map((site) => site.code)).size).toBe(44);
+    expect(indirect.length).toBe(55);
+    expect(new Set(indirect.map((site) => site.code)).size).toBe(45);
   });
 
   it('splits arguments at top-level commas only', () => {

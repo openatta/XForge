@@ -27,7 +27,7 @@
 → [概念与架构 §9](concepts-and-architecture.md)（日常怎么工作）
 
 **「它卡住了，`blockedBy` 说的这个是什么意思」**
-→ [治理模型 §8](governance-model.md)（`blockedBy` 完整词汇表 + 三个带补救提示的 block）
+→ [治理模型 §8](governance-model.md)（`blockedBy` 完整词汇表 + 四个带补救提示的 block）
 
 **「所有 Gate 都绿了，Stage 却出不去」**
 → [治理模型 §3.4](governance-model.md)（Gate 时序陷阱）

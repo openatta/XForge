@@ -318,13 +318,30 @@ KnownIdentities = { 本 Change 全部 receipt 上的 approver.id }
 刻意的两处宽松：接受显示名也接受 email；接受本 Change 任意 receipt 上的任意审批人，
 不限于当前策略的（决定澄清问题的人，常常不是签收尾审批的人）。
 
-**集合为空时（全新 Change、无提交、无 receipt），任何非空名字都通过**——
-否则新仓库的第一个 Change 会被自己的空历史卡死。
+集合为空时（全新 Change、无提交、无 receipt）怎么判，取决于这个项目怎么收审批：
+
+**本地终端签字**（默认）——**任何非空名字都通过**，否则新仓库的第一个 Change
+会被自己的空历史卡死。
 
 > 但这个通过是**暂时的**。一次实测里，两个强制 Gate 报 `passed`，据此写完了 Check report，
 > 然后提交——**同样的内容立刻被拒绝**，因为提交本身建立了那个比对集合。
 > 「绿」在那里不代表名字是好的，只代表当时还不存在能说它不好的东西。
-> Gate 现在会附一条 warning 明说这一点。**一开始就写真实身份。**
+> Gate 会附一条 warning 明说这一点。**一开始就写真实身份。**
+
+**管控链路**——某个 `manifest.approvals.providers` 里的 provider，其 McpServer 的
+`authTokenEnv` 在环境里有值时，空集合改为对照**整个仓库**的 Git author 判定：
+
+```text
+Fallback = { 仓库全部 Git author email 与显示名 }     # 仅在 KnownIdentities 为空且已接管控时启用
+```
+
+伪造的名字当场失败，没有那个暂时的绿；真人当场通过，也不再报那条 warning。
+仓库一次提交都没有时仍然放行——那里没有东西可比对。
+
+放松与收紧的分界是刻意的：终端签字本来就是一个人手工敲一个名字，在旁边的台账上加严
+拦不住任何人；而管控链路上的决定不是手工敲出来的，那个暂时的绿在那里就是一个陷阱。
+`xforge verification declare --by` 不走这条线，它是项目作用域的记录（**报而不拒**），
+理由见 `core/ledger-identity.ts` 的 `unattestedDeclarer`。
 
 ---
 

@@ -307,9 +307,16 @@ KnownIdentities = { 本 Change 全部 receipt 上的 approver.id }
                 ∪ { Change 目录的 Git author email 与显示名 }
 ```
 
-集合为空时（全新 Change、无提交、无 receipt），任何非空名字都通过——否则新仓库的第一个
-Change 会被自己的空历史卡死。但这个通过是**暂时的**：Change 的第一次提交建立了这个集合，
-此后同样的名字对不上就会让刚刚还是绿色的 Gate 失败。Gate 会附一条 warning 明说这一点。
+集合为空时（全新 Change、无提交、无 receipt）的判定，取决于这个项目**怎么收审批**：
+
+- **本地终端签字**（默认；没有任何 MCP 审批 provider 配好 token）——任何非空名字都通过，
+  但这个通过是**暂时的**：Change 的第一次提交建立了这个集合，此后同样的名字对不上，
+  就会让刚刚还是绿色的 Gate 失败。Gate 附一条 warning 明说这一点。
+  放松是刻意的：终端签字本来就是人手工敲一个名字，在旁边的台账上加严卡不住任何人。
+- **管控链路**（某个 `manifest.approvals.providers` 的 McpServer，其 `authTokenEnv` 在环境里有值）
+  ——改为对照**整个仓库**的 Git author 判定，伪造的名字当场失败，没有那个暂时的绿。
+  仓库一次提交都没有时仍然放行：那里没有东西可比对，新仓库的第一个 Change 不该被卡。
+
 **一开始就写真实身份，不要写一个打算以后再改的。**
 
 ### 4.6 `ready-to-archive`：一个合成 Stage

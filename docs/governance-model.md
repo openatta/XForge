@@ -578,6 +578,7 @@ xforge audit retry
 | --- | --- | --- |
 | `transition-chain:` | `invalid` | 回执链本身坏了 |
 | `transition:` | `ready-receipt-stale` | 收尾回执陈旧（内容动了，或**策略快照动了**） |
+| `verification:` | `<gate>:undeclared` | 本 Flow 需要的 declared Gate，项目一条命令都没声明——**只在这个 Change 的第一次 transition 上出现** |
 | `artifact:` | `<id>` | 该 Stage `produces` 的 Artifact 还不是 `done` |
 | `work-package:` | `<id>:<status>` | 某个包不在 succeeded / integrated / reviewed |
 | `tree:` | `unattributed-paths` | 树里有已提交改动，不属于任何 `write_paths`，也不在 `integrator_paths` 内 |
@@ -593,7 +594,7 @@ xforge audit retry
   `ledger-subject-mismatch`、`entries-missing`、`undecided-<n>`、`status-<a>-expected-<b>`
 - `independentReview` 专有：`review-missing`、`review-stale`、`unreviewed-<pkg>[+<pkg>…]`
 
-### 8.1 三个带补救提示的 block
+### 8.1 四个带补救提示的 block
 
 CLI 会为部分 block 给出 `blockRemedy` 诊断，**先读它再动手**：
 
@@ -609,6 +610,11 @@ CLI 会为部分 block 给出 `blockRemedy` 诊断，**先读它再动手**：
 
 **`gate:<id>:stale`** → 在最后一次写入之后跑 `xforge check --change <id>`。
 （`:failed` 需要修那条 finding，`:missing` 需要第一次跑 Gate，两者都不适用这条建议。）
+
+**`verification:<gate>:undeclared`** → `remedy.commands` 里每个未声明的 Gate 各一条
+`xforge verification declare`，命令已代入 gate id，只留 `<program>` 给人填。
+**一次全部声明完**：只声明一个，剩下的会在后面某一段再拦一次。
+不要照抄 CLI 建议的命令——它读的是构建系统标记，不是这条命令验没验东西。
 
 **`condition:independentReview:*`** → 见 [子 Agent 设计](sub-agent-design.md)。
 
@@ -689,15 +695,16 @@ Skill 看不到这张表，它只看到求值之后的结果。
 | # | 检查 | 失败时的 blockedBy |
 | --- | --- | --- |
 | 1 | 回执链本身是否有效 | `transition-chain:invalid` |
-| 2 | 本 Stage `produces` 的 Artifact 是否都 `done` | `artifact:<id>` |
-| 3 | 工作包是否都到达 succeeded / integrated / reviewed | `work-package:<id>:<status>` |
-| 4 | 树里有没有无归属的已提交改动 | `tree:unattributed-paths` |
-| 5 | **Gate**：逐个读 Evidence 判三态 | `gate:<id>:missing` / `:failed` / `:stale` |
-| 6 | **出口条件**：台账判定 | `condition:<key>:<reason>` |
-| 7 | **Approval**：按策略清点有效 receipt | `approval:<id>:missing-N` / `:rejected` / `:separation-of-duties` |
-| 8 | 必需审计事件是否齐全、链是否有效 | `audit:<type>:missing` / `audit:chain-invalid` |
+| 2 | 本 Flow 需要的 declared Gate 是否都已声明（**仅第一次 transition**） | `verification:<gate>:undeclared` |
+| 3 | 本 Stage `produces` 的 Artifact 是否都 `done` | `artifact:<id>` |
+| 4 | 工作包是否都到达 succeeded / integrated / reviewed | `work-package:<id>:<status>` |
+| 5 | 树里有没有无归属的已提交改动 | `tree:unattributed-paths` |
+| 6 | **Gate**：逐个读 Evidence 判三态 | `gate:<id>:missing` / `:failed` / `:stale` |
+| 7 | **出口条件**：台账判定 | `condition:<key>:<reason>` |
+| 8 | **Approval**：按策略清点有效 receipt | `approval:<id>:missing-N` / `:rejected` / `:separation-of-duties` |
+| 9 | 必需审计事件是否齐全、链是否有效 | `audit:<type>:missing` / `audit:chain-invalid` |
 
-**注意第 5 条：transition 不跑 Gate，它只读 Evidence。** Gate 是 `xforge check` 跑的。
+**注意第 6 条：transition 不跑 Gate，它只读 Evidence。** Gate 是 `xforge check` 跑的。
 这个分离正是 §3.4 那个时序陷阱的根源——先跑 Gate、再改文件、再跑下一个，
 前一个的 `contentRevision` 就对不上了，于是 transition 读到 `stale`，
 而每个 Gate 自己都写着 `passed`。
@@ -710,8 +717,8 @@ Skill 看不到这张表，它只看到求值之后的结果。
 | --- | --- | --- | --- | --- | --- | --- |
 | 1 | `propose` | xforge-propose | proposal · delta-specs | structure | — | — |
 | 2 | `clarify` | xforge-clarify | clarifications · material-questions | — | `materialQuestions: resolved` | propose |
-| 3 | `design` | xforge-design | design | — | — | propose · clarify |
-| 4 | `check` | xforge-check | check-report · check-findings · constitution-check | structure · check-findings · constitution-check | **`approvals: [implementation-major]`** | propose · clarify · design |
+| 3 | `design` | xforge-design | design · contract-delta（`moduleContract: true` 时才欠）| — | — | propose · clarify |
+| 4 | `check` | xforge-check | check-report · check-findings · constitution-check | structure · check-findings · constitution-check | **`approvals: [implementation-major]`**<br>`contractDecisions: resolved`（同样只在 `moduleContract: true` 时）| propose · clarify · design |
 | 5 | `apply` | xforge-apply | （无，产出是代码） | — | — | propose · clarify · design · **check** |
 | 6 | `verify` | xforge-verify | assurance | structure · unit-tests · security-scan | `verificationReceipt: passed`<br>`independentReview: complete` | apply |
 | 7 | `ready-to-archive` | — | — | — | **合成 Stage**，不在 `flow.stages` 里 | 无（只能 `transition repair`） |

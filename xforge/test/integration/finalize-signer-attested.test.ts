@@ -32,11 +32,14 @@ describe('the verification receipt names who asserted it', () => {
     git(['add', '.']);
     git(['commit', '--quiet', '-m', 'Seed']);
     await clearVerification(root);
+    /* Declared before the first transition, because that is where an unanswered required declared
+       Gate now blocks. What this test is about starts at `finalize`; the Gate's own command is
+       setup either way, and the only thing that moved is which Stage refuses without it. */
+    await runCli(root, ['verification', 'declare', '--gate-name', 'unit-tests',
+      '--command', '["node","-e","process.exit(0)"]', '--by', 'Devi Srinivasan <devi.srinivasan@example.test>']);
     await createCompleteSolidChange(root, CHANGE);
     await advanceSolidToApply(root, CHANGE);
     await runCli(root, ['transition', '--change', CHANGE, '--to', 'verify']);
-    await runCli(root, ['verification', 'declare', '--gate-name', 'unit-tests',
-      '--command', '["node","-e","process.exit(0)"]', '--by', 'Devi Srinivasan <devi.srinivasan@example.test>']);
     const ran = await runCli(root, ['check', '--change', CHANGE]);
     expect(((ran.json.data as any)?.gates ?? []).map((gate: any) => `${gate.id}:${gate.status}`),
       JSON.stringify(ran.json.diagnostics)).toEqual(['structure:passed', 'unit-tests:passed']);

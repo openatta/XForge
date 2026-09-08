@@ -2,6 +2,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import type { ApprovalReceipt, ProjectContext, TransitionReceipt } from '../types.js';
 import { safeResolve } from './path-safety.js';
 import { commitAuthors } from './revision.js';
+import { loadSelectedResources } from './resource-loader.js';
 import { TRANSITION_RECEIPTS_RELATIVE } from './control-plane/receipts.js';
 
 /**
@@ -35,11 +36,99 @@ export interface KnownIdentities {
    * the acceptance.
    */
   actors: Set<string>;
+  /**
+   * Every Git author of the repository, used only when `values` is empty and `managed` is true.
+   *
+   * Not a widening of the bar. `values` stays the bar in every case where it can be applied; this
+   * is what the empty case is checked against instead of being waved through, and it is the same
+   * set `unattestedDeclarer` already holds a `verification declare --by` to.
+   */
+  fallback: Set<string>;
+  /**
+   * Whether this project collects approvals through a provider that is actually wired up.
+   *
+   * The strictness of the empty case follows this and nothing else. A project approving at the
+   * terminal is doing a manual job — a person types a name, and no amount of checking makes that
+   * more than a person typing a name — so the empty case stays permissive there and is reported.
+   * A project whose approvals go through a configured provider is under a managed chain, and a
+   * governance ledger inside it is checked from the first entry rather than from the first commit.
+   *
+   * "Configured" is answered from the project first and the environment second, because the two
+   * are not equally reliable and the environment is the weaker one. The shipped
+   * `enterprise-approvals` McpServer carries a `command` that names itself as unconfigured, so a
+   * provider whose command is no longer that sentinel is one somebody pointed at a real system —
+   * a fact about the project, identical for every command run against it. The token holding a value
+   * says the same thing about the moment rather than the project, and is kept as a second signal.
+   *
+   * Reading the token alone was wrong, and the live-engine harness is what showed it: it sets
+   * `XFORGE_ENTERPRISE_APPROVALS_TOKEN` on the `xforge approve` spawn and on nothing else, so a
+   * project whose every approval goes through a real MCP provider answered `false` on every
+   * `check` and `state` — failing open, silently, in exactly the deployment the strict branch
+   * exists for. A signal that depends on which command happens to be running is not a property of
+   * the project.
+   *
+   * A fresh install still answers `false`: the default Manifest registers the provider, its
+   * McpServer is the placeholder, and no token is set.
+   */
+  managed: boolean;
 }
 
 function add(target: Set<string>, value: string | undefined | null): void {
   const normalized = value?.trim().toLowerCase();
   if (normalized) target.add(normalized);
+}
+
+/**
+ * Whether this project's approvals run through a provider that is actually configured.
+ *
+ * Split in two on purpose. The *names* of the token variables come from the Manifest and the
+ * McpServer specs, which cannot change inside one process, so they are memoised per project root
+ * and the resource load is paid once. The environment is read fresh every time: memoising the
+ * answer instead would be right for a one-shot CLI and wrong everywhere the same root is asked
+ * twice under different environments, which is exactly what a test does — and a cache that is only
+ * correct because production happens not to exercise it is a cache that hides its own bug.
+ *
+ * The cheap exit comes first: a project registering no provider at all never loads a resource.
+ */
+const approvalProvidersByRoot = new Map<string, Promise<{ wired: boolean; tokenEnv: string[] }>>();
+
+/**
+ * The command the shipped placeholder McpServer carries, which is its way of saying it is a
+ * placeholder. Matched as a whole argv entry rather than by substring: a real server whose path
+ * happens to contain this word is not the placeholder.
+ */
+const UNCONFIGURED_SENTINEL = 'xforge-enterprise-approvals-server-not-configured';
+
+async function approvalProviderFacts(project: ProjectContext): Promise<{ wired: boolean; tokenEnv: string[] }> {
+  const providers = (project.manifest.approvals?.providers ?? []).filter((provider) => provider.type === 'mcp');
+  if (providers.length === 0) return { wired: false, tokenEnv: [] };
+  const cached = approvalProvidersByRoot.get(project.root);
+  if (cached) return cached;
+  const resolved = (async () => {
+    /* A resource that will not load is not a configured provider; `checker.ts` reports that
+       separately and this must not turn it into strictness nobody asked for. */
+    const resources = await loadSelectedResources(project).catch(() => null);
+    if (!resources) return { wired: false, tokenEnv: [] };
+    const tokenEnv: string[] = [];
+    let wired = false;
+    for (const provider of providers) {
+      const spec = resources.mcpServers.get(provider.mcpServer)?.value.spec;
+      if (!spec) continue;
+      if (spec.authTokenEnv) tokenEnv.push(spec.authTokenEnv);
+      /* An http transport has no command at all, and reaching one is itself the configuration. */
+      if (!(spec.command ?? []).includes(UNCONFIGURED_SENTINEL)) wired = true;
+    }
+    return { wired, tokenEnv };
+  })();
+  approvalProvidersByRoot.set(project.root, resolved);
+  return resolved;
+}
+
+async function managedApprovals(project: ProjectContext): Promise<boolean> {
+  const facts = await approvalProviderFacts(project);
+  /* Project state first; the environment is the second answer to the same question, kept because a
+     project may point at a real system in a way this cannot read. Either one is enough. */
+  return facts.wired || facts.tokenEnv.some((variable) => (process.env[variable] ?? '').trim().length > 0);
 }
 
 export async function knownIdentities(
@@ -56,7 +145,17 @@ export async function knownIdentities(
     const match = /^(.*?)\s*<(.+)>$/.exec(author);
     if (match) { add(values, match[1]); add(values, match[2]); }
   }
-  return { values, empty: values.size === 0, actors: await transitionActors(project, changeId) };
+  const empty = values.size === 0;
+  const managed = await managedApprovals(project);
+  /* Only read where it is used. A Change with identities of its own is checked against those, and
+     an unmanaged project never consults the fallback, so neither pays for this walk. */
+  const fallback = new Set<string>();
+  if (empty && managed) for (const author of await commitAuthors(project.root, [])) {
+    add(fallback, author);
+    const match = /^(.*?)\s*<(.+)>$/.exec(author);
+    if (match) { add(fallback, match[1]); add(fallback, match[2]); }
+  }
+  return { values, empty, actors: await transitionActors(project, changeId), fallback, managed };
 }
 
 /**
@@ -129,6 +228,9 @@ export async function unattestedDeclarer(root: string, name: string): Promise<st
 
 export function unverifiableIdentityWarning(known: KnownIdentities): string | null {
   if (!known.empty) return null;
+  /* Under a managed chain the empty case was checked, against the repository's own authors, so
+     there is no provisional pass to disclose. Silence here is the accurate report. */
+  if (known.managed && known.fallback.size > 0) return null;
   return 'this Change records no approvers and has no commits yet, so the names in it could not be checked against anything; they will be checked after the first commit, and a name that does not match a Git author or approver then will fail this Gate';
 }
 
@@ -143,7 +245,30 @@ export function unverifiableIdentityWarning(known: KnownIdentities): string | nu
 export function unknownIdentityReason(name: string, known: KnownIdentities): string | null {
   const normalized = name.trim().toLowerCase();
   if (!normalized) return 'is empty';
-  if (known.empty) return null;
+  if (known.empty) {
+    /*
+     * The empty case, decided by how this project collects approvals rather than by its history.
+     *
+     * Terminal approval is a manual act: a person types a name into a prompt, and holding the
+     * ledger beside it to a stricter bar buys nothing a person cannot walk around anyway. So that
+     * project keeps the permissive path and the disclosure that goes with it.
+     *
+     * A project whose approvals run through a configured provider is not doing that job by hand,
+     * and the provisional pass there is a real trap: the same bytes pass now and are refused after
+     * the Change's first commit, with the Stage's report already written on the strength of the
+     * pass. The repository's own authors are what the name is checked against instead — which is
+     * exactly what it would be checked against a commit later, only in time to be useful.
+     *
+     * A repository with no commits at all still passes. Nothing is being compared there, and the
+     * first Change in a new repository must not be blocked for the repository being new.
+     */
+    if (!known.managed || known.fallback.size === 0) return null;
+    if (known.fallback.has(normalized)) return null;
+    const match = /^(.*?)\s*<(.+)>$/.exec(normalized);
+    if (match && (known.fallback.has(match[1]!.trim()) || known.fallback.has(match[2]!.trim()))) return null;
+    const listed = `${[...known.fallback].slice(0, 4).join(', ')}${known.fallback.size > 4 ? ', …' : ''}`;
+    return `does not match any Git author of this repository (${listed}). This Change records no approver and no commit of its own yet, so there is nothing Change-scoped to check against; this project collects approvals through a configured provider, so the name is held to the repository's authors now rather than accepted and refused after the first commit`;
+  }
   if (known.values.has(normalized)) return null;
   /* Tolerate "Name <email>" written where only one form is recorded. */
   const match = /^(.*?)\s*<(.+)>$/.exec(normalized);

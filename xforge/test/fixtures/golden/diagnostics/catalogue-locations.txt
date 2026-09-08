@@ -373,6 +373,7 @@ XFORGE_VERIFICATION_RETIRE_AMBIGUOUS  src/commands/verification.ts
 XFORGE_VERIFICATION_RETIRE_NOT_FOUND  src/commands/verification.ts
 XFORGE_VERIFICATION_RETIRED  src/commands/verification.ts
 XFORGE_VERIFICATION_STATUS_UNSUPPORTED  src/commands/verification.ts
+XFORGE_VERIFICATION_UNDECLARED_BLOCKS_START  src/core/control-plane.ts
 XFORGE_VERIFICATION_WRITE_REFUSED  src/commands/verification.ts
 XFORGE_WORK_PACKAGE_ACK_ARGUMENTS_REQUIRED  src/cli.ts
 XFORGE_WORK_PACKAGE_ACK_DELIVERY_MISSING  src/commands/work-package.ts

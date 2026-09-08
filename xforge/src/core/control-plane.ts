@@ -198,6 +198,20 @@ export async function resolveControlPlane(
   const currentIndex = flow.stages.findIndex((stage) => stage.id === currentStage);
   const current = currentIndex >= 0 ? flow.stages[currentIndex]! : null;
   const candidates = current ? legalTransitionTargets(flow, current.id) : [];
+  /*
+   * The required declared Gates this project has never answered, computed once for two readers.
+   *
+   * The diagnostic below has reported them since propose, with the exact `verification declare`
+   * command already substituted, and a measured `solid` run met it at propose and carried it
+   * unanswered to verify. Information was not what was missing. What follows is the same fact used
+   * as a block, on the Change's first transition only: the question is answerable before any Change
+   * exists, it is going to refuse a Stage either way, and the only choice is whether it refuses
+   * where nothing has been spent or after four Stages and a human approval have.
+   */
+  const undeclaredGates = undeclaredRequiredGates(project, resources.gates, [
+    ...flow.stages.flatMap((stage) => [...(stage.gates ?? []), ...(stage.exit?.gates ?? [])]),
+    ...flowArchiveOperation(flow).mandatoryGates,
+  ]);
   const transitionRequirements = new Map<string, TransitionRequirement>();
   const readyTransitions: GovernanceState['readyTransitions'] = [];
   const pendingApprovals: GovernanceState['pendingApprovals'] = [];
@@ -216,6 +230,17 @@ export async function resolveControlPlane(
        is the targeted block that replaces the whole-Change error the chain check used to raise. */
     if (!transitions.chainValid) blockedBy.push('transition-chain:invalid');
     if (!isRework && current) {
+      /*
+       * Only on the first transition, and deliberately not on every one.
+       *
+       * Repeating it at each Stage would be a second way of saying what the Gate itself says when
+       * the Change reaches the Stage that runs it, and it would block a Change that is already
+       * under way for a project-level answer that was not missing when it started. Once is enough:
+       * a Change that got past propose either found the answer recorded or was told to record it.
+       */
+      if (transitions.receipts.length === 0) {
+        for (const gateId of undeclaredGates) blockedBy.push(`verification:${gateId}:undeclared`);
+      }
       for (const artifactId of current.produces) {
         if (!ARTIFACT_SATISFIED.has(state.artifacts.find((artifact) => artifact.id === artifactId)?.status ?? '')) blockedBy.push(`artifact:${artifactId}`);
       }
@@ -400,16 +425,19 @@ export async function resolveControlPlane(
    * counts warnings when deciding whether a Stage may close, so raising this one would make an
    * unanswered question block Stages it has no business blocking. It is also self-clearing: one
    * `verification declare` and it is gone for good.
+   *
+   * Visibility turned out not to be enough either — a measured `solid` run met this at propose and
+   * carried it, unanswered, to verify — so the same set now also blocks the Change's first
+   * transition (`verification:<gate>:undeclared`, above). This stays as it is: the severity
+   * argument above is unchanged, and a Change already past its first transition still meets this
+   * notice and no block. What the two say together is "not answered yet", once at the moment it
+   * can still be answered for free, and thereafter as a standing report.
    */
-  const undeclared = undeclaredRequiredGates(project, resources.gates, [
-    ...flow.stages.flatMap((stage) => [...(stage.gates ?? []), ...(stage.exit?.gates ?? [])]),
-    ...flowArchiveOperation(flow).mandatoryGates,
-  ]);
-  for (const gateId of undeclared) {
+  for (const gateId of undeclaredGates) {
     diagnostics.push({
       ...diagnostic(
         'XFORGE_VERIFICATION_GATE_UNDECLARED',
-        `Flow ${flow.metadata.name} requires Gate ${gateId}, which runs whatever this project declares under manifest.verification.${gateId} — currently nothing. It will refuse the first time a Change reaches the Stage that runs it, ${whenItBites(flow, gateId)}. Answer it now with \`xforge verification declare --gate-name ${gateId} --command '["cargo","test"]' --by <person>\`, substituting the command this project actually verifies itself with. Do not answer it with whatever command happens to exist: a test command on a repository with no tests passes this Gate while asserting nothing.`,
+        `Flow ${flow.metadata.name} requires Gate ${gateId}, which runs whatever this project declares under manifest.verification.${gateId} — currently nothing. A Change that has not taken a transition yet is refused now, at its first one; one already under way keeps going and meets the Gate itself when it reaches the Stage that runs it, ${whenItBites(flow, gateId)}. Answer it now with \`xforge verification declare --gate-name ${gateId} --command '["cargo","test"]' --by <person>\`, substituting the command this project actually verifies itself with. Do not answer it with whatever command happens to exist: a test command on a repository with no tests passes this Gate while asserting nothing.`,
         'xforge/manifest.yaml',
         'info',
       ),
@@ -590,6 +618,22 @@ export function blockRemedy(
     return {
       code: 'XFORGE_READY_RECEIPT_STALE_REMEDY',
       message: `The closing transition receipt is bound to content revision ${stale.contentRevision}, and this Change has been edited since. Two routes, and they differ in what they preserve: restore the Artifacts to ${stale.contentRevision} to keep the existing approval, or ${repair}`,
+    };
+  }
+
+  /*
+   * Ordered before the Gate remedies: this one is answered by a person, once, for the project, and
+   * every Gate block underneath it is downstream of that answer going unrecorded.
+   */
+  const undeclared = blocks
+    .map((block) => /^verification:([A-Za-z0-9][A-Za-z0-9._-]*):undeclared$/.exec(block)?.[1])
+    .filter((gate): gate is string => Boolean(gate));
+  if (undeclared.length > 0) {
+    const subject = undeclared.length === 1 ? `Gate ${undeclared[0]} runs` : `Gates ${undeclared.join(', ')} run`;
+    return {
+      code: 'XFORGE_VERIFICATION_UNDECLARED_BLOCKS_START',
+      message: `This Flow's ${subject} whatever the project declares under manifest.verification — currently nothing, so ${undeclared.length === 1 ? 'it refuses' : 'they refuse'} rather than passing. It is asked here, at this Change's first transition, because it is answerable without any Change existing and refuses a later Stage either way: the alternative is meeting it after the planning is written and an approval has been spent. Record what this project actually verifies itself with, all of them in one pass — declaring one leaves the next to refuse a Stage further along. Do not answer with whatever command happens to exist: a test command on a repository with no tests passes the Gate while asserting nothing, which is the failure this Gate exists to prevent. \`xforge verification retire\` withdraws a declaration later, keeping the record of who withdrew it and why.`,
+      remedy: { commands: undeclared.map((gate) => verificationDeclareArgv(gate)) },
     };
   }
 
