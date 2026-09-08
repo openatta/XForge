@@ -21,8 +21,9 @@ holds the contentRevision, the gitHead and the cited Gate set, and both the
 `xforge-verify` Skill and the CLI's own nextActions say not to transcribe
 them. `--status` and `--by` are the two it will not compute. Sign it
 `--by "project owner"`: `TEST_REQUEST.md` stands in for the owner in this
-project, exactly as it does for the Gate command above. Expect
-`XFORGE_VERIFICATION_DECLARER_UNATTESTED` on both calls — a role is not a Git
+project, the same way it stands in for the person Propose signed the Gate
+commands with. Expect
+`XFORGE_VERIFICATION_DECLARER_UNATTESTED` on this call — a role is not a Git
 author, the CLI records the name as written and says so, and that warning is
 the record being honest about itself. Outside a fixture, a name nobody gave
 you is a name you do not write.

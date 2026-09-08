@@ -25,8 +25,9 @@ holds the contentRevision, the gitHead and the cited Gate set, and both the
 `xforge-verify` Skill and the CLI's own nextActions say not to transcribe
 them. `--status` and `--by` are the two it will not compute. Sign it
 `--by "project owner"`: `TEST_REQUEST.md` stands in for the owner in this
-project, exactly as it does for the Gate command above. Expect
-`XFORGE_VERIFICATION_DECLARER_UNATTESTED` on both calls — a role is not a Git
+project, the same way it stands in for the person Propose signed the Gate
+commands with. Expect
+`XFORGE_VERIFICATION_DECLARER_UNATTESTED` on this call — a role is not a Git
 author, the CLI records the name as written and says so, and that warning is
 the record being honest about itself. Outside a fixture, a name nobody gave
 you is a name you do not write.
@@ -45,28 +46,27 @@ Flow `artifacts[].outline` defines — no extra section, none omitted.
 The outline is the contract.
 
 The `unit-tests` Gate runs whatever this project declared and refuses when it has
-declared nothing, so on a fresh project it will refuse. That refusal is correct
-and must not be worked around: do not edit the Gate, and do not adopt the command
-the CLI suggests just because it appears — a suggestion is the start of a
-question, never an answer.
+declared nothing — but by the time this Stage runs, **Propose has already answered
+it.** A required declared Gate with no command blocks the Change's first
+Transition, so a Change that reached Verify carries the answer already, recorded
+under `manifest.verification` and signed with the name `TEST_REQUEST.md` gives.
 
-`TEST_REQUEST.md` states the command this project's acceptance is measured by,
-and there is no human at this terminal, so it stands in for the project owner's
-answer. Declare it with the CLI, never by hand. `--by` names who chose the
-command; `"project owner"` is a role rather than a person, so the CLI records it
-and says so with `XFORGE_VERIFICATION_DECLARER_UNATTESTED` — that warning is the
-record being honest about itself, not something to work around:
+**Do not declare it again here.** `manifest.verification.<gate>` is a list, so a
+second declaration appends a second command rather than replacing the first, and
+both then run — with two different `--by` answers on the record for one question.
+Read what is recorded and use it.
 
-```
-xforge verification declare --gate-name unit-tests --command '["npm","test"]' --by "project owner"
-xforge verification declare --gate-name security-scan --command '["npm","audit","--audit-level=high"]' --by "project owner"
-```
+Meeting a genuinely undeclared Gate here is the unusual case the `xforge-verify`
+Skill describes — a declaration retired mid-flight, or a Gate the project selected
+after this Change began. If that happens, the rules are the ones Propose follows:
+the command comes from what the project states about itself, never from the
+suggestion the CLI offers because it appeared, and never by editing the Manifest
+by hand.
 
-Declare **both**. This Stage's Gates are `structure`, `unit-tests` and
-`security-scan`, and `security-scan` refuses when undeclared exactly as
-`unit-tests` does. A run that declares only the first passes Verify and then
-dies on the archive path's own Check, several paid turns later, on a question
-`TEST_REQUEST.md` had already answered.
+Major declares two of them — `unit-tests` and `security-scan` — and Propose is
+required to answer **both** in one pass, because declaring one leaves the other to
+refuse a Stage further along. Check that both are recorded before relying on
+either.
 
 **Do not edit `xforge/manifest.yaml` yourself.** The Manifest is what the
 governance dispatcher reads, so a malformed one denies every tool call — and a

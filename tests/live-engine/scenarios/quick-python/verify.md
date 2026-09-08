@@ -21,8 +21,9 @@ holds the contentRevision, the gitHead and the cited Gate set, and both the
 `xforge-verify` Skill and the CLI's own nextActions say not to transcribe
 them. `--status` and `--by` are the two it will not compute. Sign it
 `--by "project owner"`: `TEST_REQUEST.md` stands in for the owner in this
-project, exactly as it does for the Gate command above. Expect
-`XFORGE_VERIFICATION_DECLARER_UNATTESTED` on both calls — a role is not a Git
+project, the same way it stands in for the person Propose signed the Gate
+commands with. Expect
+`XFORGE_VERIFICATION_DECLARER_UNATTESTED` on this call — a role is not a Git
 author, the CLI records the name as written and says so, and that warning is
 the record being honest about itself. Outside a fixture, a name nobody gave
 you is a name you do not write.
@@ -42,18 +43,18 @@ Flow `artifacts[].outline` defines — no extra section, none omitted.
 The outline is the contract.
 
 This project is not a Node project and has no `package.json`, so the `unit-tests`
-Gate has no command declared and refuses rather than passing. That refusal is
-correct and must not be worked around: do not edit the Gate, and do not adopt the
-suggestion the CLI offers — `pyproject.toml` makes it propose `pytest`, which
-this project neither uses nor has installed.
+Gate has no command of its own — but by the time this Stage runs, **Propose has
+already declared it.** A required declared Gate with no command blocks the
+Change's first Transition, so the answer `TEST_REQUEST.md` gives under "本项目如何
+运行测试" is already recorded, signed with the name that file names.
 
-`TEST_REQUEST.md` states the command this project actually runs, under "本项目如何
-运行测试". Declare it with the CLI, never by hand:
+**Do not declare it again here.** `manifest.verification.<gate>` is a list, so a
+second declaration appends a second command rather than replacing the first, and
+both then run. Read what is recorded and use it.
 
-```
-xforge verification declare --gate-name unit-tests \
-  --command '["python3","-m","unittest","discover","-s","test"]' --by "project owner"
-```
+If it is somehow undeclared, the rules are the ones Propose follows: take the
+command the project states, never the suggestion the CLI offers — `pyproject.toml`
+makes it propose `pytest`, which this project neither uses nor has installed.
 
 **Do not edit `xforge/manifest.yaml` yourself** — a malformed Manifest denies
 every tool call, including the ones that would repair it. Do not run
