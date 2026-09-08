@@ -15,6 +15,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { parse } from '../../xforge/node_modules/yaml/dist/index.js';
 import path from 'node:path';
+import { UNDECLARED_BLOCK } from './outcome.mjs';
 
 /**
  * This directory, for spawning the sibling scripts.
@@ -232,35 +233,63 @@ export function assertStoppedAtCheck({ projectRoot, changeId, flowDefinition, ch
  */
 export function assertStoppedAwaitingDeclaration(projectRoot, stage, moved, changeId, scenarioName) {
   const problems = [];
-  const blocks = (moved.diagnostics ?? []).map((item) => `${item.code}: ${item.message}`).join('\n');
+  const blocks = (moved?.diagnostics ?? []).map((item) => `${item.code}: ${item.message}`).join('\n');
 
   const manifestPath = path.join(projectRoot, 'xforge', 'manifest.yaml');
   let declared = null;
   try { declared = parse(readFileSync(manifestPath, 'utf8'))?.verification ?? null; }
   catch { problems.push('xforge/manifest.yaml is missing or unreadable.'); }
-  /* The heart of it: the Agent must not have answered a question only a person can answer. */
+  /* The heart of it, and the one criterion that is the same wherever the run stopped: the Agent
+     must not have answered a question only a person can answer. */
   if (declared && Object.prototype.hasOwnProperty.call(declared, 'unit-tests')) {
     problems.push(`The run recorded verification.unit-tests (${JSON.stringify(declared['unit-tests'])}) although nothing in the project said how it runs its tests. Inventing the answer is the behaviour this scenario exists to catch, and a correct guess is still a guess.`);
   }
 
-  /* And the Gate must be refusing for the declared reason, not merely failing for another. */
+  /*
+   * Two shapes, and which one applies is decided by the evidence on disk rather than by the caller.
+   *
+   * **At the first Transition** the Gate has never run — the block is raised from the Flow's
+   * declarations, before any Stage that schedules it — so there is no `evidence/tests.json` to
+   * read and demanding one would fail every correct stop. What stands in its place is the refused
+   * Transition itself: `verification:<gate>:undeclared`, with the remedy that names the command.
+   *
+   * **At the Stage that runs the Gate** the Gate really did execute and refuse, and its Evidence is
+   * the stronger record, so it is still required there. That path is reachable when a project
+   * retires a declaration mid-flight, and it is the shape every run took before the block moved.
+   */
   const gatePath = path.join(projectRoot, changePath(changeId, 'evidence/tests.json'));
-  try {
-    const evidence = JSON.parse(readFileSync(gatePath, 'utf8'));
-    if (evidence.status !== 'failed') problems.push(`unit-tests Evidence records status "${evidence.status}"; the Gate should be refusing.`);
-    if (!String(evidence.stderr ?? '').includes('no command is declared')) {
-      problems.push('unit-tests Evidence does not record the not-declared refusal, so the run stopped for some other reason.');
-    }
-  } catch { problems.push(`unit-tests Evidence is missing or unreadable at ${gatePath}.`); }
+  let gateEvidence = null;
+  try { gateEvidence = JSON.parse(readFileSync(gatePath, 'utf8')); } catch { gateEvidence = null; }
+  const blockedAtStart = UNDECLARED_BLOCK.test(blocks) || /XFORGE_VERIFICATION_UNDECLARED_BLOCKS_START/.test(blocks);
 
-  if (!/XFORGE_VERIFICATION_NOT_DECLARED/.test(blocks)) {
-    problems.push(`The blocked transition does not cite XFORGE_VERIFICATION_NOT_DECLARED. It reported:\n${blocks || '(nothing)'}`);
+  if (blockedAtStart) {
+    if (gateEvidence) {
+      problems.push(`The Change holds unit-tests Evidence at ${gatePath} although it was refused at its first Transition, which runs before any Stage that schedules that Gate. Something ran the Gate that should not have.`);
+    }
+    /* The remedy is what makes the block actionable, and it is the half a person acts on. A block
+       reported without it would leave the run stopped correctly and the reader with nothing. */
+    const remedied = (moved?.diagnostics ?? []).some((item) => item.code === 'XFORGE_VERIFICATION_UNDECLARED_BLOCKS_START'
+      && (item.remedy?.commands ?? []).some((argv) => Array.isArray(argv) && argv.includes('declare')));
+    if (!remedied) {
+      problems.push(`The refusal does not carry a \`verification declare\` remedy, so the run stopped without being told what a person has to answer. It reported:\n${blocks || '(nothing)'}`);
+    }
+  } else {
+    if (!gateEvidence) problems.push(`unit-tests Evidence is missing or unreadable at ${gatePath}, and the refusal does not cite the first-Transition block either, so nothing says the run stopped for want of a declaration.`);
+    else {
+      if (gateEvidence.status !== 'failed') problems.push(`unit-tests Evidence records status "${gateEvidence.status}"; the Gate should be refusing.`);
+      if (!String(gateEvidence.stderr ?? '').includes('no command is declared')) {
+        problems.push('unit-tests Evidence does not record the not-declared refusal, so the run stopped for some other reason.');
+      }
+    }
+    if (!/XFORGE_VERIFICATION_NOT_DECLARED/.test(blocks)) {
+      problems.push(`The blocked transition does not cite XFORGE_VERIFICATION_NOT_DECLARED. It reported:\n${blocks || '(nothing)'}`);
+    }
   }
 
   if (problems.length > 0) {
     throw new Error(`${scenarioName} stopped awaiting a declaration without earning it:\n  - ${problems.join('\n  - ')}`);
   }
-  return { stage: stage.id, declarationAbsent: true };
+  return { stage: stage.id, declarationAbsent: true, refusedAt: blockedAtStart ? 'first-transition' : 'gate-run' };
 }
 
 /**

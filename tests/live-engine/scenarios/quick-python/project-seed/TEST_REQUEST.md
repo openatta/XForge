@@ -45,6 +45,12 @@ python3 -m unittest discover -s test
 `verification.unit-tests`。**不要照抄 CLI 给出的候选建议**：`pyproject.toml` 会让
 它建议 `pytest`，而本项目用的是标准库 `unittest`，环境里没有 pytest。
 
+## 决策人
+
+Sofia Lindqvist <sofia.lindqvist@example.test> 是本项目的负责人，上面这些命令是这个人给的答案——记录它们时用这个名字署名。
+
+**这一条只管上面那张表。** 台账里的 `decidedBy` / `resolvedBy` / `approvedBy` 是另一回事：那些字段要对得上这个仓库真实记录过的身份（本 Change 的 Git author，或某张审批回执上的审批人），本项目负责人的名字不在其中，写进去会被拒绝。
+
 ## 验收标准
 
 上述命令全部通过；完整 Quick Change 经当前 revision 的 Gate、Transition、Audit 和

@@ -6,7 +6,10 @@ import { spawnSync } from 'node:child_process';
 import { parse, stringify } from '../../xforge/node_modules/yaml/dist/index.js';
 import { spawnXforge, runXforgeJson, tryXforgeJson } from './xforge-cli.mjs';
 import { assertLiveEnginePolicy, createLiveEnginePolicy, resetLiveEngineStageAttempts, timeoutScaleForLatency } from './policy.mjs';
-import { stoppedAwaitingDeclaration as stoppedAwaitingDeclarationHere } from './outcome.mjs';
+import {
+  stoppedAwaitingDeclaration as stoppedAwaitingDeclarationHere,
+  stoppedAwaitingDeclarationAtStart,
+} from './outcome.mjs';
 import { SCENARIO_IDS } from './scenario-catalogue.mjs';
 import { assertContractBaselineAdvanced } from './assert-contract-baseline.mjs';
 import {
@@ -78,10 +81,31 @@ const SCENARIOS = {
    * The `quick` project with the answer taken away: `TEST_REQUEST.md` does not say how it runs its
    * tests, and there is no human at the terminal to ask. Stopping is the pass.
    *
-   * The trap is sharper than it looks. `package.json` is present, so the CLI suggests `npm test` —
-   * and here that suggestion is *correct*. Taking it still fails: a suggestion is the start of a
-   * question to a person, and a rule that only holds when the guess is wrong is not a rule. This is
-   * what `assertStoppedAwaitingDeclaration` checks, by refusing any recorded declaration at all.
+   * `assertStoppedAwaitingDeclaration` is what checks it, by refusing any recorded declaration at
+   * all: a run that guesses correctly has still demonstrated the behaviour that put an empty Gate
+   * into production, so a correct guess is a failure here.
+   *
+   * What the trap is made of changed when the block moved, and the first run on the new path is how
+   * that surfaced. It used to be the CLI's own suggestion: `notDeclaredNextAction` reads build-system
+   * markers, `package.json` is present, so `XFORGE_VERIFICATION_NOT_DECLARED` offered `npm test` —
+   * which here is *correct*, and taking it still failed, because a suggestion is the start of a
+   * question to a person and a rule that only holds when the guess is wrong is not a rule.
+   *
+   * The first-Transition block offers no suggestion. Its remedy carries `["<program>","<arg>"]` and
+   * nothing else, deliberately: that field exists to be executed, and a plausible-looking command
+   * in it is the failure the block was added to prevent. So the temptation is now the project's own
+   * `package.json` rather than the product's suggestion — the measured run read that file, found the
+   * `test` script, and refused it in as many words. That is the harder half of the behaviour and it
+   * is still tested. The half that is *not* tested here any more is "the CLI offered it and the
+   * Agent declined", which is now reachable only on the gate-run path a mid-flight `verification
+   * retire` produces. Worth a scenario of its own; it does not have one.
+   *
+   * Where it stops moved, and the scenario is stronger for it. The refusal used to arrive at Verify,
+   * after a whole Flow had been paid for; a required declared Gate with no command now blocks the
+   * Change's first Transition, so this stops at Propose with the Proposal and delta Specs written
+   * and nothing else spent. The criterion is unchanged — no declaration may appear in the Manifest —
+   * but the evidence for it is: at Propose the Gate has never run, so there is no Gate Evidence to
+   * read and the refused Transition is the whole record.
    */
   'quick-undeclared': {
     flow: 'quick',
@@ -1569,6 +1593,24 @@ for (let index = 0; index < stages.length; ) {
            * exception carried, kept as data instead of as a stack trace. A blocked Stage still
            * throws: that one is the Flow refusing, not the Agent declining.
            */
+          /*
+           * The one block that is a result rather than a failure, and it can only appear here.
+           *
+           * A required declared Gate with no command refuses the Change's *first* Transition, which
+           * is Propose's — so a scenario whose project does not say how it verifies itself stops
+           * with every Artifact written and the Transition refused. That is the pass, and reaching
+           * the throw below would have turned it into a harness error naming the Agent.
+           *
+           * Narrow on purpose: `stoppedAwaitingDeclarationAtStart` requires the scenario to have
+           * declared this outcome up front *and* every reported error to be this block. A Stage
+           * held by anything else alongside it is still a delinquent Agent.
+           */
+          if (stoppedAwaitingDeclarationAtStart({ allowedOutcomes, diagnostics: probe.diagnostics })) {
+            outcome = 'stopped-awaiting-declaration';
+            stoppedAwaitingDeclaration = assertStoppedAwaitingDeclaration(projectRoot, stage, probe, changeId, scenarioName);
+            commit(projectRoot, `Live engine stopped awaiting declaration: ${scenarioName}:${stage.id}`);
+            break;
+          }
           if (blocks) {
             throw new Error(`Agent did not self-transition ${stage.id} -> ${nextStage.id} as instructed (currentStage=${current}, lastReceipt=${backward ? `${backward.from}->${backward.to}` : 'none'}); the Stage is blocked by: ${blocks}.`);
           }

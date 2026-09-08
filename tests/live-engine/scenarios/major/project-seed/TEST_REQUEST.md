@@ -77,6 +77,22 @@
 - 创建一个 `T001` 工作包，`write_paths` 为 `src/**`，输入包含 delta Spec、
   Clarifications 和 Design，Skill 为 `xforge-apply`，验证命令为 `npm test`。
 
+## 本项目如何运行检查
+
+下面就是命令本身。没有人在终端边上可以再问一次，所以照写在这里的样子记录，不要猜，
+也不要改写成看起来更像的东西。
+
+| gate | command |
+| --- | --- |
+| `unit-tests` | `["npm","test"]` |
+| `security-scan` | `["npm","audit","--audit-level=high"]` |
+
+## 决策人
+
+Tomás Herrera <tomas.herrera@example.test> 是本项目的负责人，上面这些命令是这个人给的答案——记录它们时用这个名字署名。
+
+**这一条只管上面那张表。** 台账里的 `decidedBy` / `resolvedBy` / `approvedBy` 是另一回事：那些字段要对得上这个仓库真实记录过的身份（本 Change 的 Git author，或某张审批回执上的审批人），本项目负责人的名字不在其中，写进去会被拒绝。
+
 ## 验收标准
 
 `npm test` 全部通过；完整 Major Change 经当前 revision 的 Clarify、Design、
