@@ -72,6 +72,20 @@ describe('what a Change is held to before its first transition', () => {
 
 /**
  * The strictness of an unverifiable ledger name, decided by how this project collects approvals.
+ *
+ * These are the only coverage this branch has, and that is worth saying out loud rather than
+ * leaving a reader to assume the live suite reaches it. It does not, and cannot as the harness
+ * stands: `knownIdentities` is empty only while the Change has neither an approval receipt nor a
+ * commit of its own, and `tests/live-engine/run-matrix.mjs` commits after every Stage — so by the
+ * time any Stage writes a ledger, the Change directory already has commits and the ordinary branch
+ * applies. Five live runs across four scenarios produced zero occurrences of the refusal below.
+ *
+ * The branch is still the right one for real use, where an Agent routinely writes a ledger before
+ * anything is committed; that is the exact sequence the live run which motivated it followed --
+ * two mandatory Gates passed, the Check report was written on the strength of that pass, the work
+ * was committed, and the identical content was then refused. Closing the gap would mean changing
+ * the harness's commit rhythm, which is the baseline every scenario's cost and revision history is
+ * measured against, so it is recorded here instead of bought at that price.
  */
 describe('a ledger name on a Change with no history of its own', () => {
   const TOKEN = 'XFORGE_ENTERPRISE_APPROVALS_TOKEN';
