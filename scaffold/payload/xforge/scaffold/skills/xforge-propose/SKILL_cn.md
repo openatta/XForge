@@ -15,6 +15,7 @@ description: 创建受治理的 Change，并且只写 Propose Stage 允许的 ch
 # 权限
 
 - 可以在 State 解析的 Changes 目录创建一个 kebab-case Change ID，写 `change.yaml` 以及 Propose Action 返回的 Proposal 与 delta Spec 路径。
+- 可以用 `xforge verification declare` 记录本项目对某个必需的 `builtin: declared` Gate 从未给出的答案——绝不自己手改 `xforge/manifest.yaml`，`protected-manifest` PermissionPolicy 本来也会拒绝。权限落在这里是因为拒绝落在这里：本 Flow 声明的这类 Gate 会挡住这个 Change 的**第一次**转换，早于任何真正运行它的 Stage。它依然是项目的答案而不是你的——见「执行」第 6 步。
 - 不得写 Design、Clarifications、Check report、长期 Tasks、产品代码、主 Specs、Evidence 或 Archive。
 - 不得替用户决定材料性兼容、数据、安全、隐私或范围问题。
 
@@ -27,10 +28,16 @@ description: 创建受治理的 Change，并且只写 Propose Stage 允许的 ch
 
    每一个 classification 键都依据工作本身回答，绝不依据你更想跑哪个 Flow。`moduleContract` 为真的条件是这个 Change 移动了**模块之间**的接口——一个签名、一个端点、一个别的模块会读的存储结构；它不是 `publicApi`——后者为真的条件是这个 Change 动了外部消费者已经依赖的东西：一个已发布的入口、一个有文档的端点、一个已发行的 CLI 选项。一个仓库之外根本触达不到的导出，无论从内部看多么显眼，都不是 public API；而模块边界之内的重命名，两个键都不是。**为了消除一次拒绝而不诚实地回答某个键，是本 Stage 事后唯一无法发现的失败。** 当 `moduleContract` 为真、而所选 Flow 没有任何 Stage 声明接口 delta 时，会被以 `XFORGE_FLOW_TOO_WEAK` 拒绝——**那次拒绝正是这个键在起作用，不是一个要清掉的错误**：它会点名哪个 Flow 能承载这个 Change，而 `xforge explain XFORGE_FLOW_TOO_WEAK` 会说明为什么答 `false` 不是一道更松的检查，而是另一回事。
 
-   只在 Propose 的 Artifact 与 Action 处于 ready 时继续，并先清掉由这个 Change 自己的文件引起的 schema 诊断。**本 Stage 权限之内清不掉的诊断——未声明的验证 Gate、尚无后续 Artifact 锚定的 Requirement——是报告，不是修复。** 为了消掉它而伸手到 Stage 之外，正是本 Skill 的「权限」一节要防的越界。
+   只在 Propose 的 Artifact 与 Action 处于 ready 时继续，并先清掉由这个 Change 自己的文件引起的 schema 诊断。**本 Stage 权限之内清不掉的诊断——尚无后续 Artifact 锚定的 Requirement、本 Flow 承载不了其强制手段的 Rule——是报告，不是修复。** 为了消掉它而伸手到 Stage 之外，正是本 Skill 的「权限」一节要防的越界。未声明的验证 Gate 是例外，且它在第 6 步回答而不是这里：那是一个本 Stage 确实有权记录的项目级问题，只记录一次，且取自项目自己给出的答案。
 4. 写 ready Action 点名的每一个 Artifact：写在它的 `writes` 路径，带上 `requiredSections` 列出的每一个 `##` 标题，并遵循`owes` 中该 Artifact 的 `instruction` 与 `outline`。标题逐字照抄——不要新增、改名或加限定语，因为 markers 与 reconcile 的取材都按标题原文定位。Requirement 使用稳定 ID，并给出成功、失败、边界与兼容性场景。不可把来源未声明的精确契约猜测写成规范事实；已有不可修改的验收测试定义了字段、输出形状或退出行为时必须逐项保持一致，测试与需求冲突则作为材料性歧义停止。
 5. 每完成一个 Artifact 就重跑一次 `xforge stage --change <id>`；当下一个 Artifact Action 属于其他 Skill 时，**停止写 Artifact**。这不是本 Stage 的结束——第 6 步才是，而且要从这里继续走下去。
 6. 运行 `xforge advance --change <id>`：它跑本 Stage 的 Gate，若无拒绝则执行转换。读它报告的内容。Gate 拒绝会阻止转换并点名自己——只修复 Propose 阶段的结构问题，绝不把提示性文本读成已通过的 Gate。当多个转换同时 ready 时它会反问，因为「前进还是返工」不是默认值能定的：用 `--to` 指明。
+
+   `verification:<gate>:undeclared` 是这里唯一一个与本 Change 无关的 block。它说的是：本 Flow 排了一个「跑项目自己声明的命令」的 Gate，而项目一条都没声明——这个问题在任何 Change 存在之前就能回答，现在问是因为此刻回答它不花任何代价。它过去从本 Stage 起只作为提示出现、几段之后才拒绝，而一次实测把这条提示从这里一路带到 Verify 都没有处理，所以同一个事实现在改为阻塞。**它点名的每一个 Gate 一次性全部声明完**，用 `remedy.commands` 里的 argv——它已经代入了 gate id，只留下 `<program>` 空着，因为那个空正是只有人能填的部分：
+
+   - **命令是项目的答案，不是你的。** 从项目对自己的陈述里取：需求文档、README、CI 配置。`--by` 写的是给出这个答案的人。
+   - **不要因为 CLI 给了建议就采纳它。** 它读的是构建系统标记，不是这条命令有没有验证任何东西：`pyproject.toml` 会让它对一个用 `unittest` 的项目建议 `pytest`；而一个没有测试的仓库上的 test 命令能让 Gate 通过，同时什么都没断言。
+   - **项目没有给出答案时，停下来问，并且真的停住。** 报告哪些 Gate 没有答案、需要人决定什么。一个看起来合理的猜测正是这个 block 要防的失败，而猜对了仍然是猜——那样 Gate 会变绿，同时断言的只是那条命令碰巧断言的东西，而且是永久性的、对之后每一个 Change 都成立。
 
 # 证据
 

@@ -102,6 +102,8 @@ verification declare  <- xforge-check/SKILL.md
 verification declare  <- xforge-check/SKILL_cn.md
 verification declare  <- xforge-design/SKILL.md
 verification declare  <- xforge-design/SKILL_cn.md
+verification declare  <- xforge-propose/SKILL.md
+verification declare  <- xforge-propose/SKILL_cn.md
 verification declare  <- xforge-scaffold/SKILL.md
 verification declare  <- xforge-scaffold/SKILL_cn.md
 verification declare  <- xforge-verify/SKILL.md

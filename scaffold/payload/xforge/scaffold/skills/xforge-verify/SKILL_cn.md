@@ -14,7 +14,9 @@ description: 用当前证据核验 Change 的完整性、正确性、一致性�
 # 权限
 
 - 可写 Verify Stage `produces` 的 Artifact——assurance——以及 `evidence/verification-receipt.yaml`，后者是本 Stage 的 exit condition 而不是 Artifact。Gate Evidence（`evidence/*.json`）只能由 `xforge check` 生成；receipt 只引用这些 digest，不得把它们改写成自己的结论。
-- 本 Stage 运行的 `builtin: declared` Gate 若尚无声明，用 `xforge verification declare` 记录本项目的答案——绝不自己编辑 `xforge/manifest.yaml`。具体是哪些 Gate，看入口回复里这个 Stage 的声明，不要照这句话里的清单——那份清单必须与项目可能运行的每一个 Flow 保持同步，而只有一份声明能让它们通过，所以记录声明的权限属于这里。它仍然是用户的答案，不是你的：见「停止与返工」。
+- 本 Stage 运行的 `builtin: declared` Gate 若尚无声明，用 `xforge verification declare` 记录本项目的答案——绝不自己编辑 `xforge/manifest.yaml`。具体是哪些 Gate，看入口回复里这个 Stage 的声明，不要照这句话里的清单——那份清单必须与项目可能运行的每一个 Flow 保持同步，而只有一份声明能让它们通过。它仍然是用户的答案，不是你的：见「停止与返工」。
+
+  **在这里遇到它现在是少见情况，不是常态。** 本 Flow 排的每一个这类 Gate 都会在 Change 的第一次转换上被索要并阻塞（`verification:<gate>:undeclared`），所以正常走到 Verify 的 Change 都已经带着答案。仍然会落到这里的只有三种：中途被 retire 的声明、这个 Change 开始之后项目才选上的 Gate、以及早于那个 block 就已创建的 Change。照同一个问题对待，用同样的方式回答。
 - 关闭一条没有 `reworkTo` 的未决 Check finding，必须用 `xforge findings resolve`，绝不直接编辑 `evidence/check-findings.yaml`——该 Artifact 属于 Check Stage，而这条命令正是让它的答案能在此处被记录下来的唯一途径。它记录的是用户的答案和用户的署名，不是你的。
 - 只有 `verify-and-archive` 或 `archive-current` 的明确用户授权允许调用 `xforge archive`；先 dry-run，再执行原子同步与移动。
 - 失败时只报告并返回 Apply rework；除非用户另行明确授权，不修改实现。
@@ -27,7 +29,7 @@ description: 用当前证据核验 Change 的完整性、正确性、一致性�
 4. 运行 `xforge check --change <id>`，重新执行工作包验证和所有 mandatory Gates；重开 Evidence，核对 Change、命令、时间、退出状态、digest 与当前 revision。
 
    随后读 `evidence/check-findings.yaml`，找出 `status` 不是 `resolved` 且没有 `reworkTo` 的条目。**Quick 没有 Check Stage，也从不产出这个文件**——在 Quick 上它不存在是 Flow 在正常工作，不是需要报告的故障，直接跳过本步剩下的部分。这些是更早的 Stage 指向收尾审批人的提问，没有任何机制会把它们送回去——它们不是 blocker，没有 Gate 会报告——`xforge check --change <id>` 会把每一条列在 `nextActions` 里，并附上关闭它的那条 `findings resolve` 命令。把每一条交给用户，并用 `xforge findings resolve --change <id> --id <finding-id> --answer <用户的回答> --by <回答的人>` 记录他们的答案；绝不要自己编答案或署名，理由与 `verification declare --by` 相同。必须在**这里**做，在 receipt 之前：这次写入会改变 `contentRevision`，此刻的代价只是重跑一次 `xforge check`；而同样的修改若发生在第 6 步过渡之后，会让收尾回执变 stale、让绑定其上的审批作废，并且需要 `transition repair` 才能退回。
-5. 生成 assurance。然后生成 verification receipt——必须在第 4 步的 Gate 全部通过**之后**，绝不能提前，因为它要点名那次运行记录下的 Gate。`evidence/verification-receipt.yaml` 不是内容 Artifact，而是本 Stage 的 `verificationReceipt` exit condition，由 CLI 对照磁盘上的 Evidence 判定。
+5. 先写 assurance，**再重跑本 Stage 的 Gate，然后**生成 verification receipt。这个顺序是被逼出来的，不是偏好：assurance 是声明过的 Artifact，写它会移动 `contentRevision`，让第 4 步跑过的每个 Gate 变 stale，而 `finalize` 拒绝引用 stale 的 Gate——一份点名 stale Gate 的收据等于为那个 Gate 从未看过的内容背书。所以「写完 assurance 直接 finalize」第一次必然失败，每次都失败；本步末尾原先那句「之后若再改动任何 Artifact 就要重跑」写成了条件句，而本步自己就总是满足那个条件。重跑用 `xforge check --change <id> --stage verify`：它只跑本 Stage 的 Gate 集合，跳过 bare `check` 会再执行一遍的 work-package `verify` 命令——十个工作包的计划就是几十条外部命令，换来的是你手上已经有的 Evidence。`evidence/verification-receipt.yaml` 不是内容 Artifact，而是本 Stage 的 `verificationReceipt` exit condition，由 CLI 对照磁盘上的 Evidence 判定——所以写它不会 stale 任何东西，Gate 会保持绑定，直到下一步的 transition 读到它们。
 
    不要手抄，也不要手工拼装。运行：
 
@@ -39,7 +41,7 @@ description: 用当前证据核验 Change 的完整性、正确性、一致性�
 
    它替你避开两个真实运行中付过代价的坑。其一，`xforge state` 里每份历史回执各带一个 `contentRevision`，靠肉眼或 `grep` 取值会拿到已被取代的那个；确需单独取值时用 `--field change.governance.revision.contentRevision`（并带上 `--change <id>`）。其二，引用只写 Gate 名，绝不写 digest——每个 per-run digest 都会随正常推进而变化，抄下来的那一刻起就在失效。不要加 `evidence:` 这一行，没有任何代码会读它。
 
-   本 Stage 每个通过的 Gate 都要引用一次——不得遗漏、不得引用其它 Stage 的 Gate。`gates` 只放 Gate；work-package 交付写在 `workPackageDeliveries`（`package`、`delivery`、`dispatch`、`status`、`verifyCommand`、`exitCode`），写成 `gates` 的一行会被以 `gate-unverifiable-<name>` 拒绝。之后若再改动任何 Artifact，必须重跑 Gate 并重新 draft——写入动作本身会改变 `contentRevision` 并使 Evidence 变 stale。任一 mandatory Gate、Requirement 或关键约束未验证时请求 `apply` rework Transition；不得手写 Gate PASS。
+   本 Stage 每个通过的 Gate 都要引用一次——不得遗漏、不得引用其它 Stage 的 Gate。`gates` 只放 Gate；work-package 交付写在 `workPackageDeliveries`（`package`、`delivery`、`dispatch`、`status`、`verifyCommand`、`exitCode`），写成 `gates` 的一行会被以 `gate-unverifiable-<name>` 拒绝。此后再改动任何 Artifact，同样的事会重演一次——写入移动 `contentRevision`，Evidence 变 stale，收据必须重跑 Gate 后重新 finalize。任一 mandatory Gate、Requirement 或关键约束未验证时请求 `apply` rework Transition；不得手写 Gate PASS。
 6. Gate 和 Artifact 满足后调用 `xforge transition --change <id> --to ready-to-archive`；`verify-only` 到此停止，并报告 Closing Approval 与 Audit blockers。
 7. 已获当前 revision 的人类/外部 Closing Approval 后运行 `xforge audit verify --change <id>` 和 `xforge archive --change <id> --dry-run`，展示完整 Specs merge/move 计划、冲突和显著兼容影响；仅在 Approval、Audit、Gate 全部当前且计划无错误时运行 `xforge archive --change <id>`。
 8. 归档后运行 `xforge state`，确认 Change 离开 active set、主 Specs 可见且 Evidence 位于归档目录。

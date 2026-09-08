@@ -7,7 +7,6 @@ approve --reason
 approve --role
 audit --output
 check --evidence-detail
-check --stage
 doctor --strict
 hook --event
 hook --target
