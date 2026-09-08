@@ -648,6 +648,32 @@ export function blockRemedy(
     };
   }
 
+  /*
+   * A condition ledger that is not on disk at all, which had no remedy and is the commonest block.
+   *
+   * `blockRemedy` answered the stale case, the independent-review case and the work-package cases,
+   * and returned null for `condition:<key>:ledger-missing-*`. So `transition` refused with two bare
+   * tokens and nothing else, while `stage` at the same Stage reported the ledger's Artifact in
+   * `owes` with its full instruction and outline. Same block, same moment, and whether the reader
+   * learned what to write depended on which command they had reached for. A walk of the Major Flow
+   * met exactly that at clarify.
+   *
+   * The remedy is `stage`, not a hand-written description of the ledger: the shape belongs to the
+   * Flow's Artifact instruction, which `stage` already carries and which this sentence would
+   * otherwise duplicate and then drift from.
+   */
+  const missingLedger = blocks
+    .map((block) => /^condition:([A-Za-z0-9][A-Za-z0-9._-]*):ledger-missing-expected-(.+)$/.exec(block))
+    .find((match) => match !== null);
+  if (missingLedger) {
+    const [, key, expected] = missingLedger;
+    return {
+      code: 'XFORGE_CONDITION_LEDGER_MISSING_REMEDY',
+      message: `This Stage cannot close until the ${key} ledger under evidence/conditions/ exists and declares \`status: ${expected}\`. Nothing has been written there yet, which is a different state from a ledger that answers nothing: an empty \`entries\` list is an assertion that there was nothing to decide, and a missing file asserts nothing at all. \`xforge stage --change ${changeId}\` reports this ledger among the Artifacts the Stage owes, with the instruction and outline its Flow declares -- write it from that rather than from this sentence, which cannot carry the shape.`,
+      remedy: { commands: [['xforge', 'stage', '--change', changeId]] },
+    };
+  }
+
   /* A ledger whose decisions predate the rework that reopened their inputs. Named per entry, because
      the answer is per entry: some will survive being asked again and some will not, and a message
      saying "the ledger is stale" would not tell anyone which. */
