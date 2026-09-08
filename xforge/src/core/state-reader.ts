@@ -6,7 +6,7 @@ import { capabilityMatrix } from '../adapters/index.js';
 import type { ChangeState, Diagnostic, Flow, ProjectContext } from '../types.js';
 import { diagnostic } from './errors.js';
 import { flowEligibilityDiagnostics } from './checker.js';
-import { flowApplyOperation, flowArchiveOperation, flowArtifacts, isStageFlow, loadFlows, resolveChangeState } from './flow-resolver.js';
+import { flowApplyOperation, flowArchiveOperation, flowArtifacts, loadFlows, resolveChangeState } from './flow-resolver.js';
 import { safeResolve } from './path-safety.js';
 import { loadSelectedResources, type SelectedResources } from './resource-loader.js';
 import { resolvedResourceEntries } from './lockfile.js';
@@ -16,6 +16,7 @@ import { resolveWorkPackages } from './work-packages.js';
 import { installationSummary, readOwnership } from '../install/ownership.js';
 import { loadTransitionReceipts, resolveControlPlane } from './control-plane.js';
 import { exists } from './files.js';
+import { currentStageOf, stageGates } from './flow-query.js';
 
 async function directoriesAt(root: string): Promise<string[]> {
   try {
@@ -129,9 +130,8 @@ async function activeChangeSummaries(
       const resolved = await resolveChangeState(project, id, flows);
       const flow = resolved.flow.metadata.name;
       const risk = resolved.config.classification?.risk ?? null;
-      if (!isStageFlow(resolved.flow)) return { id, flow, stage: null, risk };
       const transitions = await loadTransitionReceipts(project, id, resolved.flow);
-      return { id, flow, stage: transitions.receipts.at(-1)?.to ?? resolved.flow.stages[0]?.id ?? null, risk };
+      return { id, flow, stage: currentStageOf(resolved.flow, transitions.receipts), risk };
     } catch {
       return { id, flow: null, stage: null, risk: null };
     }
@@ -193,8 +193,8 @@ export async function readState(project: ProjectContext, options: StateOptions):
       version: flow.metadata.version,
       apiVersion: flow.apiVersion,
       description: flow.metadata.description,
-      policy: isStageFlow(flow) ? flow.policy : null,
-      stages: isStageFlow(flow) ? flow.stages.map((stage) => ({
+      policy: flow.policy,
+      stages: flow.stages.map((stage) => ({
         id: stage.id,
         skill: stage.skill,
         /*
@@ -217,10 +217,10 @@ export async function readState(project: ProjectContext, options: StateOptions):
          * context through a file read. Four hundred lines of YAML read to recover four fields the
          * resolver already had in hand.
          */
-        gates: [...new Set([...(stage.gates ?? []), ...(stage.exit?.gates ?? [])])],
+        gates: stageGates(stage),
         exitConditions: Object.keys(stage.exit?.conditions ?? {}),
         reworkTo: stage.reworkTo ?? [],
-      })) : null,
+      })),
       artifacts: flowArtifacts(flow).map((artifact) => ({ id: artifact.id, generates: artifact.generates, requires: artifact.requires })),
       applyRequires: apply.requires,
       archiveRequires: archive.requires,
@@ -235,8 +235,8 @@ export async function readState(project: ProjectContext, options: StateOptions):
     description: flow.metadata.description,
     /* `policy` stays. Choosing a Flow is what this listing is for, and `eligibleWhen`/`requiredWhen`
        are what the choice is made against -- `xforge-propose` reads them by name. */
-    policy: isStageFlow(flow) ? flow.policy : null,
-    stages: isStageFlow(flow) ? flow.stages.map((stage) => stage.id) : null,
+    policy: flow.policy,
+    stages: flow.stages.map((stage) => stage.id),
   });
 
   let selectedChange: ChangeState | null = null;
@@ -257,7 +257,7 @@ export async function readState(project: ProjectContext, options: StateOptions):
     diagnostics.push(...workPackages.diagnostics);
     selectedChange.workPackages = workPackages.state;
     let contentRevision: string | null = null;
-    if (isStageFlow(resolved.flow) && resolved.flow.governance) {
+    if (resolved.flow.governance) {
       const control = await resolveControlPlane(project, options.change, resolved.flow, selectedChange, resources, resolved.config, { workPackages, projectFacts: true });
       diagnostics.push(...control.diagnostics);
       /*

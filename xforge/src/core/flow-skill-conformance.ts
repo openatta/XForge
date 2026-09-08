@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { Diagnostic, StageFlow } from '../types.js';
 import { isContractDeltaArtifact } from './contract-delta.js';
 import { diagnostic } from './errors.js';
+import { stageGates } from './flow-query.js';
 import type { SelectedResources } from './resource-loader.js';
 
 /**
@@ -112,7 +113,7 @@ export async function flowSkillConformanceDiagnostics(
      * only supported way to record one is `xforge verification declare`, so a Skill that never
      * names the command owns a Stage it cannot clear.
      */
-    for (const gateId of [...new Set([...(stage.gates ?? []), ...(stage.exit?.gates ?? [])])]) {
+    for (const gateId of stageGates(stage)) {
       if (resources.gates.get(gateId)?.value.spec.builtin !== 'declared') continue;
       const silent = silentIn(variants, 'verification declare');
       if (silent.length === 0) continue;

@@ -1,6 +1,7 @@
 import type { ChangeConfig, ChangeState, Diagnostic, Flow, ProjectContext, StageFlow } from '../types.js';
 import { diagnostic } from './errors.js';
-import { flowArchiveOperation, isStageFlow, loadFlows, stageGateReferences } from './flow-resolver.js';
+import { loadFlows, stageGateReferences } from './flow-resolver.js';
+import { currentStageOf } from './flow-query.js';
 import { INDEPENDENT_REVIEW_CONDITION } from './control-plane.js';
 import { resolvedResourceEntries } from './lockfile.js';
 import { stableStringify } from './hash.js';
@@ -127,10 +128,16 @@ function eligibilityProblems(flow: StageFlow, config: ChangeConfig): string[] {
  * Flows to try — or to clear the classification key instead, which is the one move that defeats the
  * check. Naming nothing is also an answer worth giving, and a different one: a project holding no
  * eligible Flow needs a person to adopt one, not another attempt.
+ *
+ * Every Flow here is a Stage Flow, and that is a fact about the loader rather than about this
+ * function. It used to open with `.filter(isStageFlow)`, which read as a filter and was really a
+ * precondition: `eligibilityProblems` reaches `candidate.policy`, which only a Stage Flow carries.
+ * `loadFlows` now refuses anything else at the door, so the filter became a no-op and went — but
+ * the precondition it recorded did not, and nothing in the type system restates it. A Flow shape
+ * without a `policy` block would arrive here and read `undefined`.
  */
 function escalationRoute(flow: Flow, config: ChangeConfig, flows: readonly Flow[]): string {
   const eligible = flows
-    .filter(isStageFlow)
     .filter((candidate) => candidate.metadata.name !== flow.metadata.name)
     .filter((candidate) => eligibilityProblems(candidate, config).length === 0)
     .map((candidate) => candidate.metadata.name)
@@ -167,7 +174,7 @@ export function flowEligibilityDiagnostics(
   /* Materialised once: callers pass `flows.values()`, and a Map iterator is spent by its first
      spread -- a second reader would silently see an empty project. */
   const candidates: readonly Flow[] = [...flows];
-  const requiredFlows = candidates.filter(isStageFlow).filter((candidate) => requiredPolicyMatches(candidate, classification));
+  const requiredFlows = candidates.filter((candidate) => requiredPolicyMatches(candidate, classification));
   const satisfiesRequired = requiredFlows.some((candidate) => candidate.metadata.name === flow.metadata.name);
   const requiredPolicyDiagnostic = diagnostic(
     'XFORGE_FLOW_REQUIRED_POLICY',
@@ -175,26 +182,14 @@ export function flowEligibilityDiagnostics(
     changePath,
   );
 
-  if (isStageFlow(flow)) {
-    const problems = eligibilityProblems(flow, config);
-    if (problems.length > 0) diagnostics.push(diagnostic(
-      'XFORGE_FLOW_TOO_WEAK',
-      `Flow ${flow.metadata.name} is not eligible for this Change: ${problems.join('; ')}.${escalationRoute(flow, config, candidates)}${
-        flow.policy.eligibleWhen.contractImpact === 'forbidden' && classification.moduleContract ? CONTRACT_KEY_IS_UNCORROBORATED : ''
-      }`,
-      changePath,
-    ));
-    if (requiredFlows.length > 0 && !satisfiesRequired) diagnostics.push(requiredPolicyDiagnostic);
-    return diagnostics;
-  }
-
-  // Legacy v1alpha1 Flows carry no policy block, so the escalation target is derived from the
-  // policy-bearing Flows the project actually ships rather than from a hard-coded Flow name.
-  const critical = activeImpacts(classification).length > 0;
-  if (flow.metadata.name === 'quick') {
-    if (config.scope.modules.length > 1) diagnostics.push(diagnostic('XFORGE_FLOW_TOO_WEAK', 'A cross-module Change cannot use quick.', changePath));
-    if (classification.risk !== 'low' || critical) diagnostics.push(diagnostic('XFORGE_FLOW_TOO_WEAK', 'quick is limited to low-risk Changes with no critical impact flags.', changePath));
-  }
+  const problems = eligibilityProblems(flow, config);
+  if (problems.length > 0) diagnostics.push(diagnostic(
+    'XFORGE_FLOW_TOO_WEAK',
+    `Flow ${flow.metadata.name} is not eligible for this Change: ${problems.join('; ')}.${escalationRoute(flow, config, candidates)}${
+      flow.policy.eligibleWhen.contractImpact === 'forbidden' && classification.moduleContract ? CONTRACT_KEY_IS_UNCORROBORATED : ''
+    }`,
+    changePath,
+  ));
   if (requiredFlows.length > 0 && !satisfiesRequired) diagnostics.push(requiredPolicyDiagnostic);
   return diagnostics;
 }
@@ -211,60 +206,47 @@ export async function checkStructure(project: ProjectContext, changeId?: string)
   }
 
   for (const flow of flowResult.flows.values()) {
-    /* A Stage Flow's mandatory Gates are its verify Stage's `gates`, which the per-Stage loop below
-       already reads -- checking both would report the same broken reference twice. */
-    if (!isStageFlow(flow)) {
-      for (const gate of flowArchiveOperation(flow).mandatoryGates) {
-        if (!project.manifest.scaffold.gates.includes(gate)) {
-          diagnostics.push(diagnostic('XFORGE_FLOW_GATE_DISABLED', `Flow ${flow.metadata.name} requires non-enabled Gate ${gate}.`, `xforge/flows/${flow.metadata.name}.yaml`));
-        } else if (!resources.gates.has(gate)) {
-          diagnostics.push(diagnostic('XFORGE_FLOW_GATE_MISSING', `Flow ${flow.metadata.name} requires missing Gate ${gate}.`, `xforge/flows/${flow.metadata.name}.yaml`));
-        }
+    if (!flow.governance) {
+      diagnostics.push(diagnostic(
+        'XFORGE_FLOW_GOVERNANCE_MISSING',
+        `Flow ${flow.metadata.name} declares no governance block, so xforge transition and xforge approve are unavailable for Changes on this Flow.`,
+        `xforge/flows/${flow.metadata.name}.yaml`,
+        'warning',
+      ));
+    }
+    for (const stage of flow.stages) {
+      if (!project.manifest.scaffold.skills.includes(stage.skill)) {
+        diagnostics.push(diagnostic('XFORGE_FLOW_SKILL_DISABLED', `Flow ${flow.metadata.name} Stage ${stage.id} references non-enabled Skill ${stage.skill}.`, `xforge/flows/${flow.metadata.name}.yaml`));
+      } else if (!resources.skills.has(stage.skill)) {
+        diagnostics.push(diagnostic('XFORGE_FLOW_SKILL_MISSING', `Flow ${flow.metadata.name} Stage ${stage.id} references missing Skill ${stage.skill}.`, `xforge/flows/${flow.metadata.name}.yaml`));
       }
     }
-    if (isStageFlow(flow)) {
-      if (!flow.governance) {
-        diagnostics.push(diagnostic(
-          'XFORGE_FLOW_GOVERNANCE_MISSING',
-          `Flow ${flow.metadata.name} declares no governance block, so xforge transition and xforge approve are unavailable for Changes on this Flow.`,
-          `xforge/flows/${flow.metadata.name}.yaml`,
-          'warning',
-        ));
+    /*
+     * The Gates every Stage names, on the same terms as the Skills above. Checking a Flow's Gate
+     * references against `flowArchiveOperation().mandatoryGates` instead is the right list for
+     * "what archive demands" and the wrong list for "does every Gate this Flow names exist" -- it
+     * reads the verify Stage alone, so a Gate referenced at propose, design or check reached
+     * `check` unmentioned and failed at the Stage that ran it. `doctor` has always collected all
+     * of them; this is the same reading, in the command an Agent actually walks through.
+     */
+    for (const { stage, gate } of stageGateReferences(flow)) {
+      if (!project.manifest.scaffold.gates.includes(gate)) {
+        diagnostics.push(diagnostic('XFORGE_FLOW_GATE_DISABLED', `Flow ${flow.metadata.name} Stage ${stage} references non-enabled Gate ${gate}.`, `xforge/flows/${flow.metadata.name}.yaml`));
+      } else if (!resources.gates.has(gate)) {
+        diagnostics.push(diagnostic('XFORGE_FLOW_GATE_MISSING', `Flow ${flow.metadata.name} Stage ${stage} references missing Gate ${gate}.`, `xforge/flows/${flow.metadata.name}.yaml`));
       }
-      for (const stage of flow.stages) {
-        if (!project.manifest.scaffold.skills.includes(stage.skill)) {
-          diagnostics.push(diagnostic('XFORGE_FLOW_SKILL_DISABLED', `Flow ${flow.metadata.name} Stage ${stage.id} references non-enabled Skill ${stage.skill}.`, `xforge/flows/${flow.metadata.name}.yaml`));
-        } else if (!resources.skills.has(stage.skill)) {
-          diagnostics.push(diagnostic('XFORGE_FLOW_SKILL_MISSING', `Flow ${flow.metadata.name} Stage ${stage.id} references missing Skill ${stage.skill}.`, `xforge/flows/${flow.metadata.name}.yaml`));
-        }
-      }
-      /*
-       * The Gates every Stage names, on the same terms as the Skills above. The loop over
-       * `mandatoryGates` further up reads the verify Stage alone, which is the right list for "what
-       * archive demands" and the wrong list for "does every Gate this Flow names exist" -- a Gate
-       * referenced at propose, design or check reached `check` unmentioned and failed at the Stage
-       * that ran it. `doctor` has always collected all of them; this is the same reading, in the
-       * command an Agent actually walks through.
-       */
-      for (const { stage, gate } of stageGateReferences(flow)) {
-        if (!project.manifest.scaffold.gates.includes(gate)) {
-          diagnostics.push(diagnostic('XFORGE_FLOW_GATE_DISABLED', `Flow ${flow.metadata.name} Stage ${stage} references non-enabled Gate ${gate}.`, `xforge/flows/${flow.metadata.name}.yaml`));
-        } else if (!resources.gates.has(gate)) {
-          diagnostics.push(diagnostic('XFORGE_FLOW_GATE_MISSING', `Flow ${flow.metadata.name} Stage ${stage} references missing Gate ${gate}.`, `xforge/flows/${flow.metadata.name}.yaml`));
-        }
-      }
-      if (!project.manifest.scaffold.skills.includes(flow.terminal.archive.handler)) {
-        diagnostics.push(diagnostic('XFORGE_FLOW_SKILL_DISABLED', `Flow ${flow.metadata.name} archive handler is not enabled: ${flow.terminal.archive.handler}.`, `xforge/flows/${flow.metadata.name}.yaml`));
-      } else if (!resources.skills.has(flow.terminal.archive.handler)) {
-        diagnostics.push(diagnostic('XFORGE_FLOW_SKILL_MISSING', `Flow ${flow.metadata.name} archive handler Skill is missing: ${flow.terminal.archive.handler}.`, `xforge/flows/${flow.metadata.name}.yaml`));
-      }
+    }
+    if (!project.manifest.scaffold.skills.includes(flow.terminal.archive.handler)) {
+      diagnostics.push(diagnostic('XFORGE_FLOW_SKILL_DISABLED', `Flow ${flow.metadata.name} archive handler is not enabled: ${flow.terminal.archive.handler}.`, `xforge/flows/${flow.metadata.name}.yaml`));
+    } else if (!resources.skills.has(flow.terminal.archive.handler)) {
+      diagnostics.push(diagnostic('XFORGE_FLOW_SKILL_MISSING', `Flow ${flow.metadata.name} archive handler Skill is missing: ${flow.terminal.archive.handler}.`, `xforge/flows/${flow.metadata.name}.yaml`));
     }
   }
 
   const agentIds = new Set(project.manifest.scaffold.agents);
   const moduleIds = new Set(project.manifest.project.modules.map((item) => item.id));
   const approvalPolicyIds = new Set(
-    [...flowResult.flows.values()].flatMap((flow) => (isStageFlow(flow) ? (flow.governance?.approvalPolicies.map((policy) => policy.id) ?? []) : [])),
+    [...flowResult.flows.values()].flatMap((flow) => flow.governance?.approvalPolicies.map((policy) => policy.id) ?? []),
   );
   /*
    * A declared dependency direction that names a module this project does not have.
@@ -353,10 +335,10 @@ export async function checkStructure(project: ProjectContext, changeId?: string)
     let requireDeliveries = false;
     let reachedImplementation = false;
     let reviewedFlow: StageFlow | null = null;
-    if (isStageFlow(resolved.flow) && resolved.flow.governance) {
+    if (resolved.flow.governance) {
       const transitions = await loadTransitionReceipts(project, changeId, resolved.flow);
       diagnostics.push(...transitions.diagnostics);
-      const currentStage = transitions.receipts.at(-1)?.to ?? resolved.flow.stages[0]?.id;
+      const currentStage = currentStageOf(resolved.flow, transitions.receipts) ?? undefined;
       requireDeliveries = currentStage === 'verify' || currentStage === 'ready-to-archive';
       /* The implementing Stage is located by authority, so a project that renames or adds one is
          measured by what the Stage is allowed to write. That holds for this lookup only: the two

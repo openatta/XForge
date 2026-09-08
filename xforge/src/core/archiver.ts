@@ -1,7 +1,8 @@
 import { spawn } from 'node:child_process';
-import { mkdir, readFile, rename, rm } from 'node:fs/promises';
+import { mkdir, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import type { Diagnostic, FileChange, ProjectContext } from '../types.js';
+import { UNGOVERNED_STAGE } from '../constants.js';
 import { executeCheck } from '../commands/check.js';
 import { checkStructure } from './checker.js';
 import { XForgeError, diagnostic } from './errors.js';
@@ -10,7 +11,8 @@ import { assertManaged } from './project-loader.js';
 import { safeResolve } from './path-safety.js';
 import { planSpecMutations, type SpecMutation } from './spec-merger.js';
 import { planContractMutations } from './contract-merger.js';
-import { isStageFlow, resolveChangeState } from './flow-resolver.js';
+import { resolveChangeState } from './flow-resolver.js';
+import { artifactSatisfied } from './flow-query.js';
 import { contentRevisionUnderPolicy } from './revision.js';
 import { loadSelectedResources, type SelectedResources } from './resource-loader.js';
 import { blockRemedy, resolveControlPlane, terminalGovernanceBlocks } from './control-plane.js';
@@ -43,14 +45,6 @@ function archiveName(changeId: string, now = new Date()): string {
     String(now.getDate()).padStart(2, '0'),
   ].join('-');
   return /^\d{4}-\d{2}-\d{2}-/.test(changeId) ? changeId : `${localDate}-${changeId}`;
-}
-
-async function incompleteTasks(project: ProjectContext, changeId: string, tracks: string): Promise<string[]> {
-  const relative = `${project.changesPath}/${changeId}/${tracks}`;
-  const absolute = await safeResolve(project.root, relative);
-  if (!await exists(absolute)) return [`Missing task tracker: ${tracks}`];
-  const source = await readFile(absolute, 'utf8');
-  return [...source.matchAll(/^\s*-\s*\[ \]\s+(.+)$/gmi)].map((match) => match[1]!.trim());
 }
 
 /**
@@ -143,11 +137,11 @@ async function planArchive(project: ProjectContext, changeId: string, options: P
   if (!structure.change) diagnostics.push(diagnostic('XFORGE_CHANGE_NOT_FOUND', `Active Change not found: ${changeId}`));
   else {
     if (!structure.change.archive.artifactsReady) {
-      const incomplete = structure.change.artifacts.filter((item) => structure.change!.archive.requires.includes(item.id) && item.status !== 'done' && item.status !== 'not-owed').map((item) => item.id);
+      const incomplete = structure.change.artifacts.filter((item) => structure.change!.archive.requires.includes(item.id) && !artifactSatisfied(item.status)).map((item) => item.id);
       diagnostics.push(diagnostic('XFORGE_ARCHIVE_ARTIFACTS_INCOMPLETE', `Archive prerequisites are incomplete: ${incomplete.join(', ')}`, `${project.changesPath}/${changeId}`));
     }
     const resolved = await resolveChangeState(project, changeId);
-    if (isStageFlow(resolved.flow) && resolved.flow.governance) {
+    if (resolved.flow.governance) {
       const resources = await loadSelectedResources(project);
       /* The plan `checkStructure` already resolved above, handed over rather than read again. It is
          also what stops archive re-deciding `independentReview` against an empty package list: the
@@ -187,11 +181,6 @@ async function planArchive(project: ProjectContext, changeId: string, options: P
         diagnostics.push(remedy.remedy ? { ...entry, remedy: remedy.remedy } : entry);
       }
     }
-    const tracker = structure.change.apply.tracks;
-    if (tracker) {
-      const tasks = await incompleteTasks(project, changeId, tracker);
-      if (tasks.length > 0) diagnostics.push(diagnostic('XFORGE_ARCHIVE_TASKS_INCOMPLETE', `${tasks.length} task(s) are incomplete.`, `${project.changesPath}/${changeId}/${tracker}`, 'error', tasks));
-    }
     diagnostics.push(...await uncommittedGateDefinitions(project, structure.change.archive.mandatoryGates, structure.resources));
   }
   if (diagnostics.some((item) => item.severity === 'error')) {
@@ -203,7 +192,7 @@ async function planArchive(project: ProjectContext, changeId: string, options: P
   if (await exists(await safeResolve(project.root, target))) diagnostics.push(diagnostic('XFORGE_ARCHIVE_TARGET_EXISTS', 'Archive target already exists.', target));
   /*
    * Both merges are planned here, after the early return above, and never before it. `planArchive`
-   * refuses to plan any mutation while a structural, governance or task error stands, and that
+   * refuses to plan any mutation while a structural or governance error stands, and that
    * ordering is the reason `archive --dry-run` cannot be used to ask "would this merge?" -- the
    * feasibility checks in `core/checker.ts` answer that question at check time instead.
    *
@@ -265,10 +254,10 @@ export async function executeArchive(project: ProjectContext, changeId: string, 
 
   const auditResolved = await resolveChangeState(project, changeId);
   const auditResources = await loadSelectedResources(project);
-  const auditControl = isStageFlow(auditResolved.flow) && auditResolved.flow.governance
+  const auditControl = auditResolved.flow.governance
     ? await resolveControlPlane(project, changeId, auditResolved.flow, auditResolved.state, auditResources, auditResolved.config)
     : null;
-  await recordAudit(project, { eventType: 'archive.before', change: changeId, flow: auditResolved.flow.metadata.name, stage: auditControl?.governance.currentStage ?? 'legacy', revision: auditControl?.governance.revision, outcome: 'succeeded', input: { target: plan.target } });
+  await recordAudit(project, { eventType: 'archive.before', change: changeId, flow: auditResolved.flow.metadata.name, stage: auditControl?.governance.currentStage ?? UNGOVERNED_STAGE, revision: auditControl?.governance.revision, outcome: 'succeeded', input: { target: plan.target } });
 
   const checked = await executeCheck(project, { change: changeId });
   const diagnostics = [...checked.diagnostics];

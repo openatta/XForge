@@ -9,7 +9,8 @@ import { assertManaged } from '../core/project-loader.js';
 import { workPackageVerificationGates } from '../core/work-packages.js';
 import { gateInputDigest, runGate } from '../runners/gate.js';
 import { readAuditEvents, recordAudit } from '../core/audit.js';
-import { isStageFlow, resolveChangeState } from '../core/flow-resolver.js';
+import { resolveChangeState } from '../core/flow-resolver.js';
+import { currentStageOf, stageGates } from '../core/flow-query.js';
 import { gateBlockReason, readGateEvidence, resolveControlPlane } from '../core/control-plane.js';
 import { loadTransitionReceipts } from '../core/control-plane/receipts.js';
 import { sha256, stableStringify } from '../core/hash.js';
@@ -134,12 +135,12 @@ const ALL_GATES = 'all';
 const STAGE_PREFIX = 'stage:';
 
 function flowGateIds(flow: StageFlow): string[] {
-  return [...new Set(flow.stages.flatMap((stage) => [...(stage.gates ?? []), ...(stage.exit?.gates ?? [])]))];
+  return [...new Set(flow.stages.flatMap(stageGates))];
 }
 
 function stageGateIds(flow: StageFlow, stageId: string): string[] | null {
   const stage = flow.stages.find((candidate) => candidate.id === stageId);
-  return stage ? [...new Set([...(stage.gates ?? []), ...(stage.exit?.gates ?? [])])] : null;
+  return stage ? stageGates(stage) : null;
 }
 
 /**
@@ -411,13 +412,13 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
     const archiveGates = structure.change.archive.mandatoryGates;
     let flow: Flow | null = null;
     try { flow = (await resolveChangeState(project, options.change)).flow; } catch { flow = null; }
-    if (flow && isStageFlow(flow)) {
+    if (flow) {
       if (wantsAllGates) {
         gateIds = [...new Set([...flowGateIds(flow), ...archiveGates])];
         gateSelection = 'all';
       } else {
         const transitions = await loadTransitionReceipts(project, options.change, flow);
-        selectedStage = wantsStage ?? transitions.receipts.at(-1)?.to ?? flow.stages[0]?.id ?? null;
+        selectedStage = wantsStage ?? currentStageOf(flow, transitions.receipts);
         const stageGates = selectedStage ? stageGateIds(flow, selectedStage) : null;
         if (stageGates) {
           gateIds = stageGates;
@@ -461,7 +462,7 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
     let dispatches = false;
     try {
       const state = await resolveChangeState(project, options.change);
-      dispatches = isStageFlow(state.flow) && Boolean(state.flow.governance);
+      dispatches = Boolean(state.flow.governance);
     } catch { /* An unresolvable Flow is reported by the structural pass; treat it as undispatched. */ }
     const verifications = workPackageVerificationGates(structure.change.workPackages, dispatches);
     /*
@@ -586,7 +587,7 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
    */
   if (options.change && structure.change && !hasStructureErrors) {
     const resolved = await resolveChangeState(project, options.change);
-    if (isStageFlow(resolved.flow) && resolved.flow.governance) {
+    if (resolved.flow.governance) {
       control = await resolveControlPlane(project, options.change, resolved.flow, resolved.state, structure.resources, resolved.config, { workPackages: structure.workPackages ?? undefined });
     }
   }
@@ -611,22 +612,6 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
   }
 
   /*
-   * Gates that passed, and are already out of date, and nothing said so.
-   *
-   * Gate Evidence binds to the content revision at the moment the Gate runs, so writing any declared
-   * Artifact after a Gate passes silently invalidates it. That makes the verify Stage order load
-   * bearing — assurance first, then `check`, then `draft-receipt`, then the receipt — and that order
-   * existed only in the Skill prose. A live Rust project hit the consequence with no explanation
-   * available to it: `structure` bound to a gitHead 43 source files ago, `unit-tests` null, and the
-   * only trace was a boolean buried in `state.mandatoryGateEvidence`, from which the operator had to
-   * reconstruct the rule for themselves.
-   *
-   * `blockRemedy` says this well, but only once a transition is attempted, which is one Stage too
-   * late to be cheap. Reported at `check` because that is where the Gates are, and only for Gates
-   * this run did not itself refresh: one it just ran is current by construction, and saying
-   * otherwise would make the notice fire on every clean run and be tuned out by the second week.
-   */
-  /*
    * What this Change's records say against what its files contain.
    *
    * Six rules, one to three kilobytes of differences, and the section a field report called the
@@ -639,23 +624,36 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
    * reader is looking when they ask whether the Change is in order. `info` throughout: every rule
    * states a difference and none of them decides whether it is a problem.
    */
-  if (options.change && control && isStageFlow(control.flow)) {
+  if (options.change && control) {
     const reconciliation = await reconcileChange(project, options.change, control.flow, control);
     diagnostics.push(...reconciliation.diagnostics);
     /* The findings waiting on a person, each with the command that closes it. See `reconcile.ts` for
        why this travels with the reconciliation rules without being one. */
     nextActions.push(...reconciliation.nextActions);
-  }
 
-  if (options.change && control) {
+    /*
+     * Gates that passed, and are already out of date, and nothing said so.
+     *
+     * Gate Evidence binds to the content revision at the moment the Gate runs, so writing any declared
+     * Artifact after a Gate passes silently invalidates it. That makes the verify Stage order load
+     * bearing — assurance first, then `check`, then `draft-receipt`, then the receipt — and that order
+     * existed only in the Skill prose. A live Rust project hit the consequence with no explanation
+     * available to it: `structure` bound to a gitHead 43 source files ago, `unit-tests` null, and the
+     * only trace was a boolean buried in `state.mandatoryGateEvidence`, from which the operator had to
+     * reconstruct the rule for themselves.
+     *
+     * `blockRemedy` says this well, but only once a transition is attempted, which is one Stage too
+     * late to be cheap. Reported at `check` because that is where the Gates are, and only for Gates
+     * this run did not itself refresh: one it just ran is current by construction, and saying
+     * otherwise would make the notice fire on every clean run and be tuned out by the second week.
+     */
     /* The Gates this Change still has to satisfy, minus the ones this run just refreshed: one that
        has only now been executed is current by construction, and reporting it would make the notice
        fire on every clean run and be tuned out by the second week. */
     const refreshed = new Set(gateResults.filter((result) => result.evidence).map((result) => result.id));
     const stage = control.flow.stages.find((candidate) => candidate.id === control!.governance.currentStage);
     const owed = [...new Set([
-      ...(stage?.gates ?? []),
-      ...(stage?.exit?.gates ?? []),
+      ...stageGates(stage),
       ...structure.change?.archive.mandatoryGates ?? [],
       ...gateIds,
     ])].filter((id) => !refreshed.has(id));
@@ -684,35 +682,6 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
     }
   }
 
-  /*
-   * A passing Gate must not be readable as "nothing to see here".
-   *
-   * The `structure` Gate passes on errors alone, correctly: its warnings are advisory and promoting
-   * them would fail Changes that were valid before the rule that warns existed. But its stdout is
-   * the flat sentence "Structural validation passed.", and a live XOps run read that as the whole
-   * result — the Artifact marker warning sitting in the same envelope went unread at Propose and at
-   * Verify, and surfaced at `archive --dry-run`, after the transition and after a human approval.
-   * The check had in fact reported it at the producing Stage every time. Nobody saw it.
-   *
-   * So this says out loud what the Gate's own output cannot: the Gate passed, and the run still
-   * found things. Deliberately an `info` at the command level, never part of Gate Evidence —
-   * `gateInputDigest` is `sha256({gate, revision, structurePassed})`, so touching what
-   * `structurePassed` means would rewrite every Evidence digest in every project to say something
-   * no Gate's verdict actually changed.
-   */
-  /*
-   * The warnings this Change's author can actually act on: the ones located inside the Change.
-   *
-   * Every warning in the run used to count, and the run carries project-level ones — a stale lock,
-   * a Rule whose enforcement this Flow cannot apply, a Flow with no governance block. None of those
-   * belong to the Change, none can be fixed "here", and the sentence below points the reader at the
-   * Change directory to fix them. Padding a signal with findings its reader cannot act on is how
-   * the signal stops being read, which is the exact failure this notice exists to prevent.
-   *
-   * Located by path rather than by a list of codes, so nothing has to be kept in sync: a warning
-   * about this Change is a warning about a file inside it. A warning with no path at all is
-   * project-level by construction — there is no Change file for it to be about.
-   */
   /*
    * A run that executed no Gate says so, and says why.
    *
@@ -771,9 +740,38 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
       'warning',
     ));
   }
+  /*
+   * The warnings this Change's author can actually act on: the ones located inside the Change.
+   *
+   * Every warning in the run used to count, and the run carries project-level ones — a stale lock,
+   * a Rule whose enforcement this Flow cannot apply, a Flow with no governance block. None of those
+   * belong to the Change, none can be fixed "here", and the sentence below points the reader at the
+   * Change directory to fix them. Padding a signal with findings its reader cannot act on is how
+   * the signal stops being read, which is the exact failure this notice exists to prevent.
+   *
+   * Located by path rather than by a list of codes, so nothing has to be kept in sync: a warning
+   * about this Change is a warning about a file inside it. A warning with no path at all is
+   * project-level by construction — there is no Change file for it to be about.
+   */
   const advisories = diagnostics.filter((item) => item.severity === 'warning'
     && changeRoot !== null && item.path !== undefined
     && (item.path === changeRoot || item.path.startsWith(`${changeRoot}/`)));
+  /*
+   * A passing Gate must not be readable as "nothing to see here".
+   *
+   * The `structure` Gate passes on errors alone, correctly: its warnings are advisory and promoting
+   * them would fail Changes that were valid before the rule that warns existed. But its stdout is
+   * the flat sentence "Structural validation passed.", and a live XOps run read that as the whole
+   * result — the Artifact marker warning sitting in the same envelope went unread at Propose and at
+   * Verify, and surfaced at `archive --dry-run`, after the transition and after a human approval.
+   * The check had in fact reported it at the producing Stage every time. Nobody saw it.
+   *
+   * So this says out loud what the Gate's own output cannot: the Gate passed, and the run still
+   * found things. Deliberately an `info` at the command level, never part of Gate Evidence —
+   * `gateInputDigest` is `sha256({gate, revision, structurePassed})`, so touching what
+   * `structurePassed` means would rewrite every Evidence digest in every project to say something
+   * no Gate's verdict actually changed.
+   */
   /*
    * Only when the run is otherwise green, and only for a Change.
    *

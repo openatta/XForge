@@ -20,6 +20,7 @@ import { changeImplementers, computeGovernanceRevision } from './revision.js';
 import { readChangeAuditEvents, remoteDeliveryRequired, type ChangeAuditFacts } from './audit.js';
 import { knownIdentities } from './ledger-identity.js';
 import { flowArchiveOperation } from './flow-resolver.js';
+import { artifactSatisfied, currentStageOf, stageGates, structuredExit } from './flow-query.js';
 import { undeclaredRequiredGates, verificationDeclareArgv } from './verification.js';
 import { resolveWorkPackages, type WorkPackageResolution } from './work-packages.js';
 import { exists } from './files.js';
@@ -38,16 +39,6 @@ export { INDEPENDENT_REVIEW_CONDITION } from './control-plane/conditions.js';
 export { loadApprovalReceipts, loadTransitionReceipts } from './control-plane/receipts.js';
 export { legalTransitionTargets } from './control-plane/graph.js';
 
-/* An Artifact stops holding a Transition when it is written, and equally when this Change was never
-   asked for it. Named once because three call sites got the second half wrong independently. */
-const ARTIFACT_SATISFIED = new Set(['done', 'not-owed']);
-
-
-function structuredExit(stage: StageFlow['stages'][number]): { conditions?: Record<string, ExitCondition>; gates?: string[]; approvals?: string[]; auditEvents?: string[] } {
-  const exit = stage.exit;
-  if (!exit || !('conditions' in exit || 'gates' in exit || 'approvals' in exit || 'auditEvents' in exit)) return {};
-  return exit;
-}
 
 /**
  * One Gate's Evidence, or null when it is absent, unparseable, or not the Evidence it claims to be.
@@ -159,6 +150,28 @@ function exitConditionExpectation(value: ExitCondition, classification: unknown)
   return impacts.some((impact) => declared[impact] === true) ? value.expected : null;
 }
 
+/**
+ * When an undeclared Gate actually bites, said per Gate rather than asserted once.
+ *
+ * This sentence used to read "which on this Flow is after an approval has been collected" in a
+ * message that names the Flow in its first clause — and it is false for most of them. Quick runs
+ * `unit-tests` at verify and collects its only approval at archive, after it; a contract-governed
+ * Flow runs `contract-lint` at design, two Stages before `planning-solid`. Two separate live runs
+ * met the wrong half of it. A reader who checks a claim like this once and finds it untrue stops
+ * checking the rest of the message, which is where the part that matters is.
+ */
+function whenItBites(flow: StageFlow, gateId: string): string {
+  const index = flow.stages.findIndex((stage) => stageGates(stage).includes(gateId));
+  if (index < 0) return 'which on this Flow is the archive it is mandatory for';
+  const stage = flow.stages[index]!;
+  const approvalBefore = flow.stages
+    .slice(0, index)
+    .some((earlier) => (earlier.exit?.approvals ?? []).length > 0);
+  return approvalBefore
+    ? `which on this Flow is the ${stage.id} Stage, after an approval has already been collected`
+    : `which on this Flow is the ${stage.id} Stage, before any approval is collected`;
+}
+
 export async function resolveControlPlane(
   project: ProjectContext,
   changeId: string,
@@ -180,7 +193,9 @@ export async function resolveControlPlane(
      invent one. Computed once per resolve and shared by every condition ledger. */
   const identities = await knownIdentities(project, changeId, approvals.receipts);
   diagnostics.push(...transitions.diagnostics, ...approvals.diagnostics);
-  const currentStage = transitions.receipts.at(-1)?.to ?? flow.stages[0]?.id ?? 'unknown';
+  /* `unknown` because this value goes into receipt-shaped fields that must carry a string; the
+     portfolio listing applies `null` to the same derivation. */
+  const currentStage = currentStageOf(flow, transitions.receipts) ?? 'unknown';
   const transitionHead = transitions.receipts.at(-1)?.digest ?? null;
   const revision = await computeGovernanceRevision(project, changeId, flow, state, resources, currentStage, transitionHead);
   /*
@@ -209,7 +224,7 @@ export async function resolveControlPlane(
    * where nothing has been spent or after four Stages and a human approval have.
    */
   const undeclaredGates = undeclaredRequiredGates(project, resources.gates, [
-    ...flow.stages.flatMap((stage) => [...(stage.gates ?? []), ...(stage.exit?.gates ?? [])]),
+    ...flow.stages.flatMap(stageGates),
     ...flowArchiveOperation(flow).mandatoryGates,
   ]);
   const transitionRequirements = new Map<string, TransitionRequirement>();
@@ -242,7 +257,7 @@ export async function resolveControlPlane(
         for (const gateId of undeclaredGates) blockedBy.push(`verification:${gateId}:undeclared`);
       }
       for (const artifactId of current.produces) {
-        if (!ARTIFACT_SATISFIED.has(state.artifacts.find((artifact) => artifact.id === artifactId)?.status ?? '')) blockedBy.push(`artifact:${artifactId}`);
+        if (!artifactSatisfied(state.artifacts.find((artifact) => artifact.id === artifactId)?.status)) blockedBy.push(`artifact:${artifactId}`);
       }
       /* `unusable` blocks rather than falls through to the plan-less path: a plan nobody can read
          cannot show that its packages were delivered, and treating it as "no plan" would let the
@@ -257,7 +272,7 @@ export async function resolveControlPlane(
         if (state.workPackages.unattributedPaths?.length) blockedBy.push('tree:unattributed-paths');
       }
       const exit = structuredExit(current);
-      for (const gateId of [...new Set([...(current.gates ?? []), ...(exit.gates ?? [])])]) {
+      for (const gateId of stageGates(current)) {
         const evidence = await readGateEvidence(project, changeId, gateId, resources);
         /* Gate Evidence is bound to content, not to Stage/transition state or to gitHead. */
         const reason = gateBlockReason(evidence, revision.contentRevision);
@@ -457,28 +472,6 @@ export async function resolveControlPlane(
       remedy: { commands: [verificationDeclareArgv(gateId)] },
     });
   }
-
-/**
- * When an undeclared Gate actually bites, said per Gate rather than asserted once.
- *
- * This sentence used to read "which on this Flow is after an approval has been collected" in a
- * message that names the Flow in its first clause — and it is false for most of them. Quick runs
- * `unit-tests` at verify and collects its only approval at archive, after it; a contract-governed
- * Flow runs `contract-lint` at design, two Stages before `planning-solid`. Two separate live runs
- * met the wrong half of it. A reader who checks a claim like this once and finds it untrue stops
- * checking the rest of the message, which is where the part that matters is.
- */
-function whenItBites(flow: StageFlow, gateId: string): string {
-  const index = flow.stages.findIndex((stage) => [...(stage.gates ?? []), ...(stage.exit?.gates ?? [])].includes(gateId));
-  if (index < 0) return 'which on this Flow is the archive it is mandatory for';
-  const stage = flow.stages[index]!;
-  const approvalBefore = flow.stages
-    .slice(0, index)
-    .some((earlier) => (earlier.exit?.approvals ?? []).length > 0);
-  return approvalBefore
-    ? `which on this Flow is the ${stage.id} Stage, after an approval has already been collected`
-    : `which on this Flow is the ${stage.id} Stage, before any approval is collected`;
-}
 
   /*
    * The route out of a blocked transition, said where the block is read and not only where it is hit.
