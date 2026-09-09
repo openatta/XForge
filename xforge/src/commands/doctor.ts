@@ -107,6 +107,420 @@ function stageApprovalReferences(flow: StageFlow): string[] {
   ];
 }
 
+/*
+ * The suggestion checks, one function each.
+ *
+ * `executeDoctor` was six hundred and eleven lines: a shared read, then fifteen unrelated questions
+ * asked in sequence, each with the paragraph explaining why it is asked sitting inside the same
+ * function body as the previous one's loop. Nothing about them was entangled -- every one of these
+ * takes what it needs and answers on its own -- so the length was the only thing holding them
+ * together, and it is the reason none of them could be exercised without running the whole command.
+ *
+ * Bodies are moved verbatim, comments included. What changes is where the boundary is drawn.
+ */
+
+type Structure = Awaited<ReturnType<typeof checkStructure>>;
+type FlowResult = Awaited<ReturnType<typeof loadFlows>>;
+type ProviderUsability = (providerId: string) => { usable: boolean; reason: string };
+
+function checkActorScopedExemptions(project: ProjectContext, structure: Structure): DoctorFinding[] {
+  const suggestions: DoctorFinding[] = [];
+  /*
+   * A policy whose exemption cannot fire anywhere this project installs.
+   *
+   * `exceptActors` is expressible in no shipped target's own permission layer, so the exemption
+   * exists only in the runtime Hook bridge -- which can apply it only when the host identifies the
+   * calling sub-agent. A sub-agent whose contract was carried in a prompt rather than registered
+   * with the host sends no identity, and the exemption silently does not fire: the policy is then an
+   * unconditional deny for every actor, including the one it names.
+   *
+   * A live run met exactly that. It configured `protected-files` with `exceptActors: [integrator]`,
+   * watched the Integrator be denied along with everyone else, and read `actorScoped: false` on all
+   * five targets as "unsupported" -- half right, and the half it got wrong is the half that decides
+   * what the policy means. The honest summary of the state it was in: an Agent that respects the
+   * policy could not write the file at all, while `cat > file` was never in the hook's matching
+   * surface to begin with.
+   *
+   * Reported here rather than by `install`, and as a suggestion. The condition is a property of the
+   * product's targets rather than of anything this project did, so it holds on every install of
+   * every project today -- a per-install warning would fire every single time, which is how a
+   * channel stops being read.
+   */
+  const actorScoped = project.manifest.targets.filter((target) => getAdapter(target).capability.permissionPolicyScopes?.actorScoped);
+  if (actorScoped.length === 0) {
+    for (const [id, policy] of structure.resources.policies) {
+      const exempted = policy.value.spec.exceptActors ?? [];
+      if (exempted.length === 0) continue;
+      suggestions.push({
+        scope: 'policies',
+        code: 'XFORGE_DOCTOR_POLICY_EXEMPTION_UNENFORCEABLE',
+        id,
+        message: `PermissionPolicy ${id} exempts ${exempted.join(', ')}, and none of this project's targets (${project.manifest.targets.join(', ')}) can express an actor exemption in its own permission layer. The exemption therefore lives only in the XForge runtime Hook bridge, which applies it only when the host reports the calling sub-agent's identity — so wherever it does not, this policy is an unconditional ${policy.value.spec.effect} for every actor including the exempted one. Confirm the exempted actors are registered sub-agents of a target that reports them, or write the policy so it does not rely on an exemption.`,
+        path: policy.yamlPath,
+        severity: 'info',
+      });
+    }
+  }
+  return suggestions;
+}
+
+async function checkHookBypasses(project: ProjectContext, structure: Structure): Promise<DoctorFinding[]> {
+  const suggestions: DoctorFinding[] = [];
+  /*
+   * PermissionPolicies reach the host as Hooks, and a Hook the host declines to run enforces
+   * nothing while continuing to look installed.
+   *
+   * Every target declares in `capability.runtimeHook.bypasses` the ways its Hooks can be evaded.
+   * Claude's were recorded as none until this check was written; they are two, and unlike the other
+   * targets' -- which are gaps in event coverage -- both are total off switches. `disableAllHooks`
+   * is settable in *any* settings file, so the developer being governed can turn off every
+   * projected Hook with one line in a file they own. `allowManagedHooksOnly` is an administrator's
+   * setting that keeps only organisation-deployed Hooks, silently bypassing every project-level one.
+   *
+   * Exactly one of those is observable from inside a project root, and this reports it. The rest are
+   * not: user settings, managed settings, and settings the host fetches from a server at startup all
+   * sit outside the root, and nothing in this CLI reads outside the root -- `safeResolve` is a
+   * containment check, and reading a home directory or `/etc` would be the first breach of it. So
+   * the second finding declares the blind spot rather than implying coverage the check does not
+   * have. `RuleCoverage` exists to say whether a Rule's claimed enforcer actually enforces; this is
+   * the same question asked of the host instead of the Flow, and answering it partly and saying so
+   * beats answering it not at all.
+   *
+   * Suggestions, not warnings, for the reason the exemption check above gives: these are properties
+   * of the product's targets, and a per-install warning fires every time until nobody reads it.
+   */
+  if (structure.resources.policies.size > 0) {
+    const hookTargets = project.manifest.targets.filter((target) => getAdapter(target).capability.runtimeHook.bypasses.length > 0);
+    if (project.manifest.targets.includes('claude')) {
+      const settings = await readJsonIfExists<{ disableAllHooks?: unknown }>(await safeResolve(project.root, '.claude/settings.json'));
+      if (settings?.disableAllHooks === true) {
+        suggestions.push({
+          scope: 'policies',
+          code: 'XFORGE_DOCTOR_HOOKS_DISABLED_LOCALLY',
+          message: `This project's own Claude settings file sets disableAllHooks: true, so none of this project's ${structure.resources.policies.size} PermissionPolicy Hook(s) run in Claude Code. The projected files are still present and \`xforge state\` still reports the policies as installed — the enforcement is what is absent, not the configuration. Remove the key, or stop relying on these policies to guard anything.`,
+          path: '.claude/settings.json',
+          severity: 'info',
+        });
+      }
+    }
+    if (hookTargets.length > 0) {
+      const declared = hookTargets.map((target) => `${target}: ${getAdapter(target).capability.runtimeHook.bypasses.join('; ')}`).join(' | ');
+      suggestions.push({
+        scope: 'policies',
+        code: 'XFORGE_DOCTOR_HOOK_SUPPRESSION_UNVERIFIABLE',
+        message: `This project's PermissionPolicies are enforced by Hooks, and its targets declare these ways Hooks can be evaded — ${declared}. XForge can observe one of them: disableAllHooks in this project's own Claude settings file, which is reported separately when it is set. It cannot observe user-level settings, administrator-managed settings, or settings a host fetches from a server at startup, because none of those sit inside the project root. A Hook suppressed by any of them leaves no in-band signal. Ask the host instead: \`claude doctor\` lists managed settings it dropped, and /status names the setting sources actually in effect.`,
+        severity: 'info',
+      });
+    }
+  }
+  return suggestions;
+}
+
+async function checkRuleScopePaths(project: ProjectContext, structure: Structure): Promise<DoctorFinding[]> {
+  const suggestions: DoctorFinding[] = [];
+  /*
+   * A Rule whose `scope.paths` match nothing in this repository.
+   *
+   * Two independent readers consume that list and they read it differently. XForge compares it with
+   * the paths a Change declares in `change.yaml`, which is what decides whether the Rule reaches the
+   * Agent's instruction context at all. The Adapters hand the same list to the host as a native file
+   * matcher — Claude's `paths:`, Copilot's `applyTo:`, Cursor's `globs:` — where it genuinely is a
+   * filesystem glob. Both readings fail together on a layout the scope was not written for, and
+   * neither says so: the shipped `src/**` / `tests/**` is a guess about repository shape, and in a
+   * monorepo whose code lives under `apps/` and `packages/` it matches no file and no Change.
+   *
+   * Globbing the repository is the check that catches this, because it is the one question with an
+   * answer that does not depend on which Change happens to be open. `info`, and never a failure: a
+   * scope may legitimately name paths that do not exist yet.
+   */
+  for (const [name, rule] of structure.resources.rules) {
+    const paths = normalizeRule(rule.value).paths;
+    if (paths.length === 0) continue;
+    const matches = await fg(paths, {
+      cwd: project.root, onlyFiles: true, followSymbolicLinks: false, dot: false, unique: true,
+      ignore: ['**/node_modules/**', '**/.git/**'],
+    });
+    if (matches.length > 0) continue;
+    suggestions.push({
+      scope: 'rules',
+      code: 'XFORGE_DOCTOR_RULE_SCOPE_EMPTY',
+      id: name,
+      message: `Rule ${name} is scoped to ${paths.join(', ')}, which matches no file in this repository. XForge compares that list with the paths a Change declares in change.yaml, and the installed Adapters hand it to the host as a file matcher; on this layout both come up empty, so the Rule is registered, enforceable, and reaching nothing. Rewrite scope.paths to the paths this repository actually uses, or drop it to have the Rule apply everywhere.`,
+      /* The Rule's own path, not a guess at one: `resource-loader.ts` resolves rules through
+         `localizedVariant`, so a `_cn` project keeps its Rules somewhere this template does not
+         name, and the reader is sent to a file that does not exist. */
+      path: rule.yamlPath,
+      severity: 'info',
+    });
+  }
+  return suggestions;
+}
+
+function checkUndeclaredGates(project: ProjectContext, structure: Structure, referencedGates: ReadonlySet<string>): DoctorFinding[] {
+  const suggestions: DoctorFinding[] = [];
+  /*
+   * ISSUE-7: a required `declared` Gate that has never been answered, reported at project setup
+   * rather than mid-Change.
+   *
+   * `builtin: declared` Gates refuse rather than guess, which is the right refusal and the reason
+   * `unit-tests` stopped being a decoration on non-npm projects. But the refusal arrives the first
+   * time a Change reaches the Stage that runs the Gate — in a live XOps run, partway through the
+   * project's first Change, as a blocked maintenance action. The question is answerable on day one
+   * and nothing about it depends on a Change existing.
+   *
+   * The condition below mirrors the runner's own refusal so the two cannot drift; see it for why a
+   * dismissal does not count as an answer. This stays a suggestion, not a finding — an unanswered
+   * question is not a misconfiguration, and the Gate itself still refuses.
+   */
+  /* The condition itself lives in `core/verification.ts`, shared with the control plane so the two
+     places that report it cannot come to disagree about what counts as an answer. */
+  for (const gateId of undeclaredRequiredGates(project, structure.resources.gates, [...project.manifest.scaffold.gates].filter((id) => referencedGates.has(id)))) {
+    suggestions.push({
+      scope: 'gates',
+      code: 'XFORGE_DOCTOR_VERIFICATION_UNDECLARED',
+      id: gateId,
+      message: `Gate ${gateId} is required and runs whatever this project declares under manifest.verification.${gateId}, which is currently empty. It will refuse the first time a Change reaches the Stage that runs it. Answer it now with \`xforge verification declare --gate-name ${gateId} --command '[\"cargo\",\"test\"]' --by <person>\`, substituting the command this project actually verifies itself with. Do not answer it with whatever command happens to exist: a test command on a repository that has no tests passes this Gate while asserting nothing.`,
+      path: 'xforge/manifest.yaml',
+      severity: 'info',
+    });
+  }
+  return suggestions;
+}
+
+async function checkUnattestedDeclarers(project: ProjectContext): Promise<DoctorFinding[]> {
+  const suggestions: DoctorFinding[] = [];
+  /*
+   * Who this project's recorded verification commands are attributed to, checked against the
+   * repository rather than taken on trust.
+   *
+   * `verification declare` warns when the name cannot be attested, and that warning fires once, at
+   * the moment of declaring, and reaches nobody afterwards: the Manifest keeps `declaredBy` with no
+   * marker that it was unverified, and a live run observed exactly that -- "it does not persist
+   * anywhere... only whoever ran the command ever knows". A record of who decided how this project
+   * verifies itself is read long after the person who wrote it has gone, which is precisely when
+   * the caveat matters. So it is re-derived here, where a reader asks what is off about the
+   * project, rather than stored -- a stored flag would go stale the moment somebody commits.
+   *
+   * A suggestion, on the same terms as the declaration itself: an unattested name is recorded and
+   * kept, not refused.
+   */
+  for (const [gateId, entries] of Object.entries(project.manifest.verification ?? {})) {
+    for (const entry of entries) {
+      const declaredBy = (entry as { declaredBy?: string }).declaredBy;
+      if (!declaredBy) continue;
+      const unattested = await unattestedDeclarer(project.root, declaredBy);
+      if (!unattested) continue;
+      suggestions.push({
+        scope: 'gates',
+        code: 'XFORGE_DOCTOR_VERIFICATION_DECLARER_UNATTESTED',
+        id: gateId,
+        message: `manifest.verification.${gateId} records ${unattested} The command still runs; what is unverified is the record of who chose it.`,
+        path: 'xforge/manifest.yaml',
+        severity: 'info',
+      });
+    }
+  }
+  return suggestions;
+}
+
+function checkInteractiveOnlyApprovals(flowResult: FlowResult, usedFlows: ReadonlySet<string>, providerUsability: ProviderUsability): DoctorFinding[] {
+  const suggestions: DoctorFinding[] = [];
+  /*
+   * ISSUE-6: whether this project can collect an approval without a human at a terminal.
+   *
+   * Deliberately not folded into XFORGE_DOCTOR_APPROVAL_POLICY_UNUSABLE above, and deliberately not
+   * done by making `local` unusable. `local` *is* usable — a person opens a terminal and types the
+   * decision, which is the anchor of the whole approval design and not a defect. What an
+   * agent-driven project needs to know is the shape of that: every approval will interrupt the
+   * session and require someone to leave it. That is a fact about how the project will feel to
+   * work in, worth stating once at setup, and it was previously discoverable only by hitting
+   * XFORGE_APPROVAL_INTERACTIVE_REQUIRED at the first approval — twice, in the run that reported it.
+   */
+  /*
+   * Asked per policy, over the Flows this project actually uses.
+   *
+   * Flattening every Flow's policies into one set and suppressing on any usable provider anywhere
+   * got the customized case backwards: a project running `quick` (local only) that also ships a
+   * `release` Flow with a configured mcp provider was told nothing, and still met
+   * XFORGE_APPROVAL_INTERACTIVE_REQUIRED at its first approval — the failure this exists to warn
+   * about. Scoped to `usedFlows` for the same reason the unused-Flow check is: a policy in a Flow
+   * nobody has chosen is not a constraint anybody is under. Still one finding rather than one per
+   * Flow, naming which policies are affected, because a per-Flow fan-out on a stock project would
+   * be three copies of one fact.
+   */
+  const interactiveOnly: string[] = [];
+  for (const [name, flow] of flowResult.flows) {
+    if (!usedFlows.has(name)) continue;
+    for (const policy of flow.governance?.approvalPolicies ?? []) {
+      if (policy.providers.some((providerId) => providerId !== 'local' && providerUsability(providerId).usable)) continue;
+      /*
+       * "Only at a terminal" is a claim about `local`, so a policy that does not declare `local` is
+       * not this finding. It is the stronger one — XFORGE_DOCTOR_APPROVAL_POLICY_UNUSABLE, already
+       * raised above for the same policy, since no provider it declares is usable either. Reporting
+       * both told the reader to open a real terminal for an approval that `xforge approve` refuses
+       * outright with XFORGE_APPROVAL_PROVIDER_FORBIDDEN: two findings, one of them false, about
+       * one policy.
+       */
+      if (!policy.providers.includes('local')) continue;
+      interactiveOnly.push(`${name}/${policy.id}`);
+    }
+  }
+  if (interactiveOnly.length > 0) {
+    suggestions.push({
+      scope: 'approvals',
+      code: 'XFORGE_DOCTOR_APPROVALS_INTERACTIVE_ONLY',
+      id: 'local',
+      message: `${interactiveOnly.length} approval polic${interactiveOnly.length === 1 ? 'y' : 'ies'} in the Flows this project uses can be satisfied only at an interactive terminal, because no mcp provider is both declared and configured for ${interactiveOnly.length === 1 ? 'it' : 'them'}: ${interactiveOnly.join(', ')}. Those approvals cannot be collected from inside an Agent session — the approver has to open a real terminal each time. That is a working constraint, not a misconfiguration; the alternative is to configure an mcp approval provider. See docs/extension-guide.md.`,
+      path: 'xforge/manifest.yaml',
+      severity: 'info',
+    });
+  }
+  return suggestions;
+}
+
+async function checkFlowDrift(project: ProjectContext, flowResult: FlowResult): Promise<DoctorFinding[]> {
+  const suggestions: DoctorFinding[] = [];
+  /*
+   * Flow versions the project runs, against the versions this CLI ships.
+   *
+   * `xforge/flows/` was outside `xforge/scaffold/`, the only tree `upgrade-scaffold` then walked, so
+   * a Flow never moved when a project upgraded and nothing had ever said so. A project ran an
+   * entire Major three CLI releases behind its own toolchain -- two approvers where the shipped
+   * Flow asks for one non-implementer, and a Check Stage missing from `verify.reworkTo` -- and
+   * found out by reading the payload by hand. The upgrade now walks both trees, so the drift has a
+   * repair; this is still what makes it visible before somebody goes looking, because `install`
+   * does not compare Flow versions and a project only upgrades when it decides to.
+   *
+   * Reported as `info`, and worded as a comparison rather than a defect, because customising a Flow
+   * is a supported thing to do: a project that deliberately requires two approvers is not
+   * misconfigured, and a warning it can never clear would teach it to skim past the whole report.
+   *
+   * A failure to read the bundled payload is not a finding at all. `loadBundledScaffold` throws on
+   * a missing payload, a digest mismatch, a symlink, or a protocol mismatch, and doctor is the
+   * command a person runs when the installation is already suspect -- it has to survive that and
+   * report everything else.
+   */
+  let bundledFlows: Map<string, { version: string; digest: string }> | null = null;
+  try {
+    const bundled = await loadBundledScaffold();
+    bundledFlows = new Map();
+    for (const [relative, content] of bundled.files) {
+      const match = /^xforge\/flows\/([^/]+)\.yaml$/.exec(relative);
+      if (!match) continue;
+      try {
+        const parsed = parseYaml(content.toString('utf8'), { strict: true, uniqueKeys: true }) as { metadata?: { version?: unknown } };
+        const version = parsed?.metadata?.version;
+        if (version !== undefined && version !== null) {
+          bundledFlows.set(match[1]!, { version: String(version), digest: sha256(content) });
+        }
+      } catch { /* An unparseable payload Flow is the package's problem, not this project's. */ }
+    }
+  } catch { bundledFlows = null; }
+  if (bundledFlows) {
+    for (const [name, flow] of flowResult.flows) {
+      const shipped = bundledFlows.get(name);
+      const local = String(flow.metadata.version ?? '');
+      if (!shipped || !local) continue;
+      const relative = `xforge/flows/${name}.yaml`;
+      let localDigest: string | null = null;
+      try { localDigest = sha256(await readFile(await safeResolve(project.root, relative))); } catch { localDigest = null; }
+      const sameVersion = shipped.version === local;
+      const sameBytes = localDigest !== null && localDigest === shipped.digest;
+      if (sameVersion && (sameBytes || localDigest === null)) continue;
+
+      /*
+       * Two different findings, because they have different repairs.
+       *
+       * A version behind is the ordinary case: the project was initialised before a Flow moved, and
+       * has not run the `upgrade-scaffold` that would stage the newer one beside it.
+       *
+       * A version that matches while the bytes do not is the one a version comparison alone would
+       * miss, and it is the more interesting of the two -- either the Flow was edited in place
+       * without moving its version, or it was adopted from a build that shipped different content
+       * under the same number. The RUNBOOK records the same trap for the globally installed CLI
+       * ("only comparing version numbers misses the commonest kind of staleness"); this is that
+       * lesson applied to the one governed asset no upgrade path touches.
+       */
+      suggestions.push(sameVersion ? {
+        scope: 'flows',
+        code: 'XFORGE_DOCTOR_FLOW_CONTENT_DRIFT',
+        id: name,
+        message: `Flow ${name} says version ${local}, the same version ${CLI_NAME}@${CLI_VERSION} ships, but its content differs. Either it was edited without moving its version, or it came from a build that shipped different bytes under that number — and because the two agree on the number, nothing else will ever report it. Move the version if the edit was deliberate, so the difference has a name.`,
+        path: relative,
+        severity: 'info',
+      } : {
+        scope: 'flows',
+        code: 'XFORGE_DOCTOR_FLOW_VERSION_DRIFT',
+        id: name,
+        message: `Flow ${name} is at version ${local}; ${CLI_NAME}@${CLI_VERSION} ships version ${shipped.version}. Run xforge upgrade-scaffold to stage the shipped Flow beside yours and decide -- a Flow states how many approvals a Stage needs and where a blocker sends the work back, so it is brought, never adopted for you. If the difference is deliberate, record that at the top of ${relative} so the next reader does not take it for a missed upgrade.`,
+        path: relative,
+        severity: 'info',
+      });
+    }
+  }
+  return suggestions;
+}
+
+function checkAuditChainSecret(project: ProjectContext): DoctorFinding[] {
+  const suggestions: DoctorFinding[] = [];
+  /*
+   * A project that requires its audit to leave the machine, and leaves the chain forgeable.
+   *
+   * Not "you should turn on the HMAC" -- that would fire on every install, because the default
+   * chain is unkeyed by deliberate design and honest-agent governance is a defensible posture. This
+   * fires on an inconsistency instead: `audit.remote.requiredFor` naming an assurance level means
+   * the project treats delivery to an external sink as mandatory to archive, and a chain whose every
+   * input is public and lives in a repository the governed Agent can write is a weaker claim than
+   * the one that configuration is making. The two decisions belong to the same question and were
+   * made differently.
+   *
+   * A suggestion, and it names the manifest key rather than a command, because the fix is a secret
+   * this product cannot mint.
+   */
+  const requiredFor = project.manifest.audit?.remote?.requiredFor ?? [];
+  if (requiredFor.length > 0 && !(project.manifest.audit as { chain?: unknown } | undefined)?.chain) {
+    suggestions.push({
+      scope: 'approvals',
+      code: 'XFORGE_DOCTOR_AUDIT_CHAIN_UNKEYED',
+      message: `audit.remote.requiredFor requires audit delivery to archive ${requiredFor.join(', ')}, and audit.chain declares no secret — so the chain those events are drawn from is an unkeyed hash over public inputs in a repository the governed Agent can write. It catches a hand-placed receipt, a truncated log and a forgotten recomputation; it does not withstand an actor who rewrites the chain and the receipt together. Declare audit.chain.hmacSecretEnv, or accept that the delivery requirement is stronger than what it delivers.`,
+      path: 'xforge/manifest.yaml',
+      severity: 'info',
+    });
+  }
+  return suggestions;
+}
+
+async function checkOwnershipReadable(project: ProjectContext): Promise<Diagnostic[]> {
+  const diagnostics: Diagnostic[] = [];
+  /*
+   * The one project-health question `doctor` was not asking.
+   *
+   * `xforge/.install.json` is generated by install and rewritten in full by every run, so two
+   * developers who each installed on their own branch conflict in it as a matter of course. A
+   * conflicted file is no longer JSON, and `state`, `install`, `sync` and `update` all refuse at the
+   * first read -- while `check` passed and `doctor`, the one command whose job is to say what is
+   * wrong with a project, reported unused Flows and did not mention it. That was measured, not
+   * supposed.
+   *
+   * Reported here rather than thrown, because a diagnostic tool that dies on the first defect it
+   * finds is worth less than one that reports it alongside everything else. `error`, because
+   * nothing else about the project can be trusted while the record of what install wrote is
+   * unreadable -- and unlike every finding above it, this one has a mechanical repair.
+   */
+  try {
+    await readOwnership(project);
+  } catch (error) {
+    const reason = error instanceof XForgeError ? error.diagnostics.map((item) => item.message).join('; ') : (error as Error).message;
+    diagnostics.push(diagnostic(
+      'XFORGE_DOCTOR_OWNERSHIP_UNREADABLE',
+      `${reason} Until it is rebuilt, state, install, sync and update all refuse. Nothing in the file is authored, so the repair is to delete it and run \`xforge install\`.`,
+      OWNERSHIP_PATH,
+      'error',
+    ));
+  }
+  return diagnostics;
+}
+
 export async function executeDoctor(project: ProjectContext, options: { kind?: DoctorKind; strict: boolean }): Promise<{
   data: DoctorData;
   diagnostics: Diagnostic[];
@@ -317,369 +731,21 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
     });
   }
 
-  const suggestions: DoctorFinding[] = [];
-
-  /*
-   * A policy whose exemption cannot fire anywhere this project installs.
-   *
-   * `exceptActors` is expressible in no shipped target's own permission layer, so the exemption
-   * exists only in the runtime Hook bridge -- which can apply it only when the host identifies the
-   * calling sub-agent. A sub-agent whose contract was carried in a prompt rather than registered
-   * with the host sends no identity, and the exemption silently does not fire: the policy is then an
-   * unconditional deny for every actor, including the one it names.
-   *
-   * A live run met exactly that. It configured `protected-files` with `exceptActors: [integrator]`,
-   * watched the Integrator be denied along with everyone else, and read `actorScoped: false` on all
-   * five targets as "unsupported" -- half right, and the half it got wrong is the half that decides
-   * what the policy means. The honest summary of the state it was in: an Agent that respects the
-   * policy could not write the file at all, while `cat > file` was never in the hook's matching
-   * surface to begin with.
-   *
-   * Reported here rather than by `install`, and as a suggestion. The condition is a property of the
-   * product's targets rather than of anything this project did, so it holds on every install of
-   * every project today -- a per-install warning would fire every single time, which is how a
-   * channel stops being read.
-   */
-  const actorScoped = project.manifest.targets.filter((target) => getAdapter(target).capability.permissionPolicyScopes?.actorScoped);
-  if (actorScoped.length === 0) {
-    for (const [id, policy] of structure.resources.policies) {
-      const exempted = policy.value.spec.exceptActors ?? [];
-      if (exempted.length === 0) continue;
-      suggestions.push({
-        scope: 'policies',
-        code: 'XFORGE_DOCTOR_POLICY_EXEMPTION_UNENFORCEABLE',
-        id,
-        message: `PermissionPolicy ${id} exempts ${exempted.join(', ')}, and none of this project's targets (${project.manifest.targets.join(', ')}) can express an actor exemption in its own permission layer. The exemption therefore lives only in the XForge runtime Hook bridge, which applies it only when the host reports the calling sub-agent's identity — so wherever it does not, this policy is an unconditional ${policy.value.spec.effect} for every actor including the exempted one. Confirm the exempted actors are registered sub-agents of a target that reports them, or write the policy so it does not rely on an exemption.`,
-        path: policy.yamlPath,
-        severity: 'info',
-      });
-    }
-  }
-
-  /*
-   * PermissionPolicies reach the host as Hooks, and a Hook the host declines to run enforces
-   * nothing while continuing to look installed.
-   *
-   * Every target declares in `capability.runtimeHook.bypasses` the ways its Hooks can be evaded.
-   * Claude's were recorded as none until this check was written; they are two, and unlike the other
-   * targets' -- which are gaps in event coverage -- both are total off switches. `disableAllHooks`
-   * is settable in *any* settings file, so the developer being governed can turn off every
-   * projected Hook with one line in a file they own. `allowManagedHooksOnly` is an administrator's
-   * setting that keeps only organisation-deployed Hooks, silently bypassing every project-level one.
-   *
-   * Exactly one of those is observable from inside a project root, and this reports it. The rest are
-   * not: user settings, managed settings, and settings the host fetches from a server at startup all
-   * sit outside the root, and nothing in this CLI reads outside the root -- `safeResolve` is a
-   * containment check, and reading a home directory or `/etc` would be the first breach of it. So
-   * the second finding declares the blind spot rather than implying coverage the check does not
-   * have. `RuleCoverage` exists to say whether a Rule's claimed enforcer actually enforces; this is
-   * the same question asked of the host instead of the Flow, and answering it partly and saying so
-   * beats answering it not at all.
-   *
-   * Suggestions, not warnings, for the reason the exemption check above gives: these are properties
-   * of the product's targets, and a per-install warning fires every time until nobody reads it.
-   */
-  if (structure.resources.policies.size > 0) {
-    const hookTargets = project.manifest.targets.filter((target) => getAdapter(target).capability.runtimeHook.bypasses.length > 0);
-    if (project.manifest.targets.includes('claude')) {
-      const settings = await readJsonIfExists<{ disableAllHooks?: unknown }>(await safeResolve(project.root, '.claude/settings.json'));
-      if (settings?.disableAllHooks === true) {
-        suggestions.push({
-          scope: 'policies',
-          code: 'XFORGE_DOCTOR_HOOKS_DISABLED_LOCALLY',
-          message: `This project's own Claude settings file sets disableAllHooks: true, so none of this project's ${structure.resources.policies.size} PermissionPolicy Hook(s) run in Claude Code. The projected files are still present and \`xforge state\` still reports the policies as installed — the enforcement is what is absent, not the configuration. Remove the key, or stop relying on these policies to guard anything.`,
-          path: '.claude/settings.json',
-          severity: 'info',
-        });
-      }
-    }
-    if (hookTargets.length > 0) {
-      const declared = hookTargets.map((target) => `${target}: ${getAdapter(target).capability.runtimeHook.bypasses.join('; ')}`).join(' | ');
-      suggestions.push({
-        scope: 'policies',
-        code: 'XFORGE_DOCTOR_HOOK_SUPPRESSION_UNVERIFIABLE',
-        message: `This project's PermissionPolicies are enforced by Hooks, and its targets declare these ways Hooks can be evaded — ${declared}. XForge can observe one of them: disableAllHooks in this project's own Claude settings file, which is reported separately when it is set. It cannot observe user-level settings, administrator-managed settings, or settings a host fetches from a server at startup, because none of those sit inside the project root. A Hook suppressed by any of them leaves no in-band signal. Ask the host instead: \`claude doctor\` lists managed settings it dropped, and /status names the setting sources actually in effect.`,
-        severity: 'info',
-      });
-    }
-  }
-
-  /*
-   * A Rule whose `scope.paths` match nothing in this repository.
-   *
-   * Two independent readers consume that list and they read it differently. XForge compares it with
-   * the paths a Change declares in `change.yaml`, which is what decides whether the Rule reaches the
-   * Agent's instruction context at all. The Adapters hand the same list to the host as a native file
-   * matcher — Claude's `paths:`, Copilot's `applyTo:`, Cursor's `globs:` — where it genuinely is a
-   * filesystem glob. Both readings fail together on a layout the scope was not written for, and
-   * neither says so: the shipped `src/**` / `tests/**` is a guess about repository shape, and in a
-   * monorepo whose code lives under `apps/` and `packages/` it matches no file and no Change.
-   *
-   * Globbing the repository is the check that catches this, because it is the one question with an
-   * answer that does not depend on which Change happens to be open. `info`, and never a failure: a
-   * scope may legitimately name paths that do not exist yet.
-   */
-  for (const [name, rule] of structure.resources.rules) {
-    const paths = normalizeRule(rule.value).paths;
-    if (paths.length === 0) continue;
-    const matches = await fg(paths, {
-      cwd: project.root, onlyFiles: true, followSymbolicLinks: false, dot: false, unique: true,
-      ignore: ['**/node_modules/**', '**/.git/**'],
-    });
-    if (matches.length > 0) continue;
-    suggestions.push({
-      scope: 'rules',
-      code: 'XFORGE_DOCTOR_RULE_SCOPE_EMPTY',
-      id: name,
-      message: `Rule ${name} is scoped to ${paths.join(', ')}, which matches no file in this repository. XForge compares that list with the paths a Change declares in change.yaml, and the installed Adapters hand it to the host as a file matcher; on this layout both come up empty, so the Rule is registered, enforceable, and reaching nothing. Rewrite scope.paths to the paths this repository actually uses, or drop it to have the Rule apply everywhere.`,
-      /* The Rule's own path, not a guess at one: `resource-loader.ts` resolves rules through
-         `localizedVariant`, so a `_cn` project keeps its Rules somewhere this template does not
-         name, and the reader is sent to a file that does not exist. */
-      path: rule.yamlPath,
-      severity: 'info',
-    });
-  }
-
-  /*
-   * ISSUE-7: a required `declared` Gate that has never been answered, reported at project setup
-   * rather than mid-Change.
-   *
-   * `builtin: declared` Gates refuse rather than guess, which is the right refusal and the reason
-   * `unit-tests` stopped being a decoration on non-npm projects. But the refusal arrives the first
-   * time a Change reaches the Stage that runs the Gate — in a live XOps run, partway through the
-   * project's first Change, as a blocked maintenance action. The question is answerable on day one
-   * and nothing about it depends on a Change existing.
-   *
-   * The condition below mirrors the runner's own refusal so the two cannot drift; see it for why a
-   * dismissal does not count as an answer. This stays a suggestion, not a finding — an unanswered
-   * question is not a misconfiguration, and the Gate itself still refuses.
-   */
-  /* The condition itself lives in `core/verification.ts`, shared with the control plane so the two
-     places that report it cannot come to disagree about what counts as an answer. */
-  for (const gateId of undeclaredRequiredGates(project, structure.resources.gates, [...project.manifest.scaffold.gates].filter((id) => referencedGates.has(id)))) {
-    suggestions.push({
-      scope: 'gates',
-      code: 'XFORGE_DOCTOR_VERIFICATION_UNDECLARED',
-      id: gateId,
-      message: `Gate ${gateId} is required and runs whatever this project declares under manifest.verification.${gateId}, which is currently empty. It will refuse the first time a Change reaches the Stage that runs it. Answer it now with \`xforge verification declare --gate-name ${gateId} --command '[\"cargo\",\"test\"]' --by <person>\`, substituting the command this project actually verifies itself with. Do not answer it with whatever command happens to exist: a test command on a repository that has no tests passes this Gate while asserting nothing.`,
-      path: 'xforge/manifest.yaml',
-      severity: 'info',
-    });
-  }
-
-  /*
-   * Who this project's recorded verification commands are attributed to, checked against the
-   * repository rather than taken on trust.
-   *
-   * `verification declare` warns when the name cannot be attested, and that warning fires once, at
-   * the moment of declaring, and reaches nobody afterwards: the Manifest keeps `declaredBy` with no
-   * marker that it was unverified, and a live run observed exactly that -- "it does not persist
-   * anywhere... only whoever ran the command ever knows". A record of who decided how this project
-   * verifies itself is read long after the person who wrote it has gone, which is precisely when
-   * the caveat matters. So it is re-derived here, where a reader asks what is off about the
-   * project, rather than stored -- a stored flag would go stale the moment somebody commits.
-   *
-   * A suggestion, on the same terms as the declaration itself: an unattested name is recorded and
-   * kept, not refused.
-   */
-  for (const [gateId, entries] of Object.entries(project.manifest.verification ?? {})) {
-    for (const entry of entries) {
-      const declaredBy = (entry as { declaredBy?: string }).declaredBy;
-      if (!declaredBy) continue;
-      const unattested = await unattestedDeclarer(project.root, declaredBy);
-      if (!unattested) continue;
-      suggestions.push({
-        scope: 'gates',
-        code: 'XFORGE_DOCTOR_VERIFICATION_DECLARER_UNATTESTED',
-        id: gateId,
-        message: `manifest.verification.${gateId} records ${unattested} The command still runs; what is unverified is the record of who chose it.`,
-        path: 'xforge/manifest.yaml',
-        severity: 'info',
-      });
-    }
-  }
-
-  /*
-   * ISSUE-6: whether this project can collect an approval without a human at a terminal.
-   *
-   * Deliberately not folded into XFORGE_DOCTOR_APPROVAL_POLICY_UNUSABLE above, and deliberately not
-   * done by making `local` unusable. `local` *is* usable — a person opens a terminal and types the
-   * decision, which is the anchor of the whole approval design and not a defect. What an
-   * agent-driven project needs to know is the shape of that: every approval will interrupt the
-   * session and require someone to leave it. That is a fact about how the project will feel to
-   * work in, worth stating once at setup, and it was previously discoverable only by hitting
-   * XFORGE_APPROVAL_INTERACTIVE_REQUIRED at the first approval — twice, in the run that reported it.
-   */
-  /*
-   * Asked per policy, over the Flows this project actually uses.
-   *
-   * Flattening every Flow's policies into one set and suppressing on any usable provider anywhere
-   * got the customized case backwards: a project running `quick` (local only) that also ships a
-   * `release` Flow with a configured mcp provider was told nothing, and still met
-   * XFORGE_APPROVAL_INTERACTIVE_REQUIRED at its first approval — the failure this exists to warn
-   * about. Scoped to `usedFlows` for the same reason the unused-Flow check is: a policy in a Flow
-   * nobody has chosen is not a constraint anybody is under. Still one finding rather than one per
-   * Flow, naming which policies are affected, because a per-Flow fan-out on a stock project would
-   * be three copies of one fact.
-   */
-  const interactiveOnly: string[] = [];
-  for (const [name, flow] of flowResult.flows) {
-    if (!usedFlows.has(name)) continue;
-    for (const policy of flow.governance?.approvalPolicies ?? []) {
-      if (policy.providers.some((providerId) => providerId !== 'local' && providerUsability(providerId).usable)) continue;
-      /*
-       * "Only at a terminal" is a claim about `local`, so a policy that does not declare `local` is
-       * not this finding. It is the stronger one — XFORGE_DOCTOR_APPROVAL_POLICY_UNUSABLE, already
-       * raised above for the same policy, since no provider it declares is usable either. Reporting
-       * both told the reader to open a real terminal for an approval that `xforge approve` refuses
-       * outright with XFORGE_APPROVAL_PROVIDER_FORBIDDEN: two findings, one of them false, about
-       * one policy.
-       */
-      if (!policy.providers.includes('local')) continue;
-      interactiveOnly.push(`${name}/${policy.id}`);
-    }
-  }
-  if (interactiveOnly.length > 0) {
-    suggestions.push({
-      scope: 'approvals',
-      code: 'XFORGE_DOCTOR_APPROVALS_INTERACTIVE_ONLY',
-      id: 'local',
-      message: `${interactiveOnly.length} approval polic${interactiveOnly.length === 1 ? 'y' : 'ies'} in the Flows this project uses can be satisfied only at an interactive terminal, because no mcp provider is both declared and configured for ${interactiveOnly.length === 1 ? 'it' : 'them'}: ${interactiveOnly.join(', ')}. Those approvals cannot be collected from inside an Agent session — the approver has to open a real terminal each time. That is a working constraint, not a misconfiguration; the alternative is to configure an mcp approval provider. See docs/extension-guide.md.`,
-      path: 'xforge/manifest.yaml',
-      severity: 'info',
-    });
-  }
-
-  /*
-   * Flow versions the project runs, against the versions this CLI ships.
-   *
-   * `xforge/flows/` was outside `xforge/scaffold/`, the only tree `upgrade-scaffold` then walked, so
-   * a Flow never moved when a project upgraded and nothing had ever said so. A project ran an
-   * entire Major three CLI releases behind its own toolchain -- two approvers where the shipped
-   * Flow asks for one non-implementer, and a Check Stage missing from `verify.reworkTo` -- and
-   * found out by reading the payload by hand. The upgrade now walks both trees, so the drift has a
-   * repair; this is still what makes it visible before somebody goes looking, because `install`
-   * does not compare Flow versions and a project only upgrades when it decides to.
-   *
-   * Reported as `info`, and worded as a comparison rather than a defect, because customising a Flow
-   * is a supported thing to do: a project that deliberately requires two approvers is not
-   * misconfigured, and a warning it can never clear would teach it to skim past the whole report.
-   *
-   * A failure to read the bundled payload is not a finding at all. `loadBundledScaffold` throws on
-   * a missing payload, a digest mismatch, a symlink, or a protocol mismatch, and doctor is the
-   * command a person runs when the installation is already suspect -- it has to survive that and
-   * report everything else.
-   */
-  let bundledFlows: Map<string, { version: string; digest: string }> | null = null;
-  try {
-    const bundled = await loadBundledScaffold();
-    bundledFlows = new Map();
-    for (const [relative, content] of bundled.files) {
-      const match = /^xforge\/flows\/([^/]+)\.yaml$/.exec(relative);
-      if (!match) continue;
-      try {
-        const parsed = parseYaml(content.toString('utf8'), { strict: true, uniqueKeys: true }) as { metadata?: { version?: unknown } };
-        const version = parsed?.metadata?.version;
-        if (version !== undefined && version !== null) {
-          bundledFlows.set(match[1]!, { version: String(version), digest: sha256(content) });
-        }
-      } catch { /* An unparseable payload Flow is the package's problem, not this project's. */ }
-    }
-  } catch { bundledFlows = null; }
-  if (bundledFlows) {
-    for (const [name, flow] of flowResult.flows) {
-      const shipped = bundledFlows.get(name);
-      const local = String(flow.metadata.version ?? '');
-      if (!shipped || !local) continue;
-      const relative = `xforge/flows/${name}.yaml`;
-      let localDigest: string | null = null;
-      try { localDigest = sha256(await readFile(await safeResolve(project.root, relative))); } catch { localDigest = null; }
-      const sameVersion = shipped.version === local;
-      const sameBytes = localDigest !== null && localDigest === shipped.digest;
-      if (sameVersion && (sameBytes || localDigest === null)) continue;
-
-      /*
-       * Two different findings, because they have different repairs.
-       *
-       * A version behind is the ordinary case: the project was initialised before a Flow moved, and
-       * has not run the `upgrade-scaffold` that would stage the newer one beside it.
-       *
-       * A version that matches while the bytes do not is the one a version comparison alone would
-       * miss, and it is the more interesting of the two -- either the Flow was edited in place
-       * without moving its version, or it was adopted from a build that shipped different content
-       * under the same number. The RUNBOOK records the same trap for the globally installed CLI
-       * ("only comparing version numbers misses the commonest kind of staleness"); this is that
-       * lesson applied to the one governed asset no upgrade path touches.
-       */
-      suggestions.push(sameVersion ? {
-        scope: 'flows',
-        code: 'XFORGE_DOCTOR_FLOW_CONTENT_DRIFT',
-        id: name,
-        message: `Flow ${name} says version ${local}, the same version ${CLI_NAME}@${CLI_VERSION} ships, but its content differs. Either it was edited without moving its version, or it came from a build that shipped different bytes under that number — and because the two agree on the number, nothing else will ever report it. Move the version if the edit was deliberate, so the difference has a name.`,
-        path: relative,
-        severity: 'info',
-      } : {
-        scope: 'flows',
-        code: 'XFORGE_DOCTOR_FLOW_VERSION_DRIFT',
-        id: name,
-        message: `Flow ${name} is at version ${local}; ${CLI_NAME}@${CLI_VERSION} ships version ${shipped.version}. Run xforge upgrade-scaffold to stage the shipped Flow beside yours and decide -- a Flow states how many approvals a Stage needs and where a blocker sends the work back, so it is brought, never adopted for you. If the difference is deliberate, record that at the top of ${relative} so the next reader does not take it for a missed upgrade.`,
-        path: relative,
-        severity: 'info',
-      });
-    }
-  }
-
-  /*
-   * A project that requires its audit to leave the machine, and leaves the chain forgeable.
-   *
-   * Not "you should turn on the HMAC" -- that would fire on every install, because the default
-   * chain is unkeyed by deliberate design and honest-agent governance is a defensible posture. This
-   * fires on an inconsistency instead: `audit.remote.requiredFor` naming an assurance level means
-   * the project treats delivery to an external sink as mandatory to archive, and a chain whose every
-   * input is public and lives in a repository the governed Agent can write is a weaker claim than
-   * the one that configuration is making. The two decisions belong to the same question and were
-   * made differently.
-   *
-   * A suggestion, and it names the manifest key rather than a command, because the fix is a secret
-   * this product cannot mint.
-   */
-  const requiredFor = project.manifest.audit?.remote?.requiredFor ?? [];
-  if (requiredFor.length > 0 && !(project.manifest.audit as { chain?: unknown } | undefined)?.chain) {
-    suggestions.push({
-      scope: 'approvals',
-      code: 'XFORGE_DOCTOR_AUDIT_CHAIN_UNKEYED',
-      message: `audit.remote.requiredFor requires audit delivery to archive ${requiredFor.join(', ')}, and audit.chain declares no secret — so the chain those events are drawn from is an unkeyed hash over public inputs in a repository the governed Agent can write. It catches a hand-placed receipt, a truncated log and a forgotten recomputation; it does not withstand an actor who rewrites the chain and the receipt together. Declare audit.chain.hmacSecretEnv, or accept that the delivery requirement is stronger than what it delivers.`,
-      path: 'xforge/manifest.yaml',
-      severity: 'info',
-    });
-  }
-
-  /*
-   * The one project-health question `doctor` was not asking.
-   *
-   * `xforge/.install.json` is generated by install and rewritten in full by every run, so two
-   * developers who each installed on their own branch conflict in it as a matter of course. A
-   * conflicted file is no longer JSON, and `state`, `install`, `sync` and `update` all refuse at the
-   * first read -- while `check` passed and `doctor`, the one command whose job is to say what is
-   * wrong with a project, reported unused Flows and did not mention it. That was measured, not
-   * supposed.
-   *
-   * Reported here rather than thrown, because a diagnostic tool that dies on the first defect it
-   * finds is worth less than one that reports it alongside everything else. `error`, because
-   * nothing else about the project can be trusted while the record of what install wrote is
-   * unreadable -- and unlike every finding above it, this one has a mechanical repair.
-   */
-  try {
-    await readOwnership(project);
-  } catch (error) {
-    const reason = error instanceof XForgeError ? error.diagnostics.map((item) => item.message).join('; ') : (error as Error).message;
-    diagnostics.push(diagnostic(
-      'XFORGE_DOCTOR_OWNERSHIP_UNREADABLE',
-      `${reason} Until it is rebuilt, state, install, sync and update all refuse. Nothing in the file is authored, so the repair is to delete it and run \`xforge install\`.`,
-      OWNERSHIP_PATH,
-      'error',
-    ));
-  }
+  /* Each of these asks one question and answers it on its own; the order is the order they are
+     reported in. `checkOwnershipReadable` is last for the same reason it was last before: it
+     reports a diagnostic rather than a finding, and it is about the project rather than about
+     anything the report above it names. */
+  const suggestions: DoctorFinding[] = [
+    ...checkActorScopedExemptions(project, structure),
+    ...await checkHookBypasses(project, structure),
+    ...await checkRuleScopePaths(project, structure),
+    ...checkUndeclaredGates(project, structure, referencedGates),
+    ...await checkUnattestedDeclarers(project),
+    ...checkInteractiveOnlyApprovals(flowResult, usedFlows, providerUsability),
+    ...await checkFlowDrift(project, flowResult),
+    ...checkAuditChainSecret(project),
+  ];
+  diagnostics.push(...await checkOwnershipReadable(project));
 
   const matchesKind = (finding: DoctorFinding): boolean => !options.kind || finding.scope === options.kind;
   const filtered: DoctorData = {
