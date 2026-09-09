@@ -3,7 +3,7 @@ import type { ChangeState, Diagnostic, GateEvidence, ProjectContext, StageFlow, 
 import { unknownIdentityReason, type KnownIdentities } from '../ledger-identity.js';
 import { diagnostic } from '../errors.js';
 import { safeResolve } from '../path-safety.js';
-import { evaluateVerificationReceipt, VERIFICATION_RECEIPT_CONDITION, VERIFICATION_RECEIPT_PATH } from '../verification-receipt.js';
+import { decideVerificationReceipt, readVerificationReceipt, VERIFICATION_RECEIPT_CONDITION, VERIFICATION_RECEIPT_PATH, type VerificationReceiptSource } from '../verification-receipt.js';
 import { readReviewAcknowledgements, reviewCovers } from '../review-acknowledgement.js';
 import type { WorkPackageResolution } from '../work-packages.js';
 import { parse as parseYaml } from 'yaml';
@@ -114,30 +114,45 @@ export function conditionReworkCutoff(flow: StageFlow, receipts: readonly Transi
  * requires `<change>/evidence/conditions/<key>.yaml` where every entry names a decision and a
  * decision maker, which cannot be satisfied without asserting an attributable human decision.
  */
-async function evaluateExitCondition(
-  project: ProjectContext,
+/**
+ * What is at `evidence/conditions/<key>.{yaml,yml,json}`, with reading finished.
+ *
+ * Three outcomes rather than a verdict: no file at any of the three extensions, a file that does
+ * not parse, and a parsed document. Which of the three it is was already decided at the read
+ * boundary; carrying it out is what lets the judgement below be a pure function.
+ */
+type LedgerSource =
+  | { readonly kind: 'absent' }
+  | { readonly kind: 'unreadable' }
+  | { readonly kind: 'document'; readonly document: unknown };
+
+async function readConditionLedger(project: ProjectContext, changeId: string, key: string): Promise<LedgerSource> {
+  for (const extension of ['yaml', 'yml', 'json']) {
+    const relative = `${project.changesPath}/${changeId}/evidence/conditions/${key}.${extension}`;
+    let source: string;
+    try { source = await readFile(await safeResolve(project.root, relative), 'utf8'); }
+    catch { continue; }
+    try {
+      return { kind: 'document', document: extension === 'json' ? JSON.parse(source) : parseYaml(source, { strict: true, uniqueKeys: true }) };
+    } catch { return { kind: 'unreadable' }; }
+  }
+  return { kind: 'absent' };
+}
+
+function decideExitCondition(
+  source: LedgerSource,
+  changesPath: string,
   changeId: string,
   key: string,
   expected: string,
   known?: KnownIdentities,
   reworkCutoff?: number | null,
   diagnostics?: Diagnostic[],
-): Promise<{ satisfied: boolean; reason: string }> {
+): { satisfied: boolean; reason: string } {
   if (!CONDITION_KEY_PATTERN.test(key)) return { satisfied: false, reason: 'invalid-key' };
-  let document: unknown = null;
-  let found = false;
-  for (const extension of ['yaml', 'yml', 'json']) {
-    const relative = `${project.changesPath}/${changeId}/evidence/conditions/${key}.${extension}`;
-    let source: string;
-    try { source = await readFile(await safeResolve(project.root, relative), 'utf8'); }
-    catch { continue; }
-    found = true;
-    try { document = extension === 'json' ? JSON.parse(source) : parseYaml(source, { strict: true, uniqueKeys: true }); }
-    catch { return { satisfied: false, reason: 'ledger-unreadable' }; }
-    break;
-  }
-  if (!found) return { satisfied: false, reason: `ledger-missing-expected-${expected}` };
-  const ledger = document as { condition?: unknown; status?: unknown; entries?: unknown } | null;
+  if (source.kind === 'unreadable') return { satisfied: false, reason: 'ledger-unreadable' };
+  if (source.kind === 'absent') return { satisfied: false, reason: `ledger-missing-expected-${expected}` };
+  const ledger = source.document as { condition?: unknown; status?: unknown; entries?: unknown } | null;
   if (!ledger || typeof ledger !== 'object') return { satisfied: false, reason: 'ledger-unreadable' };
   if (nonEmptyString(ledger.condition) && ledger.condition !== key) return { satisfied: false, reason: 'ledger-subject-mismatch' };
   const entries = Array.isArray(ledger.entries) ? ledger.entries as ConditionLedgerEntry[] : null;
@@ -173,7 +188,7 @@ async function evaluateExitCondition(
       diagnostics.push(diagnostic(
         'XFORGE_CONDITION_LEDGER_UNDECIDED_REMEDY',
         `${undecided.length} of ${entries.length} entr${entries.length === 1 ? 'y' : 'ies'} in \`evidence/conditions/${key}.yaml\` ${undecided.length === 1 ? 'is' : 'are'} not decided: ${named.join('; ')}. An entry counts as decided only when \`question\`, \`decision\`, \`decidedBy\` and \`decidedAt\` are all present, \`decidedAt\` parses as a date, and \`decidedBy\` names somebody this Change can attest — an approver on an approval receipt, or a Git author of the Change directory.`,
-        `${project.changesPath}/${changeId}/evidence/conditions/${key}.yaml`,
+        `${changesPath}/${changeId}/evidence/conditions/${key}.yaml`,
         'warning',
       ));
     }
@@ -207,15 +222,16 @@ async function evaluateExitCondition(
  * and it is decided against facts this resolve already holds (the content revision and the Gate
  * Evidence that actually passed), so it is routed here instead of through the generic ledger reader.
  */
-async function evaluateVerificationReceiptCondition(
-  project: ProjectContext,
+function decideVerificationReceiptCondition(
+  source: VerificationReceiptSource,
+  changesPath: string,
   changeId: string,
   expected: string,
   contentRevision: string,
   gates: readonly GateEvidence[],
   diagnostics: Diagnostic[],
-): Promise<{ satisfied: boolean; reason: string }> {
-  const result = await evaluateVerificationReceipt(project, changeId, { contentRevision, gates });
+): { satisfied: boolean; reason: string } {
+  const result = decideVerificationReceipt(source, changeId, { contentRevision, gates });
   /*
    * The receipt reader reports a key nothing reads -- by name, with the nearest known key as a
    * suggestion -- and this was the one of the three evaluators not handed the diagnostics channel
@@ -225,7 +241,7 @@ async function evaluateVerificationReceiptCondition(
    * while naming a field nobody reads is exactly the case worth saying out loud.
    */
   for (const warning of result.warnings ?? []) {
-    diagnostics.push(diagnostic('XFORGE_VERIFICATION_RECEIPT_UNKNOWN_KEY', warning, `${project.changesPath}/${changeId}/${VERIFICATION_RECEIPT_PATH}`, 'warning'));
+    diagnostics.push(diagnostic('XFORGE_VERIFICATION_RECEIPT_UNKNOWN_KEY', warning, `${changesPath}/${changeId}/${VERIFICATION_RECEIPT_PATH}`, 'warning'));
   }
   if (result.status !== 'passed') return { satisfied: false, reason: result.reason };
   if (expected !== 'passed') return { satisfied: false, reason: `status-passed-expected-${expected}` };
@@ -248,14 +264,13 @@ export const INDEPENDENT_REVIEW_CONDITION = 'independentReview';
  * would be enforcing a property the CLI cannot observe. Both names are reported in State instead,
  * where the approver signing the Change can see them.
  */
-async function independentReviewCondition(
-  project: ProjectContext,
-  changeId: string,
+function decideIndependentReview(
+  reviews: Awaited<ReturnType<typeof readReviewAcknowledgements>>,
   workPackages: WorkPackageResolution,
   expected: string,
   contentRevision: string,
   reviewDiagnostics: Diagnostic[],
-): Promise<{ satisfied: boolean; reason: string }> {
+): { satisfied: boolean; reason: string } {
   if (expected !== 'complete') return { satisfied: false, reason: `unsupported-expected-${expected}` };
   /* A plan that is present but unreadable is not the plan-less shape, and answering as though it
      were would send the Change to `xforge review acknowledge` — which refuses while a plan file
@@ -276,7 +291,7 @@ async function independentReviewCondition(
    * acknowledgement, bound to the content it reviewed.
    */
   if (packages.length === 0) {
-    const acknowledgements = await readReviewAcknowledgements(project, changeId);
+    const acknowledgements = reviews;
     /* Rejected receipts are reported, not counted: a file that fails its digest or schema is not
        evidence of a review, and the condition stays unsatisfied so the Change is not closed on it. */
     reviewDiagnostics.push(...acknowledgements.diagnostics);
@@ -307,8 +322,8 @@ async function independentReviewCondition(
  * removing a review transcript after the closing transition moved nothing, left the ready receipt
  * fresh, and archived a Change whose `independentReview` evidence no longer existed.
  */
-export async function evaluateStageCondition(
-  project: ProjectContext,
+export function decideStageCondition(
+  changesPath: string,
   changeId: string,
   key: string,
   expected: string,
@@ -325,13 +340,51 @@ export async function evaluateStageCondition(
     /* Null when this Stage's inputs have never been re-opened; only the ledger reader consults it,
        because the other two evaluators carry a revision binding of their own. */
     reworkCutoff: number | null;
+    /** Everything the three evaluators used to read for themselves, read once, up front. */
+    sources: ConditionSources;
   },
-): Promise<{ satisfied: boolean; reason: string }> {
+): { satisfied: boolean; reason: string } {
   if (key === VERIFICATION_RECEIPT_CONDITION) {
-    return evaluateVerificationReceiptCondition(project, changeId, expected, context.contentRevision, context.gates, context.diagnostics);
+    return decideVerificationReceiptCondition(context.sources.receipt, changesPath, changeId, expected, context.contentRevision, context.gates, context.diagnostics);
   }
   if (key === INDEPENDENT_REVIEW_CONDITION) {
-    return independentReviewCondition(project, changeId, context.workPackages, expected, context.contentRevision, context.diagnostics);
+    return decideIndependentReview(context.sources.reviews, context.workPackages, expected, context.contentRevision, context.diagnostics);
   }
-  return evaluateExitCondition(project, changeId, key, expected, context.identities, context.reworkCutoff, context.diagnostics);
+  return decideExitCondition(context.sources.ledgers.get(key) ?? { kind: 'absent' }, changesPath, changeId, key, expected, context.identities, context.reworkCutoff, context.diagnostics);
+}
+
+/**
+ * Everything the three condition evaluators used to read for themselves, gathered before any of
+ * them runs.
+ *
+ * The reads are loop-invariant and were not being treated as such: `resolveControlPlane` evaluated
+ * conditions once per candidate transition, and the paths involved depend on the Flow's declared
+ * condition keys and the Change id — never on the target. So the same ledger was opened once per
+ * candidate, and the decision that used it could not be tested without a project tree on disk.
+ *
+ * Collected here, decided by `decideStageCondition`, which is now a pure function.
+ */
+/* Not exported: `control-plane.ts` passes what `collectConditionSources` returned straight back
+   into `decideStageCondition`, and never names the type. The suite refuses a module that exports a
+   symbol nothing outside it names; `Awaited<ReturnType<typeof collectConditionSources>>` reaches it
+   if a caller ever needs to hold one. */
+interface ConditionSources {
+  /** By condition key. A key with no entry is treated as `absent`, which is what a missing file is. */
+  ledgers: Map<string, LedgerSource>;
+  receipt: VerificationReceiptSource;
+  reviews: Awaited<ReturnType<typeof readReviewAcknowledgements>>;
+}
+
+export async function collectConditionSources(
+  project: ProjectContext,
+  changeId: string,
+  keys: readonly string[],
+): Promise<ConditionSources> {
+  const ledgerKeys = keys.filter((key) => key !== VERIFICATION_RECEIPT_CONDITION && key !== INDEPENDENT_REVIEW_CONDITION);
+  const [ledgerEntries, receipt, reviews] = await Promise.all([
+    Promise.all(ledgerKeys.map(async (key) => [key, await readConditionLedger(project, changeId, key)] as const)),
+    readVerificationReceipt(project, changeId),
+    readReviewAcknowledgements(project, changeId),
+  ]);
+  return { ledgers: new Map(ledgerEntries), receipt, reviews };
 }

@@ -176,28 +176,62 @@ function evaluate(
   return failed(reason, problems, cited);
 }
 
+/**
+ * What is on disk at the receipt's path, with reading finished and nothing decided yet.
+ *
+ * Split from the verdict because deciding this condition needs the Gate Evidence that passed, and
+ * *that* is settled after the read — so keeping the two in one function forced the whole condition
+ * evaluator to be asynchronous and unreachable without a project tree. Every way of not having a
+ * usable receipt is carried as a reason here rather than resolved to a verdict, so the pure half
+ * below still answers exactly what the combined function answered.
+ */
+export type VerificationReceiptSource =
+  | { readonly kind: 'unusable'; readonly relative: string; readonly reason: string; readonly problems: string[] }
+  | { readonly kind: 'document'; readonly relative: string; readonly document: VerificationReceiptLedger };
+
+export async function readVerificationReceipt(project: ProjectContext, changeId: string): Promise<VerificationReceiptSource> {
+  const relative = `${project.changesPath}/${changeId}/${VERIFICATION_RECEIPT_PATH}`;
+  const unusable = (reason: string, problems: string[]): VerificationReceiptSource => ({ kind: 'unusable', relative, reason, problems });
+  let absolute: string;
+  try { absolute = await safeResolve(project.root, relative); }
+  catch { return unusable('path-unsafe', [`${relative}: path is outside the project.`]); }
+  try { await access(absolute); }
+  catch {
+    return unusable('receipt-missing', [`${relative}: the Verify Stage must record a verification receipt bound to the current revision and to the Gate Evidence that passed.`]);
+  }
+  /* An empty file parses to null upstream; a readable but contentless receipt is not a receipt. */
+  if ((await readFile(absolute, 'utf8')).trim().length === 0) {
+    return unusable('receipt-empty', [`${relative}: the verification receipt is empty.`]);
+  }
+  let document: VerificationReceiptLedger;
+  try { document = await loadYaml<VerificationReceiptLedger>(absolute, relative); }
+  catch (error) { return unusable('receipt-unreadable', [`${relative}: ${(error as Error).message}`]); }
+  if (!document || typeof document !== 'object' || Array.isArray(document)) {
+    return unusable('receipt-unreadable', [`${relative}: expected a YAML mapping.`]);
+  }
+  return { kind: 'document', relative, document };
+}
+
+/** The verdict, from what was read and what this Stage's Gates actually produced. Pure. */
+export function decideVerificationReceipt(
+  source: VerificationReceiptSource,
+  changeId: string,
+  expected: VerificationReceiptExpectation,
+): VerificationReceiptResult {
+  if (source.kind === 'unusable') return failed(source.reason, source.problems);
+  return evaluate(source.document, changeId, source.relative, expected);
+}
+
+/**
+ * Read and decide in one call, which is what every caller outside the control plane wants.
+ *
+ * The two halves are separate above so the condition evaluator can be a pure function; nothing else
+ * needs that, and asking every other caller to make two calls would be a cost with no return.
+ */
 export async function evaluateVerificationReceipt(
   project: ProjectContext,
   changeId: string,
   expected: VerificationReceiptExpectation,
 ): Promise<VerificationReceiptResult> {
-  const relative = `${project.changesPath}/${changeId}/${VERIFICATION_RECEIPT_PATH}`;
-  let absolute: string;
-  try { absolute = await safeResolve(project.root, relative); }
-  catch { return failed('path-unsafe', [`${relative}: path is outside the project.`]); }
-  try { await access(absolute); }
-  catch {
-    return failed('receipt-missing', [`${relative}: the Verify Stage must record a verification receipt bound to the current revision and to the Gate Evidence that passed.`]);
-  }
-  /* An empty file parses to null upstream; a readable but contentless receipt is not a receipt. */
-  if ((await readFile(absolute, 'utf8')).trim().length === 0) {
-    return failed('receipt-empty', [`${relative}: the verification receipt is empty.`]);
-  }
-  let document: VerificationReceiptLedger;
-  try { document = await loadYaml<VerificationReceiptLedger>(absolute, relative); }
-  catch (error) { return failed('receipt-unreadable', [`${relative}: ${(error as Error).message}`]); }
-  if (!document || typeof document !== 'object' || Array.isArray(document)) {
-    return failed('receipt-unreadable', [`${relative}: expected a YAML mapping.`]);
-  }
-  return evaluate(document, changeId, relative, expected);
+  return decideVerificationReceipt(await readVerificationReceipt(project, changeId), changeId, expected);
 }

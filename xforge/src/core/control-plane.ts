@@ -27,7 +27,7 @@ import { exists } from './files.js';
 import {
   approvalsForPolicy, boundToRevision, loadApprovalReceipts, loadTransitionReceipts, type ApprovalBinding,
 } from './control-plane/receipts.js';
-import { conditionReworkCutoff, evaluateStageCondition } from './control-plane/conditions.js';
+import { collectConditionSources, conditionReworkCutoff, decideStageCondition } from './control-plane/conditions.js';
 import { legalTransitionTargets } from './control-plane/graph.js';
 
 /*
@@ -231,6 +231,28 @@ export async function resolveControlPlane(
   const readyTransitions: GovernanceState['readyTransitions'] = [];
   const pendingApprovals: GovernanceState['pendingApprovals'] = [];
 
+  /*
+   * The Stage's Gate Evidence and condition sources, read once for every candidate rather than once
+   * per candidate.
+   *
+   * Both reads are loop-invariant and were not written as such: neither `readGateEvidence` nor the
+   * condition sources take the target, so a Stage with three legal targets opened the same files
+   * three times. Hoisting them is what makes the judgement below a pure function of what was read —
+   * `decideStageCondition` no longer touches disk — and the duplicate reads go with it.
+   *
+   * Skipped entirely when no candidate can use them, which is the rework-only case the guard below
+   * already expressed: reading a Stage's Evidence to decide a transition that ignores it would be
+   * work this never did.
+   */
+  const anyForward = current !== null && candidates.some((target) =>
+    !(currentIndex >= 0 && target !== 'ready-to-archive' && flow.stages.findIndex((stage) => stage.id === target) <= currentIndex));
+  const stageGateIds = current && anyForward ? stageGates(current) : [];
+  const stageGateEvidence = new Map<string, GateEvidence | null>(
+    await Promise.all(stageGateIds.map(async (gateId) => [gateId, await readGateEvidence(project, changeId, gateId, resources)] as const)),
+  );
+  const conditionKeys = current && anyForward ? Object.keys(structuredExit(current).conditions ?? {}) : [];
+  const conditionSources = await collectConditionSources(project, changeId, conditionKeys);
+
   for (const target of candidates) {
     const blockedBy: string[] = [];
     const approvalEvidence: ApprovalReceipt[] = [];
@@ -272,8 +294,8 @@ export async function resolveControlPlane(
         if (state.workPackages.unattributedPaths?.length) blockedBy.push('tree:unattributed-paths');
       }
       const exit = structuredExit(current);
-      for (const gateId of stageGates(current)) {
-        const evidence = await readGateEvidence(project, changeId, gateId, resources);
+      for (const gateId of stageGateIds) {
+        const evidence = stageGateEvidence.get(gateId) ?? null;
         /* Gate Evidence is bound to content, not to Stage/transition state or to gitHead. */
         const reason = gateBlockReason(evidence, revision.contentRevision);
         if (reason) blockedBy.push(`gate:${gateId}:${reason}`);
@@ -284,9 +306,10 @@ export async function resolveControlPlane(
       for (const [key, declared] of Object.entries(exit.conditions ?? {})) {
         const expected = exitConditionExpectation(declared, config.classification);
         if (expected === null) continue;
-        const condition = await evaluateStageCondition(project, changeId, key, expected, {
+        const condition = decideStageCondition(project.changesPath, changeId, key, expected, {
           state, workPackages, contentRevision: revision.contentRevision, gates: gateEvidence, identities, diagnostics,
           reworkCutoff: conditionReworkCutoff(flow, transitions.receipts, current.id),
+          sources: conditionSources,
         });
         if (!condition.satisfied) blockedBy.push(`condition:${key}:${condition.reason}`);
       }
@@ -810,10 +833,11 @@ export async function terminalGovernanceBlocks(
      * the same hole for the same reason. Only the Flow that declares a condition pays for it.
      */
     const identities = await knownIdentities(project, control.state.id, governance.approvals);
+    const sources = await collectConditionSources(project, control.state.id, Object.keys(sourceExit.conditions ?? {}));
     for (const [key, declared] of Object.entries(sourceExit.conditions ?? {})) {
       const expected = exitConditionExpectation(declared, control.state.classification);
       if (expected === null) continue;
-      const condition = await evaluateStageCondition(project, control.state.id, key, expected, {
+      const condition = decideStageCondition(project.changesPath, control.state.id, key, expected, {
         state: control.state,
         /* The resolve's own plan. Reading it off `control.state` would work today only because the
            resolve now fills that in; taking it from the resolution keeps the two from drifting. */
@@ -827,6 +851,7 @@ export async function terminalGovernanceBlocks(
         /* Measured against the Stage the closing receipt left, which is the Stage whose exit
            declared the condition — the same subject `sourceExit` is read from. */
         reworkCutoff: sourceStage ? conditionReworkCutoff(flow, governance.transitions, sourceStage.id) : null,
+        sources,
       });
       if (!condition.satisfied) blocks.push(`condition:${key}:${condition.reason}`);
     }
