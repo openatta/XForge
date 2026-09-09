@@ -59,6 +59,18 @@ interface ArchivePlan {
   changes: FileChange[];
   diagnostics: Diagnostic[];
   mandatoryGates: string[];
+  /*
+   * The Change and its control plane as this plan decided against them, carried out rather than
+   * left behind.
+   *
+   * `executeArchive` needed exactly three of these fields -- the Flow's name, the current Stage and
+   * the governing revision -- to record `archive.before`, and resolved the whole Change a second
+   * time to get them, between planning and running the Gates, with nothing written in between. The
+   * note inside `planArchive` says that path is kept to one read; the function around it was doing
+   * four. Null when there is no Change to plan for, or when its Flow is not governed.
+   */
+  resolved: Awaited<ReturnType<typeof resolveChangeState>> | null;
+  control: Awaited<ReturnType<typeof resolveControlPlane>> | null;
 }
 
 interface PlanArchiveOptions {
@@ -111,6 +123,8 @@ async function planArchive(project: ProjectContext, changeId: string, options: P
   assertManaged(project, 'archive');
   const structure = await checkStructure(project, changeId);
   const diagnostics = [...structure.diagnostics];
+  let planResolved: Awaited<ReturnType<typeof resolveChangeState>> | null = null;
+  let planControl: Awaited<ReturnType<typeof resolveControlPlane>> | null = null;
   if (diagnostics.some((item) => ['XFORGE_LOCK_SCAFFOLD_MISMATCH', 'XFORGE_LOCK_PATHS_MISMATCH', 'XFORGE_LOCK_RESOURCES_MISMATCH'].includes(item.code))) {
     diagnostics.push(diagnostic('XFORGE_LOCK_STALE', 'Run xforge install before archive so the lock matches current project inputs.', 'xforge/lock.yaml'));
   }
@@ -121,12 +135,14 @@ async function planArchive(project: ProjectContext, changeId: string, options: P
       diagnostics.push(diagnostic('XFORGE_ARCHIVE_ARTIFACTS_INCOMPLETE', `Archive prerequisites are incomplete: ${incomplete.join(', ')}`, `${project.changesPath}/${changeId}`));
     }
     const resolved = await resolveChangeState(project, changeId);
+    planResolved = resolved;
     if (resolved.flow.governance) {
       const resources = await loadSelectedResources(project);
       /* The plan `checkStructure` already resolved above, handed over rather than read again. It is
          also what stops archive re-deciding `independentReview` against an empty package list: the
          resolve fills it in either way now, and passing it keeps this path to one read. */
       const control = await resolveControlPlane(project, changeId, resolved, resources, { workPackages: structure.workPackages ?? undefined });
+      planControl = control;
       diagnostics.push(...control.diagnostics);
       const governanceBlocks = await terminalGovernanceBlocks(project, control, { auditFacts: options.auditFacts });
       for (const block of governanceBlocks) diagnostics.push(diagnostic('XFORGE_ARCHIVE_GOVERNANCE_BLOCKED', `Archive governance is blocked by ${block}.`, `${project.changesPath}/${changeId}`));
@@ -164,7 +180,7 @@ async function planArchive(project: ProjectContext, changeId: string, options: P
     diagnostics.push(...await uncommittedGateDefinitions(project, structure.change.archive.mandatoryGates, structure.resources));
   }
   if (diagnostics.some((item) => item.severity === 'error')) {
-    return { changeId, target: '', mutations: [], changes: [], diagnostics, mandatoryGates: structure.change?.archive.mandatoryGates ?? [] };
+    return { changeId, target: '', mutations: [], changes: [], diagnostics, mandatoryGates: structure.change?.archive.mandatoryGates ?? [], resolved: planResolved, control: planControl };
   }
 
   const targetName = archiveName(changeId);
@@ -190,7 +206,7 @@ async function planArchive(project: ProjectContext, changeId: string, options: P
     ...mutations.map((item) => item.change),
     { action: 'move' as const, from: `${project.changesPath}/${changeId}`, path: target, source: `change:${changeId}` },
   ];
-  return { changeId, target, mutations, changes, diagnostics, mandatoryGates: structure.change?.archive.mandatoryGates ?? [] };
+  return { changeId, target, mutations, changes, diagnostics, mandatoryGates: structure.change?.archive.mandatoryGates ?? [], resolved: planResolved, control: planControl };
 }
 
 async function applyArchiveTransaction(project: ProjectContext, plan: ArchivePlan): Promise<void> {
@@ -232,12 +248,19 @@ export async function executeArchive(project: ProjectContext, changeId: string, 
     };
   }
 
-  const auditResolved = await resolveChangeState(project, changeId);
-  const auditResources = await loadSelectedResources(project);
-  const auditControl = auditResolved.flow.governance
-    ? await resolveControlPlane(project, changeId, auditResolved, auditResources)
-    : null;
-  await recordAudit(project, { eventType: 'archive.before', change: changeId, flow: auditResolved.flow.metadata.name, stage: auditControl?.governance.currentStage ?? UNGOVERNED_STAGE, revision: auditControl?.governance.revision, outcome: 'succeeded', input: { target: plan.target } });
+  /*
+   * From the plan rather than from a third resolve of the same Change.
+   *
+   * Nothing has been written since that plan was made, so re-reading here answered a question it
+   * had already answered -- one `archive` was resolving the control plane four times.
+   *
+   * Held in a binding of its own because both audit events want the *pre-check* reading. `plan` is
+   * replaced further down by a second one made after the Gates ran, and `archive.after` has always
+   * recorded the revision as it stood before them. Reading `plan` at that point would quietly swap
+   * which resolve the closing event describes.
+   */
+  const beforeGates = { resolved: plan.resolved, control: plan.control };
+  await recordAudit(project, { eventType: 'archive.before', change: changeId, flow: beforeGates.resolved?.flow.metadata.name, stage: beforeGates.control?.governance.currentStage ?? UNGOVERNED_STAGE, revision: beforeGates.control?.governance.revision, outcome: 'succeeded', input: { target: plan.target } });
 
   const checked = await executeCheck(project, { change: changeId });
   const diagnostics = [...checked.diagnostics];
@@ -262,7 +285,7 @@ export async function executeArchive(project: ProjectContext, changeId: string, 
   } catch (error) {
     throw new XForgeError(diagnostic('XFORGE_ARCHIVE_TRANSACTION_FAILED', `Archive transaction failed and was rolled back: ${(error as Error).message}`, `${project.changesPath}/${changeId}`), { root: project.root });
   }
-  await recordAudit(project, { eventType: 'archive.after', change: changeId, flow: auditResolved.flow.metadata.name, stage: 'archived', revision: auditControl?.governance.revision, outcome: 'succeeded', output: { target: plan.target } });
+  await recordAudit(project, { eventType: 'archive.after', change: changeId, flow: beforeGates.resolved?.flow.metadata.name, stage: 'archived', revision: beforeGates.control?.governance.revision, outcome: 'succeeded', output: { target: plan.target } });
   return {
     data: { change: changeId, target: plan.target, dryRun: false, mandatoryGates: plan.mandatoryGates, ...writtenRecords(plan.mutations) },
     diagnostics,
