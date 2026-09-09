@@ -2,6 +2,23 @@ import { readFile, readdir } from 'node:fs/promises';
 import fg from 'fast-glob';
 import type { TargetId } from '../constants.js';
 import { TARGETS } from '../constants.js';
+/*
+ * `core` reaching into `adapters` and `install`, and why that is not the inversion it looks like.
+ *
+ * It was recorded as one. An early reading of this tree called it "the read layer depending on the
+ * projection layer" and put it on a list to be fixed, and the architecture contract
+ * (`test/integration/architecture-contract.test.ts`) records both edges so they cannot grow
+ * quietly. But the invariant that contract actually enforces is narrower and deliberate: a
+ * *decision* must not touch the outside world. This module makes none. It answers what a project
+ * looks like, and what each installed target can express -- along with what install last wrote --
+ * is part of what a project looks like, not a fact borrowed from somewhere it does not belong.
+ *
+ * So the edge stays, with the reasoning in view rather than on a list. Moving this file into a
+ * `read/` directory of its own would rename the edge without changing what depends on what, and a
+ * directory holding one file states no rule; the collectors it would have to join --
+ * `resource-loader`, `project-loader`, the receipt readers -- are not all separable today, because
+ * `control-plane/receipts.ts` both reads receipts and decides which of them count.
+ */
 import { capabilityMatrix } from '../adapters/index.js';
 import type { ChangeState, Diagnostic, Flow, ProjectContext } from '../types.js';
 import { diagnostic } from './errors.js';
