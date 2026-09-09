@@ -722,6 +722,24 @@ export async function executeVerificationFinalize(
   /* Asked before the write, so `create` and `modify` stay true under `--dry-run` as well: a plan
      that reports the wrong verb about a file the reader may already have is worse than no plan. */
   const existed = await access(await safeResolve(project.root, relative)).then(() => true, () => false);
+  /*
+   * No `recordAudit` here, and that is a decision rather than an omission.
+   *
+   * `declare` and `retire` above both append to the chain, so the absence is worth explaining
+   * before somebody reads it as the oversight it looks like. Those two record a judgement that
+   * exists nowhere else: nothing but the Manifest knows that a person chose this command for this
+   * Gate. This receipt records no new fact. Every Gate it cites was run by `runGate`, which emits
+   * `gate.before` and `gate.after` per run, and `finalize` re-reads that Evidence from disk and
+   * refuses to write at all if any of it is stale, failed, or missing. The chain already holds the
+   * facts; the receipt is their summary at one Stage boundary, and summarising something into the
+   * chain a second time makes the same evidence look like two.
+   *
+   * What would change the answer: a reader that reasons from this receipt the way
+   * `approvalVerifiedInChain` reasons from an approval — i.e. treats it as attested only when the
+   * chain corroborates it. There is no such reader today. Adding one means adding the event here
+   * and its type to `GOVERNANCE_EVENT_TYPES`, together, or the receipt starts losing its evidence
+   * at volume.
+   */
   if (!options.dryRun) await atomicWrite(project.root, relative, content);
   /*
    * `changes` is reported either way. Every other command in this product answers "what would this
