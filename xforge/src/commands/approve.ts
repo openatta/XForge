@@ -1,14 +1,12 @@
 import { randomUUID } from 'node:crypto';
-import { rm } from 'node:fs/promises';
 import type { ApprovalPolicy, ApprovalReceipt, Diagnostic, FileChange, NextAction, ProjectContext } from '../types.js';
 import { recordAudit } from '../core/audit.js';
 import { resolveControlPlane, type ResolvedControlPlane } from '../core/control-plane.js';
 import { XForgeError, diagnostic } from '../core/errors.js';
-import { atomicWrite } from '../core/files.js';
+import { governedWrite } from '../write/governed.js';
 import { resolveChangeState } from '../core/flow-resolver.js';
 import { sha256, stableStringify } from '../core/hash.js';
 import { assertManaged } from '../core/project-loader.js';
-import { safeResolve } from '../core/path-safety.js';
 import { loadSelectedResources } from '../core/resource-loader.js';
 import { approvalReceiptDigest } from '../core/approval-receipt.js';
 import { pollApproval, submitApprovalRequest, withMcpApprovalSession } from '../core/mcp-approval.js';
@@ -436,19 +434,17 @@ export async function executeApprove(project: ProjectContext, options: ApproveOp
   const content = `${JSON.stringify(receipt, null, 2)}\n`;
   const changes: FileChange[] = [{ action: 'create', path: target, digest: sha256(content), source: `approval:${policy.id}` }];
   if (!options.dryRun) {
-    await atomicWrite(project.root, target, content);
-    try {
-      await recordAudit(project, { eventType: 'approval.decided', change: options.change, flow: resolved.flow.metadata.name, stage: control.governance.currentStage, revision, decision: receipt.decision, reason: receipt.reason, outcome: receipt.decision === 'approve' ? 'succeeded' : 'denied', input: { policy: policy.id, receipt: receipt.digest } });
-    } catch (error) {
-      /*
-       * `approvalVerifiedInChain` trusts a receipt only once a matching `approval.decided` event is
-       * in the chain (see the comment above `collectLocalDecision`), so a receipt written without
-       * that event is a human decision the system can never treat as valid. Removing it here means a
-       * retry redoes the whole decision cleanly instead of leaving an unusable, undead receipt file.
-       */
-      await rm(await safeResolve(project.root, target), { force: true }).catch(() => undefined);
-      throw error;
-    }
+    /*
+     * `approvalVerifiedInChain` trusts a receipt only once a matching `approval.decided` event is in
+     * the chain (see the comment above `collectLocalDecision`), so a receipt written without that
+     * event is a human decision the system can never treat as valid. `governedWrite` is what makes a
+     * retry redo the whole decision cleanly instead of leaving an unusable, undead receipt file.
+     */
+    await governedWrite(project, {
+      path: target,
+      content,
+      record: () => recordAudit(project, { eventType: 'approval.decided', change: options.change, flow: resolved.flow.metadata.name, stage: control.governance.currentStage, revision, decision: receipt.decision, reason: receipt.reason, outcome: receipt.decision === 'approve' ? 'succeeded' : 'denied', input: { policy: policy.id, receipt: receipt.digest } }),
+    });
   }
   return {
     data: { change: options.change, policy: policy.id, transition: options.transition, receipt: options.dryRun ? null : receipt, dryRun: options.dryRun, status: 'recorded' },

@@ -6,6 +6,7 @@ import { XForgeError, diagnostic } from '../core/errors.js';
 import { recordAudit } from '../core/audit.js';
 import { unattestedDeclarer } from '../core/ledger-identity.js';
 import { atomicWrite } from '../core/files.js';
+import { governedWrite } from '../write/governed.js';
 import { sha256 } from '../core/hash.js';
 import { assertManaged } from '../core/project-loader.js';
 import { validateSchema } from '../core/validator.js';
@@ -264,7 +265,6 @@ export async function executeVerificationRetire(
   }
 
   if (!options.dryRun) {
-    await atomicWrite(project.root, relative, next);
     /*
      * The same contract as `declare` above, and the restore matters more here rather than less.
      *
@@ -275,18 +275,17 @@ export async function executeVerificationRetire(
      * withdrawal is in the Manifest, absent from the chain, and there is no command that completes
      * it.
      */
-    try {
-      await recordAudit(project, {
+    await governedWrite(project, {
+      path: relative,
+      content: next,
+      record: () => recordAudit(project, {
         eventType: 'verification.retired',
         decision: options.gate,
         reason: options.reason,
         outcome: 'succeeded',
         input: { gate: options.gate, retired: describeEntry(matches[0]!.entry), by: options.by },
-      });
-    } catch (error) {
-      await atomicWrite(project.root, relative, source).catch(() => undefined);
-      throw error;
-    }
+      }),
+    });
   }
   return {
     data: {
@@ -399,7 +398,6 @@ export async function executeVerificationDeclare(
   }
 
   if (!options.dryRun) {
-    await atomicWrite(project.root, relative, next);
     /*
      * A declaration decides how every later run of this Gate is verified, so the chain records that
      * it happened — and puts the Manifest back if it cannot.
@@ -422,17 +420,16 @@ export async function executeVerificationDeclare(
      * is deliberately not extended: that set is the types the attestation readers reason from, and
      * no reader reasons from this one.
      */
-    try {
-      await recordAudit(project, {
+    await governedWrite(project, {
+      path: relative,
+      content: next,
+      record: () => recordAudit(project, {
         eventType: 'verification.declared',
         decision: options.gate,
         outcome: 'succeeded',
         input: { gate: options.gate, entry, by: options.by },
-      });
-    } catch (error) {
-      await atomicWrite(project.root, relative, source).catch(() => undefined);
-      throw error;
-    }
+      }),
+    });
   }
   return {
     data: { gate: options.gate, entry, dryRun: options.dryRun, declarations: verification[options.gate]!.length },

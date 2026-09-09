@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { link, rm, writeFile } from 'node:fs/promises';
-import path from 'node:path';
+import { rm } from 'node:fs/promises';
 import type { Diagnostic, FileChange, NextAction, ProjectContext, TransitionReceipt } from '../types.js';
 import { readChangeAuditEvents, readTransitionAttestations, recordAudit, transitionAttestationDigest, verifyAudit } from '../core/audit.js';
 import { blockRemedy, resolveControlPlane } from '../core/control-plane.js';
 import { TRANSITION_RECEIPTS_RELATIVE, readTransitionReceiptFiles, transitionReceiptFileName } from '../core/control-plane/receipts.js';
 import { XForgeError, diagnostic } from '../core/errors.js';
+import { GovernedWriteConflict, governedWrite } from '../write/governed.js';
 import { atomicWrite } from '../core/files.js';
 import { flowEligibilityDiagnostics } from '../core/checker.js';
 import { loadFlows, resolveChangeState } from '../core/flow-resolver.js';
@@ -38,27 +38,6 @@ import { readStagedUpgrade, upgradeInProgressDiagnostic } from '../core/upgrade-
  *   an accusation. This also means the loud warning fires while it matters — before anything is
  *   built on the remnant — and quiets down to a note once a later, attested receipt exists.
  */
-/**
- * Creates a file at exactly one path, or fails because somebody was already there.
- *
- * `atomicWrite` (core/files.ts) is temp-file + rename, and rename replaces silently — it cannot
- * express "only if nobody got here first", which is the whole requirement for a Transition receipt:
- * the receipt at sequence N *is* the record that the Change moved once at that point, so a second
- * one is never a write to merge, it is a conflict to report. `link()` says both things at once: it
- * is atomic, so the content is complete before the name exists, and it fails with `EEXIST` rather
- * than overwriting a receipt the rest of the chain already hashes.
- */
-async function createExclusive(root: string, relative: string, content: string): Promise<void> {
-  const destination = await safeResolve(root, relative, { createParent: true });
-  const temporary = path.join(path.dirname(destination), `.${path.basename(destination)}.xforge-${randomUUID()}.tmp`);
-  try {
-    await writeFile(temporary, content, { mode: 0o600, flag: 'wx' });
-    await link(temporary, destination);
-  } finally {
-    await rm(temporary, { force: true }).catch(() => undefined);
-  }
-}
-
 async function unattestedReceipts(
   project: ProjectContext,
   changeId: string,
@@ -275,36 +254,41 @@ export async function executeTransition(project: ProjectContext, options: { chan
   const target = `${receiptsPath}/${transitionReceiptFileName(sequence)}`;
   const content = `${JSON.stringify(receipt, null, 2)}\n`;
   try {
-    await createExclusive(project.root, target, content);
+    /*
+     * State is derived from receipts on disk (see `control-plane.ts`), so an orphaned receipt with
+     * no matching `stage.entered` audit event would silently advance the Change's stage anyway, and
+     * a retry of the same transition would then fail confusingly as "already there." `governedWrite`
+     * unwinds the receipt so the Change is left exactly where it was before this call.
+     */
+    await governedWrite(project, {
+      path: target,
+      content,
+      mode: 'exclusive',
+      record: async () => {
+        const nextResolved = await resolveChangeState(project, options.change);
+        const nextControl = await resolveControlPlane(project, options.change, nextResolved.flow as typeof resolved.flow, nextResolved.state, resources, nextResolved.config);
+        /* The attestation digest comes from the shared definition in `core/audit.ts`, so the write
+           side here and the orphan scan above cannot drift apart on what attests what. */
+        await recordAudit(project, { eventType: 'stage.entered', change: options.change, flow: resolved.flow.metadata.name, stage: options.to, revision: nextControl.governance.revision, decision: options.to, outcome: 'succeeded', inputDigest: transitionAttestationDigest(receipt.digest) });
+      },
+    });
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    if (!(error instanceof GovernedWriteConflict)) throw error;
     /*
      * The receipt name no longer carries a UUID, so this is where a second writer for the same
      * sequence lands instead of quietly forking the chain — another process racing this one, or a
      * branch that already recorded this transition. Refusing here leaves the Change exactly as it
      * was; the `stage.entering` event above records the attempt, which is what it is for.
+     *
+     * `GovernedWriteConflict` rather than a raw `EEXIST`, because the `record` step runs inside the
+     * same call and the audit chain takes its lock with `mkdir` — matching on the code alone would
+     * report a lock contention as a receipt collision.
      */
     throw new XForgeError(diagnostic(
       'XFORGE_TRANSITION_RECEIPT_EXISTS',
       `A Transition receipt for sequence ${sequence} already exists at ${target}, so this Stage transition has already been recorded. Re-read the Change with \`xforge state --change ${options.change}\` before transitioning again; do not delete the existing receipt, every later receipt chains to its digest.`,
       target,
     ));
-  }
-  try {
-    const nextResolved = await resolveChangeState(project, options.change);
-    const nextControl = await resolveControlPlane(project, options.change, nextResolved.flow as typeof resolved.flow, nextResolved.state, resources, nextResolved.config);
-    /* The attestation digest comes from the shared definition in `core/audit.ts`, so the write side
-       here and the orphan scan above cannot drift apart on what attests what. */
-    await recordAudit(project, { eventType: 'stage.entered', change: options.change, flow: resolved.flow.metadata.name, stage: options.to, revision: nextControl.governance.revision, decision: options.to, outcome: 'succeeded', inputDigest: transitionAttestationDigest(receipt.digest) });
-  } catch (error) {
-    /*
-     * State is derived from receipts on disk (see `control-plane.ts`), so an orphaned receipt with
-     * no matching `stage.entered` audit event would silently advance the Change's stage anyway, and
-     * a retry of the same transition would then fail confusingly as "already there." Compensate by
-     * removing the receipt so the Change is left exactly where it was before this call.
-     */
-    await rm(await safeResolve(project.root, target), { force: true }).catch(() => undefined);
-    throw error;
   }
   const change: FileChange = { action: 'create', path: target, digest: sha256(content), source: `transition:${receipt.from}:${receipt.to}` };
   /*

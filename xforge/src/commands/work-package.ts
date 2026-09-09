@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { readFile, rm, stat } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import type { Diagnostic, FileChange, ProjectContext, WorkPackageAckReceipt, WorkPackageDispatchReceipt } from '../types.js';
 import { acknowledgementAttestationDigest, recordAudit } from '../core/audit.js';
 import { resolveControlPlane } from '../core/control-plane.js';
 import { XForgeError, diagnostic } from '../core/errors.js';
-import { atomicWrite } from '../core/files.js';
+import { governedWrite } from '../write/governed.js';
 import { resolveChangeState } from '../core/flow-resolver.js';
 import { sha256, stableStringify } from '../core/hash.js';
 import { assertManaged } from '../core/project-loader.js';
@@ -99,24 +99,18 @@ export async function executeWorkPackageDispatch(project: ProjectContext, option
   /* Declared because it is written below, in the same command, for the same reason `next` names it. */
   if (!options.dryRun) changes.push({ action: 'modify', path: auditIndex, source: `work-package:${options.packageId}:dispatch` });
   if (!options.dryRun) {
-    await atomicWrite(project.root, target, content);
-    try {
-      await recordAudit(project, {
+    /* A retry after a failed recordAudit would otherwise mint a fresh executionId and leave this
+       orphaned receipt behind as a duplicate dispatch with no matching audit event. */
+    await governedWrite(project, {
+      path: target,
+      content,
+      record: () => recordAudit(project, {
         eventType: 'work-package.dispatched', change: options.change, flow: resolved.flow.metadata.name, stage: control.governance.currentStage,
         workPackage: options.packageId, correlationId: auditCorrelationId, revision: control.governance.revision,
         actor: { id: process.env.USER ?? 'unknown', provider: 'local-os', role: 'coordinator', type: 'human' },
         outcome: 'succeeded', input: { packageId: options.packageId, executionId, dispatchDigest: receipt.digest },
-      });
-    } catch (error) {
-      /*
-       * A retry after a failed recordAudit would otherwise mint a fresh executionId and leave this
-       * orphaned receipt behind as a duplicate dispatch with no matching audit event. Removing it
-       * here means a retry starts clean, exactly as `transition.ts`/`approve.ts` already do for
-       * their own receipts.
-       */
-      await rm(await safeResolve(project.root, target), { force: true }).catch(() => undefined);
-      throw error;
-    }
+      }),
+    });
   }
   /*
    * The receipt has to be committed before the work is, and this is the only moment saying so is
@@ -538,9 +532,19 @@ export async function executeWorkPackageAcknowledge(project: ProjectContext, opt
     catch { priorReceipt = null; }
     changes.push({ action: priorReceipt ? 'modify' : 'create', path: target, digest: sha256(content), source: `work-package:acknowledge:${options.role}` });
     if (!options.dryRun) {
-      await atomicWrite(project.root, target, content);
-      try {
-        await recordAudit(project, {
+      /*
+       * Without a matching audit event a retry would see the receipt file already on disk and skip
+       * re-recording (the digest/executionId/as filename would collide), leaving the acknowledgement
+       * half-recorded. `governedWrite` restores rather than removes when something was already
+       * there, which is what this site needs: on a supersede the target is an earlier receipt that
+       * is committed and attested, and deleting it would answer a failure to *record* one
+       * acknowledgement by destroying a different one. `runners/gate.ts` keeps its prior Evidence
+       * for the same reason.
+       */
+      await governedWrite(project, {
+        path: target,
+        content,
+        record: () => recordAudit(project, {
           eventType: `work-package.${status}`,
           change: options.change,
           flow: resolved.flow.metadata.name,
@@ -564,23 +568,8 @@ export async function executeWorkPackageAcknowledge(project: ProjectContext, opt
           inputDigest: acknowledgementAttestationDigest(receipt.digest),
           /* The surrounding context stays committed to, via the event's outputDigest. */
           output: { packageId: options.packageId, deliveryExecutionId: executionId, evidence, ackReceipt: receipt.digest },
-        });
-      } catch (error) {
-        /*
-         * Without a matching audit event a retry would otherwise see the receipt file already on
-         * disk and skip re-recording (the digest/executionId/as filename would collide), leaving the
-         * acknowledgement half-recorded. Undo the write so a retry starts clean, same as
-         * dispatch/transition/approve.
-         *
-         * Restore rather than remove when something was already there. On a supersede the target is
-         * an earlier receipt that is committed and attested, and deleting it would answer a failure
-         * to *record* an acknowledgement by destroying a different one — turning a retryable error
-         * into lost evidence. `runners/gate.ts` keeps its prior Evidence for the same reason.
-         */
-        if (priorReceipt) await atomicWrite(project.root, target, priorReceipt.toString('utf8')).catch(() => undefined);
-        else await rm(await safeResolve(project.root, target), { force: true }).catch(() => undefined);
-        throw error;
-      }
+        }),
+      });
     }
   }
   /*
