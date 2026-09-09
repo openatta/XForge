@@ -122,7 +122,7 @@ const backstopPaths = (): string[] => [...MANAGED_PREFIXES.map((prefix) => prefi
  * repository at all report itself as having a backstop it does not have.
  */
 function dirtyManagedPaths(root: string): string[] | null {
-  const result = runGitSync(root, ['status', '--porcelain', '--', ...backstopPaths()]);
+  const result = runGitSync(root, ['status', '--porcelain', '--', ...backstopPaths()], { quotePath: true });
   if (!result.ok) return null;
   return result.stdout.split('\n').filter(Boolean).map(porcelainPath).sort();
 }
@@ -140,12 +140,30 @@ function porcelainPath(line: string): string {
   const rest = line.slice(3);
   const renamed = rest.indexOf(' -> ');
   const one = renamed === -1 ? rest : rest.slice(renamed + ' -> '.length);
-  const trimmed = one.trim();
-  if (!trimmed.startsWith('"') || !trimmed.endsWith('"')) return trimmed;
-  /* Git quotes with C escapes, and the octal ones are UTF-8 bytes rather than code points, so they
-     are collected as bytes and decoded once at the end. */
+  return unquoteGitPath(one.trim());
+}
+
+/**
+ * One git path, with C-quoting undone if git applied any.
+ *
+ * `-c core.quotepath=false` covers the common case — a path is quoted only because it is not ASCII
+ * — and every caller here passes it. It is not the whole case: git still quotes a path containing a
+ * double quote, a backslash or a control character whatever `quotepath` says, so a reader that
+ * relies on the option alone is right until somebody names a file oddly.
+ *
+ * Shared because it stopped being shared once and that was the defect. `trackedAt` read `ls-tree`
+ * output with neither the option nor this decoding, so a managed directory whose tracked files were
+ * all non-ASCII came back as `"xforge/scaffold/gates/\303\251.yaml"` — which does not start with
+ * `xforge/scaffold/`, so the directory read as untracked and was dropped from the `git restore`
+ * command a rollback prints. The command still ran. It just silently restored less than it named,
+ * which is worse than the unrunnable command the comment above `trackedAt` was written to avoid.
+ */
+function unquoteGitPath(value: string): string {
+  if (!value.startsWith('"') || !value.endsWith('"')) return value;
+  /* The octal escapes are UTF-8 bytes rather than code points, so they are collected as bytes and
+     decoded once at the end. */
   const bytes: number[] = [];
-  const body = trimmed.slice(1, -1);
+  const body = value.slice(1, -1);
   for (let index = 0; index < body.length; index += 1) {
     if (body[index] !== '\\') { bytes.push(...Buffer.from(body[index]!, 'utf8')); continue; }
     const next = body[++index];
@@ -170,10 +188,10 @@ function porcelainPath(line: string): string {
  * release finds. Offering a command that cannot run is worse than offering none, because it is read
  * as the route back right up until it is needed.
  */
-function trackedAt(root: string, head: string, candidates: string[]): string[] {
-  const result = runGitSync(root, ['ls-tree', '-r', '--name-only', head, '--', ...candidates]);
+export function trackedAt(root: string, head: string, candidates: string[]): string[] {
+  const result = runGitSync(root, ['ls-tree', '-r', '--name-only', head, '--', ...candidates], { quotePath: true });
   if (!result.ok) return [];
-  const tracked = result.stdout.split('\n').filter(Boolean);
+  const tracked = result.stdout.split('\n').filter(Boolean).map(unquoteGitPath);
   return candidates.filter((candidate) =>
     tracked.some((file) => file === candidate || file.startsWith(`${candidate}/`)));
 }
