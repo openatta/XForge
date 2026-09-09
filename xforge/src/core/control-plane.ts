@@ -1,7 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import type {
   ApprovalPolicy,
-  ApprovalReceipt,
   ChangeConfig,
   ChangeState,
   Diagnostic,
@@ -20,7 +19,7 @@ import { changeImplementers, computeGovernanceRevision } from './revision.js';
 import { readChangeAuditEvents, remoteDeliveryRequired, type ChangeAuditFacts } from './audit.js';
 import { knownIdentities } from './ledger-identity.js';
 import { flowArchiveOperation } from './flow-resolver.js';
-import { artifactSatisfied, currentStageOf, stageGates, structuredExit } from './flow-query.js';
+import { currentStageOf, stageGates, structuredExit } from './flow-query.js';
 import { undeclaredRequiredGates, verificationDeclareArgv } from './verification.js';
 import { resolveWorkPackages, type WorkPackageResolution } from './work-packages.js';
 import { exists } from './files.js';
@@ -28,6 +27,7 @@ import {
   approvalsForPolicy, boundToRevision, loadApprovalReceipts, loadTransitionReceipts, type ApprovalBinding,
 } from './control-plane/receipts.js';
 import { collectConditionSources, conditionReworkCutoff, decideStageCondition } from './control-plane/conditions.js';
+import { decideTransitions, type TransitionRequirement } from './control-plane/transitions.js';
 import { legalTransitionTargets } from './control-plane/graph.js';
 
 /*
@@ -73,27 +73,6 @@ function policyById(flow: StageFlow, id: string): ApprovalPolicy | null {
  * argument in front of a reader who then ran `xforge approve --provider local` and was told the
  * provider "is not authorized" — an accurate sentence about a name this command had handed them.
  */
-function providerKinds(project: ProjectContext, policy: ApprovalPolicy): Array<{ id?: string; type: 'local' | 'mcp' }> {
-  return policy.providers.map((id) => {
-    if (id === 'local') return { type: 'local' as const };
-    return { id, type: project.manifest.approvals?.providers.find((item) => item.id === id)?.type ?? 'mcp' };
-  });
-}
-
-interface TransitionRequirement {
-  approvals: ApprovalReceipt[];
-  gates: GateEvidence[];
-  blockedBy: string[];
-  /**
-   * The approval policies that gate this specific target, in Flow order.
-   *
-   * Empty for a rework target, which is governed by nothing — and that emptiness is load-bearing:
-   * `approve` reads it to refuse writing a receipt against a transition no policy protects, rather
-   * than recording a human decision that can never be counted.
-   */
-  approvalPolicies: string[];
-}
-
 export interface ResolvedControlPlane {
   governance: GovernanceState;
   diagnostics: Diagnostic[];
@@ -203,13 +182,6 @@ export async function resolveControlPlane(
    * `evidence/audit/index.json` when the gitignored local chain is absent (fresh clone, CI).
    */
   const auditFacts = await readChangeAuditEvents(project, changeId);
-  /* Separation of duties needs Git history; only pay for it when a selected policy asks for it. */
-  let implementers: ReadonlySet<string> | null = null;
-  const needsImplementers = (flow.governance?.approvalPolicies ?? []).some((policy) => policy.separationOfDuties);
-  const binding = async (): Promise<ApprovalBinding> => {
-    if (needsImplementers && implementers === null) implementers = await changeImplementers(project, changeId, state);
-    return { governingRevision: revision.governingRevision!, stateRevision: revision.stateRevision, implementers: implementers ?? undefined };
-  };
   const currentIndex = flow.stages.findIndex((stage) => stage.id === currentStage);
   const current = currentIndex >= 0 ? flow.stages[currentIndex]! : null;
   const candidates = current ? legalTransitionTargets(flow, current.id) : [];
@@ -227,10 +199,6 @@ export async function resolveControlPlane(
     ...flow.stages.flatMap(stageGates),
     ...flowArchiveOperation(flow).mandatoryGates,
   ]);
-  const transitionRequirements = new Map<string, TransitionRequirement>();
-  const readyTransitions: GovernanceState['readyTransitions'] = [];
-  const pendingApprovals: GovernanceState['pendingApprovals'] = [];
-
   /*
    * The Stage's Gate Evidence and condition sources, read once for every candidate rather than once
    * per candidate.
@@ -253,101 +221,33 @@ export async function resolveControlPlane(
   const conditionKeys = current && anyForward ? Object.keys(structuredExit(current).conditions ?? {}) : [];
   const conditionSources = await collectConditionSources(project, changeId, conditionKeys);
 
-  for (const target of candidates) {
-    const blockedBy: string[] = [];
-    const approvalEvidence: ApprovalReceipt[] = [];
-    const gateEvidence: GateEvidence[] = [];
-    /* Which policies gate *this* target, recorded rather than recomputed by callers. A rework target
-       is governed by none, and `approve.ts` needs to know that before it writes a receipt nothing
-       will ever count. */
-    const approvalPolicies: string[] = [];
-    const isRework = currentIndex >= 0 && target !== 'ready-to-archive' && flow.stages.findIndex((stage) => stage.id === target) <= currentIndex;
-    /* Outside the `isRework` guard on purpose: a forked or broken receipt chain makes the Change's
-       current Stage itself unreliable, so rework is no more decidable than forward progress. This
-       is the targeted block that replaces the whole-Change error the chain check used to raise. */
-    if (!transitions.chainValid) blockedBy.push('transition-chain:invalid');
-    if (!isRework && current) {
-      /*
-       * Only on the first transition, and deliberately not on every one.
-       *
-       * Repeating it at each Stage would be a second way of saying what the Gate itself says when
-       * the Change reaches the Stage that runs it, and it would block a Change that is already
-       * under way for a project-level answer that was not missing when it started. Once is enough:
-       * a Change that got past propose either found the answer recorded or was told to record it.
-       */
-      if (transitions.receipts.length === 0) {
-        for (const gateId of undeclaredGates) blockedBy.push(`verification:${gateId}:undeclared`);
-      }
-      for (const artifactId of current.produces) {
-        if (!artifactSatisfied(state.artifacts.find((artifact) => artifact.id === artifactId)?.status)) blockedBy.push(`artifact:${artifactId}`);
-      }
-      /* `unusable` blocks rather than falls through to the plan-less path: a plan nobody can read
-         cannot show that its packages were delivered, and treating it as "no plan" would let the
-         implementing Stage close on a file that does not parse. */
-      if (current.id === 'apply' && target === 'verify' && workPackages.status === 'unusable') blockedBy.push('work-packages:unusable');
-      if (current.id === 'apply' && target === 'verify' && state.workPackages) {
-        for (const workPackage of state.workPackages.packages) if (!['succeeded', 'integrated', 'reviewed'].includes(workPackage.status)) blockedBy.push(`work-package:${workPackage.id}:${workPackage.status}`);
-        /* Kept distinct from the package blocks above on purpose. `work-package:<id>:failed` says
-           "that package's delivery is bad"; this says "the tree holds work no package claims". The
-           two have entirely different repairs, and reporting the second in the shape of the first
-           sent a live run looking for defects in three deliveries that had none. */
-        if (state.workPackages.unattributedPaths?.length) blockedBy.push('tree:unattributed-paths');
-      }
-      const exit = structuredExit(current);
-      for (const gateId of stageGateIds) {
-        const evidence = stageGateEvidence.get(gateId) ?? null;
-        /* Gate Evidence is bound to content, not to Stage/transition state or to gitHead. */
-        const reason = gateBlockReason(evidence, revision.contentRevision);
-        if (reason) blockedBy.push(`gate:${gateId}:${reason}`);
-        else gateEvidence.push(evidence!);
-      }
-      /* Conditions are evaluated after the Gates, not before: the verification-receipt ledger is
-         decided against the Gate Evidence this Stage actually produced, so that set has to exist. */
-      for (const [key, declared] of Object.entries(exit.conditions ?? {})) {
-        const expected = exitConditionExpectation(declared, config.classification);
-        if (expected === null) continue;
-        const condition = decideStageCondition(project.changesPath, changeId, key, expected, {
-          state, workPackages, contentRevision: revision.contentRevision, gates: gateEvidence, identities, diagnostics,
-          reworkCutoff: conditionReworkCutoff(flow, transitions.receipts, current.id),
-          sources: conditionSources,
-        });
-        if (!condition.satisfied) blockedBy.push(`condition:${key}:${condition.reason}`);
-      }
-      for (const policyId of exit.approvals ?? []) {
-        approvalPolicies.push(policyId);
-        const policy = policyById(flow, policyId);
-        if (!policy) { blockedBy.push(`approval-policy:${policyId}:missing`); continue; }
-        const result = approvalsForPolicy(approvals.receipts, policy, target, await binding());
-        approvalEvidence.push(...result.valid);
-        if (result.rejected) blockedBy.push(`approval:${policyId}:rejected`);
-        if (!result.separationSatisfied) blockedBy.push(`approval:${policyId}:separation-of-duties`);
-        if (result.missing > 0) {
-          blockedBy.push(`approval:${policyId}:missing-${result.missing}`);
-        }
-        if (result.missing > 0 || !result.separationSatisfied) {
-          pendingApprovals.push({ policyId, transition: target, missing: result.missing, roles: policy.roles, providers: providerKinds(project, policy) });
-        }
-      }
-      for (const eventType of exit.auditEvents ?? []) if (!auditFacts.eventTypes.includes(eventType)) blockedBy.push(`audit:${eventType}:missing`);
-      if (!auditFacts.chain.valid) blockedBy.push('audit:chain-invalid');
-    }
-    transitionRequirements.set(target, { approvals: approvalEvidence, gates: gateEvidence, blockedBy, approvalPolicies });
-    readyTransitions.push({
-      to: target,
-      ready: blockedBy.length === 0,
-      blockedBy,
-      command: ['xforge', 'transition', '--change', changeId, '--to', target],
-    });
-  }
+  /*
+   * Separation of duties needs Git history, and it is read here rather than behind a lazy thunk.
+   *
+   * The laziness was a cost guard and the guard is kept, just moved to where it can be answered
+   * before anything is decided: the policies this resolve can possibly consult are the current
+   * Stage's exit approvals and, at `ready-to-archive`, the terminal ones — both named by the Flow,
+   * neither depending on the target. So "will any policy that is actually reached ask for
+   * separation of duties" is answerable up front, and answering it up front is what leaves the
+   * decision below with no I/O in it at all.
+   */
+  const consultedPolicies = [
+    ...(current && anyForward ? structuredExit(current).approvals ?? [] : []),
+    ...(currentStage === 'ready-to-archive' ? flow.terminal.archive.approvals ?? [] : []),
+  ];
+  const needsImplementers = consultedPolicies.some((id) => policyById(flow, id)?.separationOfDuties);
+  const implementers = needsImplementers ? await changeImplementers(project, changeId, state) : null;
+  const binding: ApprovalBinding = {
+    governingRevision: revision.governingRevision!,
+    stateRevision: revision.stateRevision,
+    implementers: implementers ?? undefined,
+  };
 
-  if (currentStage === 'ready-to-archive') {
-    for (const policyId of flow.terminal.archive.approvals ?? []) {
-      const policy = policyById(flow, policyId);
-      if (!policy) continue;
-      const result = approvalsForPolicy(approvals.receipts, policy, 'archive', await binding());
-      if (result.missing > 0 || result.rejected || !result.separationSatisfied) pendingApprovals.push({ policyId, transition: 'archive', missing: result.missing, roles: policy.roles, providers: providerKinds(project, policy) });
-    }
-  }
+  const { transitionRequirements, readyTransitions, pendingApprovals } = decideTransitions({
+    project, flow, changeId, config, state, workPackages, currentStage, currentIndex, current,
+    candidates, transitions, approvals, identities, revision, auditFacts, undeclaredGates,
+    stageGateIds, stageGateEvidence, conditionSources, binding, diagnostics,
+  });
 
   /*
    * A Rule's enforcement refs are resolved against what this Flow and this project actually contain,
