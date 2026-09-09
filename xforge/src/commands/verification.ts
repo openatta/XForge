@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { Diagnostic, FileChange, ProjectContext, VerificationEntry } from '../types.js';
 import { isRetired, isVerificationRun } from '../types.js';
 import { XForgeError, diagnostic } from '../core/errors.js';
+import { recordAudit } from '../core/audit.js';
 import { unattestedDeclarer } from '../core/ledger-identity.js';
 import { atomicWrite } from '../core/files.js';
 import { sha256 } from '../core/hash.js';
@@ -262,7 +263,31 @@ export async function executeVerificationRetire(
     ));
   }
 
-  if (!options.dryRun) await atomicWrite(project.root, relative, next);
+  if (!options.dryRun) {
+    await atomicWrite(project.root, relative, next);
+    /*
+     * The same contract as `declare` above, and the restore matters more here rather than less.
+     *
+     * Retiring marks the entry — `{ ...entry, retiredBy, retiredAt, retiredReason }` — and the
+     * match above skips anything `isRetired`. So a retry after a failed audit write does not
+     * duplicate the withdrawal, it is refused: `XFORGE_VERIFICATION_RETIRE_NOT_FOUND` reports the
+     * entry as "already retired, and not eligible again". Without putting `source` back, the
+     * withdrawal is in the Manifest, absent from the chain, and there is no command that completes
+     * it.
+     */
+    try {
+      await recordAudit(project, {
+        eventType: 'verification.retired',
+        decision: options.gate,
+        reason: options.reason,
+        outcome: 'succeeded',
+        input: { gate: options.gate, retired: describeEntry(matches[0]!.entry), by: options.by },
+      });
+    } catch (error) {
+      await atomicWrite(project.root, relative, source).catch(() => undefined);
+      throw error;
+    }
+  }
   return {
     data: {
       gate: options.gate,
@@ -373,7 +398,42 @@ export async function executeVerificationDeclare(
     }
   }
 
-  if (!options.dryRun) await atomicWrite(project.root, relative, next);
+  if (!options.dryRun) {
+    await atomicWrite(project.root, relative, next);
+    /*
+     * A declaration decides how every later run of this Gate is verified, so the chain records that
+     * it happened — and puts the Manifest back if it cannot.
+     *
+     * The restore is not symmetry for its own sake. This command appends: `verification[gate]`
+     * becomes `[...existing, entry]` with a fresh `declaredAt`, so a retry after a failed audit
+     * write would leave two near-identical declarations for the same Gate rather than redoing one.
+     * Writing `source` back is exact, because those are the bytes this call read.
+     *
+     * `actor` stays the ambient one — whoever ran the command — and `--by` travels in `input`.
+     * They are different facts. The Manifest entry already records `declaredBy`, and an event that
+     * promoted `--by` into `actor` would let a caller name its own authority in the audit chain,
+     * which is the one thing the chain exists not to accept. The event binds to the declaration
+     * through `inputDigest`; the Manifest is where the declarer is read.
+     *
+     * `change` is absent because a declaration is not about one: it edits the project's Manifest
+     * and applies to every Change that runs this Gate afterwards. That puts it on the global chain,
+     * which is gitignored — so this is a record of what happened on this machine, not evidence a
+     * fresh clone can read. Nothing here is load-bearing for archive, and `GOVERNANCE_EVENT_TYPES`
+     * is deliberately not extended: that set is the types the attestation readers reason from, and
+     * no reader reasons from this one.
+     */
+    try {
+      await recordAudit(project, {
+        eventType: 'verification.declared',
+        decision: options.gate,
+        outcome: 'succeeded',
+        input: { gate: options.gate, entry, by: options.by },
+      });
+    } catch (error) {
+      await atomicWrite(project.root, relative, source).catch(() => undefined);
+      throw error;
+    }
+  }
   return {
     data: { gate: options.gate, entry, dryRun: options.dryRun, declarations: verification[options.gate]!.length },
     diagnostics,
