@@ -1,7 +1,7 @@
 import { readFile, realpath, stat } from 'node:fs/promises';
-import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { MAX_GATE_OUTPUT_BYTES, WORK_PACKAGE_VERIFY_TIMEOUT_SECONDS } from '../constants.js';
+import { isAncestor, runGit, topLevel, type GitOutcome } from '../host/git.js';
 import type {
   ChangeConfig,
   Diagnostic,
@@ -78,46 +78,19 @@ function executionWaves(packages: WorkPackage[]): Array<{ index: number; package
   return waves;
 }
 
-interface GitResult {
-  code: number;
-  stdout: string;
-  stderr: string;
-}
+/**
+ * `git`, shielded from the ambient environment and bounded, for the delivery questions below.
+ *
+ * The two options are the whole of what this module needs that the default does not give it.
+ * `minimal` keeps a `GIT_DIR` or `GIT_WORK_TREE` in the caller's environment from pointing these
+ * questions at a different repository, which matters more here than anywhere else: every answer
+ * below decides whether a worker's claimed delivery range is real. `quotePath` is required because
+ * two of these parse paths out of git's output.
+ */
+const DELIVERY_GIT = { environment: 'minimal', quotePath: true, maxBytes: MAX_GATE_OUTPUT_BYTES, captureStderr: true } as const;
 
-export async function git(root: string, args: string[]): Promise<GitResult> {
-  const environment: NodeJS.ProcessEnv = {};
-  for (const name of ['PATH', 'SystemRoot', 'HOME', 'TMPDIR', 'TEMP', 'TMP']) {
-    if (process.env[name]) environment[name] = process.env[name];
-  }
-  return new Promise((resolve) => {
-    const child = spawn('git', ['-c', 'core.quotepath=false', '-C', root, ...args], {
-      shell: false,
-      env: environment,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    const stdout: Buffer[] = [];
-    const stderr: Buffer[] = [];
-    let stdoutBytes = 0;
-    let stderrBytes = 0;
-    child.stdout.on('data', (chunk: Buffer) => {
-      if (stdoutBytes >= MAX_GATE_OUTPUT_BYTES) return;
-      const selected = chunk.subarray(0, MAX_GATE_OUTPUT_BYTES - stdoutBytes);
-      stdout.push(selected);
-      stdoutBytes += selected.byteLength;
-    });
-    child.stderr.on('data', (chunk: Buffer) => {
-      if (stderrBytes >= MAX_GATE_OUTPUT_BYTES) return;
-      const selected = chunk.subarray(0, MAX_GATE_OUTPUT_BYTES - stderrBytes);
-      stderr.push(selected);
-      stderrBytes += selected.byteLength;
-    });
-    child.on('error', (error) => resolve({ code: 127, stdout: '', stderr: error.message }));
-    child.on('close', (code) => resolve({
-      code: code ?? 1,
-      stdout: Buffer.concat(stdout).toString('utf8'),
-      stderr: Buffer.concat(stderr).toString('utf8'),
-    }));
-  });
+export async function git(root: string, args: string[]): Promise<GitOutcome> {
+  return runGit(root, args, DELIVERY_GIT);
 }
 
 /**
@@ -337,8 +310,8 @@ async function validateDeliveryHead(
      XFORGE_WORK_PACKAGE_GIT_REQUIRED. Repeating it per delivery would only add noise. */
   if (!repositoryHead || headCommit === repositoryHead) return { diagnostics: [], unattributed: [] };
 
-  const reachable = await git(project.root, ['merge-base', '--is-ancestor', headCommit, repositoryHead]);
-  if (reachable.code !== 0) {
+  const reachable = await isAncestor(project.root, headCommit, repositoryHead, DELIVERY_GIT);
+  if (!reachable) {
     /* A head that is not an ancestor of HEAD is not in this worktree's history at all: an abandoned
        branch, a rebased-away commit, or a range invented wholesale. Nothing it claims is checkable
        against the tree everyone else will read. This one really is the package's problem — it is
@@ -502,8 +475,10 @@ async function validateSuccessfulDelivery(
     diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_EMPTY_DELIVERY', `A succeeded write package must contain at least one changed path.${cause}`, sourcePath));
   }
 
+  /* The full outcome rather than `isAncestor`: the refusal below quotes git's own stderr, which a
+     boolean cannot carry. */
   const ancestry = await git(project.root, ['merge-base', '--is-ancestor', delivery.base_commit, delivery.head_commit]);
-  if (ancestry.code !== 0) {
+  if (!ancestry.ok) {
     diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_COMMIT_ANCESTRY', 'head_commit must descend from base_commit.', sourcePath, 'error', { stderr: ancestry.stderr.trim() }));
     return { diagnostics, unattributed };
   }
@@ -1001,11 +976,11 @@ export async function resolveWorkPackages(
     }
   }
 
-  const gitRoot = await git(project.root, ['rev-parse', '--show-toplevel']);
+  const gitRoot = await topLevel(project.root, DELIVERY_GIT);
   let baseCommit: string | null = null;
-  const resolvedGitRoot = gitRoot.code === 0 ? await realpath(gitRoot.stdout.trim()).catch(() => '') : '';
+  const resolvedGitRoot = gitRoot === null ? '' : await realpath(gitRoot).catch(() => '');
   const resolvedProjectRoot = await realpath(project.root).catch(() => path.resolve(project.root));
-  if (gitRoot.code !== 0 || resolvedGitRoot !== resolvedProjectRoot) {
+  if (gitRoot === null || resolvedGitRoot !== resolvedProjectRoot) {
     diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_GIT_REQUIRED', 'Work package execution requires the XForge project root to be a Git worktree.', planPath));
   } else {
     const head = await git(project.root, ['rev-parse', 'HEAD']);
@@ -1078,8 +1053,8 @@ export async function resolveWorkPackages(
     for (const dependency of workPackage.depends_on) {
       const dependencyDelivery = latestByPackage.get(dependency);
       if (!dependencyDelivery || dependencyDelivery.status !== 'succeeded' || !dependencyDelivery.head_commit) continue;
-      const ancestry = await git(project.root, ['merge-base', '--is-ancestor', dependencyDelivery.head_commit, delivery.base_commit]);
-      if (ancestry.code !== 0) {
+      const ancestry = await isAncestor(project.root, dependencyDelivery.head_commit, delivery.base_commit, DELIVERY_GIT);
+      if (!ancestry) {
         const deliveryPath = `${project.changesPath}/${changeId}/evidence/agents/${workPackage.id}/${delivery.execution_id}.yaml`;
         diagnostics.push(diagnostic(
           'XFORGE_WORK_PACKAGE_DEPENDENCY_COMMIT_MISSING',

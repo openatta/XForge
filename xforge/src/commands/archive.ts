@@ -1,8 +1,8 @@
-import { spawn } from 'node:child_process';
 import { mkdir, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import type { Diagnostic, FileChange, ProjectContext } from '../types.js';
 import { UNGOVERNED_STAGE } from '../constants.js';
+import { porcelainStatus } from '../host/git.js';
 import { executeCheck } from './check.js';
 import { checkStructure } from '../core/checker.js';
 import { XForgeError, diagnostic } from '../core/errors.js';
@@ -17,26 +17,6 @@ import { contentRevisionUnderPolicy } from '../core/revision.js';
 import { loadSelectedResources, type SelectedResources } from '../core/resource-loader.js';
 import { blockRemedy, resolveControlPlane, terminalGovernanceBlocks } from '../core/control-plane.js';
 import { readChangeAuditEvents, recordAudit, type ChangeAuditFacts } from '../core/audit.js';
-
-/**
- * `git status --porcelain` over specific paths, or `null` when the question cannot be asked here.
- *
- * `null` covers every "we do not know" case — no Git on PATH, not a repository, a failed
- * invocation — and every caller treats it as "report nothing". Guessing that an unanswerable
- * question means "uncommitted" would block archives in environments that never had Git.
- */
-async function gitPorcelain(root: string, paths: readonly string[]): Promise<string | null> {
-  return new Promise((resolve) => {
-    const child = spawn('git', ['-c', 'core.quotepath=false', '-C', root, 'status', '--porcelain=v1', '-z', '--untracked-files=all', '--', ...paths], {
-      shell: false,
-      stdio: ['ignore', 'pipe', 'ignore'],
-    });
-    const chunks: Buffer[] = [];
-    child.stdout.on('data', (chunk: Buffer) => chunks.push(chunk));
-    child.on('error', () => resolve(null));
-    child.on('close', (code) => resolve(code === 0 ? Buffer.concat(chunks).toString('utf8') : null));
-  });
-}
 
 function archiveName(changeId: string, now = new Date()): string {
   const localDate = [
@@ -116,7 +96,7 @@ async function uncommittedGateDefinitions(
     .filter((item): item is string => Boolean(item));
   if (paths.length === 0) return [];
 
-  const status = await gitPorcelain(project.root, paths);
+  const status = await porcelainStatus(project.root, { paths, quotePath: true, nulSeparated: true, untrackedFiles: true });
   if (status === null) return [];
   const dirty = [...new Set(status.split('\0').filter((line) => line.length > 3).map((line) => line.slice(3)))];
   if (dirty.length === 0) return [];

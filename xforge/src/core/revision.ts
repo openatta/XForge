@@ -1,43 +1,28 @@
-import { spawn } from 'node:child_process';
 import { readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import type { ChangeState, GovernanceRevision, ProjectContext, StageFlow } from '../types.js';
 import type { SelectedResources } from './resource-loader.js';
+import { changedPaths, isAncestor, runGit, topLevel } from '../host/git.js';
 import { sha256, stableStringify } from './hash.js';
 import { safeResolve } from './path-safety.js';
 
-async function git(root: string, args: string[]): Promise<string> {
-  return new Promise((resolve) => {
-    const child = spawn('git', ['-C', root, ...args], { shell: false, stdio: ['ignore', 'pipe', 'ignore'] });
-    const chunks: Buffer[] = [];
-    child.stdout.on('data', (chunk: Buffer) => chunks.push(chunk));
-    child.on('error', () => resolve('unknown'));
-    child.on('close', (code) => resolve(code === 0 ? Buffer.concat(chunks).toString('utf8').trim() || 'unknown' : 'unknown'));
-  });
-}
-
 /**
- * `git`, but with the exit code kept.
+ * A revision lookup's answer, where every way of not having one is the single word `unknown`.
  *
- * The wrapper above folds "ran fine and printed nothing" into `unknown`, which is right for the
- * revision lookups it serves and wrong for anything asking a yes/no question: `merge-base
- * --is-ancestor` answers entirely in its exit status and prints nothing either way, and an empty
- * `diff --name-only` is the meaningful answer "nothing changed".
+ * This is the fold `host/git.ts` deliberately does not perform: no repository, no commit, git not
+ * installed and "ran fine and printed nothing" are four different facts, and for a *revision* they
+ * are one — there is no revision to record. It is wrong for anything asking a yes/no question,
+ * which is why the questions below go through `isAncestor` and `changedPaths` instead.
  */
-async function gitResult(root: string, args: string[]): Promise<{ ok: boolean; stdout: string }> {
-  return new Promise((resolve) => {
-    const child = spawn('git', ['-C', root, ...args], { shell: false, stdio: ['ignore', 'pipe', 'ignore'] });
-    const chunks: Buffer[] = [];
-    child.stdout.on('data', (chunk: Buffer) => chunks.push(chunk));
-    child.on('error', () => resolve({ ok: false, stdout: '' }));
-    child.on('close', (code) => resolve({ ok: code === 0, stdout: Buffer.concat(chunks).toString('utf8') }));
-  });
+async function revisionText(root: string, args: string[]): Promise<string> {
+  const result = await runGit(root, args);
+  return result.ok ? result.stdout.trim() || 'unknown' : 'unknown';
 }
 
 export async function gitRevisions(root: string): Promise<{ base: string; head: string }> {
-  const head = await git(root, ['rev-parse', 'HEAD']);
+  const head = await revisionText(root, ['rev-parse', 'HEAD']);
   if (head === 'unknown') return { base: 'unknown', head };
-  const base = await git(root, ['rev-parse', 'HEAD^']);
+  const base = await revisionText(root, ['rev-parse', 'HEAD^']);
   return { base: base === 'unknown' ? head : base, head };
 }
 
@@ -95,26 +80,21 @@ export async function codeMovedSince(
   currentGitHead?: string,
 ): Promise<number | null> {
   if (!evidenceGitHead || !/^[0-9a-f]{40}$/i.test(evidenceGitHead)) return null;
-  const head = currentGitHead ?? await git(project.root, ['rev-parse', 'HEAD']);
+  const head = currentGitHead ?? await revisionText(project.root, ['rev-parse', 'HEAD']);
   if (!head || head === 'unknown') return null;
   if (head === evidenceGitHead) return 0;
-  const toplevel = await gitResult(project.root, ['rev-parse', '--show-toplevel']);
-  if (!toplevel.ok) return null;
+  const toplevel = await topLevel(project.root);
+  if (toplevel === null) return null;
   const [resolvedToplevel, resolvedRoot] = await Promise.all([
-    realpath(toplevel.stdout.trim()).catch(() => ''),
+    realpath(toplevel).catch(() => ''),
     realpath(project.root).catch(() => path.resolve(project.root)),
   ]);
   if (!resolvedToplevel || resolvedToplevel !== resolvedRoot) return null;
-  const ancestor = await gitResult(project.root, ['merge-base', '--is-ancestor', evidenceGitHead, head]);
-  if (!ancestor.ok) return null;
-  const diff = await gitResult(project.root, ['diff', '--name-only', '--no-renames', `${evidenceGitHead}..${head}`, '--']);
-  if (!diff.ok) return null;
+  if (!await isAncestor(project.root, evidenceGitHead, head)) return null;
+  const changed = await changedPaths(project.root, `${evidenceGitHead}..${head}`);
+  if (changed === null) return null;
   const excluded = selfWrittenPrefixes(project.changesPath, changeId);
-  return diff.stdout.split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .filter((relative) => !excluded.some((prefix) => relative.startsWith(prefix)))
-    .length;
+  return changed.filter((relative) => !excluded.some((prefix) => relative.startsWith(prefix))).length;
 }
 
 async function digestFile(project: ProjectContext, relative: string): Promise<{ path: string; digest: string }> {
@@ -230,7 +210,7 @@ export async function computeGovernanceRevision(
 
 /** Git authors (email and name) of the commits in `base..head`, lowercased. */
 export async function commitAuthors(root: string, range: string[]): Promise<string[]> {
-  const output = await git(root, ['log', '--no-merges', '--format=%ae%n%an', ...range]);
+  const output = await revisionText(root, ['log', '--no-merges', '--format=%ae%n%an', ...range]);
   if (output === 'unknown') return [];
   return output.split('\n').map((line) => line.trim().toLowerCase()).filter((line) => line.length > 0);
 }

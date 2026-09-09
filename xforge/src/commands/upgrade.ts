@@ -1,7 +1,7 @@
 import { readdir, readFile, rm, mkdir, writeFile } from 'node:fs/promises';
-import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import type { Diagnostic, FileChange, ProjectContext } from '../types.js';
+import { runGitSync } from '../host/git.js';
 import { XForgeError, diagnostic } from '../core/errors.js';
 import { atomicWrite } from '../core/files.js';
 import { sha256 } from '../core/hash.js';
@@ -99,8 +99,8 @@ function incomingManaged(files: Map<string, Buffer>): Map<string, Buffer> {
 }
 
 function gitHead(root: string): string | null {
-  const result = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
-  return result.status === 0 ? result.stdout.trim() : null;
+  const result = runGitSync(root, ['rev-parse', 'HEAD']);
+  return result.ok ? result.stdout.trim() : null;
 }
 
 /**
@@ -122,10 +122,8 @@ const backstopPaths = (): string[] => [...MANAGED_PREFIXES.map((prefix) => prefi
  * repository at all report itself as having a backstop it does not have.
  */
 function dirtyManagedPaths(root: string): string[] | null {
-  const result = spawnSync('git', ['status', '--porcelain', '--', ...backstopPaths()], {
-    cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
-  });
-  if (result.status !== 0) return null;
+  const result = runGitSync(root, ['status', '--porcelain', '--', ...backstopPaths()]);
+  if (!result.ok) return null;
   return result.stdout.split('\n').filter(Boolean).map(porcelainPath).sort();
 }
 
@@ -173,10 +171,8 @@ function porcelainPath(line: string): string {
  * as the route back right up until it is needed.
  */
 function trackedAt(root: string, head: string, candidates: string[]): string[] {
-  const result = spawnSync('git', ['ls-tree', '-r', '--name-only', head, '--', ...candidates], {
-    cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
-  });
-  if (result.status !== 0) return [];
+  const result = runGitSync(root, ['ls-tree', '-r', '--name-only', head, '--', ...candidates]);
+  if (!result.ok) return [];
   const tracked = result.stdout.split('\n').filter(Boolean);
   return candidates.filter((candidate) =>
     tracked.some((file) => file === candidate || file.startsWith(`${candidate}/`)));

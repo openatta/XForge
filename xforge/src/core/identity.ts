@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
 import { lstatSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runGitSync } from '../host/git.js';
 
 /*
  * `fileURLToPath`, not `new URL(...).pathname` + `path.resolve`: a `file://` URL's `.pathname` on
@@ -15,18 +15,17 @@ const packageRoot = path.resolve(fileURLToPath(new URL('../..', import.meta.url)
 /**
  * Git, synchronously, against this package's own directory.
  *
- * Two other modules have a function of this name and none of the three may be merged:
- * `core/revision.ts` is async and folds every failure into the string `unknown`, which is right for
- * a revision lookup and wrong for a yes/no question; `commands/check.ts` is async, bounds its
- * output, and disables `core.quotepath` because it parses porcelain paths. This one is sync because
- * it answers during module-level identity resolution, before any await exists.
+ * The reason this is not the same call the rest of the product makes has outlived the three
+ * hand-written wrappers it used to warn about. `host/git.ts` now owns the plumbing, and the
+ * distinction that survives is the one that was always the real one: this answers during
+ * module-level identity resolution, before any `await` exists, so it goes through `runGitSync`.
+ * The other axis is the root — every other caller asks about the *project*, and this asks about the
+ * package the CLI was installed from, which is a different directory and often a different
+ * repository. See `packageIsTracked` for why that matters.
  */
 function git(args: string[]): string | null {
-  try {
-    return execFileSync('git', ['-C', packageRoot, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || null;
-  } catch {
-    return null;
-  }
+  const result = runGitSync(packageRoot, args);
+  return result.ok ? result.stdout.trim() || null : null;
 }
 
 /**
@@ -45,12 +44,7 @@ function git(args: string[]): string | null {
  * one through `XFORGE_BUILD_COMMIT` / `XFORGE_BUILD_REPOSITORY`, which are consulted first.
  */
 function packageIsTracked(): boolean {
-  try {
-    execFileSync('git', ['-C', packageRoot, 'ls-files', '--error-unmatch', 'package.json'], { stdio: 'ignore' });
-    return true;
-  } catch {
-    return false;
-  }
+  return runGitSync(packageRoot, ['ls-files', '--error-unmatch', 'package.json']).ok;
 }
 
 export function actualGitIdentity(): { commit: string | null; repository: string | null } {

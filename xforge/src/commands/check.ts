@@ -1,4 +1,3 @@
-import { spawn } from 'node:child_process';
 import { readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import type { Diagnostic, FileChange, Flow, GateEvidence, GateResource, NextAction, ProjectContext, StageFlow } from '../types.js';
@@ -15,6 +14,7 @@ import { gateBlockReason, readGateEvidence, resolveControlPlane } from '../core/
 import { loadTransitionReceipts } from '../core/control-plane/receipts.js';
 import { sha256, stableStringify } from '../core/hash.js';
 import { safeResolve } from '../core/path-safety.js';
+import { porcelainStatus, topLevel } from '../host/git.js';
 import { AUDIT_DIRECTORY } from '../constants.js';
 import { reconcileChange } from '../core/reconcile.js';
 import { readStagedUpgrade, upgradeInProgressDiagnostic } from '../core/upgrade-sentinel.js';
@@ -155,6 +155,12 @@ const GATE_REUSE_DIRECTORY = `${AUDIT_DIRECTORY}/gate-reuse`;
 /** Bounds on the uncommitted state a reuse key will hash; beyond them the Gate re-runs instead. */
 const MAX_DIRTY_ENTRIES = 5_000;
 const MAX_DIRTY_BYTES = 64 * 1024 * 1024;
+/*
+ * `quotePath` because the porcelain output below is split into paths, and the bound because an
+ * over-long answer must read as "re-run the Gate" rather than as a short one: `porcelainStatus`
+ * returns `null` when it had to truncate, which is exactly the reuse-refusing answer this wants.
+ */
+const DIRTY_TREE_GIT = { quotePath: true, maxBytes: MAX_DIRTY_BYTES } as const;
 
 interface GateReuseRecord {
   schemaVersion: '1';
@@ -168,21 +174,6 @@ interface GateReuseRecord {
 
 function gateReuseRecordPath(changeId: string, gate: GateResource): string {
   return `${GATE_REUSE_DIRECTORY}/${changeId}/${gate.metadata.name.replace(/[^a-zA-Z0-9._-]+/g, '-')}.json`;
-}
-
-/** `git` stdout, or `null` on any failure — including output past the byte bound. */
-async function git(root: string, args: string[]): Promise<string | null> {
-  return new Promise((resolve) => {
-    const child = spawn('git', ['-c', 'core.quotepath=false', '-C', root, ...args], { shell: false, stdio: ['ignore', 'pipe', 'ignore'] });
-    const chunks: Buffer[] = [];
-    let bytes = 0;
-    child.stdout.on('data', (chunk: Buffer) => {
-      bytes += chunk.byteLength;
-      if (bytes <= MAX_DIRTY_BYTES) chunks.push(chunk);
-    });
-    child.on('error', () => resolve(null));
-    child.on('close', (code) => resolve(code === 0 && bytes <= MAX_DIRTY_BYTES ? Buffer.concat(chunks).toString('utf8') : null));
-  });
 }
 
 /**
@@ -208,14 +199,14 @@ async function git(root: string, args: string[]): Promise<string | null> {
  * more dirty state than the bounds above allow. Reuse must never be the fallback for not knowing.
  */
 async function workingTreeDigest(project: ProjectContext, changeId: string): Promise<string | null> {
-  const toplevel = await git(project.root, ['rev-parse', '--show-toplevel']);
+  const toplevel = await topLevel(project.root, DIRTY_TREE_GIT);
   if (toplevel === null) return null;
   const [resolvedToplevel, resolvedRoot] = await Promise.all([
-    realpath(toplevel.trim()).catch(() => ''),
+    realpath(toplevel).catch(() => ''),
     realpath(project.root).catch(() => path.resolve(project.root)),
   ]);
   if (!resolvedToplevel || resolvedToplevel !== resolvedRoot) return null;
-  const status = await git(project.root, ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--no-renames']);
+  const status = await porcelainStatus(project.root, { ...DIRTY_TREE_GIT, nulSeparated: true, untrackedFiles: true, noRenames: true });
   if (status === null) return null;
 
   const excluded = [`${project.changesPath}/${changeId}/`, `${AUDIT_DIRECTORY}/`];
