@@ -197,7 +197,7 @@ async function resolveGateContext(project: ProjectContext, changeId: string): Pr
   const resolved = await resolveChangeState(project, changeId);
   const resources = await loadSelectedResources(project);
   const control = resolved.flow.governance
-    ? await resolveControlPlane(project, changeId, resolved.flow, resolved.state, resources, resolved.config)
+    ? await resolveControlPlane(project, changeId, resolved, resources)
     : null;
   const flow = resolved.flow.metadata.name;
   const revision = control?.governance.revision ?? {

@@ -81,7 +81,7 @@ export async function executeReviewAcknowledge(project: ProjectContext, options:
       `${project.changesPath}/${options.change}/work-packages.yaml`,
     ));
   }
-  const control = await resolveControlPlane(project, options.change, resolved.flow, resolved.state, resources, resolved.config, { workPackages });
+  const control = await resolveControlPlane(project, options.change, resolved, resources, { workPackages });
   const diagnostics = [...resolved.diagnostics, ...resources.diagnostics, ...workPackages.diagnostics, ...control.diagnostics];
   if (diagnostics.some((item) => item.severity === 'error')) throw new XForgeError(diagnostics, { root: project.root });
 

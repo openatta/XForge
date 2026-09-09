@@ -618,7 +618,7 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
   if (options.change && structure.change && !hasStructureErrors) {
     const resolved = await resolveChangeState(project, options.change);
     if (resolved.flow.governance) {
-      control = await resolveControlPlane(project, options.change, resolved.flow, resolved.state, structure.resources, resolved.config, { workPackages: structure.workPackages ?? undefined });
+      control = await resolveControlPlane(project, options.change, resolved, structure.resources, { workPackages: structure.workPackages ?? undefined });
     }
   }
 

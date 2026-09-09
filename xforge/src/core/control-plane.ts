@@ -154,12 +154,21 @@ function whenItBites(flow: StageFlow, gateId: string): string {
 export async function resolveControlPlane(
   project: ProjectContext,
   changeId: string,
-  flow: StageFlow,
-  changeState: ChangeState,
+  /*
+   * The Change as `resolveChangeState` returned it, rather than its three fields passed one at a
+   * time.
+   *
+   * Four of this function's six positional parameters always came from the same object, re-typed at
+   * fifteen call sites -- `resolved.flow, resolved.state, resources, resolved.config` -- which is a
+   * quadruple nothing checked the order of. `resolved.state` where `resolved.flow` was meant
+   * compiles; so does a `config` from one Change beside a `flow` from another. Taking the object
+   * makes both unspellable.
+   */
+  resolved: { flow: StageFlow; state: ChangeState; config: ChangeConfig },
   resources: SelectedResources,
-  config: ChangeConfig,
   options: { workPackages?: WorkPackageResolution; projectFacts?: boolean } = {},
 ): Promise<ResolvedControlPlane> {
+  const { flow, state: changeState, config } = resolved;
   const diagnostics: Diagnostic[] = [];
   const workPackages = options.workPackages ?? await resolveWorkPackages(project, changeId, config, resources);
   /* Not a mutation of the caller's object: `control.state` is what every consumer of this resolve

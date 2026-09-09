@@ -481,7 +481,7 @@ export async function executeHookDispatch(project: ProjectContext, options: { ta
       const resolved = await resolveChangeState(project, change);
       flow = resolved.flow.metadata.name;
       if (resolved.flow.governance) {
-        const control = await resolveControlPlane(project, change, resolved.flow, resolved.state, selected, resolved.config);
+        const control = await resolveControlPlane(project, change, resolved, selected);
         stage = control.governance.currentStage;
         revision = control.governance.revision;
       }

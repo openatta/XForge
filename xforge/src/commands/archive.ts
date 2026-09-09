@@ -126,7 +126,7 @@ async function planArchive(project: ProjectContext, changeId: string, options: P
       /* The plan `checkStructure` already resolved above, handed over rather than read again. It is
          also what stops archive re-deciding `independentReview` against an empty package list: the
          resolve fills it in either way now, and passing it keeps this path to one read. */
-      const control = await resolveControlPlane(project, changeId, resolved.flow, resolved.state, resources, resolved.config, { workPackages: structure.workPackages ?? undefined });
+      const control = await resolveControlPlane(project, changeId, resolved, resources, { workPackages: structure.workPackages ?? undefined });
       diagnostics.push(...control.diagnostics);
       const governanceBlocks = await terminalGovernanceBlocks(project, control, { auditFacts: options.auditFacts });
       for (const block of governanceBlocks) diagnostics.push(diagnostic('XFORGE_ARCHIVE_GOVERNANCE_BLOCKED', `Archive governance is blocked by ${block}.`, `${project.changesPath}/${changeId}`));
@@ -235,7 +235,7 @@ export async function executeArchive(project: ProjectContext, changeId: string, 
   const auditResolved = await resolveChangeState(project, changeId);
   const auditResources = await loadSelectedResources(project);
   const auditControl = auditResolved.flow.governance
-    ? await resolveControlPlane(project, changeId, auditResolved.flow, auditResolved.state, auditResources, auditResolved.config)
+    ? await resolveControlPlane(project, changeId, auditResolved, auditResources)
     : null;
   await recordAudit(project, { eventType: 'archive.before', change: changeId, flow: auditResolved.flow.metadata.name, stage: auditControl?.governance.currentStage ?? UNGOVERNED_STAGE, revision: auditControl?.governance.revision, outcome: 'succeeded', input: { target: plan.target } });
 

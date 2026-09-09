@@ -505,7 +505,7 @@ async function resolveReceiptFacts(project: ProjectContext, change: string, comm
      `independentReview` takes. Its diagnostics are carried rather than dropped: a plan that failed
      to load must not produce a confidently drafted receipt. */
   const workPackages = await resolveWorkPackages(project, change, resolved.config, resources);
-  const control = await resolveControlPlane(project, change, resolved.flow, resolved.state, resources, resolved.config, { workPackages });
+  const control = await resolveControlPlane(project, change, resolved, resources, { workPackages });
   /*
    * All four sources, and a refusal on any error — the shape `work-package draft` and `review
    * acknowledge` already use. The draft is read straight off `control.transitionRequirements`, so a

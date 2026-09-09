@@ -103,7 +103,7 @@ export async function executeFindingsResolve(
   let contentRevision: string | null = null;
   if (resolved.flow.governance) {
     const workPackages = await resolveWorkPackages(project, options.change, resolved.config, resources);
-    const control = await resolveControlPlane(project, options.change, resolved.flow, resolved.state, resources, resolved.config, { workPackages });
+    const control = await resolveControlPlane(project, options.change, resolved, resources, { workPackages });
     currentStage = control.governance.currentStage;
     contentRevision = control.governance.revision.contentRevision;
   }

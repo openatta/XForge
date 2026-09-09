@@ -90,7 +90,7 @@ export async function executeTransition(project: ProjectContext, options: { chan
   );
   const resources = await loadSelectedResources(project);
   const workPackages = await resolveWorkPackages(project, options.change, resolved.config, resources);
-  const control = await resolveControlPlane(project, options.change, resolved.flow, resolved.state, resources, resolved.config, { workPackages });
+  const control = await resolveControlPlane(project, options.change, resolved, resources, { workPackages });
   const requirement = control.transitionRequirements.get(options.to);
   if (!requirement) {
     throw new XForgeError([
@@ -278,7 +278,7 @@ export async function executeTransition(project: ProjectContext, options: { chan
          * bought a second full plan resolution, on the most expensive read in the product, for an
          * answer identical to the one already in hand.
          */
-        const nextControl = await resolveControlPlane(project, options.change, nextResolved.flow as typeof resolved.flow, nextResolved.state, resources, nextResolved.config, { workPackages });
+        const nextControl = await resolveControlPlane(project, options.change, nextResolved, resources, { workPackages });
         /* The attestation digest comes from the shared definition in `core/audit.ts`, so the write
            side here and the orphan scan above cannot drift apart on what attests what. */
         await recordAudit(project, { eventType: 'stage.entered', change: options.change, flow: resolved.flow.metadata.name, stage: options.to, revision: nextControl.governance.revision, decision: options.to, outcome: 'succeeded', inputDigest: transitionAttestationDigest(receipt.digest) });

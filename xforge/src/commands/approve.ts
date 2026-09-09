@@ -225,7 +225,7 @@ export async function executeApprove(project: ProjectContext, options: ApproveOp
   const resolved = await resolveChangeState(project, options.change);
   if (!resolved.flow.governance) throw new XForgeError(diagnostic('XFORGE_GOVERNANCE_FLOW_REQUIRED', 'approve requires a Protocol 2 governed Flow.'));
   const resources = await loadSelectedResources(project);
-  const control = await resolveControlPlane(project, options.change, resolved.flow, resolved.state, resources, resolved.config);
+  const control = await resolveControlPlane(project, options.change, resolved, resources);
   assertApprovableTransition(control, options, resolved.flow);
   const policy = approvalPolicy(resolved.flow, control.governance.currentStage, options.transition, options.policy);
   const revision = control.governance.revision;

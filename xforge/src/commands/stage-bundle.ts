@@ -125,7 +125,7 @@ export async function executeStageBundle(
     ));
   }
   const resources = await loadSelectedResources(project);
-  const control = await resolveControlPlane(project, options.change, resolved.flow, resolved.state, resources, resolved.config);
+  const control = await resolveControlPlane(project, options.change, resolved, resources);
   const stage = control.governance.currentStage;
   const diagnostics: Diagnostic[] = [];
   const changeRoot = `${project.changesPath}/${options.change}`;
