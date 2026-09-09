@@ -317,51 +317,21 @@ async function writeGateReuseRecord(
   } catch { /* A missing reuse key is a cache miss, never a wrong result. */ }
 }
 
-export async function executeCheck(project: ProjectContext, options: CheckOptions): Promise<{
-  data: CheckData;
-  diagnostics: Diagnostic[];
-  changes: FileChange[];
-  nextActions: NextAction[];
-}> {
-  assertManaged(project, 'check');
-  const structure = await checkStructure(project, options.change);
-  const diagnostics = [...structure.diagnostics];
-  const nextActions: NextAction[] = [];
-  const staleLockCodes = new Set(['XFORGE_LOCK_SCAFFOLD_MISMATCH', 'XFORGE_LOCK_PATHS_MISMATCH', 'XFORGE_LOCK_RESOURCES_MISMATCH']);
-  if (diagnostics.some((item) => staleLockCodes.has(item.code))) {
-    diagnostics.push(diagnostic('XFORGE_LOCK_STALE', 'Run xforge install to resolve and lock current Manifest paths, Scaffold, and resources before check.', 'xforge/lock.yaml'));
-  }
-  /*
-   * A Gate that runs mid-upgrade is a Gate whose definition may be either release's.
-   *
-   * The Evidence this run writes is bound to a policy snapshot and cited by everything downstream,
-   * so a `passed` recorded here can be a pass against a command the merge is about to replace, or
-   * against one it has just brought in that the Flow around it has not adopted. Neither is wrong to
-   * do — checking is how somebody finds out what the merge broke — but the result is worth less than
-   * it looks, and nothing else in the Evidence says so.
-   *
-   * Not counted as an advisory, and pathed away from the Change on purpose: `advisories` below picks
-   * up warnings inside the Change's own directory, and this one is a fact about the project. Adding
-   * it there would make XFORGE_CHECK_PASSED_WITH_WARNINGS fire on every run of an otherwise clean
-   * Change for as long as the upgrade stays open.
-   */
-  const staged = await readStagedUpgrade(project.root);
-  if (staged) diagnostics.push(upgradeInProgressDiagnostic(staged));
-  const changes: FileChange[] = [];
-  const hasStructureErrors = diagnostics.some((item) => item.severity === 'error');
-  const gateResults: CheckData['gates'] = [];
-  /*
-   * The raw Evidence, kept beside the reported result.
-   *
-   * `check` now summarises what it returns, and the warning lift below reads each Gate's stdout to
-   * surface notices a passing status does not carry -- the one thing standing between a reader who
-   * never opens `evidence/*.json` and a Gate that passed while printing a problem. Narrowing the
-   * reply must not narrow what the command itself can see, so the full record stays in hand here
-   * and only the reply is trimmed.
-   */
-  const rawEvidence = new Map<string, GateEvidence>();
-  const workPackageResults: CheckData['workPackages'] = [];
-
+/**
+ * Which Gates this run executes, and by which of the four routes.
+ *
+ * Pulled out of `executeCheck` because it is the most branched decision the command makes, and the
+ * one with a live failure behind it: every override has two spellings and the two disagreed. The
+ * note on `narrowed` below records what that cost -- a Stage-scoped check ran thirty-odd
+ * work-package verify commands nobody asked for and was killed on a timeout. The rule the two
+ * spellings share is now stated in a place that can be read without four hundred lines around it.
+ */
+async function selectGates(
+  project: ProjectContext,
+  options: CheckOptions,
+  structure: Awaited<ReturnType<typeof checkStructure>>,
+): Promise<{ gateIds: string[]; gateSelection: GateSelection; selectedStage: string | null; narrowed: boolean; diagnostics: Diagnostic[] }> {
+  const diagnostics: Diagnostic[] = [];
   /*
    * Gate selection is owned by the Flow's Stages, not by a fixed archive-time set. `xforge-propose`
    * runs `check --change <id>` while still in propose; running the verify Stage's Gates there costs
@@ -438,7 +408,21 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
     const external = gateIds.some((id) => structure.resources.gates.get(id)?.value.spec.builtin !== 'structure');
     if (external) diagnostics.push(diagnostic('XFORGE_CHANGE_REQUIRED', 'A Change is required to run a Gate and save Evidence.'));
   }
+  return { gateIds, gateSelection, selectedStage, narrowed, diagnostics };
+}
 
+/** The work packages' own verify commands, run when this check was not narrowed to chosen Gates. */
+async function runWorkPackageVerify(
+  project: ProjectContext,
+  options: CheckOptions,
+  structure: Awaited<ReturnType<typeof checkStructure>>,
+  selectedStage: string | null,
+  narrowed: boolean,
+  hasStructureErrors: boolean,
+): Promise<{ workPackageResults: CheckData['workPackages']; workPackagesSelected: boolean; diagnostics: Diagnostic[]; changes: FileChange[] }> {
+  const diagnostics: Diagnostic[] = [];
+  const changes: FileChange[] = [];
+  const workPackageResults: CheckData['workPackages'] = [];
   /* Work packages are Apply-stage assets: their `verify` commands exercise code that does not exist
      until implementation starts. Running them from an earlier Stage's check would fail a Change for
      work it has not been asked to do yet. `null` covers legacy Flows and whole-Flow overrides. */
@@ -531,6 +515,61 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
       });
     }
   }
+  return { workPackageResults, workPackagesSelected, diagnostics, changes };
+}
+
+export async function executeCheck(project: ProjectContext, options: CheckOptions): Promise<{
+  data: CheckData;
+  diagnostics: Diagnostic[];
+  changes: FileChange[];
+  nextActions: NextAction[];
+}> {
+  assertManaged(project, 'check');
+  const structure = await checkStructure(project, options.change);
+  const diagnostics = [...structure.diagnostics];
+  const nextActions: NextAction[] = [];
+  const staleLockCodes = new Set(['XFORGE_LOCK_SCAFFOLD_MISMATCH', 'XFORGE_LOCK_PATHS_MISMATCH', 'XFORGE_LOCK_RESOURCES_MISMATCH']);
+  if (diagnostics.some((item) => staleLockCodes.has(item.code))) {
+    diagnostics.push(diagnostic('XFORGE_LOCK_STALE', 'Run xforge install to resolve and lock current Manifest paths, Scaffold, and resources before check.', 'xforge/lock.yaml'));
+  }
+  /*
+   * A Gate that runs mid-upgrade is a Gate whose definition may be either release's.
+   *
+   * The Evidence this run writes is bound to a policy snapshot and cited by everything downstream,
+   * so a `passed` recorded here can be a pass against a command the merge is about to replace, or
+   * against one it has just brought in that the Flow around it has not adopted. Neither is wrong to
+   * do — checking is how somebody finds out what the merge broke — but the result is worth less than
+   * it looks, and nothing else in the Evidence says so.
+   *
+   * Not counted as an advisory, and pathed away from the Change on purpose: `advisories` below picks
+   * up warnings inside the Change's own directory, and this one is a fact about the project. Adding
+   * it there would make XFORGE_CHECK_PASSED_WITH_WARNINGS fire on every run of an otherwise clean
+   * Change for as long as the upgrade stays open.
+   */
+  const staged = await readStagedUpgrade(project.root);
+  if (staged) diagnostics.push(upgradeInProgressDiagnostic(staged));
+  const changes: FileChange[] = [];
+  const hasStructureErrors = diagnostics.some((item) => item.severity === 'error');
+  const gateResults: CheckData['gates'] = [];
+  /*
+   * The raw Evidence, kept beside the reported result.
+   *
+   * `check` now summarises what it returns, and the warning lift below reads each Gate's stdout to
+   * surface notices a passing status does not carry -- the one thing standing between a reader who
+   * never opens `evidence/*.json` and a Gate that passed while printing a problem. Narrowing the
+   * reply must not narrow what the command itself can see, so the full record stays in hand here
+   * and only the reply is trimmed.
+   */
+  const rawEvidence = new Map<string, GateEvidence>();
+
+  const selection = await selectGates(project, options, structure);
+  const { gateIds, gateSelection, selectedStage, narrowed } = selection;
+  diagnostics.push(...selection.diagnostics);
+
+  const verified = await runWorkPackageVerify(project, options, structure, selectedStage, narrowed, hasStructureErrors);
+  const { workPackageResults, workPackagesSelected } = verified;
+  diagnostics.push(...verified.diagnostics);
+  changes.push(...verified.changes);
 
   if (!hasStructureErrors && (!gateIds.length || options.change || gateIds.every((id) => structure.resources.gates.get(id)?.value.spec.builtin === 'structure'))) {
     for (const id of gateIds) {
