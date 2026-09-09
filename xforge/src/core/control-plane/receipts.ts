@@ -130,7 +130,7 @@ export async function loadTransitionReceipts(
       /*
        * Warning, not error, and this is the whole point of the downgrade. `control.diagnostics` is
        * spread into the blocking set of every consumer (`commands/transition.ts`,
-       * `commands/work-package.ts`, `core/archiver.ts`, `core/state-reader.ts`), so an error here
+       * `commands/work-package.ts`, `commands/archive.ts`, `core/state-reader.ts`), so an error here
        * killed the Change outright — `xforge state` could not even report what was wrong, and the
        * tool's own guidance for receipt anomalies says not to delete the receipt. The condition is
        * now a targeted block instead: every transition and archive is refused (see

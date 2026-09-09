@@ -266,7 +266,7 @@ export async function planSpecMutations(project: ProjectContext, changeId: strin
  *
  * This is the same merge `archive` performs, run for its refusals and with its output discarded. It
  * exists because the answer was previously unavailable until after a human had approved the Change,
- * and not by accident: `core/archiver.ts` returns before it plans any Spec mutation whenever a
+ * and not by accident: `commands/archive.ts` returns before it plans any Spec mutation whenever a
  * governance block is present, and "the closing transition has not happened" and "the closing
  * approval is missing" are both governance blocks. So `archive --dry-run` could not be used to ask
  * this question early — the merge plan is computed only once everything else already passes.

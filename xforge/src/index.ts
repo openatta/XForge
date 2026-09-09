@@ -10,7 +10,7 @@ export { executeApprove } from './commands/approve.js';
 export { executeAudit } from './commands/audit.js';
 export { executeHookDispatch } from './commands/hook.js';
 export { executeWorkPackageAcknowledge, executeWorkPackageDispatch } from './commands/work-package.js';
-export { executeArchive } from './core/archiver.js';
+export { executeArchive } from './commands/archive.js';
 export { loadProject, findProjectRoot } from './core/project-loader.js';
 export { loadFlows, resolveChangeState } from './core/flow-resolver.js';
 export { checkStructure } from './core/checker.js';

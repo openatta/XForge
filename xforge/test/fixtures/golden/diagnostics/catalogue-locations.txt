@@ -1,7 +1,7 @@
 (dynamic)  src/cli/arguments.ts
+(dynamic)  src/commands/archive.ts
 (dynamic)  src/commands/doctor.ts
 (dynamic)  src/commands/transition.ts
-(dynamic)  src/core/archiver.ts
 (dynamic)  src/core/control-plane.ts
 (dynamic)  src/core/reconcile.ts
 (dynamic)  src/runners/gate.ts
@@ -36,11 +36,11 @@ XFORGE_APPROVAL_ROLE_FORBIDDEN  src/core/approval-receipt.ts
 XFORGE_APPROVAL_STALE  src/commands/approve.ts
 XFORGE_APPROVAL_TRANSITION_UNAPPROVABLE  src/commands/approve.ts
 XFORGE_APPROVAL_TRANSITION_UNKNOWN  src/commands/approve.ts
-XFORGE_ARCHIVE_ARTIFACTS_INCOMPLETE  src/core/archiver.ts
-XFORGE_ARCHIVE_GATE_DEFINITION_UNCOMMITTED  src/core/archiver.ts
-XFORGE_ARCHIVE_GOVERNANCE_BLOCKED  src/core/archiver.ts
-XFORGE_ARCHIVE_TARGET_EXISTS  src/core/archiver.ts
-XFORGE_ARCHIVE_TRANSACTION_FAILED  src/core/archiver.ts
+XFORGE_ARCHIVE_ARTIFACTS_INCOMPLETE  src/commands/archive.ts
+XFORGE_ARCHIVE_GATE_DEFINITION_UNCOMMITTED  src/commands/archive.ts
+XFORGE_ARCHIVE_GOVERNANCE_BLOCKED  src/commands/archive.ts
+XFORGE_ARCHIVE_TARGET_EXISTS  src/commands/archive.ts
+XFORGE_ARCHIVE_TRANSACTION_FAILED  src/commands/archive.ts
 XFORGE_ARGUMENT_DUPLICATE  src/cli/arguments.ts
 XFORGE_ARGUMENT_REQUIRED  src/cli.ts
 XFORGE_ARGUMENT_UNEXPECTED  src/cli/arguments.ts
@@ -69,7 +69,7 @@ XFORGE_BUNDLED_SCAFFOLD_INVALID  src/commands/init.ts
 XFORGE_BUNDLED_SCAFFOLD_INVALID  src/core/bundled-scaffold.ts
 XFORGE_CAPABILITY_CONTENT_UNSUPPORTED  src/install/planner.ts
 XFORGE_CHANGE_MODULE_UNKNOWN  src/core/checker.ts
-XFORGE_CHANGE_NOT_FOUND  src/core/archiver.ts
+XFORGE_CHANGE_NOT_FOUND  src/commands/archive.ts
 XFORGE_CHANGE_NOT_FOUND  src/core/flow-resolver.ts
 XFORGE_CHANGE_REQUIRED  src/cli/arguments.ts
 XFORGE_CHANGE_REQUIRED  src/commands/check.ts
@@ -206,9 +206,9 @@ XFORGE_LOCK_PROTOCOL_MISMATCH  src/core/project-loader.ts
 XFORGE_LOCK_RESOURCES_MISMATCH  src/core/checker.ts
 XFORGE_LOCK_RESOURCES_MISMATCH  src/core/state-reader.ts
 XFORGE_LOCK_SCAFFOLD_MISMATCH  src/core/project-loader.ts
+XFORGE_LOCK_STALE  src/commands/archive.ts
 XFORGE_LOCK_STALE  src/commands/check.ts
 XFORGE_LOCK_STALE  src/commands/hook.ts
-XFORGE_LOCK_STALE  src/core/archiver.ts
 XFORGE_LOCK_STALE  src/runners/script.ts
 XFORGE_MANAGED_FILE_ADOPTED  src/install/planner.ts
 XFORGE_MANAGED_FILE_MODIFIED  src/install/planner.ts

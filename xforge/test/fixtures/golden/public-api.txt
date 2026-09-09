@@ -64,7 +64,7 @@ capabilityMatrix  <- ./adapters/index.js
 checkStructure  <- ./core/checker.js
 computeGovernanceRevision  <- ./core/revision.js
 executeApprove  <- ./commands/approve.js
-executeArchive  <- ./core/archiver.js
+executeArchive  <- ./commands/archive.js
 executeAudit  <- ./commands/audit.js
 executeCheck  <- ./commands/check.js
 executeHookDispatch  <- ./commands/hook.js
