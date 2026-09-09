@@ -521,6 +521,218 @@ async function checkOwnershipReadable(project: ProjectContext): Promise<Diagnost
   return diagnostics;
 }
 
+function checkDanglingReferences(project: ProjectContext, structure: Structure): DoctorFinding[] {
+  const danglingReferences: DoctorFinding[] = [];
+  /* A Hook whose event no enabled target exposes is a dangling extension in exactly the sense
+     doctor reports: selected, but it can never fire. Produced by the projection planner rather than
+     checkStructure, so doctor asks for it directly instead of waiting for the next install.
+     XFORGE_POLICY_STATIC_LAYER_DEGRADED is deliberately NOT mapped here — such a policy is still
+     enforced, by the runtime Hook bridge instead of the static layer, so it is degraded rather than
+     dangling. It also fires for the shipped `protected-files` policy on every run, and a permanent
+     finding teaches readers to ignore the report. `install` reports it situationally instead. */
+  const projectionDiagnostics = capabilityGapDiagnostics(structure.resources, project.manifest.targets);
+  for (const item of [...structure.diagnostics, ...projectionDiagnostics]) {
+    const scope = DANGLING_CODE_SCOPE[item.code];
+    if (!scope) continue;
+    danglingReferences.push({ scope, code: item.code, message: item.message, path: item.path, severity: item.severity });
+  }
+  return danglingReferences;
+}
+
+/**
+ * The Gates and Skills every Flow names, which three later checks compare their enabled sets to.
+ *
+ * Separated from the two approval checks it used to share a loop with. One pass produced context
+ * *and* answered two questions, which is why neither question could be asked on its own and why
+ * `--kind` could not have skipped either without leaving the context unbuilt. Three passes over a
+ * handful of in-memory Flows costs nothing worth measuring.
+ */
+function collectFlowReferences(flowResult: FlowResult): { gates: Set<string>; skills: Set<string> } {
+  const gates = new Set<string>();
+  const skills = new Set<string>();
+  for (const [, flow] of flowResult.flows) {
+    for (const gate of allGateReferences(flow)) gates.add(gate);
+    for (const stage of flow.stages) skills.add(stage.skill);
+    skills.add(flow.terminal.archive.handler);
+  }
+  return { gates, skills };
+}
+
+/** An approval policy a Flow declares and no Stage exit or archive terminal ever asks for. */
+function checkDeadApprovalPolicies(flowResult: FlowResult): DoctorFinding[] {
+  const deadCode: DoctorFinding[] = [];
+  for (const [name, flow] of flowResult.flows) {
+    const filePath = `xforge/flows/${name}.yaml`;
+    const declaredApprovals = new Set((flow.governance?.approvalPolicies ?? []).map((policy) => policy.id));
+    const referencedApprovals = new Set(stageApprovalReferences(flow));
+    for (const policyId of declaredApprovals) {
+      if (!referencedApprovals.has(policyId)) {
+        deadCode.push({
+          scope: 'approvals',
+          code: 'XFORGE_DOCTOR_DEAD_CODE',
+          id: policyId,
+          message: `Approval policy ${policyId} is declared by Flow ${name} but never referenced by any Stage exit or the archive terminal.`,
+          path: filePath,
+        });
+      }
+    }
+  }
+  return deadCode;
+}
+
+/** An approval policy backed by no provider that could ever collect an approval. */
+function checkUnusableApprovalPolicies(flowResult: FlowResult, providerUsability: ProviderUsability): DoctorFinding[] {
+  const unusableApprovals: DoctorFinding[] = [];
+  for (const [name, flow] of flowResult.flows) {
+    const filePath = `xforge/flows/${name}.yaml`;
+    for (const policy of flow.governance?.approvalPolicies ?? []) {
+      const checks = policy.providers.map((providerId) => ({ providerId, ...providerUsability(providerId) }));
+      if (checks.some((check) => check.usable)) continue;
+      const detail = checks.length
+        ? checks.map((check) => `${check.providerId} (${check.reason})`).join('; ')
+        : 'the policy declares no providers at all';
+      unusableApprovals.push({
+        scope: 'approvals',
+        code: 'XFORGE_DOCTOR_APPROVAL_POLICY_UNUSABLE',
+        id: policy.id,
+        message: `Approval policy ${policy.id} in Flow ${name} has no usable provider: ${detail}.`,
+        path: filePath,
+      });
+    }
+  }
+  return unusableApprovals;
+}
+
+/** The PermissionPolicies some Rule cites, which the uncited-policy check compares against. */
+function collectRulePolicyReferences(structure: Structure): Set<string> {
+  const referencedPolicies = new Set<string>();
+  for (const [, rule] of structure.resources.rules) {
+    const normalized = normalizeRule(rule.value);
+    for (const policyRef of normalized.policyRefs) referencedPolicies.add(policyRef);
+  }
+  return referencedPolicies;
+}
+
+/** The Flows this project has actually chosen: the Manifest default, plus whatever Changes name. */
+async function collectUsedFlows(project: ProjectContext, changeDirectories: readonly string[]): Promise<Set<string>> {
+  const usedFlows = new Set<string>([project.manifest.flow]);
+  for (const changeId of changeDirectories) {
+    const changePath = `${project.changesPath}/${changeId}/change.yaml`;
+    const absolute = await safeResolve(project.root, changePath);
+    if (!await exists(absolute)) continue;
+    try {
+      const config = await loadYaml<{ flow?: string }>(absolute, changePath);
+      usedFlows.add(config.flow ?? project.manifest.flow);
+    } catch {
+      // Malformed change.yaml is reported elsewhere by checkStructure; doctor only reads the flow field.
+    }
+  }
+  return usedFlows;
+}
+
+function checkUnreferencedGates(project: ProjectContext, referencedGates: ReadonlySet<string>): DoctorFinding[] {
+  const deadCode: DoctorFinding[] = [];
+  for (const gate of project.manifest.scaffold.gates) {
+    if (!referencedGates.has(gate)) deadCode.push({
+      scope: 'gates',
+      code: 'XFORGE_DOCTOR_DEAD_CODE',
+      id: gate,
+      message: `Gate ${gate} is enabled but not referenced by any Flow Stage, Stage exit, or archive terminal — it will never run.`,
+      path: `xforge/scaffold/gates/${gate}.yaml`,
+    });
+  }
+  return deadCode;
+}
+
+function checkUncitedSkills(project: ProjectContext, referencedSkills: ReadonlySet<string>): DoctorFinding[] {
+  const uncited: DoctorFinding[] = [];
+  for (const skill of project.manifest.scaffold.skills) {
+    if (STANDALONE_SKILLS.has(skill)) continue;
+    if (!referencedSkills.has(skill)) uncited.push({
+      scope: 'skills',
+      code: 'XFORGE_DOCTOR_UNCITED',
+      id: skill,
+      message: `Skill ${skill} is enabled but not referenced as a Flow Stage or archive handler. It may still be invoked directly; verify it is not orphaned.`,
+      path: `xforge/scaffold/skills/${skill}`,
+    });
+  }
+  return uncited;
+}
+
+function checkUncitedPolicies(project: ProjectContext, referencedPolicies: ReadonlySet<string>): DoctorFinding[] {
+  const uncited: DoctorFinding[] = [];
+  for (const policy of project.manifest.scaffold.policies ?? []) {
+    if (!referencedPolicies.has(policy)) uncited.push({
+      scope: 'policies',
+      code: 'XFORGE_DOCTOR_UNCITED',
+      id: policy,
+      message: `PermissionPolicy ${policy} is enabled but not cited by any Rule's policyRefs. It still applies live to matching tool calls; verify it is intentionally freestanding.`,
+      path: `xforge/scaffold/policies/${policy}.yaml`,
+    });
+  }
+  return uncited;
+}
+
+function checkUncitedMcpServers(project: ProjectContext): DoctorFinding[] {
+  const uncited: DoctorFinding[] = [];
+  const referencedMcpServers = new Set((project.manifest.approvals?.providers ?? []).filter((item) => item.type === 'mcp').map((item) => item.mcpServer));
+  for (const mcpServer of project.manifest.scaffold.mcpServers ?? []) {
+    if (!referencedMcpServers.has(mcpServer)) uncited.push({
+      scope: 'mcp-servers',
+      code: 'XFORGE_DOCTOR_UNCITED',
+      id: mcpServer,
+      message: `McpServer ${mcpServer} is enabled but not referenced by any approvals.providers entry's mcpServer field. It has no effect until a provider points at it; verify it is intentionally staged ahead of use.`,
+      path: `xforge/scaffold/mcp-servers/${mcpServer}.yaml`,
+    });
+  }
+  return uncited;
+}
+
+async function checkFlowSkillConformance(structure: Structure, flowResult: FlowResult, usedFlows: ReadonlySet<string>): Promise<DoctorFinding[]> {
+  /*
+   * Flow/Skill conformance, over the Flows this project actually runs.
+   *
+   * `usedFlows` and not every Flow in the project, for the reason spelled out just above: three
+   * Flows ship, and a finding about a Flow nobody has chosen is not something anybody is going to
+   * act on. Unlike the unused-Flow check this is not gated on `changeDirectories.length`, because
+   * the Manifest default is always in `usedFlows` — a project with nothing in flight still has one
+   * Flow it is about to run, and a Skill that cannot clear that Flow's Stages is worth knowing
+   * before the first Change rather than after.
+   */
+  const conformance: DoctorFinding[] = [];
+  for (const [name, flow] of flowResult.flows) {
+    if (!usedFlows.has(name)) continue;
+    for (const item of await flowSkillConformanceDiagnostics(flow, structure.resources)) {
+      conformance.push({ scope: 'skills', code: item.code, message: item.message, path: item.path });
+    }
+  }
+  return conformance;
+}
+
+function checkUnusedFlows(flowResult: FlowResult, usedFlows: ReadonlySet<string>, changeDirectories: readonly string[]): DoctorFinding[] {
+  /*
+   * Only asked once the project has a Change to answer it with.
+   *
+   * Three Flows ship and one is the Manifest default, so on a project with nothing in flight this
+   * check reported exactly two findings, every run, on every project — including the Flow the
+   * operator was about to use. Nothing can be done about them, which makes them the permanent
+   * finding this file already refuses to emit elsewhere: see the note on
+   * XFORGE_POLICY_STATIC_LAYER_DEGRADED above, which is excluded for precisely this reason. An
+   * unused Flow is only evidence of anything once Changes exist and still none of them chose it.
+   */
+  const unusedFlows: DoctorFinding[] = [];
+  if (changeDirectories.length > 0) for (const name of flowResult.flows.keys()) {
+    if (!usedFlows.has(name)) unusedFlows.push({
+      scope: 'flows',
+      code: 'XFORGE_DOCTOR_UNUSED_FLOW',
+      id: name,
+      message: `Flow ${name} is not the Manifest default and is not used by any active Change.`,
+      path: `xforge/flows/${name}.yaml`,
+    });
+  }
+  return unusedFlows;
+}
+
 export async function executeDoctor(project: ProjectContext, options: { kind?: DoctorKind; strict: boolean }): Promise<{
   data: DoctorData;
   diagnostics: Diagnostic[];
@@ -546,35 +758,15 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
   const staged = await readStagedUpgrade(project.root);
   if (staged) diagnostics.push(upgradeInProgressDiagnostic(staged));
 
-  const danglingReferences: DoctorFinding[] = [];
-  /* A Hook whose event no enabled target exposes is a dangling extension in exactly the sense
-     doctor reports: selected, but it can never fire. Produced by the projection planner rather than
-     checkStructure, so doctor asks for it directly instead of waiting for the next install.
-     XFORGE_POLICY_STATIC_LAYER_DEGRADED is deliberately NOT mapped here — such a policy is still
-     enforced, by the runtime Hook bridge instead of the static layer, so it is degraded rather than
-     dangling. It also fires for the shipped `protected-files` policy on every run, and a permanent
-     finding teaches readers to ignore the report. `install` reports it situationally instead. */
-  const projectionDiagnostics = capabilityGapDiagnostics(structure.resources, project.manifest.targets);
-  for (const item of [...structure.diagnostics, ...projectionDiagnostics]) {
-    const scope = DANGLING_CODE_SCOPE[item.code];
-    if (!scope) continue;
-    danglingReferences.push({ scope, code: item.code, message: item.message, path: item.path, severity: item.severity });
-  }
+  const danglingReferences = checkDanglingReferences(project, structure);
 
   const flowResult = await loadFlows(project);
-  const referencedGates = new Set<string>();
-  const referencedSkills = new Set<string>();
-  const referencedPolicies = new Set<string>();
-  const deadCode: DoctorFinding[] = [];
-  const unusedFlows: DoctorFinding[] = [];
-  const unusableApprovals: DoctorFinding[] = [];
-
   /* Mirrors how `approve`/`control-plane` resolve a provider id at runtime: `local` is always
      available for interactive approval, an `mcp` provider needs a manifest entry that points at an
      enabled McpServer resource whose command is not an obvious placeholder. A policy backed by no
      usable provider can never actually collect an approval — reported here as an advisory, the same
      as every other doctor finding, so it only escalates when `--strict` is set. */
-  function providerUsability(providerId: string): { usable: boolean; reason: string } {
+  const providerUsability = (providerId: string): { usable: boolean; reason: string } => {
     if (providerId === 'local') return { usable: true, reason: 'local is always usable' };
     const provider = project.manifest.approvals?.providers.find((item) => item.id === providerId);
     if (!provider) return { usable: false, reason: 'not declared under manifest approvals.providers' };
@@ -585,88 +777,16 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
     const looksPlaceholder = !commandText.trim() || /not[-\s]?configured|placeholder/i.test(commandText);
     if (looksPlaceholder) return { usable: false, reason: `McpServer ${provider.mcpServer} ${transport === 'http' ? 'url' : 'command'} looks like an unconfigured placeholder` };
     return { usable: true, reason: 'McpServer resolves to a configured command' };
-  }
+  };
 
-  for (const [name, flow] of flowResult.flows) {
-    const filePath = `xforge/flows/${name}.yaml`;
-    for (const gate of allGateReferences(flow)) referencedGates.add(gate);
-    for (const stage of flow.stages) referencedSkills.add(stage.skill);
-    referencedSkills.add(flow.terminal.archive.handler);
-    const declaredApprovals = new Set((flow.governance?.approvalPolicies ?? []).map((policy) => policy.id));
-    const referencedApprovals = new Set(stageApprovalReferences(flow));
-    for (const policyId of declaredApprovals) {
-      if (!referencedApprovals.has(policyId)) {
-        deadCode.push({
-          scope: 'approvals',
-          code: 'XFORGE_DOCTOR_DEAD_CODE',
-          id: policyId,
-          message: `Approval policy ${policyId} is declared by Flow ${name} but never referenced by any Stage exit or the archive terminal.`,
-          path: filePath,
-        });
-      }
-    }
-    for (const policy of flow.governance?.approvalPolicies ?? []) {
-      const checks = policy.providers.map((providerId) => ({ providerId, ...providerUsability(providerId) }));
-      if (checks.some((check) => check.usable)) continue;
-      const detail = checks.length
-        ? checks.map((check) => `${check.providerId} (${check.reason})`).join('; ')
-        : 'the policy declares no providers at all';
-      unusableApprovals.push({
-        scope: 'approvals',
-        code: 'XFORGE_DOCTOR_APPROVAL_POLICY_UNUSABLE',
-        id: policy.id,
-        message: `Approval policy ${policy.id} in Flow ${name} has no usable provider: ${detail}.`,
-        path: filePath,
-      });
-    }
-  }
-
-  for (const gate of project.manifest.scaffold.gates) {
-    if (!referencedGates.has(gate)) deadCode.push({
-      scope: 'gates',
-      code: 'XFORGE_DOCTOR_DEAD_CODE',
-      id: gate,
-      message: `Gate ${gate} is enabled but not referenced by any Flow Stage, Stage exit, or archive terminal — it will never run.`,
-      path: `xforge/scaffold/gates/${gate}.yaml`,
-    });
-  }
-
-  const uncited: DoctorFinding[] = [];
-  for (const skill of project.manifest.scaffold.skills) {
-    if (STANDALONE_SKILLS.has(skill)) continue;
-    if (!referencedSkills.has(skill)) uncited.push({
-      scope: 'skills',
-      code: 'XFORGE_DOCTOR_UNCITED',
-      id: skill,
-      message: `Skill ${skill} is enabled but not referenced as a Flow Stage or archive handler. It may still be invoked directly; verify it is not orphaned.`,
-      path: `xforge/scaffold/skills/${skill}`,
-    });
-  }
-
-  for (const [, rule] of structure.resources.rules) {
-    const normalized = normalizeRule(rule.value);
-    for (const policyRef of normalized.policyRefs) referencedPolicies.add(policyRef);
-  }
-  for (const policy of project.manifest.scaffold.policies ?? []) {
-    if (!referencedPolicies.has(policy)) uncited.push({
-      scope: 'policies',
-      code: 'XFORGE_DOCTOR_UNCITED',
-      id: policy,
-      message: `PermissionPolicy ${policy} is enabled but not cited by any Rule's policyRefs. It still applies live to matching tool calls; verify it is intentionally freestanding.`,
-      path: `xforge/scaffold/policies/${policy}.yaml`,
-    });
-  }
-
-  const referencedMcpServers = new Set((project.manifest.approvals?.providers ?? []).filter((item) => item.type === 'mcp').map((item) => item.mcpServer));
-  for (const mcpServer of project.manifest.scaffold.mcpServers ?? []) {
-    if (!referencedMcpServers.has(mcpServer)) uncited.push({
-      scope: 'mcp-servers',
-      code: 'XFORGE_DOCTOR_UNCITED',
-      id: mcpServer,
-      message: `McpServer ${mcpServer} is enabled but not referenced by any approvals.providers entry's mcpServer field. It has no effect until a provider points at it; verify it is intentionally staged ahead of use.`,
-      path: `xforge/scaffold/mcp-servers/${mcpServer}.yaml`,
-    });
-  }
+  const { gates: referencedGates, skills: referencedSkills } = collectFlowReferences(flowResult);
+  const deadCode = [...checkDeadApprovalPolicies(flowResult), ...checkUnreferencedGates(project, referencedGates)];
+  const unusableApprovals = checkUnusableApprovalPolicies(flowResult, providerUsability);
+  const uncited = [
+    ...checkUncitedSkills(project, referencedSkills),
+    ...checkUncitedPolicies(project, collectRulePolicyReferences(structure)),
+    ...checkUncitedMcpServers(project),
+  ];
 
   const changes = await listChangeDirectories(project);
   /* `unusedFlows` below is derived by walking these directories, so an unreadable one does not make
@@ -681,55 +801,9 @@ export async function executeDoctor(project: ProjectContext, options: { kind?: D
     ));
   }
   const changeDirectories = changes.ids;
-  const usedFlows = new Set<string>([project.manifest.flow]);
-  for (const changeId of changeDirectories) {
-    const changePath = `${project.changesPath}/${changeId}/change.yaml`;
-    const absolute = await safeResolve(project.root, changePath);
-    if (!await exists(absolute)) continue;
-    try {
-      const config = await loadYaml<{ flow?: string }>(absolute, changePath);
-      usedFlows.add(config.flow ?? project.manifest.flow);
-    } catch {
-      // Malformed change.yaml is reported elsewhere by checkStructure; doctor only reads the flow field.
-    }
-  }
-  /*
-   * Only asked once the project has a Change to answer it with.
-   *
-   * Three Flows ship and one is the Manifest default, so on a project with nothing in flight this
-   * check reported exactly two findings, every run, on every project — including the Flow the
-   * operator was about to use. Nothing can be done about them, which makes them the permanent
-   * finding this file already refuses to emit elsewhere: see the note on
-   * XFORGE_POLICY_STATIC_LAYER_DEGRADED above, which is excluded for precisely this reason. An
-   * unused Flow is only evidence of anything once Changes exist and still none of them chose it.
-   */
-  /*
-   * Flow/Skill conformance, over the Flows this project actually runs.
-   *
-   * `usedFlows` and not every Flow in the project, for the reason spelled out just above: three
-   * Flows ship, and a finding about a Flow nobody has chosen is not something anybody is going to
-   * act on. Unlike the unused-Flow check this is not gated on `changeDirectories.length`, because
-   * the Manifest default is always in `usedFlows` — a project with nothing in flight still has one
-   * Flow it is about to run, and a Skill that cannot clear that Flow's Stages is worth knowing
-   * before the first Change rather than after.
-   */
-  const conformance: DoctorFinding[] = [];
-  for (const [name, flow] of flowResult.flows) {
-    if (!usedFlows.has(name)) continue;
-    for (const item of await flowSkillConformanceDiagnostics(flow, structure.resources)) {
-      conformance.push({ scope: 'skills', code: item.code, message: item.message, path: item.path });
-    }
-  }
-
-  if (changeDirectories.length > 0) for (const name of flowResult.flows.keys()) {
-    if (!usedFlows.has(name)) unusedFlows.push({
-      scope: 'flows',
-      code: 'XFORGE_DOCTOR_UNUSED_FLOW',
-      id: name,
-      message: `Flow ${name} is not the Manifest default and is not used by any active Change.`,
-      path: `xforge/flows/${name}.yaml`,
-    });
-  }
+  const usedFlows = await collectUsedFlows(project, changeDirectories);
+  const conformance = await checkFlowSkillConformance(structure, flowResult, usedFlows);
+  const unusedFlows = checkUnusedFlows(flowResult, usedFlows, changeDirectories);
 
   /* Each of these asks one question and answers it on its own; the order is the order they are
      reported in. `checkOwnershipReadable` is last for the same reason it was last before: it
