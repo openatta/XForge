@@ -584,7 +584,11 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
   }
 
   if (options.change && structure.change?.workPackages && control) {
-    const resolved = await resolveChangeState(project, options.change);
+    /* `control.flow`, not a second `resolveChangeState`. The resolve carries the very Flow it was
+       handed, so re-reading the Change to recover its name was a whole extra resolution for a
+       string already in hand — and the comment above `control` says resolving twice in one `check`
+       is the cost this command is criticised for. It meant the control plane; the Change state had
+       slipped past it. */
     const existing = await readAuditEvents(project);
     {
       for (const item of structure.change.workPackages.packages.filter((candidate) => ['succeeded', 'integrated', 'reviewed'].includes(candidate.status) && candidate.delivery)) {
@@ -593,7 +597,7 @@ export async function executeCheck(project: ProjectContext, options: CheckOption
           const inputDigest = sha256(stableStringify({ eventType, delivery }));
           if (existing.some((event) => event.eventType === eventType && event.inputDigest === inputDigest)) continue;
           await recordAudit(project, {
-            eventType, change: options.change, flow: resolved.flow.metadata.name, stage: control.governance.currentStage,
+            eventType, change: options.change, flow: control.flow.metadata.name, stage: control.governance.currentStage,
             workPackage: item.id, correlationId: delivery.audit_correlation_id, revision: control.governance.revision,
             outcome: 'succeeded', inputDigest, input: null,
           });

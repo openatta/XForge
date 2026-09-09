@@ -266,7 +266,19 @@ export async function executeTransition(project: ProjectContext, options: { chan
       mode: 'exclusive',
       record: async () => {
         const nextResolved = await resolveChangeState(project, options.change);
-        const nextControl = await resolveControlPlane(project, options.change, nextResolved.flow as typeof resolved.flow, nextResolved.state, resources, nextResolved.config);
+        /*
+         * The work-package plan is carried over rather than resolved again.
+         *
+         * This resolve exists because the receipt just landed and the Change is now at a different
+         * Stage — that is what has to be re-read. The plan is not: `resolveWorkPackages` reads the
+         * plan file, every delivery, dispatch and acknowledgement receipt, the audit chain and Git,
+         * and none of those moved. The one thing this write appended to the chain is `stage.entered`,
+         * whose `workPackage` is null, and the only place a plan resolution consults audit events
+         * filters on `event.workPackage === workPackage.id` — so it can never match. Omitting it
+         * bought a second full plan resolution, on the most expensive read in the product, for an
+         * answer identical to the one already in hand.
+         */
+        const nextControl = await resolveControlPlane(project, options.change, nextResolved.flow as typeof resolved.flow, nextResolved.state, resources, nextResolved.config, { workPackages });
         /* The attestation digest comes from the shared definition in `core/audit.ts`, so the write
            side here and the orphan scan above cannot drift apart on what attests what. */
         await recordAudit(project, { eventType: 'stage.entered', change: options.change, flow: resolved.flow.metadata.name, stage: options.to, revision: nextControl.governance.revision, decision: options.to, outcome: 'succeeded', inputDigest: transitionAttestationDigest(receipt.digest) });
