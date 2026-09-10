@@ -72,7 +72,7 @@ resources:
     kind: rule
     license: project
     version: 1
-  - digest: 31a19248041aedef5b83184209ecee32b5121fce98b9420b12848048ecfc3dc9
+  - digest: 50dc424e9d658cf60f4418ffc64e6fab49d17c07769e13af68e950eb428b4216
     id: observable-requirements-are-tested
     kind: rule
     license: project

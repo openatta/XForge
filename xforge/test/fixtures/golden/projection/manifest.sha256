@@ -33,7 +33,7 @@ b6d5021e5d0715a204e60ab1a8af4793d120550b56390778126f85613289b681  .claude/comman
 5c31c75f51fb4d6c3dc44d948b6ab78087678b7def735b28327715b839cad96b  .claude/rules/design-decisions-need-a-human.md
 6a2710235fc0a7a97324e0adb5986641e40f2695cbf96d25a19022e28e675d0c  .claude/rules/governance-assets-are-integrator-only.md
 418fbc8010fa3c79ca6e891b6ff90f29ae2c75bb334534fc855297488c943632  .claude/rules/interfaces-are-contract-governed.md
-2124a634294f9d01d26713e588b45601802c0b1983fc09f890896b23c3e0da81  .claude/rules/observable-requirements-are-tested.md
+0a355900b663b35faa8e616c900dee2dc6aed6086c08d3dc8344e6e0f8ffada8  .claude/rules/observable-requirements-are-tested.md
 76439a507188e64ef66ef12841ababec248c1f6725b8ab604528a05d36c04d27  .claude/rules/xforge-bootstrap.md
 c5e3b0281ba2ace06a02f710933edab7834c7d35f5a3c9e3c415f27eff84ffe1  .claude/settings.json
 cec1704ef3883442f7767e338fb30389438f1ec37f5d2fe01cf461f9fb945485  .claude/skills/xforge-apply/SKILL.md
@@ -76,7 +76,7 @@ c429b045487836d435bd22e6c698559f86d94b2da7b0cb77fc78418a43db1519  .cursor/comman
 2318a1fd3139798958dea6ebc688389db8f7a3f9db125c331ea4ef135830cea3  .cursor/rules/design-decisions-need-a-human.mdc
 f6227f284bb5262930ecb51b78c24706fb67efcd3344576a4400ecbbdc960bd9  .cursor/rules/governance-assets-are-integrator-only.mdc
 08241c911c1f38ab90e54936f74584ef058dab22372a632a54caef46a547fcb0  .cursor/rules/interfaces-are-contract-governed.mdc
-3565791f6c3ed8ac1bb80a6fcf0b9c4e4e2eb099aae7b6da55d9a1516d5f02c7  .cursor/rules/observable-requirements-are-tested.mdc
+22497a288612ad3f1d7272a6be22217f856b7bdce1f0cae8f7145a6234327057  .cursor/rules/observable-requirements-are-tested.mdc
 ee6662c67a2c9c578efded87f11556e4e792e147f2f99b3717972fc2eba64708  .cursor/rules/xforge-bootstrap.mdc
 cec1704ef3883442f7767e338fb30389438f1ec37f5d2fe01cf461f9fb945485  .cursor/skills/xforge-apply/SKILL.md
 2ebb98fc6c6417cbf5f5927dd0d3a22b3a2536bee1266521d9341822c3d1102d  .cursor/skills/xforge-check/SKILL.md
@@ -103,7 +103,7 @@ cdb50461132d83d44f452fdf328bffd45c5e15f7d5c7060fe0f03d2cd97d5996  .github/agents
 8d841289b776603bb663675aab1cf8c5dc1e5dbaf662605e054e7f565a588d93  .github/instructions/design-decisions-need-a-human.instructions.md
 78a41eb72beca0600864ec53c30e97e8af97d5c64818b6c2e152d35d2fbc2f5b  .github/instructions/governance-assets-are-integrator-only.instructions.md
 9084ee0e05e91d99815fbda607a14a1d1cd9584063f425e6716f6ee0a27658a0  .github/instructions/interfaces-are-contract-governed.instructions.md
-8e1860235d86ff2ff313e7fbd52e56821c41668813100fd9315779562aa2528c  .github/instructions/observable-requirements-are-tested.instructions.md
+6bcbd51dcec9812f6cc60d2fbe530d028b9d4ebc2d2c7157a06787c824374be4  .github/instructions/observable-requirements-are-tested.instructions.md
 a2adc65cef36c5070b1f5a4ae47092cf2b5900ee74526b8f8e0c9b7c85a42e26  .github/instructions/xforge-bootstrap.instructions.md
 85bdf7de1a28ed35dac86f3e9a88bbe877007be38a7e0ae0ef22d35e9d991092  .github/prompts/xforge-apply.prompt.md
 2d94fdd7d1df3da01c25a1d0b71a38411923c3a64e5f7d0ffb84099ed76bf2fe  .github/prompts/xforge-check.prompt.md

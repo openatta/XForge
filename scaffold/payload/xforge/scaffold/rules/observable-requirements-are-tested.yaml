@@ -9,8 +9,14 @@ spec:
     Every externally observable requirement added or modified by a Change must have automated
     verification. A requirement whose only evidence is prose is not verified.
   scope:
+    # `test/**` beside `tests/**`: `ruleApplies` compares path roots literally, so `tests` does not
+    # match a project whose suite lives in `test/` -- the singular Node convention, and the layout of
+    # this repository's own major fixture. The rule still reached that fixture through `src/**`, so
+    # nothing was observed failing; a Change scoped only to the test surface would have escaped a
+    # `must` rule about testing, which is the one direction this rule must not fail in.
     paths:
       - src/**
+      - test/**
       - tests/**
   enforcement:
     # verified: a Gate produces revision-bound Evidence for this Rule.

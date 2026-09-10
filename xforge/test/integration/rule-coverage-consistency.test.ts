@@ -37,6 +37,41 @@ async function coverage(root: string, flow: 'quick' | 'solid' | 'major'): Promis
   return ((state.json.data as any)?.change?.governance?.rules ?? []) as any[];
 }
 
+/*
+ * A `must` Rule about testing must reach a Change that only touches the test surface.
+ *
+ * `ruleApplies` is a pattern-against-pattern relation, not a glob match: it asks whether the Rule's
+ * scope and the Change's scope share a root, comparing the literal text either side of `/**`. So
+ * `tests/**` does not reach a project whose suite lives in `test/` -- the singular Node convention,
+ * and the layout of this repository's own major fixture. Nothing was ever observed failing, because
+ * the shipped Rule also lists `src/**` and every measured Change declared that: the gap only opens
+ * for a Change scoped to the test surface alone, which is precisely the Change this Rule exists to
+ * govern. A rule about testing that switches itself off on a test-only Change fails in the one
+ * direction it must not.
+ */
+describe('observable-requirements-are-tested reaches a test-only Change', () => {
+  it('applies to a Change scoped to test/**, tests/** or src/**', async () => {
+    const { ruleApplies } = await import('../../src/core/governance.js');
+    const { parse } = await import('yaml');
+    const shipped = parse(await readFile(
+      path.join(process.cwd(), '..', 'scaffold', 'payload', 'xforge', 'scaffold', 'rules', 'observable-requirements-are-tested.yaml'),
+      'utf8',
+    ));
+    expect(shipped.spec.severity, 'the gap only matters because this is a must Rule').toBe('must');
+    const rule = { id: shipped.metadata.name, paths: shipped.spec.scope.paths as string[], modules: [] as string[], stages: [] as string[] };
+    const scopedTo = (paths: string[]) => ruleApplies(
+      rule as never,
+      { scope: { paths, modules: [] } } as never,
+    );
+    /* The singular layout is the one that was missing. */
+    expect(scopedTo(['test/**']), 'a Change touching only test/ must be governed by it').toBe(true);
+    expect(scopedTo(['tests/**'])).toBe(true);
+    expect(scopedTo(['src/**'])).toBe(true);
+    /* And it still does not reach a Change that touches neither. */
+    expect(scopedTo(['docs/**'])).toBe(false);
+  });
+});
+
 describe('rule coverage is internally consistent', () => {
   for (const flow of ['quick', 'solid', 'major'] as const) {
     it(`reports no shipped Rule as both enforced and unenforced under ${flow}`, async () => {
