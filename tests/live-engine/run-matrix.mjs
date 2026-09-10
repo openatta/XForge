@@ -489,7 +489,7 @@ const PROJECT_ADAPTED_TEST_COMMAND = ['node', '--test', 'test/'];
 /** Old enough to make the staged merge a real one; the exact number does not matter, only that it lags. */
 const AGED_SCAFFOLD_VERSION = '0.7.12';
 
-const OPTION_DEFAULTS = { 'cli-source': 'npm', 'suite-budget': '30', budget: '3', 'max-attempts': '2', 'timeout-seconds': '900', session: 'per-stage' };
+const OPTION_DEFAULTS = { 'cli-source': 'npm', 'suite-budget': '30', budget: '3', 'max-attempts': '2', 'timeout-seconds': '900', session: 'per-stage', language: 'zh-CN' };
 
 /**
  * A trivial round trip to the configured provider, in milliseconds, or `null` if it cannot be made.
@@ -639,6 +639,9 @@ function options(argv) {
   result.scenario ??= result.flow;
   if (!SCENARIOS[result.scenario]) throw new Error(`--scenario must be one of: ${Object.keys(SCENARIOS).join(', ')}`);
   if (!['per-stage', 'per-change'].includes(result.session)) throw new Error('--session must be per-stage or per-change.');
+  /* Which language's Skills the run reads. The projection is one language per project, so this is a
+     property of the whole run and belongs beside the limits in the result. */
+  if (!['zh-CN', 'en'].includes(result.language)) throw new Error('--language must be zh-CN or en.');
   return result;
 }
 
@@ -1116,6 +1119,10 @@ const limits = {
   probedLatencyMs,
   timeoutScale,
   scenarioFloorSeconds,
+  /* Which language's Skills the Agent actually read. Not a limit, but the same kind of fact: a
+     behavioural finding is a finding about the language it was observed in, and without this the
+     two projections produce results that read identically. */
+  language: selected.language,
 };
 limits.atDefaults = ['timeoutSeconds', 'maxAttemptsPerStage', 'suiteBudgetUsd', 'stageBudgetUsd']
   .every((key) => limits[key] === limits.defaults[key]);
@@ -1184,6 +1191,7 @@ function summariseFriction() {
 
 const setup = JSON.parse(run('node', [
   path.join(scriptsRoot, 'setup.mjs'), '--scenario', scenarioName, '--seed', scenarioConfig.seed ?? flowName, '--cli-source', selected['cli-source'],
+  '--language', selected.language,
 ], repositoryRoot));
 const projectRoot = setup.project;
 

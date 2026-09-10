@@ -182,6 +182,20 @@ export interface GovernanceState {
    * command it had just been told was ready. Narrowing the reply should not cost more than it saves.
    */
   readyTransitions: Array<{ to: string; ready: boolean; blockedBy: string[]; command: string[] }>;
+  /**
+   * Blocks that are not blocking anything yet, and will be, stated in the same tokens `blockedBy`
+   * uses.
+   *
+   * A condition declared on a later Stage's exit cannot appear in any current `blockedBy`, so the
+   * Stage that could still satisfy it sees nothing and the Stage that meets it cannot act. That is
+   * not hypothetical: `independentReview` is declared on Verify's exit, and three live Major runs
+   * walked out of Apply -- the only Stage able to dispatch a Reviewer -- with no sign it existed,
+   * then met `condition:independentReview:unreviewed-T001` two Transitions later.
+   *
+   * Deliberately the same string the block will be: a reader that matches on it later matches on it
+   * now, and nobody has to learn a second vocabulary for the same fact.
+   */
+  willBlock: string[];
 }
 
 export interface AuditEvent {

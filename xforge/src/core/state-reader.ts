@@ -22,7 +22,7 @@ import { TARGETS } from '../constants.js';
 import { capabilityMatrix } from '../adapters/index.js';
 import type { ChangeState, Diagnostic, Flow, ProjectContext } from '../types.js';
 import { diagnostic } from './errors.js';
-import { flowEligibilityDiagnostics } from './checker.js';
+import { flowEligibilityDiagnostics, pendingIndependentReview } from './checker.js';
 import { flowApplyOperation, flowArchiveOperation, flowArtifacts, loadFlows, resolveChangeState } from './flow-resolver.js';
 import { safeResolve } from './path-safety.js';
 import { loadSelectedResources, type SelectedResources } from './resource-loader.js';
@@ -297,6 +297,25 @@ export async function readState(project: ProjectContext, options: StateOptions):
           omitted: 'Run state --include transitions for the full receipt chain.',
         } as never };
       contentRevision = control.governance.revision.contentRevision;
+      /*
+       * Said on the two commands an implementing Agent actually runs.
+       *
+       * This advisory started life in `checkStructure` alone, and a live Major run showed what that
+       * was worth: the Apply Agent ran `state`, `stage`, `work-package draft` and `transition`, and
+       * never once ran `check` -- so a diagnostic that was correct, complete and carried both
+       * remedy commands fired zero times in the Stage it was written for. It surfaced at Verify,
+       * where the Stage that can dispatch a Reviewer is already behind the Change.
+       *
+       * `state` is where it belongs for the same reason `stage` gets it for free: `stage` composes
+       * this reply, and between them they are what an Agent reads to learn what a Stage still owes.
+       */
+      diagnostics.push(...pendingIndependentReview(
+        resolved.flow,
+        workPackages.state,
+        options.change,
+        project.changesPath,
+        control.governance.currentStage,
+      ));
     }
     selectedChange.mandatoryGateEvidence = await mandatoryGateEvidence(project, options.change, selectedChange.archive.mandatoryGates, resources, contentRevision);
     /*

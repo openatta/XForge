@@ -8,8 +8,11 @@ installed `xforge-apply` Skill, the latest Transition receipt, and the T001
 dispatch receipt. Confirm they show the Apply stage and a bound dispatch.
 
 What is yours and what is the harness's: implementation is yours, and so is every
-`xforge` call the `xforge-apply` Skill prescribes — `state`, `work-package dispatch`,
-`work-package draft`, `check`, `transition`. What is never yours is an Approval: external
+`xforge` call the `xforge-apply` Skill prescribes for the delivery shape you chose —
+whichever those turn out to be. This deliberately does not list them: a closed list here
+is the prompt answering the question the run exists to ask, and a live run proved it. The
+list used to end at `transition`, the Skill's Reviewer acknowledgement was not on it, the
+Agent did not run it, and nothing could tell whether the Skill or the list was the reason. What is never yours is an Approval: external
 Approval verification is kept outside the model environment, and `xforge approve` will
 refuse here, which is correct rather than a fault. A run driven by hand has no separate
 harness process to make the CLI calls for it, so leaving them undone strands the Change at

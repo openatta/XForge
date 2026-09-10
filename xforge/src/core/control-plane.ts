@@ -35,7 +35,8 @@ import { legalTransitionTargets } from './control-plane/graph.js';
  * ask the control plane for these, which is the right question for them to ask — the split below is
  * about how this module is built, not about who it answers to.
  */
-export { INDEPENDENT_REVIEW_CONDITION } from './control-plane/conditions.js';
+export { INDEPENDENT_REVIEW_CONDITION, declaresIndependentReview, independentReviewObligations, reachedImplementationStage, unreviewedDeliveredPackages } from './control-plane/conditions.js';
+import { independentReviewObligations } from './control-plane/conditions.js';
 export { loadApprovalReceipts, loadTransitionReceipts } from './control-plane/receipts.js';
 export { legalTransitionTargets } from './control-plane/graph.js';
 
@@ -434,8 +435,21 @@ export async function resolveControlPlane(
     diagnostics.push(remedy.remedy ? { ...entry, remedy: remedy.remedy } : entry);
   }
 
+  /*
+   * What is owed but not yet refusing anything, computed once and put where a reader will find it.
+   *
+   * `blockedBy` can only ever carry conditions on transitions out of the *current* Stage, so a
+   * condition declared on Verify's exit is invisible from Apply -- the one Stage that can still
+   * satisfy it. The obligation is written onto the packages themselves and onto `willBlock`,
+   * because a narrowed reply (`--field work.packages`, `--field blockedBy`) prints one value and
+   * no diagnostics at all, and those two fields are what a measured Apply Agent asked for by name.
+   */
+  const obligations = independentReviewObligations(resolved.flow, workPackages.state, currentStage);
+  for (const item of workPackages.state?.packages ?? []) item.owes = obligations.owes.get(item.id) ?? [];
+
   const governance: GovernanceState = {
     currentStage, transitionHead, transitions: transitions.receipts, revision,
+    willBlock: obligations.willBlock,
     pendingApprovals: pendingApprovals.filter((item, index, all) => index === all.findIndex((candidate) => candidate.policyId === item.policyId && candidate.transition === item.transition)),
     approvals: approvals.receipts,
     rules,

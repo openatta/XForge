@@ -1,0 +1,323 @@
+# PROBE VARIANT — not a shipped Flow, not selectable by a project.
+#
+# `scaffold/payload/xforge/flows/solid.yaml` with one line added: `independentReview: complete` on
+# Verify's exit, exactly as `major.yaml` ships it. It exists so a single-stage probe can measure an
+# Apply Agent against that condition without paying for a `major` run that reaches Apply about half
+# the time. Nothing else differs; regenerate it from the shipped file if solid.yaml moves.
+apiVersion: xforge.dev/v1alpha2
+kind: Flow
+metadata:
+  name: solid
+  version: 7
+  description: Stable and maintainable delivery for ordinary product and engineering changes
+policy:
+  assuranceLevel: solid
+  eligibleWhen:
+    risk: [low, medium]
+    criticalImpacts: forbidden
+    # No Stage here produces a contract delta, so a Change that says it moves a module interface has
+    # nowhere to declare what it moved and nothing that would merge it. `solid-contract` is the Flow
+    # that carries one; this refuses the claim rather than accepting it and governing nothing.
+    # `allowed` since 0.8.4, when the contract layer became part of this Flow rather than a template
+    # beside it. It sits next to `criticalImpacts: forbidden` deliberately: a Flow can refuse every
+    # critical impact and still be the right place to govern an interface change.
+    contractImpact: allowed
+artifacts:
+  - id: proposal
+    generates: proposal.md
+    description: Explain the reason, boundaries, and Flow choice
+    instruction: Describe Why, Scope, Non-goals, Success criteria, impact, rollback, and the factual basis for choosing Solid.
+    outline: |
+      ## Why
+      ## Scope
+      ## Non-goals
+      ## Success criteria
+      ## Flow choice
+      ## Impact and rollback
+  - id: delta-specs
+    generates: specs/**/*.md
+    description: Define observable requirement and scenario deltas
+    instruction: >-
+      Use stable Requirement IDs for success, failure, boundary, and compatibility scenarios
+      without implementation detail.
+
+
+      The file name is not free. Its path names a **capability**, and archive merges this delta into
+      the project's canonical Specs at that same relative path — so the name chosen here is a
+      long-lived identifier, not a filename for one Change. Two accepted forms, and they mean the
+      same thing: `specs/<capability>/spec.md`, or the flat `specs/<capability>.md`. Anything else
+      still parses, and quietly declares a capability nobody meant: `specs/root/spec.md` declares a
+      capability called `root`.
+
+      Reuse a capability this project already records before inventing one. Two Changes that name
+      the same behaviour differently merge into two different canonical files, and nothing compares
+      them — the requirement-level conflict checks are per file, so the collision is never reported.
+      `xforge state` lists the canonical Specs this project has; when it lists none, the name chosen
+      here becomes the first one.
+    outline: |
+      ## ADDED Requirements
+      ### Requirement: <REQ-ID> <name>
+      #### Scenario: <name>
+      - **WHEN** ...
+      - **THEN** ...
+  - id: design
+    generates: design.md
+    description: Record the technical approach, alternatives, and verification notes
+    instruction: Cover current state, target integration points, decisions, failure modes, compatibility, migration, rollback, and verification without becoming a file-by-file task list.
+    outline: |
+      ## Context
+      ## Goals and non-goals
+      ## Decisions and alternatives
+      ## Failure modes and compatibility
+      ## Migration and rollback
+      ## Verification notes
+    markers:
+      - id: verification-coverage
+        section: Verification notes
+        role: requirement-coverage
+      - id: rejected-alternative
+        section: Decisions and alternatives
+        role: decision-alternative
+        pattern: ['**Rejected alternative:', '**被否决的替代方案：']
+  - id: contract-delta
+    generates: contracts/**/*.md
+    validator: contract-delta
+    # Owed only by a Change that says it moves an interface. Every other Artifact on this Flow is
+    # owed by every Change, and an empty glob is an unfinished Stage -- this is the first one a
+    # Change can legitimately owe nothing of, and holding its Stage open until it writes a document
+    # saying "nothing changed" is friction with no reader.
+    #
+    # It is a self-declaration. Nothing in the shipped configuration catches a Change that moves an
+    # interface while declaring it did not; `contract-compat` is the Gate that compares the two, and
+    # it is `builtin: declared` because contract dialects differ per project, so it is selected
+    # rather than shipped on. What this Flow governs by default is a *declared* interface change,
+    # completely: a validated delta, a baseline no Worker may edit, a recorded decision for every
+    # breaking change, and a merge at archive.
+    requiredWhen:
+      anyImpact: [moduleContract]
+    description: Declare this Change's delta to the module interface baseline
+    instruction: >-
+      One file per contract domain under contracts/, mirroring the domain files in
+      xforge/contracts/. In each, list every contract element this Change adds, modifies or removes
+      as a `### Element:` block headed by its contract element id — the `<kind>:<selector>` form the
+      project's own enumeration prints, such as `openapi:paths./orders.post`. Under each block give
+      the owning module, whether the change is breaking, and the before and after shape. Add
+      `- digest: <value>` when your enumeration computes a canonical digest for the element: the
+      baseline carries it forward, and it is the only thing that makes a *modification* decidable
+      later — adding and removing an element are visible in a list of ids, while widening an enum or
+      changing a field's type is not. A MODIFIED block whose digest matches the one the baseline
+      already records is reported, because the delta and the shape then disagree about whether
+      anything changed. For a breaking change give the expand-contract steps and cite the entry in
+      evidence/conditions/contractDecisions.yaml that records who decided it.
+
+
+      Read the element ids with `xforge contract list` and never retype one from memory: a mistyped
+      id does not fail, it merges as a new element beside the one you meant to change. This file is
+      the only place a Change may say an interface changed. xforge/contracts/ records what was
+      already agreed and archive is what merges a delta into it, so editing the baseline in place
+      leaves every other package building against something nothing agreed to — and the
+      protected-files policy refuses the write, so an attempt to is a refusal rather than a
+      surprise at integration. Do not restate Requirements and do not describe implementation. A
+      section with nothing in it gets `(none)`, which is an assertion; a blank one is an omission
+      and is refused.
+    outline: |
+      ## ADDED Contract Elements
+      ### Element: <kind>:<selector>
+      ## MODIFIED Contract Elements
+      ## REMOVED Contract Elements
+      ## Breaking Changes
+      ## Consumer Impact
+    # No markers, and the reason is worth recording because it cost something. An Artifact whose
+    # `generates` contains a `*` skips marker and outline validation entirely
+    # (core/artifact-markers.ts short-circuits on it), so the glob and a `contract-breaking` marker
+    # cannot both exist. The glob wins: one file per domain is what lets two Changes touch two
+    # domains without meeting in the same file, and it is what makes the destination of a merge
+    # derivable from the delta's own path rather than from a convention held somewhere else.
+    #
+    # What the marker would have bought was RC-4 reading `## Breaking Changes` and reporting a
+    # breaking change no finding cites. That check is real -- it was watched to fire -- and it is
+    # given up here rather than forgotten.
+  - id: check-report
+    generates: check-report.md
+    description: Record the pre-implementation review — what was covered, what the Gates reported, and where a blocker routes
+    instruction: Under Reviewed, name each dimension covered (completeness, consistency, testability, feasibility and risk), the content revision reviewed, and the findings raised for it by id — cite `evidence/check-findings.yaml` rather than restating what a finding says or why. The reasoning belongs in the finding, once. Under Gates and evidence record what `xforge check` actually reported. Use Rework to name the Stage a blocker sends this Change back to and what must change there, and say plainly when there is nothing to rework. Do not write a verdict on whether Check passes — the findings ledger decides that, and a verdict in prose only competes with the record that governs.
+    outline: |
+      ## Reviewed
+      ## Gates and evidence
+      ## Rework
+  - id: check-findings
+    generates: evidence/check-findings.yaml
+    description: Machine-decidable findings ledger the Check Gate can actually decide
+    instruction: >-
+      One entry per finding with id, severity (blocker|warning|suggestion), summary, refs to the
+      Artifacts it concerns, and for a blocker a status, a reworkTo Stage while open, and a
+      resolvedBy identity once resolved. Record an explicit empty list when the review found
+      nothing. The Stage cannot exit while any blocker is unresolved.
+
+
+      The resolvedBy identity has nothing to be compared against while the Change has no commits
+      and no receipts, so every name passes and the Gate reports a warning saying so. That pass is
+      provisional: the Change's first commit creates the set, and a name that does not match it
+      then fails a Gate that was green a moment earlier, with the Check report already written. Put
+      a real identity in from the start rather than one you intend to correct later.
+    outline: |
+      findings:
+        - id: <finding-id>
+          severity: <blocker|warning|suggestion>
+          summary: <what is wrong>
+          refs: [<Requirement id | artifact or spec path>]   # where the problem is. `gate:<name>` belongs to constitution-check, which cites evidence rather than a location.
+          status: <open|resolved, required for a blocker; omit on a warning or suggestion>
+          reworkTo: <stage id, required while a blocker is open>
+          resolvedBy: <name or email, required once status is resolved for a blocker; must match a known approver or Git author>
+  - id: constitution-check
+    generates: evidence/constitution-check.yaml
+    description: Answer every Constitution principle for this Change
+    instruction: >-
+      Skip the observability principle and the parallel-development principle: the Gate decides both
+      from evidence it reads itself — unit-tests Gate Evidence, and the structural checks `structure`
+      runs over work-packages.yaml — records its decision and its basis in the Evidence, and does not
+      ask you. Writing an entry for one of them is still accepted and still evaluated, so declare a
+      violation there if you have one; a compliant paragraph restating what a Gate already proved is
+      the cost this skip exists to remove.
+
+
+      For every other `## ` principle in xforge/constitution.md, one entry, in document order, each
+      with status compliant|violation|not-applicable. Every entry must cite at least one
+      machine-locatable reference in `references` — a Requirement id from this Change's delta Specs,
+      a file path that exists, or `gate:<name>` for a Gate that passed. A violation additionally needs a
+      justification and a named approvedBy; not-applicable needs a justification. A general claim of
+      compliance does not satisfy the Gate, and neither does an approval receipt on its own — a
+      receipt records that someone approved a transition, not why this Change satisfies the
+      principle. That bites hardest on a governance principle, where a receipt is the nearest
+      evidence to hand: cite what the Change actually did, and add the receipt beside it if you
+      want.
+
+
+      A cited path may be any path in the repository, resolved Change-relative first and then
+      project-relative, so xforge/constitution.md and a source path under src/ are valid citations
+      and are often the right ones for a governance or architecture principle. Do not confine
+      yourself to Change-local paths. Write every justification as a folded block scalar, because a plain
+      YAML scalar breaks on a colon followed by a space, or on a leading bracket or brace.
+    outline: |
+      principles:
+        - principle: <exact `## ` heading from constitution.md>
+          status: <compliant|violation|not-applicable>
+          references: [<Requirement id | existing path | gate:<name>>]
+          justification: <required for violation and not-applicable>
+          approvedBy: <named person, required for violation; must match a known approver or Git author, and once this Change holds approval receipts, someone named on one>
+  - id: assurance
+    generates: assurance.md
+    description: Record verification against requirements, design, tests, and constraints
+    instruction: >-
+      Completeness is a table and nothing else — one row per Requirement ID, the clause it pins,
+      and where the evidence for it lives (a test name with file:line, or the probe that reached
+      it). Every Requirement ID must appear here; this section is the Flow's requirement-coverage
+      anchor, and a Requirement missing from it is reported by reconciliation rather than by prose.
+      Coherence carries the one judgement no ledger holds — whether the Proposal, delta Spec,
+      Design, tests and implementation describe the same behaviour, and where they diverge. Under
+      Gates and evidence name this Stage's Gate set and point at the receipt; do not restate a
+      Gate's findings, digests or exit codes, because `xforge check` wrote them and the receipt
+      cites them. Do not restate what the work-package delivery record or
+      `evidence/check-findings.yaml` already say; cite them by path or id.
+    outline: |
+      ## Completeness
+      ## Coherence
+      ## Gates and evidence
+    markers:
+      - id: verification-coverage
+        section: Completeness
+        role: requirement-coverage
+governance:
+  # `planning-solid` keeps its name although it is no longer collected at the design exit. The name
+  # is a reference, not a description: `design-decisions-need-a-human` lists it under `approvalRefs`,
+  # and a ref naming no policy in the running Flow is ignored rather than reported — so renaming it
+  # would leave that Rule silently `coverage: unenforceable` in every project that has already
+  # adopted it, with nothing to point at the cause.
+  #
+  # It now gates the check exit instead, which is the last moment before implementation begins and
+  # the same moment Major collects `implementation-major`. Collecting it one Stage earlier meant the
+  # approver signed before the two ledgers that decide whether the planning holds — `check-findings`
+  # and `constitution-check` — had been written at all, so the reconciliation section
+  # had nothing to compare and rendered "(no differences found)", which reads exactly like a clean
+  # review. Both Flows now take that decision where the evidence for it exists.
+  approvalPolicies:
+    - id: planning-solid
+      minApprovers: 1
+      roles: [owner, maintainer]
+      separationOfDuties: false
+      providers: [local, enterprise-approvals]
+    - id: closing-solid
+      minApprovers: 1
+      roles: [owner, maintainer]
+      separationOfDuties: false
+      providers: [local, enterprise-approvals]
+  audit:
+    requiredEventTypes: [gate.after, stage.entered, approval.decided]
+    runtimeCoverage: optional
+    remoteDelivery: optional
+stages:
+  - id: propose
+    skill: xforge-propose
+    authority: planning-write
+    requires: []
+    produces: [proposal, delta-specs]
+    gates: [structure]
+
+  - id: design
+    skill: xforge-design
+    authority: planning-write
+    requires: [propose]
+    # Order carries meaning: an Artifact listed after another in the same Stage depends on it, so
+    # contract-delta is written against a design that already exists rather than beside it.
+    produces: [design, contract-delta]
+    reworkTo: [propose]
+  - id: check
+    skill: xforge-check
+    authority: assurance-write
+    requires: [design]
+    produces: [check-report, check-findings, constitution-check]
+    gates: [structure, check-findings, constitution-check]
+    reworkTo: [propose, design]
+    exit:
+      conditions:
+        # Only a Change that declared an interface change owes this: the ledger records who decided a
+        # breaking change, and a Change with no delta has no such decision to have made. Requiring it
+        # of every Change would mean every Change filing `entries: []` -- a turn spent asserting
+        # nothing, with the Stage held open until it is spent.
+        contractDecisions:
+          expected: resolved
+          requiredWhen:
+            anyImpact: [moduleContract]
+      approvals: [planning-solid]
+  - id: apply
+    skill: xforge-apply
+    authority: implementation-write
+    requires: [check]
+    produces: []
+    reworkTo: [propose, design, check]
+  - id: verify
+    skill: xforge-verify
+    authority: assurance-write
+    requires: [apply]
+    produces: [assurance]
+    gates: [structure, unit-tests]
+    reworkTo: [apply]
+    exit:
+      conditions:
+        verificationReceipt: passed
+        independentReview: complete
+terminal:
+  archive:
+    handler: xforge-verify
+    authority: archive-write
+    requires: [verify]
+    syncSpecs: true
+    # The baseline advances here and nowhere else. A Change may reach archive with a delta nobody
+    # merged -- that was a real defect on the branch this arrived on -- so the merge is part of
+    # closing rather than something a Stage was supposed to have done.
+    syncContracts: true
+    approvals: [closing-solid]
+    auditPolicy:
+      requiredEventTypes: [gate.after, stage.entered, approval.decided]
+      runtimeCoverage: optional
+      remoteDelivery: optional

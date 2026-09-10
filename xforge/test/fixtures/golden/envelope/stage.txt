@@ -89,6 +89,7 @@ exit: 0
       }
     ],
     "blockedBy": [],
+    "willBlock": [],
     "stageDeclares": {
       "produces": [
         "assurance"

@@ -1114,7 +1114,10 @@ export async function resolveWorkPackages(
     else if (delivery?.status === 'blocked') status = 'blocked';
     else if (dispatch) status = 'running';
     else status = missingDependencies.length === 0 ? 'ready' : 'blocked';
-    return { ...workPackage, status, missingDependencies, delivery, acknowledgements, executionId: dispatch?.executionId ?? null };
+    /* `owes` is filled in by whatever knows the Flow -- this resolver is handed the plan and the
+       Change, never a Flow, so it cannot say whether a review is required. Empty is the honest
+       default: nothing owed that this function can see. */
+    return { ...workPackage, status, missingDependencies, delivery, acknowledgements, owes: [], executionId: dispatch?.executionId ?? null };
   });
 
   if (options.requireDeliveries) {

@@ -17,7 +17,13 @@ const scenariosRoot = path.join(repositoryRoot, 'tests', 'live-engine', 'scenari
 const scenarioTempRoot = (scenario) => path.join(temporaryRoot, `live-engine-${scenario}-tmp`);
 
 function options(argv) {
-  const result = { 'cli-source': 'npm' };
+  /*
+   * `zh-CN`, not `en`. The Skills in this repository are authored in `SKILL_cn.md` and the English
+   * file is its translation (see CLAUDE.md), so a run against the English projection measures the
+   * translation rather than the instruction that was written. `--language en` pins the other one
+   * for a run whose subject is the translation.
+   */
+  const result = { 'cli-source': 'npm', language: 'zh-CN' };
   for (let index = 0; index < argv.length; index += 2) {
     const key = argv[index];
     const value = argv[index + 1];
@@ -30,6 +36,7 @@ function options(argv) {
      `solid-rework` seeds from `solid` while keeping a project, temp root and results of its own. */
   result.seed ??= result.scenario;
   if (!['npm', 'local'].includes(result['cli-source'])) throw new Error('--cli-source must be npm or local.');
+  if (!['zh-CN', 'en'].includes(result.language)) throw new Error('--language must be zh-CN or en.');
   return result;
 }
 
@@ -212,7 +219,7 @@ const cli = await installCli({
 /* Invoked as a bare `xforge` off PATH — the global-install form v0.7.12 documents, and the same
    form the project's own AGENTS.md tells an Agent to use. */
 const cliEnv = { ...process.env, PATH: `${cli.binDirectory}${path.delimiter}${process.env.PATH ?? ''}` };
-runWithEnv('xforge', ['--root', projectRoot, 'init', '--language', 'en', '--target', 'claude'], projectRoot, cliEnv);
+runWithEnv('xforge', ['--root', projectRoot, 'init', '--language', selected.language, '--target', 'claude'], projectRoot, cliEnv);
 await enableApprovalHarness(projectRoot);
 
 const seeded = await overlaySeed(projectRoot, path.join(scenarioRoot, 'project-seed'));

@@ -71,6 +71,8 @@ state  <- flows/major.yaml
 state  <- flows/quick.yaml
 state  <- flows/solid-contract.yaml
 state  <- flows/solid.yaml
+state  <- xforge-apply/SKILL.md
+state  <- xforge-apply/SKILL_cn.md
 state  <- xforge-kanban/SKILL.md
 state  <- xforge-kanban/SKILL_cn.md
 state  <- xforge-propose/SKILL.md
@@ -85,6 +87,8 @@ state  <- xforge-verify/SKILL.md
 state  <- xforge-verify/SKILL_cn.md
 sync  <- xforge-scaffold/SKILL.md
 sync  <- xforge-scaffold/SKILL_cn.md
+transition  <- xforge-apply/SKILL.md
+transition  <- xforge-apply/SKILL_cn.md
 transition  <- xforge-check/SKILL.md
 transition  <- xforge-check/SKILL_cn.md
 transition  <- xforge-verify/SKILL.md

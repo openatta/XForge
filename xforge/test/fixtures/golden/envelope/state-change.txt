@@ -580,6 +580,7 @@ exit: 0
           "gitHead": "unknown",
           "governingRevision": "<sha256>"
         },
+        "willBlock": [],
         "pendingApprovals": [],
         "approvals": [
           {

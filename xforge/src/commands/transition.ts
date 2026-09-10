@@ -14,6 +14,7 @@ import { assertManaged } from '../core/project-loader.js';
 import { safeResolve } from '../core/path-safety.js';
 import { loadSelectedResources } from '../core/resource-loader.js';
 import { resolveWorkPackages } from '../core/work-packages.js';
+import { pendingIndependentReview } from '../core/checker.js';
 import { readStagedUpgrade, upgradeInProgressDiagnostic } from '../core/upgrade-sentinel.js';
 
 /**
@@ -111,6 +112,23 @@ export async function executeTransition(project: ProjectContext, options: { chan
    * load survives for `flowsResult.flows`, which eligibility needs to name an escalation target.
    */
   const diagnostics = [...resolved.diagnostics, ...eligibility, ...resources.diagnostics, ...workPackages.diagnostics, ...control.diagnostics];
+  /*
+   * The last moment Apply can still act on it.
+   *
+   * `independentReview` is Verify's exit condition, so leaving Apply is never blocked by it and the
+   * Stage hands off clean. That is correct -- a review cannot precede the work -- but it means the
+   * Change walks past the only Stage with the authority to dispatch a Reviewer without anything
+   * saying so. A live Major run did exactly that twice. This is an `info` on a Transition that is
+   * otherwise allowed, not a block: it names what Verify will refuse to close over, while the
+   * Agent is still the one holding the work.
+   */
+  diagnostics.push(...pendingIndependentReview(
+    resolved.flow,
+    workPackages.state,
+    options.change,
+    project.changesPath,
+    control.governance.currentStage,
+  ));
   /*
    * Of the four commands that report an open upgrade, this is the one where the hazard is not
    * hypothetical, so it says what it is rather than reusing the general wording.

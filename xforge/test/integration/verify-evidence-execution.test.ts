@@ -1,3 +1,9 @@
+/*
+ * @red-first coverage-only: this file's only change in this commit is one type literal. Adding the
+ * required `owes` field to `WorkPackageState` meant the hand-built plan state at the bottom had to
+ * name it, so the edit is what the compiler demanded rather than anything this file asserts. There
+ * is no fix here for it to fail without, and the behaviour it covers is unchanged.
+ */
 import { existsSync } from 'node:fs';
 import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
@@ -125,7 +131,7 @@ describe('verify evidence is keyed by execution', () => {
         id: 'wp-001', goal: 'g', depends_on: [], inputs: [], write_paths: ['src/**'], skills: [],
         verify: [[process.execPath, '-e', 'process.exit(0)']], done_when: ['done'],
         status: 'ready' as const, missingDependencies: [], delivery: null,
-        acknowledgements: { reviewedBy: null, integratedBy: null }, executionId: null,
+        acknowledgements: { reviewedBy: null, integratedBy: null }, owes: [], executionId: null,
       }],
     };
 

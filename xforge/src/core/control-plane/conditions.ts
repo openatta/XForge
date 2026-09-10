@@ -1,11 +1,12 @@
 import { readFile } from 'node:fs/promises';
-import type { ChangeState, Diagnostic, GateEvidence, ProjectContext, StageFlow, TransitionReceipt } from '../../types.js';
+import type { ChangeState, Diagnostic, GateEvidence, ProjectContext, StageFlow, TransitionReceipt, WorkPackageState } from '../../types.js';
 import { unknownIdentityReason, type KnownIdentities } from '../ledger-identity.js';
 import { diagnostic } from '../errors.js';
 import { safeResolve } from '../path-safety.js';
 import { decideVerificationReceipt, readVerificationReceipt, VERIFICATION_RECEIPT_CONDITION, VERIFICATION_RECEIPT_PATH, type VerificationReceiptSource } from '../verification-receipt.js';
 import { readReviewAcknowledgements, reviewCovers } from '../review-acknowledgement.js';
 import type { WorkPackageResolution } from '../work-packages.js';
+import type { WorkPackagePlanState } from '../../types/work-package.js';
 import { parse as parseYaml } from 'yaml';
 
 /**
@@ -248,6 +249,75 @@ function decideVerificationReceiptCondition(
   return { satisfied: true, reason: 'satisfied' };
 }
 export const INDEPENDENT_REVIEW_CONDITION = 'independentReview';
+
+/**
+ * The delivered packages this condition will refuse to close a Stage over: work that reached a
+ * terminal delivery status and carries no Reviewer acknowledgement.
+ *
+ * Exported because `checker.ts` announces the same set at Apply, where the Stage still holds
+ * implementation authority and can dispatch a Reviewer. Two implementations of "which packages
+ * still owe a review" would be two opinions, and the advisory one would be the one nobody notices
+ * has drifted — it is only ever read when the block has not happened yet.
+ *
+ * `ready`, `blocked`, `running` and `failed` are absent deliberately: there is no delivered work to
+ * review under any of them, so asking for a review would be asking for a review of nothing.
+ */
+/**
+ * Whether a Change has reached the Stage that writes the implementation, or anything after it.
+ *
+ * Located by authority, so a project that renames or adds an implementing Stage is measured by what
+ * the Stage is allowed to write. `ready-to-archive` is named literally because it is synthetic --
+ * absent from `flow.stages`, so an index lookup cannot place it.
+ */
+export function reachedImplementationStage(flow: StageFlow, currentStage: string | null): boolean {
+  const implementing = flow.stages.findIndex((stage) => stage.authority === 'implementation-write');
+  const current = flow.stages.findIndex((stage) => stage.id === currentStage);
+  return implementing >= 0 && (current >= implementing || currentStage === 'ready-to-archive');
+}
+
+export function declaresIndependentReview(flow: StageFlow): boolean {
+  return flow.stages.some((stage) => {
+    const exit = stage.exit;
+    return Boolean(exit && 'conditions' in exit && exit.conditions?.[INDEPENDENT_REVIEW_CONDITION] !== undefined);
+  });
+}
+
+/**
+ * The same obligation the advisory reports, in the shape a caller reads rather than a message.
+ *
+ * `--field` prints one value and nothing else, so every diagnostic is dropped from a narrowed reply
+ * that succeeded -- and narrowing is what the `stage` help text recommends, and what a measured
+ * Apply Agent used for every call it made after recording its delivery. A fact that only exists in
+ * `diagnostics` is therefore a fact that Stage cannot see. This puts it in `data`, in the two
+ * fields that Agent asked for by name: the package's own `owes`, and the Change's `willBlock`.
+ *
+ * Not a replacement for the advisory. The message says why and names the commands in the order they
+ * are accepted; this says that something is owed at all, and survives being narrowed to.
+ */
+export function independentReviewObligations(
+  flow: StageFlow,
+  state: WorkPackagePlanState | null,
+  currentStage: string | null,
+): { owes: Map<string, Array<'integrator' | 'reviewer'>>; willBlock: string[] } {
+  const empty = { owes: new Map<string, Array<'integrator' | 'reviewer'>>(), willBlock: [] };
+  if (!state || !declaresIndependentReview(flow) || !reachedImplementationStage(flow, currentStage)) return empty;
+  const unreviewed = unreviewedDeliveredPackages(state.packages);
+  if (unreviewed.length === 0) return empty;
+  const owes = new Map<string, Array<'integrator' | 'reviewer'>>();
+  for (const id of unreviewed) {
+    const climbed = ['integrated', 'reviewed'].includes(state.packages.find((item) => item.id === id)?.status ?? '');
+    owes.set(id, climbed ? ['reviewer'] : ['integrator', 'reviewer']);
+  }
+  /* The token the Transition will refuse with, spelled the way `conditions.ts` spells it. */
+  return { owes, willBlock: [`condition:${INDEPENDENT_REVIEW_CONDITION}:unreviewed-${unreviewed.join('+')}`] };
+}
+
+export function unreviewedDeliveredPackages(packages: WorkPackageState[]): string[] {
+  return packages
+    .filter((item) => ['succeeded', 'integrated', 'reviewed'].includes(item.status))
+    .filter((item) => !item.acknowledgements?.reviewedBy)
+    .map((item) => item.id);
+}
 /**
  * Every delivered work package must carry a Reviewer acknowledgement before the Stage can be left.
  *
@@ -299,10 +369,7 @@ function decideIndependentReview(
     if (!reviewCovers(acknowledgements.receipts, contentRevision)) return { satisfied: false, reason: 'review-stale' };
     return { satisfied: true, reason: 'satisfied-change-level' };
   }
-  const unreviewed = packages
-    .filter((item) => ['succeeded', 'integrated', 'reviewed'].includes(item.status))
-    .filter((item) => !item.acknowledgements?.reviewedBy)
-    .map((item) => item.id);
+  const unreviewed = unreviewedDeliveredPackages(packages);
   if (unreviewed.length > 0) return { satisfied: false, reason: `unreviewed-${unreviewed.join('+')}` };
   return { satisfied: true, reason: 'satisfied' };
 }

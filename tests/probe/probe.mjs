@@ -54,7 +54,22 @@ const manifest = JSON.parse(await readFile(path.join(fixture, 'probe-fixture.jso
  * is the same bargain the live harness makes with `relaxed-limits`: a verdict reached under
  * conditions somebody widened must not read like one that was not.
  */
-const shippedFlowPath = path.join(repositoryRoot, 'scaffold', 'payload', 'xforge', 'flows', `${manifest.flow}.yaml`);
+/*
+ * `--flow <path>` names the Flow under test; without it, the shipped one.
+ *
+ * "The Flow under test" could only ever mean "the one this repository ships", which excludes the
+ * case a probe is cheapest for: a condition that only one shipped Flow declares, on a fixture no
+ * run of that Flow has produced. `major` declares `independentReview` and reaches Apply in about
+ * half its runs at ~$16 a try; `solid` reaches Apply every time at ~$2 and declares no such
+ * condition. Naming a variant lets the second measure what only the first could otherwise.
+ *
+ * It is not a quiet substitution: the variant's path and digest travel in the result beside the
+ * drift warning, for the same reason `relaxed-limits` does.
+ */
+const shippedFlowPath = selected.flow
+  ? path.resolve(repositoryRoot, selected.flow)
+  : path.join(repositoryRoot, 'scaffold', 'payload', 'xforge', 'flows', `${manifest.flow}.yaml`);
+if (!existsSync(shippedFlowPath)) throw new Error(`No Flow at ${shippedFlowPath}.`);
 const shippedText = await readFile(shippedFlowPath, 'utf8');
 const shippedDigest = createHash('sha256').update(shippedText).digest('hex');
 const { parse: parseYaml } = await import('../../xforge/node_modules/yaml/dist/index.js');
@@ -296,6 +311,7 @@ process.stdout.write(`${JSON.stringify({
   ok: failures.length === 0,
   /* Beside the verdict, never below it. */
   ...(flowDrift ? { warning: 'flow-drift', flowDrift } : {}),
+  ...(selected.flow ? { flowUnderTest: { path: selected.flow, digest: shippedDigest } } : {}),
   fixture: selected.fixture,
   flow: manifest.flow,
   stage: manifest.stage,

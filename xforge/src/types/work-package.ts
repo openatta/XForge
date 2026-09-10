@@ -104,6 +104,15 @@ export interface WorkPackageState extends WorkPackage {
    * cannot verify, since one session may name any actor.
    */
   acknowledgements: { reviewedBy: string | null; integratedBy: string | null };
+  /**
+   * What this package still owes before the Stage that closes the Change can close, as role names.
+   *
+   * `acknowledgements` already reported the same fact as two nulls, and three live Apply runs read
+   * straight past it: a null says nobody has acknowledged, which is indistinguishable from nobody
+   * needing to. This says the Flow requires one. It is empty whenever nothing is owed, so a caller
+   * can act on the list rather than on the absence of a name.
+   */
+  owes: Array<'integrator' | 'reviewer'>;
 }
 
 export interface WorkPackagePlanState {

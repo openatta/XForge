@@ -62,6 +62,22 @@ function verifyLabel(argv: string[]): string {
     .join(' ');
 }
 
+/**
+ * Make the fixture's Solid Flow declare `independentReview` on Verify, the way Major ships it.
+ *
+ * Shared rather than copied per describe: four groups now assert against this condition — the
+ * plan-less shape, the per-package shape, the archive re-decision, and the notice `check` raises
+ * before any of them blocks — and a Flow edit that drifted between the copies would move what each
+ * group is testing without saying so.
+ */
+const declareIndependentReview = async (root: string): Promise<void> => {
+  await updateYaml(root, 'xforge/flows/solid.yaml', (flow) => {
+    const verify = flow.stages.find((stage: any) => stage.id === 'verify');
+    verify.exit = { ...(verify.exit ?? {}), conditions: { ...(verify.exit?.conditions ?? {}), independentReview: 'complete' } };
+  });
+  expect((await runCli(root, ['install'])).code).toBe(0);
+};
+
 function workPackage(id: string, overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     id,
@@ -1450,6 +1466,264 @@ describe('work-package protocol', () => {
     expect(result.code, JSON.stringify(result.json.diagnostics)).toBe(0);
     expect(result.json.data.change.workPackages.packages[0].status).toBe('succeeded');
   });
+
+  /*
+   * Where the reviewer obligation is announced, as opposed to where it bites.
+   *
+   * `independentReview` is an exit condition of Verify, so at Apply it appears in no
+   * `readyTransitions.blockedBy` and `xforge check` said nothing about it — at Apply *or* at
+   * Verify. A live Major run delivered T001, advanced, wrote its assurance and stopped; the block
+   * surfaced only when the harness attempted `verify -> ready-to-archive`, by which point the
+   * Stage that could have dispatched a Reviewer was two Transitions behind. The Apply Agent's own
+   * transcript shows it reasoning from `xforge-apply` step 8 that "this package has role null (no
+   * integrator/reviewer)" and skipping the acknowledgement, which is what step 8 said.
+   *
+   * So `check` now names the packages while the Change is still standing where it can act on
+   * them. The set is computed by the condition's own predicate rather than a second opinion of it.
+   */
+  describe('delivering against a plan whose Flow requires a review', () => {
+    const deliverT001 = async (root: string): Promise<void> => {
+      const verify = VERIFY_OK;
+      await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([
+        workPackage('T001', { write_paths: ['src/order/**'], verify: [verify] }),
+      ]));
+      const { binding } = await dispatchWithCommittedReceipt(root);
+      const base = await git(root, ['rev-parse', 'HEAD']);
+      await write(root, 'src/order/refund.ts', 'export const refund = true;\n');
+      await git(root, ['add', 'src/order/refund.ts']);
+      await git(root, ['commit', '-qm', 'worker T001']);
+      const head = await git(root, ['rev-parse', 'HEAD']);
+      await write(root, `xforge/changes/add-feature/evidence/agents/T001/${binding.executionId}.yaml`, delivery(binding, {
+        base_commit: base,
+        head_commit: head,
+        changed_paths: ['src/order/refund.ts'],
+        validation: [{ command: verifyLabel(verify), exit_code: 0 }],
+        done_when_evidence: [{
+          criterion: 'T001 is covered by an automated check',
+          evidence: ['src/order/refund.ts:1-3 — the exported constant the criterion names'],
+        }],
+      }));
+    };
+
+    it('names the unreviewed packages at Apply, with the commands that clear them', async () => {
+      const root = await fixture();
+      await createCompleteSolidChange(root);
+      await declareIndependentReview(root);
+      await deliverT001(root);
+
+      const result = await runCli(root, ['check', '--change', 'add-feature'], approvalTestEnv);
+      const codes = (result.json.diagnostics as any[]).map((item) => item.code);
+      const notice = (result.json.diagnostics as any[]).find((item) => item.code === 'XFORGE_INDEPENDENT_REVIEW_PENDING');
+      expect(notice, JSON.stringify(codes)).toBeTruthy();
+      /* Info: nothing is wrong yet. The Change is mid-Apply and the review has not become late
+         until Verify tries to close, which is the whole reason for saying it now. */
+      expect(notice.severity).toBe('info');
+      expect(notice.message).toContain('T001');
+      /* The transcript rule, not a paraphrase of it: a review written into the delivery directory
+         is read as a delivery record. */
+      expect(notice.message).toContain('review/');
+      /*
+       * Both rungs, in order. A package sits at `succeeded`, and `--as reviewer` alone is refused
+       * with XFORGE_WORK_PACKAGE_ACK_NOT_READY — naming only that command would name a step that
+       * does not finish the job, which is what the Verify-time remedy still does.
+       */
+      expect(notice.remedy.commands).toEqual([
+        ['xforge', 'work-package', 'acknowledge', '--change', 'add-feature', '--package', 'T001', '--as', 'integrator', '--evidence', '<path>'],
+        ['xforge', 'work-package', 'acknowledge', '--change', 'add-feature', '--package', 'T001', '--as', 'reviewer', '--evidence', '<path>'],
+      ]);
+    });
+
+    /*
+     * Where it is said, not just what it says.
+     *
+     * The first cut of this notice lived in `checkStructure` alone. A live Major run then showed
+     * the Apply Agent running `state`, `stage`, `work-package draft` and `transition` and never
+     * `check` -- so it fired zero times in the Stage it exists for, and surfaced only at Verify.
+     * These two assert the delivery points an implementing Agent actually passes through.
+     */
+    it('reaches an Agent through state, which is what stage composes', async () => {
+      const root = await fixture();
+      await createCompleteSolidChange(root);
+      await declareIndependentReview(root);
+      await deliverT001(root);
+
+      const state = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
+      const notice = (state.json.diagnostics as any[]).find((item) => item.code === 'XFORGE_INDEPENDENT_REVIEW_PENDING');
+      expect(notice, JSON.stringify((state.json.diagnostics as any[]).map((item) => item.code))).toBeTruthy();
+      expect(notice.message).toContain('T001');
+    });
+
+    /* Leaving Apply is never blocked by this condition -- a review cannot precede the work -- so the
+       Transition that walks past the only Stage able to dispatch a Reviewer is where it is last
+       actionable, and it says so without refusing. */
+    it('says it on the Transition out of the implementing Stage, without blocking it', async () => {
+      const root = await fixture();
+      await createCompleteSolidChange(root);
+      await declareIndependentReview(root);
+      await deliverT001(root);
+      expect((await runCli(root, ['check', '--change', 'add-feature'], approvalTestEnv)).code).toBe(0);
+
+      const moved = await runCli(root, ['transition', '--change', 'add-feature', '--to', 'verify'], approvalTestEnv);
+      expect(moved.code, JSON.stringify(moved.json.diagnostics)).toBe(0);
+      const notice = (moved.json.diagnostics as any[]).find((item) => item.code === 'XFORGE_INDEPENDENT_REVIEW_PENDING');
+      expect(notice, JSON.stringify((moved.json.diagnostics as any[]).map((item) => item.code))).toBeTruthy();
+      expect(notice.severity).toBe('info');
+    });
+
+    /*
+     * The carrier that survives narrowing.
+     *
+     * `--field` prints one value and nothing else, so a narrowed `state`/`stage` -- the form the
+     * Skills recommend for cost, and the form a measured Apply Agent used for every call it made
+     * after recording its delivery -- carries no diagnostics at all. Drafting the delivery is not
+     * narrowable and cannot be skipped, so the notice is said there too, forward-looking: at draft
+     * time the record does not exist yet, so the package is not in the reported set.
+     */
+    it('warns when the delivery is drafted, before the record that will owe the review exists', async () => {
+      const root = await fixture();
+      await createCompleteSolidChange(root);
+      await declareIndependentReview(root);
+      await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([
+        workPackage('T001', { write_paths: ['src/order/**'], verify: [VERIFY_OK] }),
+      ]));
+      await dispatchWithCommittedReceipt(root);
+      await write(root, 'src/order/refund.ts', 'export const refund = true;\n');
+      await git(root, ['add', 'src/order/refund.ts']);
+      await git(root, ['commit', '-qm', 'worker T001']);
+
+      const draft = await runCli(root, ['work-package', 'draft', '--change', 'add-feature', '--package', 'T001'], approvalTestEnv);
+      expect(draft.code, JSON.stringify(draft.json.diagnostics)).toBe(0);
+      const notice = (draft.json.diagnostics as any[]).find((item) => item.code === 'XFORGE_INDEPENDENT_REVIEW_PENDING');
+      expect(notice, JSON.stringify((draft.json.diagnostics as any[]).map((item) => item.code))).toBeTruthy();
+      expect(notice.severity).toBe('info');
+      expect(notice.message).toContain('T001');
+      expect(notice.remedy.commands).toEqual([
+        ['xforge', 'work-package', 'acknowledge', '--change', 'add-feature', '--package', 'T001', '--as', 'integrator', '--evidence', '<path>'],
+        ['xforge', 'work-package', 'acknowledge', '--change', 'add-feature', '--package', 'T001', '--as', 'reviewer', '--evidence', '<path>'],
+      ]);
+    });
+
+    /* And nothing on a Flow that never asked for a review, on the same command. */
+    it('says nothing when drafting under a Flow that does not declare independentReview', async () => {
+      const root = await fixture();
+      await createCompleteSolidChange(root);
+      await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([
+        workPackage('T001', { write_paths: ['src/order/**'], verify: [VERIFY_OK] }),
+      ]));
+      await dispatchWithCommittedReceipt(root);
+      await write(root, 'src/order/refund.ts', 'export const refund = true;\n');
+      await git(root, ['add', 'src/order/refund.ts']);
+      await git(root, ['commit', '-qm', 'worker T001']);
+
+      const draft = await runCli(root, ['work-package', 'draft', '--change', 'add-feature', '--package', 'T001'], approvalTestEnv);
+      expect((draft.json.diagnostics as any[]).map((item) => item.code)).not.toContain('XFORGE_INDEPENDENT_REVIEW_PENDING');
+    });
+
+    /*
+     * The half that survives `--field`.
+     *
+     * A narrowed reply that succeeded prints one value and no diagnostics, so an advisory alone is
+     * invisible to the calls a measured Apply Agent actually made -- `stage --field work.packages
+     * --field blockedBy`. These two facts therefore live in `data`, in those exact fields.
+     */
+    it('carries the obligation in data, where narrowing cannot drop it', async () => {
+      const root = await fixture();
+      await createCompleteSolidChange(root);
+      await declareIndependentReview(root);
+      await deliverT001(root);
+
+      const stage = await runCli(root, ['stage', '--change', 'add-feature', '--field', 'work.packages', '--field', 'willBlock'], approvalTestEnv);
+      expect(stage.code, stage.stdout).toBe(0);
+      const narrowed = JSON.parse(stage.stdout);
+      /* The package says what it owes, in both rungs, rather than reporting two nulls. */
+      expect(narrowed['work.packages'][0].owes).toEqual(['integrator', 'reviewer']);
+      /* And the Change names the block in the same token the Transition will refuse with. */
+      expect(narrowed.willBlock).toEqual(['condition:independentReview:unreviewed-T001']);
+      /* The narrowed reply really is bare -- this is the shape the advisory could not survive. */
+      expect(stage.stdout).not.toContain('XFORGE_INDEPENDENT_REVIEW_PENDING');
+    });
+
+    it('reports nothing owed once the reviewer acknowledgement exists', async () => {
+      const root = await fixture();
+      await createCompleteSolidChange(root);
+      await declareIndependentReview(root);
+      await deliverT001(root);
+      expect((await runCli(root, ['check', '--change', 'add-feature'], approvalTestEnv)).code).toBe(0);
+      const integrationEvidence = 'xforge/changes/add-feature/evidence/agents/T001/integration.md';
+      await write(root, integrationEvidence, 'Integrated T001.\n');
+      expect((await runCli(root, ['work-package', 'acknowledge', '--change', 'add-feature', '--package', 'T001',
+        '--as', 'integrator', '--evidence', integrationEvidence], approvalTestEnv)).code).toBe(0);
+      const reviewEvidence = 'xforge/changes/add-feature/evidence/agents/T001/review.md';
+      await write(root, reviewEvidence, 'Independent review passed.\n');
+      expect((await runCli(root, ['work-package', 'acknowledge', '--change', 'add-feature', '--package', 'T001',
+        '--as', 'reviewer', '--evidence', reviewEvidence], approvalTestEnv)).code).toBe(0);
+
+      const stage = await runCli(root, ['stage', '--change', 'add-feature', '--field', 'work.packages', '--field', 'willBlock'], approvalTestEnv);
+      const narrowed = JSON.parse(stage.stdout);
+      expect(narrowed['work.packages'][0].owes).toEqual([]);
+      expect(narrowed.willBlock).toEqual([]);
+    });
+
+    it('drops the integrator rung once the package has climbed it', async () => {
+      const root = await fixture();
+      await createCompleteSolidChange(root);
+      await declareIndependentReview(root);
+      await deliverT001(root);
+      expect((await runCli(root, ['check', '--change', 'add-feature'], approvalTestEnv)).code).toBe(0);
+
+      const integrationEvidence = 'xforge/changes/add-feature/evidence/agents/T001/integration.md';
+      await write(root, integrationEvidence, 'Integrated T001 and reran contract verification.\n');
+      expect((await runCli(root, ['work-package', 'acknowledge', '--change', 'add-feature', '--package', 'T001',
+        '--as', 'integrator', '--evidence', integrationEvidence], approvalTestEnv)).code).toBe(0);
+
+      const result = await runCli(root, ['check', '--change', 'add-feature'], approvalTestEnv);
+      const notice = (result.json.diagnostics as any[]).find((item) => item.code === 'XFORGE_INDEPENDENT_REVIEW_PENDING');
+      expect(notice).toBeTruthy();
+      expect(notice.remedy.commands).toEqual([
+        ['xforge', 'work-package', 'acknowledge', '--change', 'add-feature', '--package', 'T001', '--as', 'reviewer', '--evidence', '<path>'],
+      ]);
+    });
+
+    it('says nothing once the delivery carries a reviewer acknowledgement', async () => {
+      const root = await fixture();
+      await createCompleteSolidChange(root);
+      await declareIndependentReview(root);
+      await deliverT001(root);
+      expect((await runCli(root, ['check', '--change', 'add-feature'], approvalTestEnv)).code).toBe(0);
+
+      const integrationEvidence = 'xforge/changes/add-feature/evidence/agents/T001/integration.md';
+      await write(root, integrationEvidence, 'Integrated T001.\n');
+      expect((await runCli(root, ['work-package', 'acknowledge', '--change', 'add-feature', '--package', 'T001',
+        '--as', 'integrator', '--evidence', integrationEvidence], approvalTestEnv)).code).toBe(0);
+      const reviewEvidence = 'xforge/changes/add-feature/evidence/agents/T001/review.md';
+      await write(root, reviewEvidence, 'Independent review passed.\n');
+      expect((await runCli(root, ['work-package', 'acknowledge', '--change', 'add-feature', '--package', 'T001',
+        '--as', 'reviewer', '--evidence', reviewEvidence], approvalTestEnv)).code).toBe(0);
+
+      const result = await runCli(root, ['check', '--change', 'add-feature'], approvalTestEnv);
+      expect((result.json.diagnostics as any[]).map((item) => item.code)).not.toContain('XFORGE_INDEPENDENT_REVIEW_PENDING');
+    });
+
+    /* Nothing to review before a delivery exists, and nothing to say to a Flow that never asked
+       for one — the same two silences the plan-absent notice keeps. */
+    it('says nothing before the package has delivered, or for a Flow that never declared it', async () => {
+      const dispatched = await fixture();
+      await createCompleteSolidChange(dispatched);
+      await declareIndependentReview(dispatched);
+      await write(dispatched, 'xforge/changes/add-feature/work-packages.yaml', plan([
+        workPackage('T001', { write_paths: ['src/order/**'], verify: [VERIFY_OK] }),
+      ]));
+      await dispatchWithCommittedReceipt(dispatched);
+      const early = await runCli(dispatched, ['check', '--change', 'add-feature'], approvalTestEnv);
+      expect((early.json.diagnostics as any[]).map((item) => item.code)).not.toContain('XFORGE_INDEPENDENT_REVIEW_PENDING');
+
+      const unreviewedFlow = await fixture();
+      await createCompleteSolidChange(unreviewedFlow);
+      await deliverT001(unreviewedFlow);
+      const silent = await runCli(unreviewedFlow, ['check', '--change', 'add-feature'], approvalTestEnv);
+      expect((silent.json.diagnostics as any[]).map((item) => item.code)).not.toContain('XFORGE_INDEPENDENT_REVIEW_PENDING');
+    });
+  });
 });
 
 /*
@@ -1459,18 +1733,11 @@ describe('work-package protocol', () => {
  * force, and that the Flow's independentReview condition had nothing left to review.
  */
 describe('delivering without a work-package plan', () => {
-  const declareReview = async (root: string): Promise<void> => {
-    await updateYaml(root, 'xforge/flows/solid.yaml', (flow) => {
-      const verify = flow.stages.find((stage: any) => stage.id === 'verify');
-      verify.exit = { ...(verify.exit ?? {}), conditions: { ...(verify.exit?.conditions ?? {}), independentReview: 'complete' } };
-    });
-    expect((await runCli(root, ['install'])).code).toBe(0);
-  };
 
   it('names what stopped applying, once the Change is delivering', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
-    await declareReview(root);
+    await declareIndependentReview(root);
     await advanceSolidToApply(root, 'add-feature');
 
     const result = await runCli(root, ['check', '--change', 'add-feature'], approvalTestEnv);
@@ -1490,7 +1757,7 @@ describe('delivering without a work-package plan', () => {
   it('says nothing before the Change reaches an implementing Stage', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
-    await declareReview(root);
+    await declareIndependentReview(root);
     const result = await runCli(root, ['check', '--change', 'add-feature'], approvalTestEnv);
     expect((result.json.diagnostics as any[]).map((item) => item.code)).not.toContain('XFORGE_WORK_PACKAGE_PLAN_ABSENT');
   });
@@ -1517,13 +1784,6 @@ describe('delivering without a work-package plan', () => {
  * `blockedBy` — which is what made it invisible as well as inert.
  */
 describe('independentReview without a work-package plan', () => {
-  const declareReview = async (root: string): Promise<void> => {
-    await updateYaml(root, 'xforge/flows/solid.yaml', (flow) => {
-      const verify = flow.stages.find((stage: any) => stage.id === 'verify');
-      verify.exit = { ...(verify.exit ?? {}), conditions: { ...(verify.exit?.conditions ?? {}), independentReview: 'complete' } };
-    });
-    expect((await runCli(root, ['install'])).code).toBe(0);
-  };
   const blockedLeavingVerify = async (root: string): Promise<string[]> => {
     const state = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
     const targets = state.json.data.change.governance.readyTransitions as any[];
@@ -1533,7 +1793,7 @@ describe('independentReview without a work-package plan', () => {
   it('blocks, and says so in blockedBy, when nothing reviewed the work', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
-    await declareReview(root);
+    await declareIndependentReview(root);
     await advanceSolidToApply(root, 'add-feature');
     expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'verify'], approvalTestEnv)).code).toBe(0);
 
@@ -1545,7 +1805,7 @@ describe('independentReview without a work-package plan', () => {
   it('accepts a Change-level review, and stops accepting it when the content moves', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
-    await declareReview(root);
+    await declareIndependentReview(root);
     await advanceSolidToApply(root, 'add-feature');
     expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'verify'], approvalTestEnv)).code).toBe(0);
 
@@ -1574,7 +1834,7 @@ describe('independentReview without a work-package plan', () => {
   it('refuses to archive when the review evidence disappeared after the closing transition', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
-    await declareReview(root);
+    await declareIndependentReview(root);
     await advanceSolidToApply(root, 'add-feature');
     expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'verify'], approvalTestEnv)).code).toBe(0);
     expect((await runCli(root, ['check', '--change', 'add-feature'], approvalTestEnv)).code).toBe(0);
@@ -1613,7 +1873,7 @@ describe('independentReview without a work-package plan', () => {
   it('names the command that clears the block, per delivery shape', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
-    await declareReview(root);
+    await declareIndependentReview(root);
     await advanceSolidToApply(root, 'add-feature');
     expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'verify'], approvalTestEnv)).code).toBe(0);
     await writeVerificationReceipt(root, 'add-feature');
@@ -1633,7 +1893,7 @@ describe('independentReview without a work-package plan', () => {
   it('refuses a Change-level review when a plan exists', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
-    await declareReview(root);
+    await declareIndependentReview(root);
     await advanceSolidToApply(root, 'add-feature');
     await write(root, 'xforge/changes/add-feature/work-packages.yaml', plan([workPackage('T001')]));
     await write(root, 'xforge/changes/add-feature/evidence/review/notes.md', '# Review\n');
@@ -1651,7 +1911,7 @@ describe('independentReview without a work-package plan', () => {
   it('does not count a receipt whose digest does not recompute', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
-    await declareReview(root);
+    await declareIndependentReview(root);
     await advanceSolidToApply(root, 'add-feature');
     expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'verify'], approvalTestEnv)).code).toBe(0);
 
@@ -1684,7 +1944,7 @@ describe('independentReview without a work-package plan', () => {
   it('does not count a correctly-hashed receipt the audit chain never attested', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
-    await declareReview(root);
+    await declareIndependentReview(root);
     await advanceSolidToApply(root, 'add-feature');
     expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'verify'], approvalTestEnv)).code).toBe(0);
 
@@ -1718,7 +1978,7 @@ describe('independentReview without a work-package plan', () => {
   it('keeps every acknowledgement at one content revision, rather than overwriting', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
-    await declareReview(root);
+    await declareIndependentReview(root);
     await advanceSolidToApply(root, 'add-feature');
     expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'verify'], approvalTestEnv)).code).toBe(0);
 
@@ -1743,7 +2003,7 @@ describe('independentReview without a work-package plan', () => {
   it('is not read back as a work-package acknowledgement once a plan appears', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
-    await declareReview(root);
+    await declareIndependentReview(root);
     await advanceSolidToApply(root, 'add-feature');
     expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'verify'], approvalTestEnv)).code).toBe(0);
     await write(root, 'xforge/changes/add-feature/evidence/review/notes.md', '# Review\n');
@@ -1767,7 +2027,7 @@ describe('independentReview without a work-package plan', () => {
   it('rejects a receipt citing evidence outside the Change review directory', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
-    await declareReview(root);
+    await declareIndependentReview(root);
     await advanceSolidToApply(root, 'add-feature');
     expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'verify'], approvalTestEnv)).code).toBe(0);
 
@@ -1800,7 +2060,7 @@ describe('independentReview without a work-package plan', () => {
   it('accepts a transcript whose line endings changed', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
-    await declareReview(root);
+    await declareIndependentReview(root);
     await advanceSolidToApply(root, 'add-feature');
     expect((await runCli(root, ['transition', '--change', 'add-feature', '--to', 'verify'], approvalTestEnv)).code).toBe(0);
 
@@ -1822,7 +2082,7 @@ describe('independentReview without a work-package plan', () => {
   it('refuses evidence that does not exist or sits outside the Change', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
-    await declareReview(root);
+    await declareIndependentReview(root);
     await advanceSolidToApply(root, 'add-feature');
 
     const missing = await runCli(root, ['review', 'acknowledge', '--change', 'add-feature',
@@ -1920,20 +2180,13 @@ describe('archive decides independentReview against the plan the Change delivere
  * will not parse, a file that fails its schema — and callers that had to tell them apart guessed.
  */
 describe('a work-package plan that exists but cannot be read', () => {
-  const declareReview = async (root: string): Promise<void> => {
-    await updateYaml(root, 'xforge/flows/solid.yaml', (flow) => {
-      const verify = flow.stages.find((stage: any) => stage.id === 'verify');
-      verify.exit = { ...(verify.exit ?? {}), conditions: { ...(verify.exit?.conditions ?? {}), independentReview: 'complete' } };
-    });
-    expect((await runCli(root, ['install'])).code).toBe(0);
-  };
   /* Valid YAML syntax, invalid plan: the schema rejects it, which is the other road to `state: null`. */
   const unreadablePlan = 'apiVersion: xforge.dev/v1alpha1\nkind: WorkPackagePlan\npackages: "not a list"\n';
 
   it('is not reported as the permitted plan-less delivery shape', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
-    await declareReview(root);
+    await declareIndependentReview(root);
     await advanceSolidToApply(root, 'add-feature');
     await write(root, 'xforge/changes/add-feature/work-packages.yaml', unreadablePlan);
 
@@ -1949,7 +2202,7 @@ describe('a work-package plan that exists but cannot be read', () => {
   it('refuses a Change-level review acknowledgement rather than accepting one in its place', async () => {
     const root = await fixture();
     await createCompleteSolidChange(root);
-    await declareReview(root);
+    await declareIndependentReview(root);
     await advanceSolidToApply(root, 'add-feature');
     await write(root, 'xforge/changes/add-feature/work-packages.yaml', unreadablePlan);
     await write(root, 'xforge/changes/add-feature/evidence/review/notes.md', '# Review\n');

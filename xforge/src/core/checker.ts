@@ -1,8 +1,8 @@
-import type { ChangeConfig, ChangeState, Diagnostic, Flow, ProjectContext, StageFlow } from '../types.js';
+import type { ChangeConfig, ChangeState, Diagnostic, Flow, ProjectContext, StageFlow, WorkPackagePlanState } from '../types.js';
 import { diagnostic } from './errors.js';
 import { loadFlows, stageGateReferences } from './flow-resolver.js';
 import { currentStageOf } from './flow-query.js';
-import { INDEPENDENT_REVIEW_CONDITION } from './control-plane.js';
+import { INDEPENDENT_REVIEW_CONDITION, declaresIndependentReview, reachedImplementationStage, unreviewedDeliveredPackages } from './control-plane.js';
 import { resolvedResourceEntries } from './lockfile.js';
 import { stableStringify } from './hash.js';
 import { normalizeRelative } from './path-safety.js';
@@ -79,17 +79,60 @@ function requirableImpacts(classification: ChangeConfig['classification']): stri
  * codebase already refuses to produce elsewhere.
  */
 function workPackageDegradation(flow: StageFlow, changeId: string, changesPath: string): Diagnostic[] {
-  const declaresReview = flow.stages.some((stage) => {
-    const exit = stage.exit;
-    return Boolean(exit && 'conditions' in exit && exit.conditions?.[INDEPENDENT_REVIEW_CONDITION] !== undefined);
-  });
-  if (!declaresReview) return [];
+  if (!declaresIndependentReview(flow)) return [];
   return [diagnostic(
     'XFORGE_WORK_PACKAGE_PLAN_ABSENT',
     `This Change is delivering without work-packages.yaml, which is a permitted shape — and these stop applying with it: dispatch receipts (so no execution_id, state_revision or policy_snapshot_digest binds the work), delivery records with their done_when evidence, and the worktree write boundary, which becomes a matter of instruction rather than something the CLI enforces. Flow ${flow.metadata.name} also declares the ${INDEPENDENT_REVIEW_CONDITION} exit condition, which without a plan has no packages to review — so it now requires a Change-level review instead, and Verify will not close until one exists: record it with \`xforge review acknowledge --change ${changeId} --evidence <path>\`. To keep the per-package mechanisms as well, deliver against a plan and dispatch each package.`,
     `${changesPath}/${changeId}`,
     'info',
   )];
+}
+
+/**
+ * The reviewer acknowledgements a Flow-declared `independentReview` will refuse to close Verify
+ * without, said at the Stage that can still obtain them.
+ *
+ * The condition is declared on Verify's exit, so until Verify tries to close it appears in no
+ * `readyTransitions.blockedBy` and nothing named it: `xforge check` was silent at Apply and silent
+ * at Verify, and the only place the obligation existed in prose was `xforge-apply` step 8, which
+ * frames a Reviewer as a judgement call attached to Integrator output. A live Major run read it
+ * exactly that way -- "this package has role null (no integrator/reviewer)" -- delivered, advanced,
+ * and met the block two Transitions later, with the Stage that could have dispatched a Reviewer
+ * behind it.
+ *
+ * So this is deliberately not a second block. Apply is not wrong yet: a review can be obtained any
+ * time before Verify closes, and refusing `apply -> verify` over it would force the review to
+ * happen before the Stage that produces the thing being reviewed has finished producing it. It is
+ * an `info` that names the packages, and it names both rungs of the ladder they have to climb --
+ * `succeeded -> integrated -> reviewed` -- because `--as reviewer` alone is refused with
+ * XFORGE_WORK_PACKAGE_ACK_NOT_READY, and a remedy that names a refused command names a step that
+ * does not finish the job.
+ */
+export function pendingIndependentReview(
+  flow: StageFlow,
+  state: WorkPackagePlanState | null,
+  changeId: string,
+  changesPath: string,
+  currentStage: string | null,
+): Diagnostic[] {
+  if (!state || !declaresIndependentReview(flow) || !reachedImplementationStage(flow, currentStage)) return [];
+  const unreviewed = unreviewedDeliveredPackages(state.packages);
+  if (unreviewed.length === 0) return [];
+  const climbed = new Set(state.packages.filter((item) => ['integrated', 'reviewed'].includes(item.status)).map((item) => item.id));
+  const acknowledge = (id: string, role: 'integrator' | 'reviewer'): string[] => [
+    'xforge', 'work-package', 'acknowledge', '--change', changeId, '--package', id, '--as', role, '--evidence', '<path>',
+  ];
+  const commands = unreviewed.flatMap((id) => (climbed.has(id) ? [acknowledge(id, 'reviewer')] : [acknowledge(id, 'integrator'), acknowledge(id, 'reviewer')]));
+  const named = unreviewed.join(', ');
+  return [{
+    ...diagnostic(
+      'XFORGE_INDEPENDENT_REVIEW_PENDING',
+      `Flow ${flow.metadata.name} declares the ${INDEPENDENT_REVIEW_CONDITION} exit condition, so Verify will not close until every delivered work package carries a Reviewer acknowledgement, and ${unreviewed.length === 1 ? `${named} does` : `${named} do`} not. This is said here rather than only where it blocks, because by then the Stage that can dispatch a Reviewer is behind the Change. The Reviewer is read-only and cannot write its own evidence: transcribe its returned result verbatim to \`<change>/evidence/agents/<package>/review/<execution>.md\` -- the \`review/\` subdirectory and the \`.md\` are both load-bearing, because \`evidence/agents/<package>/*.yaml\` is where delivery records live and a transcript written there is read as one -- and record it. A package climbs \`succeeded -> integrated -> reviewed\` and each acknowledgement is refused until the one beneath it exists, so the commands below are in the order they will be accepted.`,
+      `${changesPath}/${changeId}`,
+      'info',
+    ),
+    remedy: { commands },
+  }];
 }
 
 function requiredPolicyMatches(flow: StageFlow, classification: ChangeConfig['classification']): boolean {
@@ -335,10 +378,12 @@ export async function checkStructure(project: ProjectContext, changeId?: string)
     let requireDeliveries = false;
     let reachedImplementation = false;
     let reviewedFlow: StageFlow | null = null;
+    let reviewedStage: string | null = null;
     if (resolved.flow.governance) {
       const transitions = await loadTransitionReceipts(project, changeId, resolved.flow);
       diagnostics.push(...transitions.diagnostics);
       const currentStage = currentStageOf(resolved.flow, transitions.receipts) ?? undefined;
+      reviewedStage = currentStage ?? null;
       requireDeliveries = currentStage === 'verify' || currentStage === 'ready-to-archive';
       /* The implementing Stage is located by authority, so a project that renames or adds one is
          measured by what the Stage is allowed to write. That holds for this lookup only: the two
@@ -346,9 +391,7 @@ export async function checkStructure(project: ProjectContext, changeId?: string)
          and `flow-resolver.ts` refuses any Flow without Stages named `propose`, `apply` and
          `verify`. This comment claimed the whole block was name-free until an audit read the
          three lines together. */
-      const implementing = resolved.flow.stages.findIndex((stage) => stage.authority === 'implementation-write');
-      const current = resolved.flow.stages.findIndex((stage) => stage.id === currentStage);
-      reachedImplementation = implementing >= 0 && (current >= implementing || currentStage === 'ready-to-archive');
+      reachedImplementation = reachedImplementationStage(resolved.flow, currentStage ?? null);
       reviewedFlow = resolved.flow;
     }
     workPackages = await resolveWorkPackages(project, changeId, resolved.config, resources, { requireDeliveries });
@@ -360,6 +403,9 @@ export async function checkStructure(project: ProjectContext, changeId?: string)
        error reported alongside. The plan-less shape is a choice; an unreadable plan is a fault. */
     if (reviewedFlow && reachedImplementation && workPackages.status === 'absent') {
       diagnostics.push(...workPackageDegradation(reviewedFlow, changeId, project.changesPath));
+    }
+    if (reviewedFlow) {
+      diagnostics.push(...pendingIndependentReview(reviewedFlow, workPackages.state, changeId, project.changesPath, reviewedStage));
     }
   }
 

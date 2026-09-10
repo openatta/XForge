@@ -175,6 +175,7 @@ exit: 0
       "gate:unit-tests:stale",
       "condition:verificationReceipt:content-revision-stale"
     ],
+    "willBlock": [],
     "stageDeclares": {
       "produces": [
         "assurance"

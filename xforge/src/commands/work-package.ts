@@ -10,6 +10,7 @@ import { sha256, stableStringify } from '../core/hash.js';
 import { assertManaged } from '../core/project-loader.js';
 import { loadSelectedResources } from '../core/resource-loader.js';
 import { git, resolveWorkPackages, workPackageVerificationGates } from '../core/work-packages.js';
+import { declaresIndependentReview } from '../core/control-plane.js';
 import { latestDispatchFor } from '../core/work-packages/records.js';
 import { runVerifyCommand } from '../runners/gate.js';
 import { normalizeRelative, safeResolve } from '../core/path-safety.js';
@@ -332,6 +333,37 @@ export async function executeWorkPackageDraft(project: ProjectContext, options: 
      * `git reset`, and in one case a `git worktree` that was never needed, before finding the rule.
      */
     diagnostics.push(diagnostic('XFORGE_WORK_PACKAGE_EMPTY_DELIVERY', `Nothing changed between ${baseCommit} and HEAD, so this draft has no changed_paths and no evidence entry can cite one. A delivery is measured from the commit that dispatched it, so ${baseCommit} is the commit holding this execution's dispatch receipt: if the receipt and the implementation went into that same commit, there is nothing after it to measure and the receipt has to be its own commit, before the work. If instead the work is committed elsewhere, draft from the worktree that holds it.`, workPackages.state.path, 'warning'));
+  }
+
+  /*
+   * The one command that runs at the moment the review becomes possible.
+   *
+   * `independentReview` is Verify's exit condition, so it is announced by `state`, `stage` and the
+   * Transition out of Apply. Two of those three are unreliable in practice: `--field` prints one
+   * value and nothing else, so a narrowed `state`/`stage` -- which is the form the Skills recommend
+   * for cost, and the form a measured Apply Agent used for every call after its delivery -- drops
+   * every diagnostic on the floor. Drafting a delivery is not narrowed and cannot be skipped, and
+   * it is the step immediately before the thing that will owe a review exists.
+   *
+   * Forward-looking on purpose: at draft time the record has not been written, so the package is not
+   * yet in the set `pendingIndependentReview` reports. Waiting until it is means waiting for a call
+   * that may never come un-narrowed.
+   */
+  if (declaresIndependentReview(resolved.flow)) {
+    diagnostics.push({
+      ...diagnostic(
+        'XFORGE_INDEPENDENT_REVIEW_PENDING',
+        `Flow ${resolved.flow.metadata.name} declares the independentReview exit condition, so once this delivery is recorded ${options.packageId} owes a Reviewer acknowledgement before Verify can close -- whatever its role, a plain worker package included. The Reviewer is read-only and cannot write its own evidence: have one review the delivered work, transcribe its returned result verbatim to \`${project.changesPath}/${options.change}/evidence/agents/${options.packageId}/review/${dispatch.executionId}.md\` -- the \`review/\` subdirectory and the \`.md\` are both load-bearing, because \`evidence/agents/${options.packageId}/*.yaml\` is where delivery records live and a transcript written there is read as one -- and record it. A package climbs \`succeeded -> integrated -> reviewed\` and each acknowledgement is refused until the one beneath it exists, so the commands below are in the order they will be accepted. Doing this after the Transition out of this Stage means doing it from a Stage that cannot dispatch anyone.`,
+        `${project.changesPath}/${options.change}`,
+        'info',
+      ),
+      remedy: {
+        commands: [
+          ['xforge', 'work-package', 'acknowledge', '--change', options.change, '--package', options.packageId, '--as', 'integrator', '--evidence', '<path>'],
+          ['xforge', 'work-package', 'acknowledge', '--change', options.change, '--package', options.packageId, '--as', 'reviewer', '--evidence', '<path>'],
+        ],
+      },
+    });
   }
 
   return {

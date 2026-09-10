@@ -157,6 +157,16 @@ export async function executeStage(
     otherActions: actions.filter((entry) => entry !== ready),
     blockedBy: (change?.governance?.readyTransitions ?? []).flatMap((entry) => entry.blockedBy ?? []),
     /*
+     * Blocks a later Stage's exit already owes, in the tokens `blockedBy` will use for them.
+     *
+     * Beside `blockedBy` rather than inside it, because they are different claims: one refuses a
+     * Transition now, the other will refuse one later, and folding them together would report this
+     * Stage as blocked when it is free to leave. A measured Apply Agent asked for `work.packages`
+     * and `blockedBy` in the same narrowed call; this is the field that answers what it was
+     * actually looking for.
+     */
+    willBlock: change?.governance?.willBlock ?? [],
+    /*
      * What this Stage declares, so the Flow file does not have to be opened to find out.
      *
      * Twenty recorded runs read `xforge/flows/*.yaml` twelve times for 132KB — 12% of every
@@ -229,6 +239,10 @@ export async function executeStage(
           missingDependencies: entry.missingDependencies ?? [],
           delivered: Boolean(entry.delivery),
           acknowledgements: entry.acknowledgements ?? null,
+          /* What this package still owes before the closing Stage can close. `acknowledgements`
+             reported the same fact as two nulls and three live Apply runs read past it: a null says
+             nobody acknowledged, not that anybody has to. */
+          owes: entry.owes ?? [],
         })),
       }
       : null,
