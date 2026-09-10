@@ -4,7 +4,7 @@
 > 它按什么逻辑运转、你脑子里要装哪几个模型才能顺畅地用它工作。
 > 它不是命令手册；命令与参数见 [CLI 用法](cli-tool-usage.md)，最终以 `xforge help --text` 为准。
 >
-> 对应实现：`@xforge/cli 0.8.5`、File Protocol 2、`xforge.dev/v1alpha2`。
+> 对应实现：`@xforge/cli 0.8.6`、File Protocol 2、`xforge.dev/v1alpha2`。
 
 **相关文档**
 
@@ -199,7 +199,7 @@ eligibleWhen: { risk: [low, medium], criticalImpacts: forbidden, contractImpact:
 
 `contractImpact` 与 `criticalImpacts` 是**两个问题、两个键**，这一点是刻意的。
 判断一个 Flow 能不能承载接口变更，看的不是它有没有 design stage——`solid` 和 `major` 都有——
-而是它**有没有声明 contract-delta 这个 Artifact、并在归档时合并它**。0.8.5 起 `solid` 与 `major`
+而是它**有没有声明 contract-delta 这个 Artifact、并在归档时合并它**。0.8.6 起 `solid` 与 `major`
 两者都有，所以两者都写 `contractImpact: allowed`；`quick` 仍然没有，也仍然拒绝——那次拒绝是结构性的，
 不是偏好：Quick 没有 design stage 可以写 delta，也没有评审去读它。
 `major` 必须跟着 `solid` 一起放开，理由相反：一个保证级别更高的 Flow 如果拒绝接口变更，
@@ -353,7 +353,7 @@ Gate 重跑后**重新 plan**，再执行原子事务。任何中间错误都保
 变成一份持久记录，`xforge contract status` 则把「在途的几个 Change 各自打算怎么改它」摆到一起。
 
 架构决策曾经也有过第三条路——一份 `xforge/architecture.md` 加一条 `architectureDeltas` 台账。
-它在 0.8.5 被删掉了，因为没有任何 Flow 把那份台账声明为 exit condition：没有 Gate 读它，
+它在 0.8.6 被删掉了，因为没有任何 Flow 把那份台账声明为 exit condition：没有 Gate 读它，
 没有转移会因它被阻，一次审计去问「哪段代码在抓」，答案是没有。留下的是能执行的那一半——
 `module-boundaries` Gate 比对 `project.modules[].dependsOn` 声明的方向与代码实际的 import，
 现在归在接口治理下。
