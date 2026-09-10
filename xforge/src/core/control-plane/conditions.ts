@@ -30,6 +30,13 @@ interface ConditionLedgerEntry {
   decision?: unknown;
   decidedBy?: unknown;
   decidedAt?: unknown;
+  /**
+   * The rework this decision stands after, named by its Transition receipt id.
+   *
+   * Required once the Change has gone back past the Stage that owns the condition, and compared
+   * against the receipt that did it. Before any such rework it is absent and unread.
+   */
+  decidedAfter?: unknown;
 }
 function nonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
@@ -90,10 +97,10 @@ function entryDecided(entry: ConditionLedgerEntry, known?: KnownIdentities): boo
  * asserts "nothing here was material" and carries no timestamp to compare, so a rework leaves it
  * standing. That is weaker than the entry case and deliberately not patched with a synthesized one.
  */
-export function conditionReworkCutoff(flow: StageFlow, receipts: readonly TransitionReceipt[], stageId: string): number | null {
+export function conditionReworkCutoff(flow: StageFlow, receipts: readonly TransitionReceipt[], stageId: string): { at: number; receiptId: string } | null {
   const owning = flow.stages.findIndex((stage) => stage.id === stageId);
   if (owning < 0) return null;
-  let cutoff: number | null = null;
+  let cutoff: { at: number; receiptId: string } | null = null;
   for (const receipt of receipts) {
     const from = flow.stages.findIndex((stage) => stage.id === receipt.from);
     const to = flow.stages.findIndex((stage) => stage.id === receipt.to);
@@ -102,7 +109,7 @@ export function conditionReworkCutoff(flow: StageFlow, receipts: readonly Transi
     if (from < 0 || to < 0 || to >= from || to > owning) continue;
     const at = Date.parse(receipt.transitionedAt);
     if (Number.isNaN(at)) continue;
-    if (cutoff === null || at > cutoff) cutoff = at;
+    if (cutoff === null || at > cutoff.at) cutoff = { at, receiptId: receipt.receiptId };
   }
   return cutoff;
 }
@@ -147,7 +154,7 @@ function decideExitCondition(
   key: string,
   expected: string,
   known?: KnownIdentities,
-  reworkCutoff?: number | null,
+  reworkCutoff?: { at: number; receiptId: string } | null,
   diagnostics?: Diagnostic[],
 ): { satisfied: boolean; reason: string } {
   if (!CONDITION_KEY_PATTERN.test(key)) return { satisfied: false, reason: 'invalid-key' };
@@ -196,13 +203,29 @@ function decideExitCondition(
     return { satisfied: false, reason: `undecided-${undecided.length}` };
   }
   /*
-   * Reached only by entries `entryDecided` already accepted, so `decidedAt` is present and parses.
    * An entry decided before the Change last went back past this Stage was decided against inputs
-   * that have since been rewritten; re-affirming it means asking again and recording the new
-   * `decidedAt`, which is the same act the field records in the first place.
+   * that have since been rewritten. Clearing that means deciding again against what the Artifacts
+   * now say, and saying which rework the answer stands after.
+   *
+   * It used to compare `decidedAt` against the moment of that rework, and the comparison was the
+   * hole: the field is written by the same Agent the condition is meant to constrain, so `date -u`
+   * cleared it. Three probe runs from one frozen fixture proved it -- two read the refusal and
+   * stopped, the third fetched wall-clock time, moved `decidedAt` from 03:02:14Z to 06:03:14Z under
+   * a paragraph titled "RE-CONFIRMED, not re-timed", and advanced the Stage. Nothing in the record
+   * could tell that apart from a decision genuinely re-taken.
+   *
+   * So the anchor is the Transition receipt instead. Receipts are digest-linked and cannot be
+   * rewritten, the id has to be read out of the chain rather than produced from a clock, and the
+   * comparison is equality rather than ordering -- there is no "later than" to drift into. It still
+   * cannot prove a person was asked; no field an Agent writes can. What it removes is the path that
+   * looked like compliance while being a clock read.
+   *
+   * `decidedAfter` is demanded of every entry once a cutoff exists, including one first decided
+   * after the rework: for that entry the field is simply true rather than a re-confirmation, and
+   * exempting it would restore the ordering comparison this replaces.
    */
-  if (typeof reworkCutoff === 'number') {
-    const stale = entries.filter((entry) => Date.parse(entry.decidedAt as string) < reworkCutoff);
+  if (reworkCutoff) {
+    const stale = entries.filter((entry) => entry.decidedAfter !== reworkCutoff.receiptId);
     if (stale.length > 0) {
       const named = stale.map((entry) => nonEmptyString(entry.id) ? entry.id.trim() : `#${entries.indexOf(entry) + 1}`);
       return { satisfied: false, reason: `stale-${named.join('+')}` };
@@ -406,7 +429,7 @@ export function decideStageCondition(
     diagnostics: Diagnostic[];
     /* Null when this Stage's inputs have never been re-opened; only the ledger reader consults it,
        because the other two evaluators carry a revision binding of their own. */
-    reworkCutoff: number | null;
+    reworkCutoff: { at: number; receiptId: string } | null;
     /** Everything the three evaluators used to read for themselves, read once, up front. */
     sources: ConditionSources;
   },

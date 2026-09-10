@@ -25,6 +25,7 @@ description: Resolve material ambiguity in a Major Change that affects scope, de
 # Evidence
 
 - Cite a user decision or project fact for each decision and identify the Requirements/Scenarios updated.
+- Once this Change has gone back past Clarify and returned, **every** entry carries `decidedAfter: <receiptId>` naming the rework it stands after; **the refusal prints that id — copy it from there**. It is the receipt that went *backwards* (`to` Stage before `from`), **not `transitions.latest`**, which is the leg that came back: six measured runs wrote latest, were refused, and recovered only by reading the receipt chain themselves. Until it matches that receipt the entry is stale whatever `decidedAt` says — **the timestamp is no longer what clears this, so moving it does nothing**. That is not ceremony: the timestamp is written by the party the condition constrains, and a live run cleared this refusal with `date -u` while recording in the ledger that it had re-confirmed rather than re-timed, which the record cannot tell apart. An entry first decided after the rework carries the field too.
 - Claim Clarify satisfied only when State reports its exit conditions satisfied.
 
 # Stop and rework

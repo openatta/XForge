@@ -81,6 +81,17 @@ artifacts:
       condition with a decider that did not exist. A Change that genuinely raised nothing records an
       explicit empty entries list, which is an assertion and is accepted; leaving the file out is a
       different thing and blocks.
+
+
+      Once this Change has gone back past Clarify and returned, every entry also carries
+      decidedAfter: <receiptId>, naming the Transition receipt that went back. The refusal names
+      that id; copy it from there. It is the receipt whose `to` Stage comes *before* its `from`,
+      which is not `transitions.latest` — latest is the leg that came back, and six measured runs
+      wrote it, were refused, and had to read the receipt chain to recover. Until it matches
+      that receipt the entry counts as stale, whatever decidedAt says: the timestamp is written by
+      the same party the condition constrains, and a live run cleared this refusal with `date -u`
+      while asserting it had re-confirmed. An entry first decided after the rework needs the field
+      too; for that one it states when the decision was taken rather than that it was retaken.
     outline: |
       condition: materialQuestions
       entries:
@@ -90,6 +101,7 @@ artifacts:
           decision: <what was decided>
           decidedBy: <person>
           decidedAt: <ISO 8601>
+          decidedAfter: <receiptId of the rework this stands after; omit until one exists>
   - id: design
     generates: design.md
     description: Record the high-assurance technical design, risk controls, and delivery boundaries

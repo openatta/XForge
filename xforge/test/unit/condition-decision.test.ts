@@ -35,7 +35,7 @@ function sources(ledger?: unknown) {
   };
 }
 
-function decide(ledger: unknown, options: { diagnostics?: Diagnostic[]; reworkCutoff?: number | null; known?: Set<string> } = {}) {
+function decide(ledger: unknown, options: { diagnostics?: Diagnostic[]; reworkCutoff?: { at: number; receiptId: string } | null; known?: Set<string> } = {}) {
   return decideStageCondition(CHANGES, 'add-feature', 'materialQuestions', 'resolved', {
     state: { id: 'add-feature', artifacts: [] } as unknown as ChangeState,
     workPackages: { status: 'absent', state: null, diagnostics: [] },
@@ -59,6 +59,31 @@ const DECIDED = {
 describe('exit condition decision', () => {
   it('accepts a ledger whose every entry is decided by somebody the Change can attest', () => {
     expect(decide({ condition: 'materialQuestions', status: 'resolved', entries: [DECIDED] }))
+      .toEqual({ satisfied: true, reason: 'satisfied' });
+  });
+
+  /*
+   * The unit-level statement of what a clock read cannot do.
+   *
+   * `decidedAt` moves freely and is written by the party this condition constrains; only the
+   * receipt id, which has to be read out of a digest-linked chain, clears a rework.
+   */
+  it('clears a rework only when the entry names the receipt that caused it', () => {
+    const cutoff = { at: Date.parse('2026-03-02T00:00:00Z'), receiptId: 'r-2' };
+    /* Decided before the rework, no anchor: stale. */
+    expect(decide({ status: 'resolved', entries: [DECIDED] }, { reworkCutoff: cutoff }))
+      .toEqual({ satisfied: false, reason: 'stale-q1' });
+    /* A timestamp moved past the rework, still no anchor: exactly as stale. */
+    expect(decide({ status: 'resolved', entries: [{ ...DECIDED, decidedAt: '2026-03-03T00:00:00Z' }] }, { reworkCutoff: cutoff }))
+      .toEqual({ satisfied: false, reason: 'stale-q1' });
+    /* The wrong receipt is not an anchor either. */
+    expect(decide({ status: 'resolved', entries: [{ ...DECIDED, decidedAfter: 'r-1' }] }, { reworkCutoff: cutoff }))
+      .toEqual({ satisfied: false, reason: 'stale-q1' });
+    /* The receipt that caused it, with the original timestamp untouched: satisfied. */
+    expect(decide({ status: 'resolved', entries: [{ ...DECIDED, decidedAfter: 'r-2' }] }, { reworkCutoff: cutoff }))
+      .toEqual({ satisfied: true, reason: 'satisfied' });
+    /* And with no rework at all the field is not demanded. */
+    expect(decide({ status: 'resolved', entries: [DECIDED] }, { reworkCutoff: null }))
       .toEqual({ satisfied: true, reason: 'satisfied' });
   });
 

@@ -31,8 +31,14 @@ describe('explaining an indirectly raised code', () => {
     const result = await runCli(root, ['explain', 'XFORGE_CONDITION_LEDGER_STALE_REMEDY']);
     const sources = ((result.json.data as any).messages ?? []) as any[];
     expect(sources[0]?.message ?? '', 'the stale-ledger remedy explains itself as nothing').not.toBe('');
-    /* The sentence that stops a reader re-dating a decision nobody re-made. */
-    expect(sources[0].message).toContain('records an answer nobody gave');
+    /*
+     * The sentence that stops a reader re-dating a decision nobody re-made — which is now a
+     * statement about the mechanism rather than a warning about intent, because a warning is what
+     * a measured Agent read and then re-dated anyway.
+     */
+    expect(sources[0].message).toContain('moving it changes nothing');
+    /* And the field that does clear it, named, so the remedy is actionable rather than a refusal. */
+    expect(sources[0].message).toContain('decidedAfter');
   });
 
   it('leaves most of the indirect family explicable', async () => {

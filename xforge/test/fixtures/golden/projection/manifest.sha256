@@ -1,7 +1,7 @@
 cec1704ef3883442f7767e338fb30389438f1ec37f5d2fe01cf461f9fb945485  .agents/skills/xforge-apply/SKILL.md
 2ebb98fc6c6417cbf5f5927dd0d3a22b3a2536bee1266521d9341822c3d1102d  .agents/skills/xforge-check/SKILL.md
 41a0518b9f53e0304cb8ba78c2ff15d357d3adaf322329978da0304b897d99a5  .agents/skills/xforge-check/agents/openai.yaml
-7026b1f343b6e029ddbcb9263ca926d3328c1cff3f1c60cfd6d246ef4d48e665  .agents/skills/xforge-clarify/SKILL.md
+326f52dc2cf36dc8a833c91c41ca588ab1f314d1a8cafb17a97a6073ef62df99  .agents/skills/xforge-clarify/SKILL.md
 2ba9dee2f198385f7bc897d8d4818d4dfb3069be6933a1550bad637c077cdec0  .agents/skills/xforge-clarify/agents/openai.yaml
 12e3e8e0330133e6546c68ad14a74ac35bc359e1b5c83bd5f33a248ec37cc22e  .agents/skills/xforge-design/SKILL.md
 53e1fe805439fc8e97f32c99a6d00015d52118f6f48735ac6b4732724f7adecc  .agents/skills/xforge-design/agents/openai.yaml
@@ -39,7 +39,7 @@ c5e3b0281ba2ace06a02f710933edab7834c7d35f5a3c9e3c415f27eff84ffe1  .claude/settin
 cec1704ef3883442f7767e338fb30389438f1ec37f5d2fe01cf461f9fb945485  .claude/skills/xforge-apply/SKILL.md
 2ebb98fc6c6417cbf5f5927dd0d3a22b3a2536bee1266521d9341822c3d1102d  .claude/skills/xforge-check/SKILL.md
 41a0518b9f53e0304cb8ba78c2ff15d357d3adaf322329978da0304b897d99a5  .claude/skills/xforge-check/agents/openai.yaml
-7026b1f343b6e029ddbcb9263ca926d3328c1cff3f1c60cfd6d246ef4d48e665  .claude/skills/xforge-clarify/SKILL.md
+326f52dc2cf36dc8a833c91c41ca588ab1f314d1a8cafb17a97a6073ef62df99  .claude/skills/xforge-clarify/SKILL.md
 2ba9dee2f198385f7bc897d8d4818d4dfb3069be6933a1550bad637c077cdec0  .claude/skills/xforge-clarify/agents/openai.yaml
 12e3e8e0330133e6546c68ad14a74ac35bc359e1b5c83bd5f33a248ec37cc22e  .claude/skills/xforge-design/SKILL.md
 53e1fe805439fc8e97f32c99a6d00015d52118f6f48735ac6b4732724f7adecc  .claude/skills/xforge-design/agents/openai.yaml
@@ -81,7 +81,7 @@ ee6662c67a2c9c578efded87f11556e4e792e147f2f99b3717972fc2eba64708  .cursor/rules/
 cec1704ef3883442f7767e338fb30389438f1ec37f5d2fe01cf461f9fb945485  .cursor/skills/xforge-apply/SKILL.md
 2ebb98fc6c6417cbf5f5927dd0d3a22b3a2536bee1266521d9341822c3d1102d  .cursor/skills/xforge-check/SKILL.md
 41a0518b9f53e0304cb8ba78c2ff15d357d3adaf322329978da0304b897d99a5  .cursor/skills/xforge-check/agents/openai.yaml
-7026b1f343b6e029ddbcb9263ca926d3328c1cff3f1c60cfd6d246ef4d48e665  .cursor/skills/xforge-clarify/SKILL.md
+326f52dc2cf36dc8a833c91c41ca588ab1f314d1a8cafb17a97a6073ef62df99  .cursor/skills/xforge-clarify/SKILL.md
 2ba9dee2f198385f7bc897d8d4818d4dfb3069be6933a1550bad637c077cdec0  .cursor/skills/xforge-clarify/agents/openai.yaml
 12e3e8e0330133e6546c68ad14a74ac35bc359e1b5c83bd5f33a248ec37cc22e  .cursor/skills/xforge-design/SKILL.md
 53e1fe805439fc8e97f32c99a6d00015d52118f6f48735ac6b4732724f7adecc  .cursor/skills/xforge-design/agents/openai.yaml
@@ -119,7 +119,7 @@ b85d813f8b908b432b99ed676ac0eb5541027a2994b6bb38e29134caf65f418a  .github/prompt
 cec1704ef3883442f7767e338fb30389438f1ec37f5d2fe01cf461f9fb945485  .github/skills/xforge-apply/SKILL.md
 2ebb98fc6c6417cbf5f5927dd0d3a22b3a2536bee1266521d9341822c3d1102d  .github/skills/xforge-check/SKILL.md
 41a0518b9f53e0304cb8ba78c2ff15d357d3adaf322329978da0304b897d99a5  .github/skills/xforge-check/agents/openai.yaml
-7026b1f343b6e029ddbcb9263ca926d3328c1cff3f1c60cfd6d246ef4d48e665  .github/skills/xforge-clarify/SKILL.md
+326f52dc2cf36dc8a833c91c41ca588ab1f314d1a8cafb17a97a6073ef62df99  .github/skills/xforge-clarify/SKILL.md
 2ba9dee2f198385f7bc897d8d4818d4dfb3069be6933a1550bad637c077cdec0  .github/skills/xforge-clarify/agents/openai.yaml
 12e3e8e0330133e6546c68ad14a74ac35bc359e1b5c83bd5f33a248ec37cc22e  .github/skills/xforge-design/SKILL.md
 53e1fe805439fc8e97f32c99a6d00015d52118f6f48735ac6b4732724f7adecc  .github/skills/xforge-design/agents/openai.yaml
@@ -152,7 +152,7 @@ b6d5021e5d0715a204e60ab1a8af4793d120550b56390778126f85613289b681  .opencode/comm
 cec1704ef3883442f7767e338fb30389438f1ec37f5d2fe01cf461f9fb945485  .opencode/skills/xforge-apply/SKILL.md
 2ebb98fc6c6417cbf5f5927dd0d3a22b3a2536bee1266521d9341822c3d1102d  .opencode/skills/xforge-check/SKILL.md
 41a0518b9f53e0304cb8ba78c2ff15d357d3adaf322329978da0304b897d99a5  .opencode/skills/xforge-check/agents/openai.yaml
-7026b1f343b6e029ddbcb9263ca926d3328c1cff3f1c60cfd6d246ef4d48e665  .opencode/skills/xforge-clarify/SKILL.md
+326f52dc2cf36dc8a833c91c41ca588ab1f314d1a8cafb17a97a6073ef62df99  .opencode/skills/xforge-clarify/SKILL.md
 2ba9dee2f198385f7bc897d8d4818d4dfb3069be6933a1550bad637c077cdec0  .opencode/skills/xforge-clarify/agents/openai.yaml
 12e3e8e0330133e6546c68ad14a74ac35bc359e1b5c83bd5f33a248ec37cc22e  .opencode/skills/xforge-design/SKILL.md
 53e1fe805439fc8e97f32c99a6d00015d52118f6f48735ac6b4732724f7adecc  .opencode/skills/xforge-design/agents/openai.yaml

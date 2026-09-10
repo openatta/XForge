@@ -428,7 +428,9 @@ export async function resolveControlPlane(
   const remedied = new Set<string>();
   for (const transition of readyTransitions) {
     if (transition.blockedBy.length === 0) continue;
-    const remedy = blockRemedy(transition.blockedBy, changeId);
+    const remedy = blockRemedy(transition.blockedBy, changeId, {
+      reworkReceiptId: conditionReworkCutoff(flow, transitions.receipts, currentStage)?.receiptId ?? null,
+    });
     if (!remedy || remedied.has(remedy.code)) continue;
     remedied.add(remedy.code);
     const entry = diagnostic(remedy.code, remedy.message, `${project.changesPath}/${changeId}`, 'info');
@@ -495,6 +497,17 @@ export function blockRemedy(
   blocks: readonly string[],
   changeId: string,
   context: {
+    /**
+     * The receipt of the rework a `condition:*:stale-*` block is about, when the caller knows it.
+     *
+     * The remedy used to tell the reader to fetch the id from
+     * `change.governance.transitions.latest`, and that is the wrong receipt: `latest` is the leg
+     * that came *back*, while the condition is anchored on the leg that went *away*. Six probe runs
+     * followed the instruction, were refused, and recovered only by reading the receipt chain
+     * themselves. A remedy that names a value the reader can copy costs no round trip and cannot be
+     * misread, so the id is passed in rather than described.
+     */
+    reworkReceiptId?: string | null;
     readyReceipt?: { receiptId: string; from: string; contentRevision: string; policySnapshotDigest: string };
     /**
      * Today's revision, plus whether the Change's own content moved as well as the policy snapshot.
@@ -626,11 +639,16 @@ export function blockRemedy(
   const staleLedger = blocks.map((block) => /^condition:([A-Za-z0-9][A-Za-z0-9._-]*):stale-(.+)$/.exec(block)).find((match) => match !== null);
   if (staleLedger) {
     const [, key, list] = staleLedger;
+    /* Precomputed, and interpolated as a bare identifier: the catalogue scanner reads these
+       messages out of the source, and an expression inside `${}` reduced this one to an empty
+       string -- `xforge explain` then had nothing to print for a code whose whole job is to say
+       what to do. */
+    const namedReceipt = context.reworkReceiptId ?? '<the receiptId of the Transition that went backwards>';
     const named = list!.split('+');
     const subject = named.length === 1 ? `entry ${named[0]} was` : `entries ${named.join(', ')} were`;
     return {
       code: 'XFORGE_CONDITION_LEDGER_STALE_REMEDY',
-      message: `This Change went back past the Stage that decided "${key}" and has returned, so ${subject} decided against inputs that were rewritten afterwards. Put each one to whoever decides it again, against the current Artifacts, and record the answer in \`evidence/conditions/${key}.yaml\` with a new \`decidedAt\` — a decision that still holds is confirmed, not assumed. Moving the timestamp without asking records an answer nobody gave, which is the thing \`decidedBy\` and this field exist to prevent.`,
+      message: `This Change went back past the Stage that decided "${key}" and has returned, so ${subject} decided against inputs that were rewritten afterwards. Put each one to whoever decides it again, against the current Artifacts, and record the answer in \`evidence/conditions/${key}.yaml\` — a decision that still holds is confirmed, not assumed. Each entry then names the rework it stands after, as \`decidedAfter: ${namedReceipt}\` — copy that id from here. It is the receipt of the Transition that went backwards, the one whose \`to\` Stage comes before its \`from\`, and it is not the same receipt as \`transitions.latest\`, because latest is the leg that came back. \`decidedAt\` is no longer what clears this, so moving it changes nothing. Every entry needs the field, including one first decided after the rework — for that one it is a plain statement of when it was taken.`,
     };
   }
 

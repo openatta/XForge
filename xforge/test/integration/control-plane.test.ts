@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { rm } from 'node:fs/promises';
+import { readFile, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { approveCurrentRevision, approvalTestEnv, changeYaml, createCompleteSolidChange, fixture, runCli, updateYaml, write } from '../helpers.js';
@@ -335,7 +335,7 @@ describe('Protocol 2 control plane', () => {
     });
     expect((await runCli(root, ['install'])).code).toBe(0);
     const ledger = 'xforge/changes/add-feature/evidence/conditions/materialQuestions.yaml';
-    const decidedLedger = (decidedAt: string, decision: string): string => [
+    const decidedLedger = (decidedAt: string, decision: string, decidedAfter?: string): string => [
       'condition: materialQuestions',
       'entries:',
       '  - id: q1',
@@ -344,6 +344,7 @@ describe('Protocol 2 control plane', () => {
       `    decision: ${JSON.stringify(decision)}`,
       '    decidedBy: owner@example.test',
       `    decidedAt: ${decidedAt}`,
+      ...(decidedAfter ? [`    decidedAfter: ${decidedAfter}`] : []),
       '',
     ].join('\n');
     /* Only the condition family. A rework also stales the structure Gate, and re-running it between
@@ -368,10 +369,58 @@ describe('Protocol 2 control plane', () => {
     /* Named per entry: the answer is per entry, and "the ledger is stale" would say which. */
     expect(await conditionBlocks()).toEqual(['condition:materialQuestions:stale-q1']);
 
-    /* Re-affirming means asking again and recording the answer, which moves `decidedAt`. */
+    /*
+     * Moving the timestamp is not re-deciding, and it is exactly what a measured Agent did.
+     *
+     * Three probe runs from one frozen fixture met this refusal: two stopped, the third ran `date -u`
+     * and moved `decidedAt` forward under a paragraph asserting it had re-confirmed rather than
+     * re-timed, then advanced the Stage. The record could not tell the two apart, because the field
+     * deciding it was written by the party being constrained. A clock read must therefore leave the
+     * block exactly where it was.
+     */
     await write(root, ledger, decidedLedger(new Date().toISOString(), 'Re-confirmed: a 30-day grace period is accepted.'));
     expect((await runCli(root, ['check', '--change', 'add-feature', '--gate', 'structure'])).code).toBe(0);
+    expect(await conditionBlocks()).toEqual(['condition:materialQuestions:stale-q1']);
+
+    /*
+     * What clears it is naming the rework the decision stands after. The id comes out of the
+     * receipt chain, which is digest-linked and cannot be rewritten, so it has to be read rather
+     * than produced -- and the comparison is equality, with no ordering to drift into.
+     */
+    const reworkReceipt = await readdir(path.join(root, 'xforge', 'changes', 'add-feature', 'evidence', 'receipts', 'transitions'))
+      .then(async (names) => {
+        for (const name of names.sort()) {
+          const receipt = JSON.parse(await readFile(path.join(root, 'xforge', 'changes', 'add-feature', 'evidence', 'receipts', 'transitions', name), 'utf8'));
+          /* The leg that went away, not the one that came back. */
+          if (receipt.from === 'design' && receipt.to === 'propose') return receipt.receiptId as string;
+        }
+        return null;
+      });
+    expect(reworkReceipt).toBeTruthy();
+    const receiptId = reworkReceipt as string;
+
+    /*
+     * The refusal has to hand over the id, not describe where to look for it.
+     *
+     * It described one, and named the wrong receipt: `transitions.latest` is the leg that came
+     * back. Six probe runs copied it, were refused, and recovered only by reading the chain
+     * themselves — a wasted round trip every run, and a refusal a less persistent reader would
+     * take for a dead end.
+     */
+    const blockedState = await runCli(root, ['state', '--change', 'add-feature'], approvalTestEnv);
+    const staleRemedy = (blockedState.json.diagnostics as any[]).find((item) => item.code === 'XFORGE_CONDITION_LEDGER_STALE_REMEDY');
+    expect(staleRemedy, JSON.stringify((blockedState.json.diagnostics as any[]).map((item) => item.code))).toBeTruthy();
+    expect(staleRemedy.message).toContain(receiptId);
+    expect(staleRemedy.message).toContain('not the same receipt as `transitions.latest`');
+    await write(root, ledger, decidedLedger(new Date().toISOString(), 'Re-confirmed: a 30-day grace period is accepted.', receiptId));
+    expect((await runCli(root, ['check', '--change', 'add-feature', '--gate', 'structure'])).code).toBe(0);
     expect(await conditionBlocks()).toEqual([]);
+
+    /* And naming some other receipt does not: the entry has to stand after the rework that staled
+       it, not after any transition the Change happens to carry. */
+    await write(root, ledger, decidedLedger(new Date().toISOString(), 'Re-confirmed: a 30-day grace period is accepted.', '00000000-0000-4000-8000-000000000000'));
+    expect((await runCli(root, ['check', '--change', 'add-feature', '--gate', 'structure'])).code).toBe(0);
+    expect(await conditionBlocks()).toEqual(['condition:materialQuestions:stale-q1']);
   });
 
   it('reports mandatory guidance without machine coverage as uncovered', async () => {
