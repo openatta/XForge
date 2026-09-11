@@ -30,6 +30,12 @@ description: 创建受治理的 Change，并且只写 Propose Stage 允许的 ch
 
    只在 Propose 的 Artifact 与 Action 处于 ready 时继续，并先清掉由这个 Change 自己的文件引起的 schema 诊断。**本 Stage 权限之内清不掉的诊断——尚无后续 Artifact 锚定的 Requirement、本 Flow 承载不了其强制手段的 Rule——是报告，不是修复。** 为了消掉它而伸手到 Stage 之外，正是本 Skill 的「权限」一节要防的越界。未声明的验证 Gate 是例外，且它在第 6 步回答而不是这里：那是一个本 Stage 确实有权记录的项目级问题，只记录一次，且取自项目自己给出的答案。
 4. 写 ready Action 点名的每一个 Artifact：写在它的 `writes` 路径，带上 `requiredSections` 列出的每一个 `##` 标题，并遵循`owes` 中该 Artifact 的 `instruction` 与 `outline`。标题逐字照抄——不要新增、改名或加限定语，因为 markers 与 reconcile 的取材都按标题原文定位。Requirement 使用稳定 ID，并给出成功、失败、边界与兼容性场景。不可把来源未声明的精确契约猜测写成规范事实；已有不可修改的验收测试定义了字段、输出形状或退出行为时必须逐项保持一致，测试与需求冲突则作为材料性歧义停止。
+4b. **写完 delta Spec 的场景后，逐条判定它们有没有自动验证可依。** 本项目声明了什么验证，`manifest.verification` 与它点名的测试文件里写着；照着读，不要按印象猜。每一条场景落进三类之一：**已有自动检查断言了它的 THEN**（能点出是哪一条）；**没有，但本 Change 的 `scope.paths` 能加一条**；**没有，而 `scope.paths` 加不了**。
+
+第三类是要紧的那一类。**一条处在第三类的场景，是这个 Change 无力支撑的声称**——照样写下去，等于把一个决定交给后面的 Stage，而后面的 Stage 同样做不了这个决定：它既改不了不可修改的验收套件，也无权替人决定什么可以不验证。三条诚实的回应，必须选一条：**把场景收窄到只陈述已被验证的部分**；**当这份工作确实属于本 Change 时扩大 `scope.paths`**；或者**在 `## Scope` 里写明它将不带自动验证发布，并点名这是谁的问题**。逐条选，答案不会对所有场景都相同。
+
+这不是形式要求，是实测出来的：不做这一步时，四趟实跑里三趟在 Proposal 里**声称了并不存在的完整覆盖**，第四趟写下缺口却把裁决推给 Check——而 Check 拦下之后，返工回到这里，同一批场景又被原样重新声称。做了这一步，无支撑的场景从平均 10.5 条降到 3.5 条，且剩下的都带着决定人到达。
+
 5. 每完成一个 Artifact 就重跑一次 `xforge stage --change <id>`；当下一个 Artifact Action 属于其他 Skill 时，**停止写 Artifact**。这不是本 Stage 的结束——第 6 步才是，而且要从这里继续走下去。
 6. 运行 `xforge advance --change <id>`：它跑本 Stage 的 Gate，若无拒绝则执行转换。读它报告的内容。Gate 拒绝会阻止转换并点名自己——只修复 Propose 阶段的结构问题，绝不把提示性文本读成已通过的 Gate。当多个转换同时 ready 时它会反问，因为「前进还是返工」不是默认值能定的：用 `--to` 指明。
 

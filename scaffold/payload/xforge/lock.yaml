@@ -97,7 +97,7 @@ resources:
     kind: skill
     license: project
     version: "1"
-  - digest: f2ed6526e89e70a85a6598f035866be77d9290d892ad5a139218a50d1102e4f3
+  - digest: bb9ed814acc11149f2b1766a53041cce0a9b50e90eec69490d1f48a3c751041f
     id: xforge-design
     kind: skill
     license: project
@@ -107,7 +107,7 @@ resources:
     kind: skill
     license: project
     version: "1"
-  - digest: f7c5b507c93c275aff4d819a4ba93ccf665ab9fa943c861018f120c6dbb9b3df
+  - digest: f2433acc6b480b19ac23d8120d1e19802ae9dd9d1c27830ae727d10bcc9fdcdd
     id: xforge-propose
     kind: skill
     license: project
