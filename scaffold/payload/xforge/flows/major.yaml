@@ -9,9 +9,6 @@ policy:
   eligibleWhen:
     risk: [low, medium, high]
     criticalImpacts: allowed
-    # No Stage here produces a contract delta, so a Change that says it moves a module interface has
-    # nowhere to declare what it moved and nothing that would merge it. `solid-contract` is the Flow
-    # that carries one; this refuses the claim rather than accepting it and governing nothing.
     # `allowed`, and it has to be: Solid carries a declared interface change since 0.8.4, and a Flow
     # of higher assurance that refused one would leave a *risky* interface change with nowhere to go
     # -- escalation would refuse the Change at the exact point escalating it was the right answer.

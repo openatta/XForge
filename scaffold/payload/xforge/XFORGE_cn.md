@@ -29,7 +29,10 @@ CLI：本项目运行哪个版本，是记录在 `xforge/manifest.yaml` 里的�
 答案都会留在你的上下文里，直到会话结束。所以只取你正要据以行动的那部分。`--field <path>`
 从 Envelope 中取出一个值、别的什么都不打印，并且可以重复：
 `xforge state --change <id> --field nextActions --field change` 是一次调用返回两个值。
-`state` 有五个段默认不返回，要用 `--include` 显式索取，被省略处都会写明取回它的选项。
+`state` 有六个段默认不返回，因为它们两次读之间都不变、而且都很大：本 Change 跑的那条之外的
+Flow 定义、目标能力矩阵、lockfile 摘要、Constitution 正文、transition 回执链、以及每个 Artifact 的
+instruction 与 outline。每一段都能用 `--include` 按名取回（可重复，或 `--include all`），
+被省略处都会写明取回它的那个选项。
 
 `check` 同样接受 `--field`。它的回复包含结构报告、解析出的 Change、Gate 选择、工作包选择和
 `gates`；据裁决行动的 Stage 要的是 `gates`，`xforge check --change <id> --field gates --field diagnostics` 会把其余
@@ -37,8 +40,10 @@ CLI：本项目运行哪个版本，是记录在 `xforge/manifest.yaml` 里的�
 `gates`，只有诊断能把两者分开——有一次实跑把 `[]` 读成了"没什么可说的"，差一步就带着失效证据做了 transition。但要清楚它没做到什么：`gates` 里每一项都带着自己的 Evidence——verify 命令的全部
 stdout、各个摘要、时间戳——所以这是把回复收窄到你据以行动的那部分，而不是把它变小。
 
-被拒绝时也照样只回你问的那些，外加失败原因，所以拒绝之后用 `--field diagnostics` 得到的是几行，
-而不是整个项目。
+被拒绝时收窄的方式不一样，按成功形态写的读取方会在这里读错。`ok: true` 时，你要的那几个路径
+就是整份回复，在顶层。被拒绝时信封仍在——`ok` 是 false、每条诊断都保留、退出码仍是 1——
+**只有 `data` 收窄**，所以你要的东西在 `data` **底下**，而不是和它并列。这个不对称是刻意的：
+一次拒绝绝不能读起来像一次成功。两种形态都要解析，或者在失败分支上读 `data`。
 
 `--field` 接受点号路径，不限于顶层名字：`--field change.governance.currentStage` 只打印一个字符串。
 并且它是全有或全无——只要有一个名字解析不出来，整次调用就失败、一个值都不返回，所以猜错一个路径
@@ -58,7 +63,11 @@ stdout、各个摘要、时间戳——所以这是把回复收窄到你据以�
 ## 规格驱动的并行开发
 
 交付速度优先、且 Change 低风险、有边界、可回滚时用 `quick`；常规稳定交付用
-`solid`；重大、高风险、跨系统或有关键影响的变更用 `major`。当活跃 Change 有两个
+`solid`；重大、高风险、跨系统或有关键影响的变更用 `major`。移动了模块之间接口的 Change
+只有 `solid` 与 `major` 能承载——它们各有一个声明接口 delta 的 Stage，`quick` 没有——
+所以如实填写 `classification.moduleContract`，`quick` 会以 `XFORGE_FLOW_TOO_WEAK` 拒绝它
+并点名能承载它的那条 Flow。那次拒绝正是这个键在起作用；答 `false` 把它清掉，
+是唯一能把一次接口变更放到一条没有对应步骤的 Flow 上的动作。当活跃 Change 有两个
 及以上依赖就绪、且 `write_paths` 互不重叠的工作包时，遵循宪法的"并行开发"原则与
 `work-packages.yaml` 的 DAG。主 Agent 为每个具备写能力的 Worker 指定固定的基线
 提交和独立的工作树。只有在涉及多次提交、共享文件或需要集成验证时才使用

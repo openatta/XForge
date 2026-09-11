@@ -75,11 +75,12 @@ attempting to satisfy it.
 Use XForge `quick` when delivery speed is the priority and the Change is low
 risk, bounded, and reversible; use `solid` for stable routine delivery; use
 `major` for significant, high-risk, cross-system, or critical-impact changes.
-None of the three can carry a Change that moves an interface between modules:
-set `classification.moduleContract` truthfully and all three refuse it with
-`XFORGE_FLOW_TOO_WEAK`, naming an eligible Flow if this project has adopted
-one. The refusal is the key working — answering `false` to clear it is the one
-move that puts an interface change on a Flow with no step for it.
+A Change that moves an interface between modules can only run on `solid` or
+`major` — each has a Stage that declares the interface delta and `quick` has
+none — so set `classification.moduleContract` truthfully: `quick` refuses it
+with `XFORGE_FLOW_TOO_WEAK` and names the Flow that can carry it. The refusal
+is the key working — answering `false` to clear it is the one move that puts an
+interface change on a Flow with no step for it.
 When the active Change has two or more dependency-ready work packages
 with non-overlapping `write_paths`, follow the Constitution's Parallel
 Development principle and the `work-packages.yaml` DAG. Main Agent assigns a
