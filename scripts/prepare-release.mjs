@@ -122,9 +122,6 @@ function assertNoStaleVersion(previousVersion) {
      *   written to demonstrate. They also match only because the search is a substring one: an
      *   `-rc.N` suffix contains the GA version it precedes. (Spelled without a literal version on
      *   purpose: this file would otherwise report itself.)
-     * - **Records of work done at a particular version.** A plan and a pilot report describe what
-     *   was true when they were written. Moving their version number forward would make them claim
-     *   to describe a release they predate.
      * - **Records of a version *mismatch* that actually happened.** A live run met a 0.7.20 binary
      *   on PATH against a project whose Manifest declared a later release, and the identity string
      *   it produced is now a fixture and the story two comments tell. Both halves of that pair are
@@ -137,8 +134,6 @@ function assertNoStaleVersion(previousVersion) {
     .filter((file) => ![
       'xforge/src/core/project-loader.ts',
       'xforge/test/unit/version-compare.test.ts',
-      'docs/xforge-contract-governance-adoption-plan.md',
-      'docs/xforge-contract-governance-m0-pilot.md',
       'xforge/src/cli.ts',
       'xforge/src/commands/hook.ts',
       'xforge/test/integration/stale-cli-deny-reason.test.ts',

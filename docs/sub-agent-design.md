@@ -157,12 +157,13 @@ XForge 直接以 `argv[0]` 启动进程、其余项作为字面参数，**从不
 ## 5. 三段协议
 
 ```text
-① dispatch    xforge work-package dispatch --change <id> --package <pkg>
+① dispatch    xforge work-package dispatch --change <id> --package <pkg> --commit
               ├─ 只允许 Apply Stage 的 ready 节点
               ├─ 整份计划校验无 error 才原子写入
               ├─ receipt 固定：executionId / stateRevision / policySnapshotDigest
               │                / gitBase / gitHead / auditCorrelationId
-              └─ 同时写一条 work-package.dispatched 审计事件
+              ├─ 同时写一条 work-package.dispatched 审计事件
+              └─ --commit：把刚写的 receipt 与审计索引提交，且只提交这两样
 
 ② delivery    先跑 xforge work-package draft --change <id> --package <pkg>
               ├─ 回填机器已知的一半：execution id、两个 commit、changed_paths、
@@ -173,6 +174,15 @@ XForge 直接以 `argv[0]` 启动进程、其余项作为字面参数，**从不
 ③ acknowledge xforge work-package acknowledge ... --as integrator|reviewer --evidence <path>
               └─ ack receipt 绑定 deliveryDigest，无法被重放到另一份 delivery 上
 ```
+
+> **`--commit` 不是可选的方便。** delivery 是从**包含派工 receipt 的那次提交**开始度量的：
+> 与它同一次提交、或早于它的工作都落在 `base_commit..head_commit` 区间之外，
+> 记录 delivery 时会被拒绝。所以 Worker 在动手编辑**之前**必须先让这次提交发生。
+> 不加这个标志时，CLI 的回复会让你手工做同一件事——这是 XForge 唯一会写 Git 历史的地方，
+> 而且只在被明确要求时写。
+>
+> 另一个相关的坑：**base commit 不要取 receipt 自己的 `gitBase` / `gitHead`**——
+> 两者指的都是它被派工**之前**的那个提交，真正的 base 由 `work-package draft` 自行推导。
 
 ### 5.1 派发前检查
 
@@ -190,21 +200,37 @@ XForge 直接以 `argv[0]` 启动进程、其余项作为字面参数，**从不
 | verify 命令 | **逐条、按序、完全一致**；退出码为零 |
 | `done_when` | 每条被 `done_when_evidence` **精确一次**映射到非空证据 |
 
-### 5.3 `done_when_evidence` 的前缀匹配
+### 5.3 `done_when_evidence` 怎么匹配
 
-每条证据必须**以**该 delivery 的某个 `changed_paths` 路径原文、
-或它真实跑过的某条 `verify` 命令原文**开头**。只有这段前缀参与匹配。
+每条证据都是 `<引用>[ <分隔符> <解释>]`。**引用**必须与该 delivery 的某个
+`changed_paths` 路径、或它真实跑过的某条 `verify` 命令**完全相等**——是相等，不是前缀包含，
+也不是包含关系。可选的 `path:` / `command:` 前缀会先被剥掉。
 
 ```text
 ✅ src/store/mod.rs — 定义 CredentialRepo
 ✅ path: src/store/mod.rs -- 定义 CredentialRepo
 ✅ cargo test -p store — 覆盖 REQ-014 的三个场景
-❌ src/store/mod.rs:166 — …          （带行号，不是路径原文）
-❌ test_credential_roundtrip 通过     （以测试函数名开头）
-❌ 已实现凭据仓储                       （散文）
+✅ src/store/mod.rs:166 — …           （行号会被忽略后重试，见下）
+❌ test_credential_roundtrip 通过      （测试函数名不是命令原文，也不是路径）
+❌ cargo test -p store 通过了          （引用后面没有分隔符，整串参与比较，对不上）
+❌ 已实现凭据仓储                        （散文）
+❌ evidence/agents/<pkg>/dispatch/…   （控制面自己写的文件，见下）
 ```
 
-解释写在 ` — ` 或 ` -- ` 之后，也接受 `path:` / `command:` 前缀。
+**分隔符是 ` — ` / ` – ` / ` -- ` 三者之一，两侧都必须有空白**——这样文件名里的连字符
+和命令里的 `--flag` 都不会被误当成分隔符。没有分隔符时，**整条字符串**都算引用，
+于是「cargo test -p store 通过了」与任何一条命令都不相等。
+
+**带行号是可以的。** `src/store/mod.rs:166` 与 `…:166-190` 先按字面比一次，比不中时
+剥掉 `:<行号>` 再比一次——这是后补的 fallback：按路径加行号引用代码是人的习惯，
+而它曾经是唯一被拒绝的写法，两个来回改掉了十条条目。
+
+**控制面自己写的文件不算证据。** `<change>/evidence/audit/**`、
+`evidence/agents/<pkg>/{dispatch,ack}/**`、`evidence/review/{dispatch,ack}/**`
+虽然确实在 `changed_paths` 里，但引用它们被判为不相关——一次实跑把每条判据都映射到
+dispatch receipt 和审计索引，于是「npm test 退出码为 0」被「这个包被派工过」证明了。
+
+一条都没匹配上 → `XFORGE_WORK_PACKAGE_DONE_WHEN_EVIDENCE_IRRELEVANT`（error）。
 
 > **不同判据要引不同证据。** 一条命令支撑一份 delivery 里的每一条判据，
 > 就说明它没有在区分它们，CLI 会指出这一点。

@@ -116,7 +116,7 @@ A 类句子的问题不是啰嗦，是**它没有校验者**。
 
 > 这里原本是六个动作。塌缩成三个不是措辞简化，是产品改了：
 >
-> - **进入**：`xforge stage` 一次返回 Change 在哪、ready 的 Action（含 `writes`/`requiredSections`/`instruction`/`outline`）、**该 Action `inputs` 的正文**、Constitution 正文、诊断。原来的「取阅读计划」和「刷新」都不再是独立动作 —— 计划连着正文一起来，而每个写命令都回带刷新后的状态。
+> - **进入**：`xforge stage` 一次返回 Change 在哪、ready 的 Action（含 `writes`/`requiredSections`/`instruction`/`outline`）、`owes` 下还欠的每个 Artifact、**该 Action `inputs` 的阅读计划**（路径、字节数、章节标题、自本 Stage 开始以来哪些动过）、Constitution、本 Stage 的声明、诊断。原来的「取阅读计划」和「刷新」都不再是独立动作 —— 计划连着状态一起来，而每个写命令都回带刷新后的状态。
 > - **推进**：`xforge advance` 跑 Gate、判定、就绪则转换。原来的「判定」与「推进」是固定成对的两次调用（实测十二个 Stage 零方差）。
 >
 > **记录没有合并。** Gate Evidence 与 Transition 回执照旧分别落盘、分别审计；Gate 失败会拒绝转换并点名。这只是调用数的优化。
@@ -125,9 +125,15 @@ A 类句子的问题不是啰嗦，是**它没有校验者**。
 
 | 值 | 何时用 |
 | --- | --- |
-| 省略（`changed`） | 默认。本 Stage 的产出 + 进入本 Stage 后动过的 + Constitution，带正文；其余给摘要与段落清单 |
-| `full` | 摘要不够、要看原文 |
-| `none` | 只要计划，便宜的重新轮询 |
+| 省略（= `none`） | **默认**。只给阅读计划：每份输入的路径、字节数、章节标题，以及自本 Stage 开始以来哪些动过。要读的自己开一次 |
+| `changed` | 加上「动过的那些」的正文 |
+| `full` | 摘要不够、要看原文；放弃摘要凭据，全部带正文 |
+
+> ⚠️ **`stage` 的默认是 `none`，而 `stage-bundle` 的默认是 `changed`。** 两条命令同名选项不同默认值，这是源码里专门写了注释的一处：曾经 `stage` 按 `none` 取计划、却仍然把正文一起送了出去。
+>
+> 默认值从「送正文」改成「只送计划」是量出来的：一次 Solid 实跑送了 75,774 字节输入正文，Agent 随后把**同样的文档**重开 29 次、再付 220,839 字节 —— 两份副本都留在上下文里，第二份是第一份的 3.3 倍。
+>
+> **一个例外**：ready 的工作包所声明的 `inputs` 仍然带正文，除非显式写 `--content none` —— Apply 阶段的 Worker 没有它们写不出一行。
 
 **不要让调用方枚举字段。** 要求它列出自己需要什么，等于要求它先知道自己来问的那个问题的答案；而且猜错一个的代价是整个回复 —— `--field` 是全有或全无。
 
@@ -188,7 +194,7 @@ A 类句子的问题不是啰嗦，是**它没有校验者**。
 | --- | --- | --- |
 | **不变量 / Invariants** | 动作 1 的完整调用；本 Stage 恒真的前提 | 步骤、事故记忆 |
 | **权限 / Authority** | 能写哪些路径，**以及相邻但明确不能碰的** | 判断、命令 |
-| **执行 / Execution** | 编号步骤，按 §3 的六动作组织 | Flow 内容的复制品 |
+| **执行 / Execution** | 编号步骤，按 §3 的三个动作组织 | Flow 内容的复制品 |
 | **证据 / Evidence** | 报告什么，对照哪个 `doneWhen` / `requiredEvidence` | 结论的替代品 |
 | **停止与返工 / Stop and rework** | 什么条件必须停、交给哪个 Skill | 事故记忆（迁往 explain） |
 | **判断要点 / Judgment calls**（可选） | C 类判断里最容易被漏掉的 | A / B / D 类 |
@@ -225,7 +231,7 @@ A 类句子的问题不是啰嗦，是**它没有校验者**。
 | 4 | `change.yaml` 模板里 schema 的**每一个** classification key | `moduleContract` 曾经全线接好、唯独 Skill 没提，整条防线永远不可能触发 | classification 契约测试 |
 | 5 | `xforge state` | Skill 必须至少读一次状态 | product 契约测试 |
 | 6 | 中英双语同时满足以上全部 | 校验器逐个变体检查 | 全部校验器 |
-| 7 | 六动作里 Skill 实际会跑的命令名 | 与 CLI help 对照，防止指示一个不存在的 flag | command 契约测试 |
+| 7 | 三个动作里 Skill 实际会跑的命令名 | 与 CLI help 对照，防止指示一个不存在的 flag | command 契约测试 |
 | 8 | 会挡住本 Stage 的**诊断码字面量**（如 `XFORGE_FLOW_TOO_WEAK`） | 与第 3 条同理：CLI 原样回报这个 token，Skill 不写出来，Agent 就接不上自己撞见的那条拒绝 | 逐 Skill 的契约测试 |
 
 > 第 1 条的边界很关键：**只对 `evidence/` 下的 Artifact 生效**。

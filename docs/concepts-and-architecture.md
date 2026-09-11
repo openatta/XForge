@@ -383,39 +383,66 @@ Gate 重跑后**重新 plan**，再执行原子事务。任何中间错误都保
 > 调查代码、Specs 与选项**不需要专门的 Skill**——阅读与检索是每个被投影目标的原生能力。
 > 把一个模糊想法收敛成可提案的范围，是 `xforge-propose` 的第 0 步。
 
-### 5.2 驱动循环：跟着 Action 走，不跟着 Flow 名字走
+### 5.2 驱动循环：一次进入，一次离开
 
 ```text
         ┌──────────────────────────────────────────┐
-        │  xforge state --change <id>              │
-        │    → governance.currentStage             │
-        │    → revision.{content,state,governing}  │
-        │    → nextActions[]  (typed)              │
-        │    → readyTransitions[].blockedBy        │
+        │  xforge stage --change <id>       进入    │
+        │    → Change 在哪、Flow 是哪条              │
+        │    → 当前 ready 的 Action：writes /       │
+        │      requiredSections / inputs           │
+        │    → owes[]：本 Stage 还欠的每个 Artifact  │
+        │      及其 instruction / outline           │
+        │    → stageDeclares：produces / gates /    │
+        │      exitConditions / reworkTo           │
+        │    → Constitution、blockedBy、诊断         │
         └───────────────┬──────────────────────────┘
-                        │  取出当前 ready 的 Action
+                        │  按 Action 写 Artifact
                         ▼
         ┌──────────────────────────────────────────┐
-        │  Action 自带 instruction / outline /      │
-        │  inputs / writes / requiredSections /     │
-        │  doneWhen / requiredEvidence / command    │
-        │  → Skill 严格照它执行                      │
+        │  每写完一个重跑 xforge stage              │
+        │  （不要另外去问「变了什么」）               │
         └───────────────┬──────────────────────────┘
-                        │  产出 artifacts
+                        │  本 Stage 的产出都写完了
                         ▼
         ┌──────────────────────────────────────────┐
-        │  xforge check   → Gate Evidence           │
-        │  xforge transition --to <next>            │
-        │    ↑ 被 exit.{conditions,gates,           │
-        │        approvals,auditEvents} 守着         │
+        │  xforge advance --change <id> [--to <s>] │
+        │    = xforge check + xforge transition    │
+        │    ↑ 被 exit.{conditions,gates,          │
+        │        approvals,auditEvents} 守着        │
         └───────────────┬──────────────────────────┘
                         │  不满足 → blockedBy，或按 reworkTo 退回
                         ▼
                   ready-to-archive → archive ✓
 ```
 
-**`state.nextActions` 是权威。** 不要背命令序列——一条 Flow 可能要求返工、额外 Gate、
-外部审批 receipt 或远端审计投递，才允许下一次 transition。
+**为什么是这两条命令，而不是 `state` + `check` + `transition`。**
+它们不是新机制，是把已经要付的调用合并成一次：
+
+- **`xforge stage` 只是 `stage-bundle` + `state` + `nextActions` 的组合**，一个字段都不多算。
+  它买到的是**到达**——阅读计划、解析后的状态、ready 的 Action、本 Stage 自己的声明，
+  一次到齐，而不是一个回合一条。十二次实测里，70% 的调用是「定位」：打开 Change 的文件、
+  重新列目录、再问一次 `state`。这些工作一样都不能省，但它们当时是**一个回合付一次**的，
+  而一个回合要重发整段对话，进程内读第二次不用。
+- **`xforge advance` 只是 `check` 后接 `transition`**，两条记录**不合并**：
+  Gate Evidence 与 transition receipt 照样分开写、分开审计，和人手敲两条时一模一样。
+  合并记录会让「Gate 过了」和「Stage 动了」变得不可区分，那是治理链唯一不能丢的东西。
+  Gate 失败就拒绝转换并点名自己；`transitioned` 报的是**实际发生了什么**，不是尝试了什么。
+  多个转换同时 ready 时它会反问——「前进还是返工」不是默认值能定的，用 `--to` 指明。
+
+两个例外，记住就够：
+
+- **`xforge-propose` 的第一步用 `state` 而不是 `stage`**，因为那一刻还没有 Change。
+  `change.yaml` 存在之后，入口就变成 `xforge stage --change <id>`。
+- **`stage` 默认只给阅读计划，不给正文**（`--content none` 是默认）。
+  曾经默认送正文，一次 Solid 实跑送了 75,774 字节，Agent 随后又把同样的文档重开了 29 次、
+  再付 220,839 字节——两份副本都留在上下文里，第二份是第一份的 3.3 倍。
+  现在回复里写明输入是哪些、每份多大、有哪些小节、自本 Stage 开始以来哪些动过；
+  要读的自己开一次，不要读的从不进上下文。
+
+**`state.nextActions` 仍然是权威**（`stage` 返回的就是它算出来的那个 Action）。
+不要背命令序列——一条 Flow 可能要求返工、额外 Gate、外部审批 receipt 或远端审计投递，
+才允许下一次 transition。
 
 审批命令尤其要从 `nextActions[].command` 里原样取，不要照 usage 字符串自己拼：
 `--for` 填的是该审批**所解锁的那次 transition**（目标 Stage id，或字面量 `archive`），
@@ -627,14 +654,16 @@ Adapter 报告 `guidance`、`permissionPolicy`、`runtimeHook.*`、`auditDeliver
 产品能自己说出来的事实，就不必让任何 Skill 去背。
 写 glob 的 Artifact（delta Spec）不带这个字段——它的 outline 是可重复的模板，没有固定节集。
 
-`blockedBy` 的完整词汇表见 [治理模型 §6](governance-model.md#6-排障blockedby-词汇表)。
+`blockedBy` 的完整词汇表见 [治理模型 §8](governance-model.md)。
 
 ---
 
 ## 9. 日常怎么工作
 
-1. **不要背 CLI 命令序列。** 读 `state.nextActions`，它是权威。
-   `xforge-status` 会告诉你一个 Change 站在哪、下一个合法动作是什么，且不替你做。
+1. **不要背 CLI 命令序列。** 一个 Stage 就两条命令：`xforge stage --change <id>` 进入，
+   `xforge advance --change <id>` 离开；中间每写完一个 Artifact 重跑一次 `stage`。
+   ready 的 Action 是权威。`xforge-status` 会告诉你一个 Change 站在哪、
+   下一个合法动作是什么，且不替你做。
 2. **Flow 选最弱但仍安全的那一档。** 治理强度与风险成比例是设计目标，不是走过场；
    选错时 `quick` 会直接拒绝。
 3. **被 `blockedBy` 挡住时，读它说的那一条**，而不是绕开。

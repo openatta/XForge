@@ -62,7 +62,8 @@ npx --no-install xforge <command>    # 项目本地安装（可执行文件在 n
 加 `--text` 得到人类可读视图，**不改变语义与退出状态**。
 需要程序或 Agent 消费结果时用默认的 JSON。
 
-两个命令有专门的文本渲染：`state`（项目与 Change 摘要）与 `upgrade-scaffold`（合并计划）。
+六个命令有专门的文本渲染：`state`（项目与 Change 摘要）、`stage`、`stage-bundle`、
+`contract`、`explain`、`upgrade-scaffold`（合并计划）。
 唯一不返回信封的是 `hook dispatch`——它要往 stdout 写目标平台要求的 Hook 响应 JSON。
 
 ### 2.3 退出码
@@ -83,6 +84,10 @@ npx --no-install xforge <command>    # 项目本地安装（可执行文件在 n
 | `version` | 读 | CLI / protocol / runtime / build 身份 |
 | `init` | 有条件写 | 校验内置 Scaffold，初始化项目，可选投影到一个目标 |
 | `state` | 读 | 解析后的项目与 Change 状态 + typed `nextActions` |
+| `stage` | 读 | **一个 Stage 需要的一切，一次回复**：状态 + ready Action + 还欠什么 + 本 Stage 的声明 |
+| `stage-bundle` | 读 | 更窄的一问：自进入本 Stage 以来，哪些 Artifact 动过 |
+| `advance` | 写 | **`check` + `transition` 合成一次**：跑完本 Stage 的 Gate，无人拒绝才转换 |
+| `explain` | 读 | 某个诊断码是什么意思：严重度，以及它能携带的每一条措辞 |
 | `install` | 写 | 首次或幂等的目标投影 |
 | `sync` | 写 | 增量同步本地化的 Scaffold 改动 |
 | `update` | 写 | 完整调和目标、身份与 Adapter 输出 |
@@ -118,7 +123,7 @@ xforge version [--text]
 ### `state`
 
 ```bash
-xforge [--root <path>] state [--change <id>] [--kind <kind>] [--target <target>] [--text] [--field <path>]
+xforge [--root <path>] state [--change <id>] [--kind <kind>] [--include <section>]... [--target <target>] [--text] [--field <path>]...
 ```
 
 读取解析后的项目与 Change 状态。**`state.nextActions` 是推进 Change 的权威**——
@@ -132,6 +137,25 @@ xforge state --change <id> --field change.governance.readyTransitions.0.to
 ```
 
 `--field` **只打印一个值、不打印别的**，所以 `$(xforge state --field ...)` 是安全的。
+
+#### `--include`：六个默认不返回的段
+
+`state` 默认**留下六段不返回**，因为它们两次读之间都不变、而且都很大：
+
+| section | 是什么 |
+| --- | --- |
+| `flows` | 本 Change 正在跑的那条之外的全部 Flow 定义 |
+| `targets` | 目标能力矩阵 |
+| `lockedResources` | lockfile 的摘要表 |
+| `constitution` | Constitution 的**正文**（默认只给 version 与 path） |
+| `transitions` | 完整的 transition 回执链 |
+| `artifacts` | 每个 Artifact 的 `instruction` 与 `outline` |
+
+用 `--include <section>` 按名取回（可重复，或 `--include all`）。
+被省略的地方，载荷里会写明取回它的那个选项，所以不需要记这张表。
+名字写错 → `XFORGE_INCLUDE_UNKNOWN`，并列出全部合法值。
+
+> `--kind` 与它无关：那个只过滤资源清单。
 
 #### `--text`：要点清单，不是 JSON 转储
 
@@ -156,7 +180,7 @@ mandatory Gate Evidence（跑了什么命令、是否绑定当前内容 revision
 ### `check`
 
 ```bash
-xforge [--root <path>] check [--change <id>] [--gate <id>] [--stage <id> | --all-gates] [--force] [--text]
+xforge [--root <path>] check [--change <id>] [--evidence-detail <summary|full>] [--gate <id>] [--stage <id> | --all-gates] [--force] [--text]
 ```
 
 校验项目结构、work-package 交付，并运行**当前 Stage 要求的那一组 Gate**。
@@ -186,10 +210,38 @@ xforge [--root <path>] check [--change <id>] [--gate <id>] [--stage <id> | --all
 > 而唯一的退路 `transition repair` 会作废那次审批。
 > `check` 里这条是必要不充分的：别的 Change 可能先归档并改动同一份主 Specs，所以 `archive` 仍然会重判一次。
 
+**`--evidence-detail`：每份 Evidence 带回多少。** 默认 `summary`——裁决、命令、退出码，
+以及完整记录在哪。`full` 把整条记录带回来，包括 verify 命令的全部 stdout。
+`gates` 是一个 Stage 产出的最大一块重复输出，而多数时候只为看其中一项裁决，
+所以默认是收窄的那一档。（这个选项**只对 `check` 有效**，别的命令不产出 Gate Evidence。）
+
+> **用 `--field gates`，不要用 `--field gates.0.status`。** 一个不声明 Gate 的 Stage
+> 回的是空列表，`gates.0` 于是解析不到，而 `--field` 是全有或全无——
+> 一次本来通过的 check 会变成 `ok: false` 且 `data: null`。
+> 而且诊断要一起取：空的 `gates` 既可能是「本 Stage 不声明 Gate」，也可能是「Evidence 陈旧」，
+> 只有诊断能把两者分开。一次实跑把 `[]` 读成「没什么可说的」，差一步就带着失效证据做了 transition。
+
 **当前 Stage 一个 Gate 都不声明时**（`solid` 的 design / apply、`quick` 的 apply），
 返回的是 `gates: []` 且 `ok: true`——这是如实报告，不是「Gate 都过了」。
 这种情况下 `check` 会额外给一条 `XFORGE_CHECK_NO_GATES_AT_STAGE`（info）说明这一点：
 结构校验跑了，其余什么都没跑。
+
+### `explain`
+
+```bash
+xforge explain <XFORGE_CODE> [--text]
+```
+
+说出一个诊断码是什么意思：它的严重度，以及它能携带的**每一条**消息，
+读自构建时冻结进这个 build 的目录。**不需要项目**，在任何目录下都能跑。
+
+它存在的理由很具体：**同一个码会从多个地方发出，每处措辞略有不同**。
+你**没**见过的那条措辞，正是在告诉你这个码还有另一个成因。
+不要从码的名字去猜它的含义——`XFORGE_FLOW_TOO_WEAK` 看起来像「换条 Flow 就行」，
+而它的另一条措辞说的是「答 `false` 不是一道更松的检查」。
+
+诊断码不需要注册：`scripts/build-diagnostics.mjs` 在构建时扫描源码里的
+`diagnostic(...)` 调用点生成目录，所以新增的码 `explain` 自动认识。
 
 ### `doctor`
 
@@ -355,6 +407,82 @@ git restore --source=<记下的 HEAD> -- xforge/scaffold xforge/flows xforge/scr
 
 ## 6. Change 生命周期
 
+> **一个 Stage 只有两条命令：`xforge stage` 进入，`xforge advance` 离开。**
+> 下面的 `check` 与 `transition` 是它们内部跑的东西，单独列出是因为你有时需要只跑其中一半。
+
+### `stage`
+
+```bash
+xforge [--root <path>] stage --change <id> [--content <none|changed|full>] [--text] [--field <path>]...
+```
+
+**一个 Stage 需要的一切，一次回复**：Change 站在哪、ready 的 Action 及其
+`writes` / `requiredSections` / `inputs`、`owes` 下本 Stage 还欠的每个 Artifact
+及其 `instruction` 与 `outline`、`stageDeclares`（本 Stage 声明的 produces / gates /
+exitConditions / reworkTo / authority）、Constitution、`blockedBy`、以及诊断。
+
+它**什么都不多算**——由 `stage-bundle` + `state` + `nextActions` 组合而成。
+它买到的是「到达」：这些东西一次到齐，而不是一个回合一条。
+
+**因此不需要打开 `xforge/flows/*.yaml`。** 那个文件 400 行，
+而你要去那里找的 outline，Action 里已经有了。
+
+#### `--content`：默认只给阅读计划，不给正文
+
+| 值 | 给什么 |
+| --- | --- |
+| `none`（**默认**） | 只给阅读计划：每份输入的路径、字节数、章节标题，以及自本 Stage 开始以来哪些动过 |
+| `changed` | 加上「动过的那些」的正文 |
+| `full` | 全部正文，放弃摘要凭据 |
+
+默认值改过一次，理由是量出来的：曾经默认送正文，一次 Solid 实跑送了 75,774 字节，
+Agent 随后又把**同样的文档**重开 29 次、再付 220,839 字节——两份副本都留在上下文里，
+第二份是第一份的 3.3 倍。现在是「告诉你有什么、你自己开一次」。
+
+**一个例外**：ready 的工作包所声明的 `inputs` 仍然带正文，除非显式写 `--content none`
+——Apply 阶段的 Worker 没有它们写不出一行。
+
+`--field` 在这里是**回程**用的：从一份已经收到的回复里再取一个值，
+而不是在请求时枚举你要什么——一个必须在进来时就列清自己需要什么的调用方，
+正在被要求回答它来这里要答案的那个问题。
+
+### `stage-bundle`
+
+```bash
+xforge [--root <path>] stage-bundle --change <id> [--text]
+```
+
+比 `stage` 更窄的一问：**自进入本 Stage 以来，这个 Change 的哪些 Artifact 动过**，
+以及哪些可以用摘要凭据代替重读。transition 回执记录了它那个 Stage 开始时的 commit，
+所以「变了哪些」是算得出来的，不是猜的。
+
+> Change 目录下任何**未提交**的改动都会作废全部摘要凭据——git 比的是 commit，看不见未提交的改动。
+
+### `advance`
+
+```bash
+xforge [--root <path>] advance --change <id> [--to <stage>] [--dry-run] [--text]
+```
+
+**`check` 后接 `transition`，合成一次调用。** 每个 Stage 都以这一对结束——
+十二次实测的 Stage 里，无一例外——因为 Gate Evidence 绑定内容 revision，
+而没有它 transition 就会拒绝。
+
+**它刻意不合并记录：** Gate 运行写自己的 Evidence，transition 写自己的回执，
+分开写、分开审计，和人手敲两条时的摘要与审计条目完全一致。
+合并成一条会让「Gate 过了」和「Stage 动了」不可区分，那是治理链唯一不能丢的东西。
+
+三种结局：
+
+| 情况 | 行为 |
+| --- | --- |
+| Gate 拒绝 | **不尝试转换、不写回执**，报 `XFORGE_ADVANCE_GATES_REFUSED` 并点名是哪几个码 |
+| Gate 过了，但没有 ready 的转换 | 报 `XFORGE_ADVANCE_NO_READY_TRANSITION`（info）并列出 `blockedBy`，什么都不写 |
+| Gate 过了，多个转换 ready | 同上，但消息是「用 `--to` 指明」——**「前进还是返工」不是默认值能定的** |
+
+`data.transitioned` 报的是**实际发生了什么**，不是尝试了什么：转换被拒时它是 `null`，
+而不是那个目标 Stage 的名字。
+
 ### `transition`
 
 ```bash
@@ -471,9 +599,22 @@ xforge [--root <path>] verification retire --gate-name <gate> \
        ( --command '["prog","arg"]' | --not-applicable <marker> ) \
        --by <person> --reason <text> [--module <id>] [--dry-run] [--text]
 
-# 起草当前 Stage 的验证 receipt
+# 起草当前 Stage 的验证 receipt（只返回数据，不写盘）
 xforge [--root <path>] verification draft-receipt --change <id> [--text]
+
+# 你自己给出断言之后，把同样的事实写下来
+xforge [--root <path>] verification finalize --change <id> --status passed --by <person> [--dry-run] [--text]
 ```
+
+**`draft-receipt` 刻意不产出 `status`，而 `finalize` 要你亲手给。**
+`status` 是本 Stage 对「这份工作确实被验证过了」的断言，
+一个替你填上它的 CLI，是在替你决定这份 receipt 存在的目的。
+
+**`finalize` 不是一条绕过检查的捷径**：写下「某道 Gate 通过了」之前，
+它会从磁盘重新读那道 Gate 的 Evidence；本 Stage 引用的任何一道 Gate 若
+相对当前内容 revision 已陈旧、失败过、或从未跑过，它**一个字都不写**，
+并分别说出「要重跑」「要修」「要第一次跑」——那是三个不同的问题。
+`passed` 是它唯一会写的状态：没验过的 Stage 不该提交 receipt，而不是提交一份说自己没过的。
 
 **`--by` 是必填的**，因为「一条命令是否真的在验证什么」没有任何机械方式可以判定——
 这个字段记录的是**谁回答了这个问题**。
@@ -516,7 +657,7 @@ xforge [--root <path>] review acknowledge --change <id> --evidence <path> [--sco
 ### `work-package`
 
 ```bash
-xforge [--root <path>] work-package dispatch    --change <id> --package <id> [--dry-run] [--text]
+xforge [--root <path>] work-package dispatch    --change <id> --package <id> [--commit] [--dry-run] [--text]
 xforge [--root <path>] work-package draft       --change <id> --package <id> [--text]
 xforge [--root <path>] work-package acknowledge --change <id> --package <id> \
                                     --as <integrator|reviewer> --evidence <path> \
@@ -526,8 +667,14 @@ xforge [--root <path>] work-package acknowledge --change <id> --package <id> \
 | 子命令 | 作用 |
 | --- | --- |
 | `dispatch` | 只允许 Apply Stage 的 ready 节点，且**整份计划校验无 error** 后才原子写入派工 receipt |
+| `dispatch --commit` | 顺带把刚写的 receipt 与审计索引**提交**，且只提交这两样 |
 | `draft` | 回填机器已知的那一半：execution id、两个 commit、`changed_paths`、每条声明的 `verify` 命令与实际退出码。**这些不要手抄** |
 | `acknowledge` | 记录集成或复核证据；ack receipt 绑定 `deliveryDigest`，无法被重放到另一份 delivery 上 |
+
+> **`--commit` 是 XForge 唯一会写 Git 历史的地方，而且只在被要求时。**
+> 它存在的理由是硬的：**delivery 是从「包含派工 receipt 的那次提交」开始度量的**，
+> 与它同一次提交、或早于它的工作都落在区间之外，记录 delivery 时会被拒绝。
+> 不加这个标志时，回复会让你手工做同一件事。
 
 > **复核转录写 `evidence/agents/<package>/review/<execution>.md`**，不要写成
 > `evidence/agents/<package>/*.yaml`——那一层是**交付记录**的解析面，
@@ -627,24 +774,41 @@ xforge hook dispatch --target <target> --event <event>
 
 ## 9. 典型序列
 
+**一个普通 Stage**（进入、写、离开）：
+
 ```bash
-xforge state --change <change-id>
-xforge check --change <change-id>
-xforge transition --change <change-id> --to <next-stage> --dry-run
-xforge transition --change <change-id> --to <next-stage>
+xforge stage --change <change-id>           # 进入：状态 + ready Action + 还欠什么
+# …按 Action 写 Artifact；每写完一个重跑一次 xforge stage…
+xforge advance --change <change-id>         # 离开：跑 Gate，无人拒绝才转换
+```
 
-# 当 state 报告有就绪的工作包时：
-xforge work-package dispatch --change <change-id> --package <package-id>
+**还没有 Change 时**（`xforge-propose` 的第一步，此时 `stage` 无对象可指）：
 
-# 当 state 报告需要审批时（命令从 nextActions 里原样复制）：
+```bash
+xforge state --field nextActions --field diagnostics --field constitution \
+             --field project --field flows --field changes --field specs
+```
+
+**Stage 之外偶尔要用的**：
+
+```bash
+# 工作包：state / stage 报告有就绪的包时
+xforge work-package dispatch --change <change-id> --package <package-id> --commit
+xforge work-package draft    --change <change-id> --package <package-id>
+
+# 审批：命令从 nextActions[].command 里原样复制，不要照 usage 字符串自己拼
 xforge approve --change <change-id> --for <transition-id-or-archive> ...
 
+# 收尾
 xforge audit verify --change <change-id>
 xforge archive --change <change-id> --dry-run
 xforge archive --change <change-id>
 ```
 
-> **不要照抄这个序列。** `state.nextActions` 才是权威——一条 Flow 可能要求返工、
+只想跑其中一半时，`check` 与 `transition` 仍然单独可用——
+`advance` 就是按顺序跑这两条，记录一模一样。
+
+> **不要照抄任何序列。** ready 的 Action 才是权威——一条 Flow 可能要求返工、
 > 额外的 Gate、外部审批 receipt 或远端审计投递，才允许下一次 transition。
 
 ---

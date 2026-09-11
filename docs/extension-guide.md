@@ -163,18 +163,33 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 | --- | --- | --- |
 | `metadata` | `name`、`version`、`description` | `name` 必须与文件名一致；id 形如 `^[a-z0-9]([a-z0-9-]*[a-z0-9])?$` |
 | `policy` | `assuranceLevel`、`eligibleWhen` | **`assuranceLevel` 只能是 `quick`\|`solid`\|`major`** |
-| `policy.eligibleWhen` | `risk`、`criticalImpacts` | 可选 `maxModules ≥ 1` |
-| `policy.requiredWhen` | 至少一个属性 | `risk` 和 / 或 `anyImpact`（security/privacy/publicApi/dataMigration） |
-| `artifacts[]` | `id`、`generates`、`description`、`instruction`、`outline` | 可选 `validator: spec-delta`、`markers` |
+| `policy.eligibleWhen` | `risk`、`criticalImpacts` | 可选 `maxModules ≥ 1`、`contractImpact: forbidden\|allowed`（缺省 allowed） |
+| `policy.requiredWhen` | 至少一个属性 | `risk` 和 / 或 `anyImpact`（security / privacy / publicApi / dataMigration / **moduleContract**） |
+| `artifacts[]` | `id`、`generates`、`description`、`instruction`、`outline` | 可选 `validator`（`spec-delta`\|`contract-delta`\|`outline`，**只能选一个**）、`markers`、`requiredWhen` |
 | `stages` | **至少 3 项** | 必须包含 `propose`、`apply`、`verify`；`id` 唯一 |
 | `stages[]` | `id`、`skill`、`authority`、`requires`、`produces` | 可选 `revises`、`gates`、`reworkTo`、`exit` |
 | `governance` | `approvalPolicies`、`audit`（整块可省） | `approvalPolicies` 可为 `[]` |
 | `approvalPolicy` | `id`、`minApprovers`(1–10)、`roles`、`separationOfDuties`、`providers` | |
 | `auditPolicy` | `requiredEventTypes`、`runtimeCoverage`、`remoteDelivery` | 后两者 `optional`\|`required` |
-| `terminal.archive` | `handler`、`authority`（恒为 `archive-write`）、`requires`、`syncSpecs` | 可选 `approvals`、`auditPolicy` |
+| `terminal.archive` | `handler`、`authority`（恒为 `archive-write`）、`requires`、`syncSpecs` | 可选 `syncContracts`、`approvals`、`auditPolicy` |
 
 `authority` 五档：`read-only` / `planning-write` / `assurance-write` /
 `implementation-write` / `archive-write`。
+
+> **`syncContracts` 与 `contractImpact` 刻意都不在必填集合里。**
+> 一条在契约层出现之前写成的 Flow 仍然是一条合法的 Flow，
+> 把它们加进 `required` 会一次性作废全部存量 Flow。
+> 缺省值也因此是「不管」：没有 `syncContracts` 就不合并契约基线，
+> 没有 `contractImpact` 就等于 `allowed`。
+> 两者各自是什么、为什么是两个键而不是一个，见
+> [治理模型 §12.4](governance-model.md) 与 [§12.7](governance-model.md)。
+
+> **`requiredWhen`（在 Artifact 上，以及下面 §2.4 的 exit condition 上）**
+> 按 Change 自己的 `classification` 收窄人群：`{ anyImpact: [moduleContract] }` 意思是
+> 「只有自报移动了接口的 Change 才欠这份 Artifact」。
+> 不写就是每个 Change 都欠。随包的 `contract-delta` 用的就是它——
+> 让每个 Change 都交一份写着「什么都没变」的文档，是花掉一个回合去断言「无」，
+> 而 Stage 一直开着等这个回合。
 
 > **你可以在一个新文件名下发布完全自定义的 stage graph 和治理策略，
 > 但目前仍必须挂靠三档保证级别之一。** 真正独立的第四档需要改 schema。
@@ -200,6 +215,21 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(xforge:*)
 任何写在 `exit.conditions` 里的 `<key>: <expected>`，只要 key 匹配
 `^[A-Za-z0-9][A-Za-z0-9._-]*$`，都会被同一个**通用台账读取器**判定——
 **不需要写一行代码**。
+
+一个 condition 有两种写法，**字符串形态每个 Change 都欠，对象形态只有匹配的 Change 才欠**：
+
+```yaml
+exit:
+  conditions:
+    incidentOwnerAssigned: resolved          # 本 Flow 上每个 Change 都欠这份台账
+    contractDecisions:                       # 只有自报移动了接口的 Change 才欠
+      expected: resolved
+      requiredWhen:
+        anyImpact: [moduleContract]
+```
+
+对象形态两个键都必填（`expected` 与 `requiredWhen`），`requiredWhen` 与 Artifact 上那个同形，
+读的是 Change 自己的 `classification`。**不匹配的 Change 不欠这份台账，它的缺失也不构成阻塞。**
 
 ```yaml
 # xforge/flows/hotfix.yaml
@@ -242,7 +272,7 @@ ledger.condition 存在且 ≠ key         → ledger-subject-mismatch
 **显式的 `entries: []` 是一条被接受的断言**（「本 Change 没有这类问题」），
 与文件不存在、无法解析、缺 `entries` 键三种情况严格区分。
 
-三个键走**特殊路由**，不读通用台账：
+**两个**键走特殊路由，不读通用台账，其余的全部走上面那个通用读取器：
 
 | key | 由什么判定 |
 | --- | --- |
@@ -334,7 +364,9 @@ artifacts:
 **这是 warning，不阻塞 Change**：它告诉你有小节没写，锚在那些小节上的 marker 或引用会取不到东西。
 只查遗漏 —— `outline` 没列的额外 `##` 小节不报告。
 
-随包的三个 Flow **都没有声明 `validator: outline`**，能力与采用决策是分开的：
+随包的三个 Flow **都没有声明 `validator: outline`**（`solid` 与 `major` 只在
+`contract-delta` 上声明了 `validator: contract-delta`；`delta-specs` 连声明都不需要——
+写在 `specs/` 下的 markdown 按约定就是 Spec delta），能力与采用决策是分开的：
 `quick` 的 `proposal` 声明了 6 个小节、`assurance` 5 个，一旦开启，每个 Change 都得把它们写全。
 那是项目自己的取舍，不该由随包默认替它做主。
 
@@ -462,7 +494,16 @@ spec:
     gateRefs:     [unit-tests]       # 必填（可为 []）
     policyRefs:   []                 # 必填（可为 []）
     approvalRefs: [implementation-major]   # 可选
+    validatorRefs: [contract-delta]        # 可选：spec-delta | contract-delta | outline
 ```
+
+`validatorRefs` 用的是 `flow.artifacts[].validator` 的同一套 id，指的是
+**CLI 在进程内跑的 Artifact 校验器**：它在文档被读到的那一刻就拒绝，
+没有 Gate、没有 Evidence、没有任何绑定 revision 的东西可记，所以它报 `structural` 而不是 `verified`。
+和 `gateRefs` 一样会被解析：当前 Flow 没有任何 Artifact 带这个 validator，这条引用就解析为空、不计入。
+
+> ⚠️ **`gateRefs` 引用一道项目没有启用的 Gate 会被 `XFORGE_RULE_GATE_DISABLED` 直接拒绝（error）。**
+> 正确顺序是先把 Gate 登记进 `manifest.scaffold.gates`，再在这里点名它。
 
 ### 4.2 运行时
 
@@ -470,8 +511,12 @@ spec:
 每次算 `xforge state` 时，拿 `enforcement.*Refs` 的声称去和当下的真实情况对照，产出 `coverage`：
 
 ```text
-instructed → guarded / verified / approved → uncovered / unenforceable
+instructed → guarded / structural / verified / approved → uncovered / unenforceable
 ```
+
+七个取值，四个是「有东西在强制它」的不同种类：
+`guarded`（PermissionPolicy）、`structural`（Artifact validator）、
+`verified`（Gate）、`approved`（Approval）。
 
 `unenforceable` 与 `uncovered` 的区别见 [治理模型 §5.2](governance-model.md)。
 

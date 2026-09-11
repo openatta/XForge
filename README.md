@@ -413,7 +413,7 @@ xforge upgrade-scaffold --rollback
 | --- | --- |
 | [文档索引](docs/index.md) | 按「我要解决什么问题」组织 |
 | [概念与架构](docs/concepts-and-architecture.md) | XForge 按什么逻辑运转 |
-| [治理模型](docs/governance-model.md) | 七类治理资源各自能证明什么 |
+| [治理模型](docs/governance-model.md) | 七类治理资源各自能证明什么；Spec 与接口两份基线怎么被治理 |
 | [扩展指南](docs/extension-guide.md) | 新增 Skill / Flow / Gate / Rule / Policy / Hook / Approval / Agent / MCP |
 | [仓库与文件布局](docs/repository-layout.md) | 每个中间产物落在哪、归谁写、什么该进 Git |
 | [子 Agent 设计](docs/sub-agent-design.md) | 并行工作包与 Worker / Integrator / Reviewer |

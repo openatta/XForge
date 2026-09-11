@@ -10,7 +10,7 @@
 | 文档 | 回答什么 | 什么时候读 |
 | --- | --- | --- |
 | [概念与架构](concepts-and-architecture.md) | XForge 是什么、按什么逻辑运转、我脑子里要装哪几个模型 | **从这里开始** |
-| [治理模型](governance-model.md) | 七类治理资源各自能证明什么，为什么不许互相冒充 | 想搞清楚「什么算数」时 |
+| [治理模型](governance-model.md) | 七类治理资源各自能证明什么、为什么不许互相冒充；以及 Spec 与接口这两份基线怎么被治理 | 想搞清楚「什么算数」时 |
 | [扩展指南](extension-guide.md) | 新增 Skill / Flow / Gate / Rule / Policy / Hook / Approval / Agent / MCP | 要定制时 |
 | [仓库与文件布局](repository-layout.md) | 每个中间产物落在哪、归谁写、被谁校验 | 排障或写台账时 |
 | [子 Agent 设计](sub-agent-design.md) | 并行工作包与 Worker / Integrator / Reviewer | 要并行交付时 |
@@ -45,6 +45,14 @@
 **「我想加一道『必须有人拍板』的门」**
 → [扩展指南 §2.4](extension-guide.md)（自定义 exit condition，**不需要写代码**）
 
+**「接口 / 契约这层到底默认给了什么，我还要自己配什么」**
+→ [治理模型 §12.4](governance-model.md)（零配置层与选中层的分界）
+→ [治理模型 §12.5](governance-model.md)（四道 Gate，以及 `--covers` 那个最贵的坑）
+
+**「Spec 和 Contract 是不是同一套东西」**
+→ [治理模型 §10](governance-model.md)（是，一套方案两个实例）
+→ [治理模型 §13](governance-model.md)（对照表与三条共享不变量）
+
 **「我想接公司的审批系统」**
 → [扩展指南 §7.5](extension-guide.md)（MCP provider 四步）
 
@@ -54,11 +62,11 @@
 
 **「并行交付要注意什么」**
 → [子 Agent 设计 §6.3](sub-agent-design.md)（`write_paths` 不相交只是必要条件）
-→ [子 Agent 设计 §5.3](sub-agent-design.md)（`done_when_evidence` 前缀匹配）
+→ [子 Agent 设计 §5.3](sub-agent-design.md)（`done_when_evidence` 怎么匹配：相等，不是包含）
 
 ---
 
-## 三条最容易被误解的机制
+## 四条最容易被误解的机制
 
 1. **`separationOfDuties` 不比较角色。** 它要求审批人**不是本 Change 的 implementer**。
    `roles` 是资格过滤器，两者是不同的东西。
@@ -69,6 +77,10 @@
 
 3. **放进 `scaffold/` 不等于启用。** 同步由 `manifest.yaml` 驱动，不是扫描目录。
    → [扩展指南 §0.1](extension-guide.md)
+
+4. **`moduleContract` 是 Change 自己说的。** 零配置的契约层完整治理一次**已声明**的接口变更，
+   不治理一次**未声明**的——那是 `contract-compat` 的事，而它默认不选。
+   → [治理模型 §12.4](governance-model.md)
 
 ---
 
