@@ -1,0 +1,6 @@
+code: XF-INSPECT-003
+title: "署名与审计事件不符"
+meaning: "台账里某条的署名、时间或摘要在审计链里找不到对应事件。对不上是损坏。"
+remedy:
+  text: "台账的署名只能引用审计链里真实存在的事件；重新用 xforge attest 登记，或找人定位。"
+variants: []

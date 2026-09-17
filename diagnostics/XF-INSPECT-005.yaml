@@ -1,0 +1,6 @@
+code: XF-INSPECT-005
+title: "索引与基线不一致"
+meaning: "规格或接口的索引里的 id 集合与基线文件里的不相等。"
+remedy:
+  text: "索引只由归档合并产出；不要手改。找人定位哪次归档没写全。"
+variants: []

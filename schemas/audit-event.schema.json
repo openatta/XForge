@@ -1,0 +1,114 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "audit-event",
+  "type": "object",
+  "properties": {
+    "seq": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "approval.decided",
+        "finding.answered",
+        "entry.decided",
+        "receipt.signed",
+        "delivery.confirmed",
+        "verification.declared",
+        "scaffold.upgraded"
+      ]
+    },
+    "change": {
+      "type": "string",
+      "pattern": "^C-[0-9]{8}-[a-z0-9][a-z0-9-]*$"
+    },
+    "scheme": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "subject": {
+      "type": "object"
+    },
+    "actor": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "email": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "name",
+        "email"
+      ],
+      "additionalProperties": false
+    },
+    "decision": {
+      "type": "string",
+      "enum": [
+        "approved",
+        "rejected"
+      ]
+    },
+    "refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "note": {
+      "type": "string"
+    },
+    "prev": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "hmac": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "via": {
+      "type": "string",
+      "pattern": "^mcp:[a-z][a-z0-9-]*$"
+    },
+    "requested_by": {
+      "type": "string",
+      "minLength": 1
+    },
+    "evidence": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  },
+  "required": [
+    "seq",
+    "at",
+    "kind",
+    "subject",
+    "actor",
+    "refs",
+    "prev",
+    "hash",
+    "hmac"
+  ],
+  "additionalProperties": false
+}

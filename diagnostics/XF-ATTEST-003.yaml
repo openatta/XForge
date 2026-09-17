@@ -1,0 +1,6 @@
+code: XF-ATTEST-003
+title: "这个审批点不接受这种审批者"
+meaning: "流程里这个审批策略的 allow 没有包含这种审批者（human 或 mcp）。"
+remedy:
+  text: 换策略允许的方式来批，或改流程文件的 approval_policies。
+variants: []

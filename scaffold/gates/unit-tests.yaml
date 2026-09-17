@@ -1,0 +1,5 @@
+name: unit-tests
+kind: command
+command: {from: manifest}
+inputs: ["**/*", "!xforge/**", "!.claude/**", "!.codex/**", "!node_modules/**", "!dist/**", "!coverage/**", "!.git/**"]
+timeout_seconds: 600

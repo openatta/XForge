@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "change",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^C-[0-9]{8}-[a-z0-9][a-z0-9-]*$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "flow": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "risk": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "impact": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "interface",
+          "security",
+          "data-migration",
+          "infra"
+        ]
+      }
+    },
+    "baseline_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{7,40}$"
+    }
+  },
+  "required": [
+    "id",
+    "title",
+    "flow",
+    "risk",
+    "impact",
+    "baseline_commit"
+  ],
+  "additionalProperties": false
+}

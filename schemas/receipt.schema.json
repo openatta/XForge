@@ -1,0 +1,148 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "receipt",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^R-[0-9]{4}$"
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "stage-transition",
+        "rework",
+        "package-dispatch",
+        "package-deliver",
+        "package-integrate",
+        "package-review",
+        "archive"
+      ]
+    },
+    "at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "change": {
+      "type": "string",
+      "pattern": "^C-[0-9]{8}-[a-z0-9][a-z0-9-]*$"
+    },
+    "scheme": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "prev": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "from": {
+      "type": "string",
+      "minLength": 1
+    },
+    "to": {
+      "type": "string",
+      "minLength": 1
+    },
+    "subject": {
+      "type": "object"
+    },
+    "execution": {
+      "type": "string",
+      "pattern": "^EX-[0-9]{8}-[a-z0-9]{6}$"
+    },
+    "workdir": {
+      "type": "string",
+      "minLength": 1
+    },
+    "inputs": {
+      "type": "object",
+      "properties": {
+        "gates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "gate": {
+                "type": "string"
+              },
+              "run": {
+                "type": "integer"
+              },
+              "revision": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "gate",
+              "run",
+              "revision"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "ledgers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "digest": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "digest"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "audit_events": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "revision": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  },
+  "required": [
+    "id",
+    "seq",
+    "kind",
+    "at",
+    "change",
+    "scheme",
+    "prev",
+    "from",
+    "to",
+    "subject",
+    "hash"
+  ],
+  "additionalProperties": false
+}

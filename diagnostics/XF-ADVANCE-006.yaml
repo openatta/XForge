@@ -1,0 +1,6 @@
+code: XF-ADVANCE-006
+title: "包路径超出作用域"
+meaning: "工作包计划里该包的 paths 不在方案作用域之内。"
+remedy:
+  text: "改 work-packages.yaml 或 scope.yaml。"
+variants: []

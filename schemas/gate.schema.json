@@ -1,0 +1,107 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "gate",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "command",
+        "builtin"
+      ]
+    },
+    "command": {
+      "type": "object",
+      "properties": {
+        "from": {
+          "const": "manifest"
+        }
+      },
+      "required": [
+        "from"
+      ],
+      "additionalProperties": false
+    },
+    "builtin": {
+      "type": "string",
+      "enum": [
+        "structure",
+        "ledgers",
+        "constitution",
+        "spec-delta",
+        "interface-delta",
+        "interface-compat"
+      ]
+    },
+    "needs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "spec",
+          "interface",
+          "assurance"
+        ]
+      }
+    },
+    "accepts": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^(review-findings|constitution-reply|verification-receipt|delivery|exit|exit/[a-z][a-z0-9-]*)$"
+      }
+    },
+    "inputs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1
+    },
+    "timeout_seconds": {
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "required": [
+    "name",
+    "kind",
+    "inputs"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "command"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "command"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "builtin"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "builtin"
+        ]
+      }
+    }
+  ]
+}

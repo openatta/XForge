@@ -1,0 +1,6 @@
+code: XF-STATE-004
+title: "风险等级不在流程接受范围"
+meaning: "change.yaml 声明的 risk 不在所选流程的 eligibility.risk 里。"
+remedy:
+  text: "换一条接受这个风险等级的流程，或改声明的 risk。前者要重新声明。"
+variants: []

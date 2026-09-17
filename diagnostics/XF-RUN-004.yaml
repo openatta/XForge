@@ -1,0 +1,6 @@
+code: XF-RUN-004
+title: "台账未被受理"
+meaning: "门读了台账，判它不合格。reasons 逐条给出。"
+remedy:
+  text: "按 reasons 改台账，下一次 advance 跑门时再受理。"
+variants: []

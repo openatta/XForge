@@ -1,0 +1,7 @@
+code: XF-ADVANCE-008
+title: "归档前卫生检查未通过"
+meaning: "advance --archive 在终局前跑了 inspect --hygiene，它红了。"
+remedy:
+  command: "xforge inspect --hygiene"
+  text: "按它的诊断清理。"
+variants: []

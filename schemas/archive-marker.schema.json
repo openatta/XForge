@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "archive-marker",
+  "type": "object",
+  "properties": {
+    "scheme": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+    "receipt": { "type": "string", "pattern": "^R-\\d{4}$" },
+    "at": { "type": "string" }
+  },
+  "required": ["scheme", "receipt", "at"],
+  "additionalProperties": false
+}

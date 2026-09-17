@@ -1,0 +1,150 @@
+name: solid
+title: 常规变更
+eligibility:
+  risk: [low, medium]
+stages:
+  - id: propose
+    skill: xforge-propose
+    human: body
+    produces:
+      - id: change-declaration
+        path: change.yaml
+        side: spec
+        needs: []
+        read: entries
+        instructions: |
+          id 与目录名相同；flow 是这条流程；risk 与 impact 如实填。impact 是列表，没有影响就是空列表。
+      - id: proposal
+        path: proposal.md
+        side: spec
+        needs: []
+        read: skeleton
+        outline: ["背景", "目标", "非目标", "为什么选这条流程", "影响面"]
+        instructions: |
+          写清为什么做、边界在哪、非目标是什么、为什么选这条流程。目标要能一句话说清「做完是什么样」。
+          非目标里列最容易被误加的那件事。影响面与 change.yaml 的 impact 一致。
+      - id: spec-delta
+        path: specs/
+        side: spec
+        needs: [spec]
+        read: entries
+        instructions: |
+          按域 / 能力放：specs/<domain>/<capability>.md。文件形状（照抄，不要加基线文件里的 entries 标记）：
+            # <能力标题>
+            ## ADDED
+            ### Requirement: REQ-<domain>-<capability>-<nnn> · <标题>
+            - **WHEN** …
+            - **THEN** …
+            ## MODIFIED
+            ### Requirement: <已有 id> · <标题>   （整条替换）
+            ## REMOVED
+            ### Requirement: <已有 id>
+          没有的操作块可以省略。先用 xforge show index:<domain> 复用已有的 Requirement id，再发明新的。
+      - id: interface-delta
+        path: interfaces/
+        side: spec
+        needs: [interface]
+        read: entries
+        instructions: |
+          interfaces/<module>/<file>.md，与规格 delta 同形（ADDED / MODIFIED / REMOVED，不要加 entries 标记）：
+            ### Element: fn:name · <标题>        （id 形如 fn:name / cli:sub cmd / endpoint:METHOD /path）
+            summary: <签名或摘要>
+            breaking: true|false                （MODIFIED 与 REMOVED 必填）
+    ledgers: []
+    gates: [structure]
+    exit:
+      - {kind: gate, ref: structure}
+    rework_to: []
+  - id: design
+    skill: xforge-design
+    human: none
+    produces:
+      - id: scope
+        path: scope.yaml
+        side: impl
+        needs: []
+        read: entries
+        instructions: |
+          这个方案会动哪些路径（glob）。工作包的路径都要落在它里面；树里的改动不在任何包里就是无归属。
+      - id: work-packages
+        path: work-packages.yaml
+        side: impl
+        needs: []
+        read: entries
+        instructions: |
+          每个包：paths（⊆ 作用域）、verify.gate（一道命令门）、criteria（可验证的完成判据）、review。
+          切分的标准是每个包能独立验证。
+      - id: design
+        path: design.md
+        side: impl
+        needs: []
+        read: mixed
+        outline: ["技术路径", "集成点", "失败模式", "迁移与回滚", "被否决的方案"]
+        markers: [{kind: alternatives, min: 1}]
+        instructions: |
+          技术路径要让一个不看实现的人能按规格写出黑盒测试。
+          「被否决的方案」这一节的正文必须放在这对标记之间（标记各占一行，照抄）：
+            <!-- xforge:entries:begin kind=alternatives -->
+            - 方案名：为什么不选（它的代价）
+            <!-- xforge:entries:end -->
+          至少一个有代价的替代。
+    ledgers: []
+    gates: [structure, constitution]
+    exit:
+      - {kind: gate, ref: structure}
+      - {kind: gate, ref: constitution}
+    rework_to: [propose]
+  - id: check
+    skill: xforge-check
+    human: tail
+    produces: []
+    ledgers: [review-findings, constitution-reply]
+    gates: [structure, ledgers, constitution]
+    exit:
+      - {kind: gate, ref: ledgers}
+      - {kind: ledger, ref: review-findings, requires: all-resolved}
+      - {kind: attested, ref: review-findings}
+      - {kind: attested, ref: constitution-reply}
+      - {kind: approval, policy: stage}
+    rework_to: [design, propose]
+  - id: apply
+    skill: xforge-apply
+    human: none
+    produces: []
+    ledgers: [delivery]
+    gates: [unit-tests]
+    exit:
+      - {kind: packages, requires: all-integrated}
+      - {kind: unclaimed-changes, requires: none}
+    rework_to: [design]
+  - id: verify
+    skill: xforge-verify
+    human: tail
+    produces:
+      - id: assurance
+        path: assurance.md
+        side: impl
+        needs: [assurance]
+        read: mixed
+        outline: ["连贯性", "覆盖"]
+        markers: [{kind: coverage, min: 1}]
+        instructions: |
+          「连贯性」指出提案、规格、设计、测试、实现在哪里描述了不同的行为，不复述它们。
+          「覆盖」这一节的正文必须放在这对标记之间（标记各占一行，照抄）：
+            <!-- xforge:entries:begin kind=coverage -->
+            | REQ-… 或 元素 id | 对应的测试（文件#用例） |
+            <!-- xforge:entries:end -->
+          每条 Requirement / 元素一行；没有对应测试的要明说。
+    ledgers: [verification-receipt]
+    gates: [structure, ledgers, unit-tests, spec-delta, interface-delta, interface-compat]
+    exit:
+      - {kind: gate, ref: ledgers}
+      - {kind: gate, ref: unit-tests}
+      - {kind: attested, ref: verification-receipt}
+    rework_to: [apply, design]
+archive:
+  exit:
+    - {kind: approval, policy: final}
+approval_policies:
+  stage: {min_approvers: 1, separation_of_duties: false}
+  final: {min_approvers: 1, separation_of_duties: true}

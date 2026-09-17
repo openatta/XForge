@@ -1,0 +1,6 @@
+code: XF-INSPECT-002
+title: "记录不符合 schema"
+meaning: "一份记录级文件通过不了它的 schema。"
+remedy:
+  text: "按诊断里的路径与字段改；证据层的文件不许手改，坏了要找人。"
+variants: []

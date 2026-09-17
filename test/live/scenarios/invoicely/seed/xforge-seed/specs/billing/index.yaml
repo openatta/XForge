@@ -1,0 +1,5 @@
+entries:
+  - {id: REQ-billing-customers-001, capability: customers, title: 客户邮箱唯一}
+  - {id: REQ-billing-invoices-001, capability: invoices, title: 发票至少一个行项且到期日不早于开票日}
+  - {id: REQ-billing-invoices-002, capability: invoices, title: 总额含税并四舍五入到分}
+  - {id: REQ-billing-invoices-003, capability: invoices, title: 按客户列出发票}

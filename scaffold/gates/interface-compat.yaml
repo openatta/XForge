@@ -1,0 +1,5 @@
+name: interface-compat
+kind: builtin
+builtin: interface-compat
+needs: [interface]
+inputs: ["xforge/changes/${change}/interfaces/**", "xforge/changes/${change}/change.yaml"]

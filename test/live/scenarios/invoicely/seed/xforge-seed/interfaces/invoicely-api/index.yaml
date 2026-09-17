@@ -1,0 +1,8 @@
+entries:
+  - {id: "fn:create_customer", capability: core, title: 创建客户, summary: "(store, name, email) -> Customer"}
+  - {id: "fn:create_invoice", capability: core, title: 创建发票, summary: "(store, customer_id, issued_on, due_on, items, tax_rate=0.0) -> Invoice"}
+  - {id: "fn:invoice_total", capability: core, title: 发票总额, summary: "(invoice) -> float"}
+  - {id: "fn:list_invoices", capability: core, title: 列出发票, summary: "(store, customer_id=None) -> list[Invoice]"}
+  - {id: "cli:customer add", capability: cli, title: 添加客户, summary: "customer add NAME EMAIL"}
+  - {id: "cli:invoice create", capability: cli, title: 创建发票, summary: "invoice create CUSTOMER_ID --issued D --due D [--tax R] --item desc:qty:price..."}
+  - {id: "cli:invoice list", capability: cli, title: 列出发票, summary: "invoice list [--customer ID]"}

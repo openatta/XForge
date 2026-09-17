@@ -1,0 +1,6 @@
+code: XF-INSPECT-010
+title: "Skill 文件不完整"
+meaning: "流程引用的 Skill 文件不存在、四节标题不全，或本地化区标记不成对。"
+remedy:
+  text: "补齐文件；四节标题固定为 判断 / 边界 / 停下 / 本项目。"
+variants: []

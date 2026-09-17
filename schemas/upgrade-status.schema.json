@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "upgrade-status",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "from",
+    "to",
+    "started_at",
+    "classified",
+    "pending"
+  ],
+  "properties": {
+    "from": {
+      "type": "string"
+    },
+    "to": {
+      "type": "string"
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "classified": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "enum": [
+          "unchanged",
+          "local-zone-only",
+          "modified",
+          "new",
+          "missing",
+          "orphan"
+        ]
+      }
+    },
+    "pending": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

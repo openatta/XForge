@@ -1,0 +1,80 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "projection",
+  "type": "object",
+  "properties": {
+    "execution": {
+      "type": "string",
+      "pattern": "^EX-[0-9]{8}-[a-z0-9]{6}$"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "stage",
+        "package"
+      ]
+    },
+    "change": {
+      "type": "string",
+      "pattern": "^C-[0-9]{8}-[a-z0-9][a-z0-9-]*$"
+    },
+    "scheme": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "stage": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "package": {
+      "type": "string",
+      "pattern": "^P-[0-9]{2,}$"
+    },
+    "workdir": {
+      "type": "string",
+      "minLength": 1
+    },
+    "opened_by": {
+      "type": "string",
+      "pattern": "^R-[0-9]{4}$"
+    },
+    "closed_by": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^R-[0-9]{4}$"
+    },
+    "allow": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "required": [
+    "execution",
+    "kind",
+    "change",
+    "scheme",
+    "stage",
+    "workdir",
+    "opened_by",
+    "closed_by",
+    "allow"
+  ],
+  "additionalProperties": false,
+  "if": {
+    "properties": {
+      "kind": {
+        "const": "package"
+      }
+    }
+  },
+  "then": {
+    "required": [
+      "package"
+    ]
+  }
+}

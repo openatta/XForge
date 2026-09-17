@@ -1,0 +1,6 @@
+code: XF-INSPECT-004
+title: "审计链未启用 HMAC"
+meaning: "没有设置 XFORGE_AUDIT_HMAC，审计链只能发现损坏，发现不了同时改写链与台账的人。提示级，不阻塞。"
+remedy:
+  text: "在受信任的环境里设置 XFORGE_AUDIT_HMAC。"
+variants: []

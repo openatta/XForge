@@ -1,0 +1,9 @@
+code: XF-ADVANCE-003
+title: "门记录过期"
+meaning: "门最近一次运行绑定的修订不等于当前输入的修订。"
+remedy:
+  command: "xforge run --gate <gate>"
+  text: "重跑这道门；不带 --no-run 的 advance 会捎带。"
+variants:
+  - seen: "只改了测试文件也会过期"
+    note: "unit-tests 的 inputs 含 test/**，这是刻意的。"

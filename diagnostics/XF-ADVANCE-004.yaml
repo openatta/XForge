@@ -1,0 +1,7 @@
+code: XF-ADVANCE-004
+title: "包依赖未满足"
+meaning: "要派工的包 depends_on 里有包还没到 integrated。"
+remedy:
+  command: "xforge state"
+  text: "先把依赖的包集成。"
+variants: []

@@ -1,0 +1,6 @@
+code: XF-INSPECT-007
+title: "引用悬空"
+meaning: "台账或记录里的 refs 指向不存在的路径、条目 id 或门运行。"
+remedy:
+  text: "改那条引用。"
+variants: []

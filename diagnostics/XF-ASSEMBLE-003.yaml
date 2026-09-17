@@ -1,0 +1,7 @@
+code: XF-ASSEMBLE-003
+title: "没有在途的升级"
+meaning: "--finish 或 --rollback 需要一次已暂存的升级，但 xforge/.upgrade/ 里没有。"
+remedy:
+  command: "xforge upgrade"
+  text: "先暂存。"
+variants: []

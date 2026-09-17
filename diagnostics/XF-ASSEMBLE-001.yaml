@@ -1,0 +1,7 @@
+code: XF-ASSEMBLE-001
+title: "升级在途"
+meaning: "xforge/.upgrade/ 存在，说明一次升级还没完成或回滚。"
+remedy:
+  command: "xforge upgrade --status"
+  text: "完成合并后 --finish，或 --rollback。"
+variants: []

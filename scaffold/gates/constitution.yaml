@@ -1,0 +1,4 @@
+name: constitution
+kind: builtin
+builtin: constitution
+inputs: ["xforge/constitution.md", "${impl}/ledgers/constitution-reply.yaml"]

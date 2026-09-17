@@ -1,0 +1,6 @@
+code: XF-ENFORCE-001
+title: "受保护路径"
+meaning: "这次写入落在证据、基线、审计链或受管脚手架上。这些只有控制面写。"
+remedy:
+  text: "通过 xforge 的命令产生这些文件，不要直接写。"
+variants: []

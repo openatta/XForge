@@ -1,0 +1,7 @@
+code: XF-ASSEMBLE-004
+title: "拆除需要点名确认"
+meaning: "xforge remove 会删掉 xforge/ 与全部宿主投影，不可逆；必须 --confirm <项目目录名>。"
+remedy:
+  command: "xforge remove --confirm <项目目录名>"
+  text: "确认后才执行。"
+variants: []

@@ -1,0 +1,6 @@
+domains:
+  - id: invoicely-api
+    title: invoicely 对外接口
+    capabilities:
+      - {id: core, path: invoicely-api/core.md}
+      - {id: cli, path: invoicely-api/cli.md}

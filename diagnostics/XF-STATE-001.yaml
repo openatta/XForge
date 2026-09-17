@@ -1,0 +1,7 @@
+code: XF-STATE-001
+title: "未指定 Change"
+meaning: "有多个未归档的 Change，命令行不猜用哪一个。"
+remedy:
+  command: "xforge state --change <id>"
+  text: "带上 --change。"
+variants: []

@@ -1,0 +1,493 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "flow",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "title": {
+      "type": "string"
+    },
+    "eligibility": {
+      "type": "object",
+      "properties": {
+        "risk": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "risk"
+      ],
+      "additionalProperties": false
+    },
+    "stages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "skill": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "human": {
+            "type": "string",
+            "enum": [
+              "body",
+              "tail",
+              "none"
+            ]
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "change",
+              "scheme"
+            ]
+          },
+          "produces": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9-]*$"
+                },
+                "path": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "side": {
+                  "type": "string",
+                  "enum": [
+                    "spec",
+                    "impl"
+                  ]
+                },
+                "needs": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "spec",
+                      "interface",
+                      "assurance"
+                    ]
+                  }
+                },
+                "read": {
+                  "type": "string",
+                  "enum": [
+                    "entries",
+                    "skeleton",
+                    "mixed"
+                  ]
+                },
+                "outline": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "minItems": 1
+                },
+                "markers": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "pattern": "^[a-z][a-z0-9-]*$"
+                      },
+                      "min": {
+                        "type": "integer",
+                        "minimum": 1
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "min"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "minItems": 1
+                },
+                "instructions": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "path",
+                "side",
+                "needs",
+                "read"
+              ],
+              "additionalProperties": false,
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "read": {
+                        "enum": [
+                          "skeleton",
+                          "mixed"
+                        ]
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "outline"
+                    ]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "read": {
+                        "const": "mixed"
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "markers"
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          "ledgers": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^(review-findings|constitution-reply|verification-receipt|delivery|exit/[a-z][a-z0-9-]*)$"
+            }
+          },
+          "gates": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$"
+            }
+          },
+          "exit": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "gate"
+                    },
+                    "ref": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9-]*$"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "ref"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "ledger"
+                    },
+                    "ref": {
+                      "type": "string",
+                      "pattern": "^(review-findings|constitution-reply|verification-receipt|delivery|exit/[a-z][a-z0-9-]*)$"
+                    },
+                    "requires": {
+                      "type": "string",
+                      "enum": [
+                        "exists",
+                        "all-resolved"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "ref",
+                    "requires"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "attested"
+                    },
+                    "ref": {
+                      "type": "string",
+                      "pattern": "^(review-findings|constitution-reply|verification-receipt|delivery|exit/[a-z][a-z0-9-]*)$"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "ref"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "approval"
+                    },
+                    "policy": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9-]*$"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "policy"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "packages"
+                    },
+                    "requires": {
+                      "const": "all-integrated"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "requires"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "unclaimed-changes"
+                    },
+                    "requires": {
+                      "const": "none"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "requires"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "rework_to": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "skill",
+          "human",
+          "produces",
+          "ledgers",
+          "gates",
+          "exit",
+          "rework_to"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "archive": {
+      "type": "object",
+      "properties": {
+        "exit": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "gate"
+                  },
+                  "ref": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9-]*$"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "ref"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "ledger"
+                  },
+                  "ref": {
+                    "type": "string",
+                    "pattern": "^(review-findings|constitution-reply|verification-receipt|delivery|exit/[a-z][a-z0-9-]*)$"
+                  },
+                  "requires": {
+                    "type": "string",
+                    "enum": [
+                      "exists",
+                      "all-resolved"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind",
+                  "ref",
+                  "requires"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "attested"
+                  },
+                  "ref": {
+                    "type": "string",
+                    "pattern": "^(review-findings|constitution-reply|verification-receipt|delivery|exit/[a-z][a-z0-9-]*)$"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "ref"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "approval"
+                  },
+                  "policy": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9-]*$"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "policy"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "packages"
+                  },
+                  "requires": {
+                    "const": "all-integrated"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "requires"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "unclaimed-changes"
+                  },
+                  "requires": {
+                    "const": "none"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "requires"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        }
+      },
+      "required": [
+        "exit"
+      ],
+      "additionalProperties": false
+    },
+    "approval_policies": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "min_approvers": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "separation_of_duties": {
+            "type": "boolean"
+          },
+          "allow": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "human",
+                "mcp"
+              ]
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "min_approvers",
+          "separation_of_duties"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "name",
+    "eligibility",
+    "stages",
+    "archive",
+    "approval_policies"
+  ],
+  "additionalProperties": false
+}

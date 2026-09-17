@@ -1,0 +1,17 @@
+name: protected-governance
+rules:
+  - effect: deny
+    tools: [write, edit, shell]
+    paths:
+      - "xforge/.audit/**"
+      - "xforge/changes/*/evidence/**"
+      - "xforge/specs/**"
+      - "xforge/interfaces/**"
+      - "xforge/scaffold/**"
+      - "xforge/manifest.yaml"
+      - "xforge/constitution.md"
+    message: "证据、基线、审计链与受管脚手架只有控制面写；通过 xforge 的命令产生它们。"
+  - effect: deny
+    tools: [shell]
+    commands: ["git push --force", "git reset --hard", "rm -rf xforge"]
+    message: "这条命令会破坏治理记录。"

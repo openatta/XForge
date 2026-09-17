@@ -1,0 +1,4 @@
+name: structure
+kind: builtin
+builtin: structure
+inputs: ["${impl}/**", "!${impl}/evidence/**", "!${impl}/ledgers/**"]

@@ -1,0 +1,6 @@
+domains:
+  - id: billing
+    title: 开票
+    capabilities:
+      - {id: customers, path: billing/customers.md}
+      - {id: invoices, path: billing/invoices.md}

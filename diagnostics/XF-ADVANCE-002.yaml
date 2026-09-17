@@ -1,0 +1,6 @@
+code: XF-ADVANCE-002
+title: "返工目标不合法"
+meaning: "--rework-to 指定的站不在本站的 rework_to 里。"
+remedy:
+  text: "只能退到流程声明允许的站。"
+variants: []

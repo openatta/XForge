@@ -1,0 +1,6 @@
+code: XF-INSPECT-001
+title: "receipt 链断"
+meaning: "某一环的 seq 不连续，或 prev / hash 与上一环对不上。这是损坏，不是分歧。"
+remedy:
+  text: "不要手改任何一环。找人定位是哪一次写入出了问题；历史只增不改。"
+variants: []

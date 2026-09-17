@@ -1,0 +1,6 @@
+code: XF-INSPECT-006
+title: "写入事务残留"
+meaning: "上一次写命令在落盘中途终止，留下了事务目录。"
+remedy:
+  text: "确认没有别的 xforge 进程在跑，删除 xforge/.tx/ 后重跑。"
+variants: []

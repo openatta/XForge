@@ -1,0 +1,6 @@
+code: XF-ADVANCE-005
+title: "交付记录署名不是该执行 id"
+meaning: "交付记录的 signer 不是这次派工铸出的执行 id。"
+remedy:
+  text: "交付记录由被派工的执行者填，signer 必须是它的执行 id。"
+variants: []

@@ -1,0 +1,4 @@
+name: xforge-executor
+description: 隔离执行一个 Stage 或一个工作包；输入是简报，输出的最后一行是三种回报之一
+tools: [read, write, edit, shell]
+prompt_file: ../skills/xforge/executor-prompt_cn.md

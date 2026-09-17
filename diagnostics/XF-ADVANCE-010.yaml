@@ -1,0 +1,6 @@
+code: XF-ADVANCE-010
+title: "方案共用工作目录"
+meaning: "这个方案要进站或派工的工作目录，已经被同一 Change 的另一个方案的在途投影占用（相同或互相包含）。执法按工作目录取在途投影，两个方案共用一棵树会让写入范围互相污染。"
+remedy:
+  text: "给这个方案单独开一个 git worktree，用 --workdir 指过去。"
+variants: []

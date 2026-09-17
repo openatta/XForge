@@ -1,0 +1,6 @@
+code: XF-MODEL-001
+title: "文件不符合形状"
+meaning: "一份规则文件或记录文件无法解析，或不符合它的 schema。诊断里给出路径与字段。"
+remedy:
+  text: "按诊断里的路径与字段改文件；schema 在 CLI 包的 schemas/ 目录。"
+variants: []

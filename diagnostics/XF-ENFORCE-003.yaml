@@ -1,0 +1,7 @@
+code: XF-ENFORCE-003
+title: "治理不可读"
+meaning: "执法读不出清单或策略集，按失败朝安全拒绝一切写入。"
+remedy:
+  command: "xforge inspect"
+  text: "修好治理文件；读文件与 xforge 的读命令仍然放行。"
+variants: []

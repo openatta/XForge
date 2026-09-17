@@ -1,0 +1,6 @@
+code: XF-INSPECT-008
+title: "投影引用的 receipt 不存在"
+meaning: "一份投影策略的 opened_by 或 closed_by 指向链上没有的 receipt。"
+remedy:
+  text: "投影是派生物，不要手改；找人定位。"
+variants: []

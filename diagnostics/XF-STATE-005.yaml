@@ -1,0 +1,7 @@
+code: XF-STATE-005
+title: "点名的材料不存在"
+meaning: "xforge show 的 ref 指向不存在的站、文档、标题、条目、门运行或台账。"
+remedy:
+  command: "xforge state --orient"
+  text: "从定向里的名字取 ref；show 只接受定向里出现过的名字。"
+variants: []

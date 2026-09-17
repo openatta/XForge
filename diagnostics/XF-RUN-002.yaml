@@ -1,0 +1,6 @@
+code: XF-RUN-002
+title: "门命令超时"
+meaning: "门命令超过 timeout_seconds 仍未结束。"
+remedy:
+  text: "看 log；必要时在门定义里调大超时。"
+variants: []

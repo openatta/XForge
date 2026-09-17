@@ -1,0 +1,7 @@
+code: XF-ADVANCE-001
+title: "出口条件不满足"
+meaning: "本站至少一条出口条件没满足。blockers 逐项列出。"
+remedy:
+  command: "xforge state"
+  text: "看 blockers，每一项都对应一个动词。"
+variants: []

@@ -1,0 +1,6 @@
+code: XF-ATTEST-001
+title: "署名不成立"
+meaning: "当前 git 身份与台账里该条的 signer 不一致，或身份读不出来。"
+remedy:
+  text: "用真实的 git 身份（user.name 与 user.email）登记；台账里的 signer 必须与之逐字相等。"
+variants: []

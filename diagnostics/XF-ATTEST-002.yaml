@@ -1,0 +1,6 @@
+code: XF-ATTEST-002
+title: "MCP 审批者未配置"
+meaning: "--via 指的 id 不在清单 xforge/manifest.yaml 的 mcp_approvers 里。"
+remedy:
+  text: 在清单里配置这个 MCP 审批者，或换一个已配置的 id。
+variants: []

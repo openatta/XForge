@@ -1,0 +1,3 @@
+name: enforce
+events: [pre-tool-use]
+command: "xforge-enforce --host ${platform}"

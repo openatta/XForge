@@ -1,0 +1,19 @@
+# dependencies and build output
+node_modules/
+dist/
+coverage/
+*.tgz
+
+# secrets and local config
+.env
+.env.*
+!.env.example
+.npmrc
+*.pem
+*.key
+
+# scratch
+test/.tmp/
+*.log
+.DS_Store
+scaffold/integrity.yaml

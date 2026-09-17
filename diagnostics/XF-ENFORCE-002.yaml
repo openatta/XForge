@@ -1,0 +1,7 @@
+code: XF-ENFORCE-002
+title: "写出投影范围"
+meaning: "这次写入不在在途投影策略允许的路径里。"
+remedy:
+  command: "xforge state"
+  text: "看这一站或这个包声明了哪些路径；要写别处得改计划并重新派工。"
+variants: []

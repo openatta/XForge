@@ -1,0 +1,7 @@
+code: XF-INSPECT-009
+title: "声明了却没人用"
+meaning: "清单 selected 里有流程从不引用的门或策略，或有流程从不引用的 Skill 文件，或完整性清单与实际文件不符。"
+remedy:
+  command: "xforge inspect --hygiene"
+  text: "删掉没人用的，或让某条流程用上它。"
+variants: []

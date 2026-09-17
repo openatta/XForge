@@ -1,0 +1,7 @@
+code: XF-MODEL-002
+title: "清单引用的资源不存在"
+meaning: "manifest.yaml 的 selected 里列了一个 xforge/scaffold/ 下不存在的流程、门或策略。"
+remedy:
+  command: "xforge inspect"
+  text: "补上那个文件，或把它从 selected 里删掉。"
+variants: []

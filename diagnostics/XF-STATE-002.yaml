@@ -1,0 +1,7 @@
+code: XF-STATE-002
+title: "找不到治理根"
+meaning: "从当前目录向上没有找到 xforge/manifest.yaml。"
+remedy:
+  command: "xforge init"
+  text: "在项目根初始化，或到项目目录里再跑。"
+variants: []

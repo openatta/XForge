@@ -1,0 +1,5 @@
+name: interface-delta
+kind: builtin
+builtin: interface-delta
+needs: [interface]
+inputs: ["xforge/changes/${change}/interfaces/**", "xforge/interfaces/**"]

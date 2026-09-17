@@ -1,0 +1,6 @@
+name: ledgers
+kind: builtin
+builtin: ledgers
+accepts: [review-findings, constitution-reply, exit, verification-receipt, delivery]
+# 不含验证收据：签名会改它，而它证明的正是这些门；门的输入不得包含收据文件本身。
+inputs: ["${impl}/ledgers/**", "!${impl}/ledgers/verification-receipt.yaml", "${impl}/evidence/receipts/**"]

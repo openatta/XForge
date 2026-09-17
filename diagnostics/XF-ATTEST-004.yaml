@@ -1,0 +1,6 @@
+code: XF-ATTEST-004
+title: "MCP 没有给出有效的审批答复"
+meaning: "MCP 服务超时、起不来、报错，或回复不合 {approver, decision} 的形状。审批保持缺失，不算否决。"
+remedy:
+  text: 看诊断里的原因；修好 MCP 服务后重跑，或由人批。
+variants: []

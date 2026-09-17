@@ -1,0 +1,5 @@
+name: spec-delta
+kind: builtin
+builtin: spec-delta
+needs: [spec]
+inputs: ["xforge/changes/${change}/specs/**", "xforge/specs/**"]

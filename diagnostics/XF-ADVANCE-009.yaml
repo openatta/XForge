@@ -1,0 +1,6 @@
+code: XF-ADVANCE-009
+title: "改动路径与工作树不符"
+meaning: "交付记录的 paths_changed 与 git diff 在工作目录里看到的不一致。"
+remedy:
+  text: "以工作树为准改交付记录。"
+variants: []

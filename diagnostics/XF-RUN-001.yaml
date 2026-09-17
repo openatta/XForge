@@ -1,0 +1,7 @@
+code: XF-RUN-001
+title: "门命令未声明"
+meaning: "一道命令门要从清单取命令，而清单 verification.commands 里没有。"
+remedy:
+  command: "xforge attest verification --command <name>=<command>"
+  text: "由人声明这个项目用什么命令验证自己。Agent 不能替它填。"
+variants: []

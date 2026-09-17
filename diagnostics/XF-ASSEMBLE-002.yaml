@@ -1,0 +1,6 @@
+code: XF-ASSEMBLE-002
+title: "没有可升级的版本"
+meaning: "清单里的脚手架版本已经等于这个 CLI 带的版本。"
+remedy:
+  text: "装新版 CLI 后再跑 xforge upgrade。"
+variants: []

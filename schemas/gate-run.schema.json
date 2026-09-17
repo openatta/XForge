@@ -1,0 +1,90 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "gate-run",
+  "type": "object",
+  "properties": {
+    "gate": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "run": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "revision": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "result": {
+      "type": "string",
+      "enum": [
+        "passed",
+        "failed"
+      ]
+    },
+    "stage": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "exit_code": {
+      "type": "integer"
+    },
+    "log": {
+      "type": "string"
+    },
+    "accepted": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "ledger": {
+            "type": "string",
+            "pattern": "^(review-findings|constitution-reply|verification-receipt|delivery|exit/[a-z][a-z0-9-]*)$"
+          },
+          "digest": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "rejected"
+            ]
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "ledger",
+          "digest",
+          "verdict"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "inputs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "required": [
+    "gate",
+    "run",
+    "at",
+    "revision",
+    "result"
+  ],
+  "additionalProperties": false
+}

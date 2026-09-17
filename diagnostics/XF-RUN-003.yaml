@@ -1,0 +1,6 @@
+code: XF-RUN-003
+title: "门失败"
+meaning: "门命令退出码非零，或内置门判定失败。"
+remedy:
+  text: "读诊断里的 tail 与 log 路径，修好后重跑。"
+variants: []

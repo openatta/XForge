@@ -1,0 +1,6 @@
+code: XF-MODEL-003
+title: "章程标题重复"
+meaning: "constitution.md 里有两个相同的二级标题。标题是 id，不能重复。"
+remedy:
+  text: "改掉其中一个标题。改标题是治理变更：此前引用该条的台账要跟着改。"
+variants: []
