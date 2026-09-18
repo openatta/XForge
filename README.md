@@ -9,7 +9,14 @@ XForge 是一个 git 原生的控制面，让 AI Agent 在项目里做的每一�
 ```
 npm install -g @xforge/cli
 cd <你的项目>
-xforge init --flow solid --platform claude      # 建 xforge/ 治理目录，投影 Skill 与执法钩子
+xforge init                                     # 探测本机装了哪些 AI 编程工具，问两句，建 xforge/ 并投影
+```
+
+`init` 在终端里会先问「投给哪些工具」与「Skill 用哪种语言」；不想被问（脚本、CI、Agent 调用）就把答案写在命令行上，
+一个选项都不给且不在终端里时按缺省来：
+
+```
+xforge init --flow solid --platform claude --language zh-CN     # 不问，直接建
 ```
 
 之后在 Claude Code 里只需要记一个名字：
@@ -91,9 +98,31 @@ XFORGE_ROOT=<主检出目录>  XFORGE_SCHEME=<方案 id>
 
 不给方案 id 就是默认方案，目录与行为和单方案项目完全一样。归档是 Change 级，先归档的方案赢。
 
-## 宿主
+## 宿主（provider）
 
-`claude`：Skill、执行者子 Agent、执法钩子全部投影。`codex`：投影 Skill，没有钩子也没有隔离，定向里会明说 `enforcement: unavailable`。
+每个 AI 编程工具是一个 **provider**，回答五件事：本机装没装、有什么能力、投影到哪、投出去的还对不对、不对怎么修回去。
+加一个工具就是加一个 provider，下面五个命令一个字不改。
+
+| provider | 投影 | 执法钩子 | 隔离 |
+| --- | --- | --- | --- |
+| `claude` | `.claude/skills/`、`.claude/agents/`、`.claude/settings.json` | 有 | 有（执行者子 Agent） |
+| `codex` | `.codex/skills/`、`AGENTS.md` 标记块 | 无 | 无（站 Skill 在主会话跑） |
+
+`state --orient` 的 `enforcement` 按**当前正在跑的那个宿主**算（`XFORGE_HOST` 指定），不按清单里有谁算：
+拦不住的时候要让 Agent 与人都知道拦不住。
+
+## 装配的五个命令
+
+```
+xforge init      建 xforge/，投影到选中的宿主
+xforge update    脚手架跟上新版：暂存 → 人合并 → --finish（收尾自动重投）
+xforge sync      把 xforge/scaffold/ 的当前状态投到宿主，并回收孤儿
+xforge doctor    装配现在还对不对：投影缺没缺、被没被手改、钩子在不在、有没有孤儿
+xforge repair    把 doctor 报的、能自动修的修掉（--dry-run 先看计划）
+```
+
+投出去的东西记在 `xforge/hosts.yaml`：`sync` 据它回收孤儿，`doctor` 据它判漂移，`remove` 据它拆除。
+与人共用的文件（`AGENTS.md`、`.claude/settings.json`）只有标记块归它管，块外的内容逐字节不动。
 
 ## 读什么
 
