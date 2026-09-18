@@ -10,10 +10,11 @@ import type { Outcome } from '../cli/envelope.js';
 import { CliError, UsageError } from '../cli/errors.js';
 import { ModelError } from '../model/errors.js';
 import { exists, readText, Transaction } from '../fs/transaction.js';
-import { BLOCK_BEGIN, claudeFiles, codexFiles, ENFORCE_COMMAND, stripMarkerBlock, type HostFile, type SkillSource } from '../hosts/index.js';
+import { isEnforceCommand } from '../providers/claude.js';
+import { BLOCK_BEGIN, hookCommandFor, knownProviderIds, providerFor, stripMarkerBlock, type HostFile, type SkillSource } from '../providers/index.js';
 import { cliVersion } from '../meta/index.js';
 import { findProjectRoot, governancePaths, type GovernancePaths } from '../model/paths.js';
-import type { Executor, Language, Manifest, Platform } from '../model/types.js';
+import type { EnvelopeDiagnostic, Executor, Language, Manifest, Platform } from '../model/types.js';
 import { readYaml, toYaml } from '../model/yaml.js';
 import { upgradeFinish, upgradeRollback, upgradeStage, upgradeStatusReport, type UpgradeContext } from './upgrade.js';
 
@@ -31,7 +32,7 @@ export async function runAssemble(verb: AssembleVerb, parsed: Parsed, cwd: strin
     case 'sync': {
       const root = await findProjectRoot(cwd, env);
       if (!root) throw new CliError('XF-STATE-002', '找不到治理根', 3, { command: 'xforge init', text: '先初始化' });
-      const platforms = flagList(parsed, 'platform') as Platform[];
+      const platforms = checkedPlatforms(parsed);
       return sync(root, platforms.length ? platforms : undefined);
     }
     case 'upgrade': {
@@ -84,7 +85,7 @@ async function remove(cwd: string, confirm: string | undefined, env: NodeJS.Proc
       const settings = JSON.parse(settingsText) as { hooks?: Record<string, Array<{ hooks?: Array<{ command?: string }> }>> };
       const pre = settings.hooks?.['PreToolUse'];
       if (pre) {
-        const kept = pre.filter((e) => !(e.hooks ?? []).some((h) => h.command === ENFORCE_COMMAND));
+        const kept = pre.filter((e) => !(e.hooks ?? []).some((h) => isEnforceCommand(h.command)));
         if (kept.length !== pre.length) {
           settings.hooks!['PreToolUse'] = kept;
           writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
@@ -132,7 +133,7 @@ async function init(cwd: string, parsed: Parsed, _env: NodeJS.ProcessEnv): Promi
     const flows = (await listNames(join(payload, 'flows'))).map((f) => f.replace(/\.yaml$/, ''));
     const gates = (await listNames(join(payload, 'gates'))).map((f) => f.replace(/\.yaml$/, ''));
     const policies = (await listNames(join(payload, 'policies'))).map((f) => f.replace(/\.yaml$/, ''));
-    const platforms = flagList(parsed, 'platform') as Platform[];
+    const platforms = checkedPlatforms(parsed);
     const language = (flagString(parsed, 'language') ?? 'zh-CN') as Language;
     const flow = flagString(parsed, 'flow') ?? 'solid';
     if (!flows.includes(flow)) throw new UsageError(`没有流程 ${flow}；可选：${flows.join('、')}`);
@@ -172,9 +173,17 @@ export async function sync(root: string, only: readonly Platform[] | undefined):
   const skills = await loadSkills(paths, manifest.language);
   const executor = await loadExecutor(paths, manifest.language);
   const files: HostFile[] = [];
-  for (const p of platforms) {
-    if (p === 'claude') files.push(...(await claudeFiles(root, skills, executor, manifest.language)));
-    else if (p === 'codex') files.push(...(await codexFiles(root, skills)));
+  const diagnostics: EnvelopeDiagnostic[] = [];
+  for (const id of platforms) {
+    const provider = providerFor(id);
+    if (!provider) {
+      throw new CliError('XF-ASSEMBLE-005', `清单里的 ${id} 不是这个版本认得的 provider`, 1, { command: 'xforge doctor', text: `认得的是：${knownProviderIds().join('、')}` });
+    }
+    const hookCommand = await hookCommandFor(paths, provider);
+    if (provider.capabilities.enforcement && hookCommand === null) {
+      diagnostics.push({ code: 'XF-ASSEMBLE-008', severity: 'warning', message: `${provider.id} 能执法，但没有 scaffold/hooks/enforce.yaml 可投：这一次没有投钩子`, remedy: { command: 'xforge doctor', text: '把钩子声明放回脚手架再 sync' } });
+    }
+    files.push(...(await provider.project({ root, skills, executor, language: manifest.language, hookCommand })));
   }
   const tx = new Transaction(root, paths.txDir);
   for (const f of files) {
@@ -182,7 +191,14 @@ export async function sync(root: string, only: readonly Platform[] | undefined):
     if (current !== f.content) tx.write(f.path, f.content);
   }
   const changed = await tx.commit();
-  return { result: { files: files.map((f) => relative(root, f.path)) }, changed, next: [] };
+  return { result: { files: files.map((f) => relative(root, f.path)) }, changed, diagnostics, next: [] };
+}
+
+/** 命令行上给的 provider 名字当场校验：打错名字是用法错（退出码 2），不是清单损坏。 */
+function checkedPlatforms(parsed: Parsed): Platform[] {
+  const given = flagList(parsed, 'platform');
+  for (const id of given) if (!providerFor(id)) throw new UsageError(`没有 provider ${id}；可选：${knownProviderIds().join('、')}`);
+  return given;
 }
 
 async function loadSkills(paths: GovernancePaths, language: Language): Promise<SkillSource[]> {

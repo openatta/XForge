@@ -6,7 +6,8 @@ export type Side = 'spec' | 'impl';
 export type ReadContract = 'entries' | 'skeleton' | 'mixed';
 export type HumanPoint = 'body' | 'tail' | 'none';
 export type ToolAction = 'read' | 'write' | 'edit' | 'shell';
-export type Platform = 'claude' | 'codex';
+/** provider 的 id：开放集（命令行设计 D14）；认不认得由注册表运行时判。 */
+export type Platform = string;
 export type Language = 'zh-CN' | 'en';
 
 export interface Manifest {

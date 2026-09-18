@@ -376,6 +376,7 @@ xforge-enforce --host claude        # 读 stdin 载荷，写 stdout 决策；退
 `CLI-19` 执法进程的模块加载集合不含 `src/verbs` 等（迁移方案 `MG-03`）；在空载荷、坏 YAML、缺清单三种输入下都输出 deny。
 `CLI-20` 冷启动到输出决策的时间在基准机上 < 80 ms（integration 层量，超出报警不阻塞；数字进 README）。
 `CLI-21` 对同一载荷，执法输出是纯函数（没有时间戳、没有随机数）。
+`CLI-39` 载荷适配按 `--host` 选：`claude` 回宿主认得的形状；没有适配器的宿主一律 deny，用通用形状回答（`失败朝安全`）。
 
 ---
 
@@ -394,6 +395,9 @@ xforge-enforce --host claude        # 读 stdin 载荷，写 stdout 决策；退
 | **修复** 不对的怎么修回去 | `repair` |
 
 加一个工具 = 加一个 provider，五个命令一个字不改。执法侧（载荷解析、决策渲染）是另一张表，在 `src/enforce/payloads/`，与这张不共享代码：执法进程的模块图不许触及装配侧（`MG-03`）。
+
+`CLI-36` 注册表是名字的唯一来源：命令行上给一个不认得的 `--platform` 是用法错（退出码 2，列出认得的）；清单里出现一个不认得的名字是 `XF-ASSEMBLE-005`（退出码 1，补救指向 `doctor`）。
+`CLI-37` `enforcement` 按当前宿主算（D8）：同一个清单里 `XFORGE_HOST=claude` 报 `available`、`XFORGE_HOST=codex` 报 `unavailable`；把钩子从宿主设置里删掉后报 `unavailable`，`sync` 补回后又是 `available`。
 
 ### 5.1 `init`
 
@@ -428,6 +432,7 @@ xforge sync [--platform <name>]... [--depth auto|shallow|full]
 - **漂移**：投影前发现某个受管生成物在上次投出去之后被人改过（校验和与台账不符），照常覆盖，并在信封 `diagnostics` 里 `XF-ASSEMBLE-006` 级别 `warning` 报出它被覆盖了。
 - 生成物带头注释「由 xforge sync 生成，改 `xforge/scaffold/` 后重跑」。
 
+`CLI-38` 执法钩子的命令串只来自 `scaffold/hooks/enforce.yaml`：改了声明再 `sync`，宿主设置里那条跟着变且只有一条（旧的被替换，不是并存）；声明不在时不投钩子，并报 `XF-ASSEMBLE-008` 的 `warning`。
 `CLI-22` `sync` 两次连跑，第二次 `changed` 为空。
 `CLI-23` 共有文件（`AGENTS.md`、`.claude/settings.json`）标记块之外的内容逐字节保留。
 
