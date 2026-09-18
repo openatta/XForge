@@ -424,6 +424,28 @@ files:
 
 `RF-16` 带本地化区的文件，校验和对「去掉 `local:begin…end` 之间内容」的文本计算，所以填写本地化区不算「项目改过」。
 
+### 3.8 宿主投影台账 `xforge/hosts.yaml`
+
+```yaml
+version: 1
+providers:
+  - id: claude
+    files:
+      - {path: .claude/skills/xforge/SKILL.md, kind: owned, checksum: sha256:…}
+      - {path: .claude/settings.json, kind: shared, checksum: sha256:…}
+  - id: codex
+    files:
+      - {path: AGENTS.md, kind: shared, checksum: sha256:…}
+```
+
+`sync` 每次投完重写它；它是派生物，删了重投一次就有，不进升级事务的作用域（它在 `scaffold/` 之外）。
+
+- `kind: owned`：整个文件是投影，孤儿时删掉，空下来的目录跟着删。
+- `kind: shared`：与人共用，只有标记块（或我们那条钩子记录）归我们，孤儿时摘掉那一块，块外逐字节保留。
+- 校验和对**文件原文**算（不像完整性清单那样去掉本地化区）：投影里的任何一处手改都要能看见。
+
+`RF-37` 台账里 provider 按 id、文件按 path 排序：同一棵树连跑两次 `sync`，台账逐字节相同（`CLI-22` 的前提）。
+
 ---
 
 ## 4. 事实级：两条基线

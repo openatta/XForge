@@ -1,7 +1,8 @@
-// design: cli §5 — CLI-36（注册表：不认得的 provider）、CLI-37（enforcement 按当前宿主算）、CLI-38（钩子命令串只来自声明）；§4 — CLI-39（载荷适配按 --host 选）。
+// design: cli §5 — CLI-36（注册表：不认得的 provider）、CLI-37（enforcement 按当前宿主算）、CLI-38（钩子命令串只来自声明）、CLI-41（投影台账与孤儿回收）；§4 — CLI-39（载荷适配按 --host 选）。
 import { beforeAll, describe, expect, it } from 'vitest';
 import { execFile } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { parse } from 'yaml';
 import { join } from 'node:path';
 import { Project, repoRoot } from '../helpers/project.js';
 
@@ -117,5 +118,68 @@ describe('the payload adapter is chosen by --host (CLI-39)', () => {
     const unknown = JSON.parse(await enforceRaw(p.root, 'zed', { tool_name: 'Read', tool_input: {}, cwd: p.root })) as { decision: string; reason: string };
     expect(unknown.decision).toBe('deny');
     expect(unknown.reason).toContain('zed');
+  });
+});
+
+describe('the projection ledger recovers orphans (CLI-41)', () => {
+  let p: Project;
+  const ledger = (): { providers: Array<{ id: string; files: Array<{ path: string; kind: string; checksum: string }> }> } =>
+    parse(readFileSync(join(p.root, 'xforge', 'hosts.yaml'), 'utf8')) as { providers: Array<{ id: string; files: Array<{ path: string; kind: string; checksum: string }> }> };
+  const entry = (id: string): Array<{ path: string; kind: string; checksum: string }> => ledger().providers.find((x) => x.id === id)?.files ?? [];
+
+  beforeAll(async () => {
+    p = await Project.create('ledger');
+    await p.write('AGENTS.md', '# mine\n\nkeep\n');
+    await p.xforge('init', '--flow', 'quick', '--platform', 'claude', '--platform', 'codex');
+  });
+
+  it('RF-37 records every projected file in a stable order, telling owned files from shared ones', () => {
+    expect(ledger().providers.map((x) => x.id)).toEqual(['claude', 'codex']);
+    const claude = entry('claude');
+    expect(claude.find((f) => f.path === '.claude/skills/xforge/SKILL.md')?.kind).toBe('owned');
+    expect(claude.find((f) => f.path === '.claude/settings.json')?.kind).toBe('shared');
+    expect(entry('codex').find((f) => f.path === 'AGENTS.md')?.kind).toBe('shared');
+    for (const f of claude) expect(f.checksum).toMatch(/^sha256:[0-9a-f]{64}$/);
+    // RF-37 provider 按 id、文件按 path 排序：台账逐字节稳定，第二次 sync 才可能没有改动。
+    expect(ledger().providers.map((x) => x.id)).toEqual([...ledger().providers.map((x) => x.id)].sort());
+    expect(claude.map((f) => f.path)).toEqual([...claude.map((f) => f.path)].sort());
+  });
+
+  it('a skill that goes away takes its projection with it, empty directory and all', async () => {
+    const dir = join(p.root, 'xforge', 'scaffold', 'skills', 'xforge-extra');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'SKILL_cn.md'), '---\nname: xforge-extra\ndescription: x\n---\n\n# x\n');
+    await p.xforge('sync');
+    expect(existsSync(join(p.root, '.claude', 'skills', 'xforge-extra', 'SKILL.md'))).toBe(true);
+    rmSync(dir, { recursive: true, force: true });
+    const r = await p.xforge('sync');
+    expect(r.exit, JSON.stringify(r.env)).toBe(0);
+    expect((r.env.result as { removed: string[] }).removed).toContain('.claude/skills/xforge-extra/SKILL.md');
+    expect(existsSync(join(p.root, '.claude', 'skills', 'xforge-extra'))).toBe(false);
+    expect(entry('claude').some((f) => f.path.includes('xforge-extra'))).toBe(false);
+    expect((await p.xforge('sync')).env.changed).toEqual([]);
+  });
+
+  it('dropping a provider from the manifest removes its files and detaches its block, byte for byte outside it', async () => {
+    const manifestPath = join(p.root, 'xforge', 'manifest.yaml');
+    writeFileSync(manifestPath, readFileSync(manifestPath, 'utf8').replace(/platforms:\n(  - .*\n)+/, 'platforms:\n  - claude\n'));
+    const r = await p.xforge('sync');
+    expect(r.exit, JSON.stringify(r.env)).toBe(0);
+    expect(existsSync(join(p.root, '.codex'))).toBe(false);
+    expect(readFileSync(join(p.root, 'AGENTS.md'), 'utf8')).toBe('# mine\n\nkeep\n');
+    expect(ledger().providers.map((x) => x.id)).toEqual(['claude']);
+  });
+
+  it('--platform leaves the other providers entries alone', async () => {
+    const manifestPath = join(p.root, 'xforge', 'manifest.yaml');
+    writeFileSync(manifestPath, readFileSync(manifestPath, 'utf8').replace('platforms:\n  - claude\n', 'platforms:\n  - claude\n  - codex\n'));
+    await p.xforge('sync');
+    expect(ledger().providers.map((x) => x.id)).toEqual(['claude', 'codex']);
+    const before = entry('codex');
+    const r = await p.xforge('sync', '--platform', 'claude');
+    expect(r.exit, JSON.stringify(r.env)).toBe(0);
+    expect((r.env.result as { removed: string[] }).removed).toEqual([]);
+    expect(entry('codex')).toEqual(before);
+    expect(existsSync(join(p.root, '.codex', 'skills', 'xforge', 'SKILL.md'))).toBe(true);
   });
 });

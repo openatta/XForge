@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "hosts",
+  "type": "object",
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "providers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": ["owned", "shared"]
+                },
+                "checksum": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                }
+              },
+              "required": ["path", "kind", "checksum"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["id", "files"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["version", "providers"],
+  "additionalProperties": false
+}

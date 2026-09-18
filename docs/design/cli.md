@@ -433,6 +433,7 @@ xforge sync [--platform <name>]... [--depth auto|shallow|full]
 - 生成物带头注释「由 xforge sync 生成，改 `xforge/scaffold/` 后重跑」。
 
 `CLI-38` 执法钩子的命令串只来自 `scaffold/hooks/enforce.yaml`：改了声明再 `sync`，宿主设置里那条跟着变且只有一条（旧的被替换，不是并存）；声明不在时不投钩子，并报 `XF-ASSEMBLE-008` 的 `warning`。
+`CLI-41` 台账驱动的孤儿回收：Skill 改名或清单里去掉一个 provider 之后 `sync`，owned 的投影文件与空下来的目录都没了、`result.removed` 列出它们，shared 文件只被摘掉标记块（块外逐字节保留）；`--platform` 只动点名那个 provider 的台账条目。
 `CLI-22` `sync` 两次连跑，第二次 `changed` 为空。
 `CLI-23` 共有文件（`AGENTS.md`、`.claude/settings.json`）标记块之外的内容逐字节保留。
 

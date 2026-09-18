@@ -43,6 +43,8 @@ export interface Provider {
   project(input: ProjectionInput): Promise<HostFile[]>;
   /** 钩子是否确实在宿主原生位置里；没有执法能力的 provider 恒 false。 */
   hookInstalled(root: string, command: string | null): Promise<boolean>;
+  /** 从共用文件里摘掉我们那块（块外逐字节保留）；不归我们管就回 null。 */
+  detach(root: string, path: string): Promise<HostFile | null>;
 }
 
 const REGISTRY: readonly Provider[] = [claudeProvider, codexProvider];

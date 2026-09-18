@@ -11,7 +11,7 @@ const AjvClass = ((ajvModule as unknown as { default?: AjvCtor }).default ?? (aj
 const addFormats = ((formatsModule as unknown as { default?: (a: Ajv) => void }).default ?? (formatsModule as unknown as (a: Ajv) => void));
 
 export const SCHEMA_NAMES = [
-  'manifest', 'flow', 'gate', 'policy', 'hook', 'executor', 'integrity',
+  'manifest', 'flow', 'gate', 'policy', 'hook', 'executor', 'integrity', 'hosts',
   'baseline-domains', 'baseline-entries', 'change', 'scope', 'work-packages',
   'ledger', 'gate-run', 'receipt', 'projection', 'audit-event', 'audit-index',
   'diagnostic', 'envelope', 'upgrade-status', 'mcp-approval',

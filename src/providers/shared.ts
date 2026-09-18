@@ -7,6 +7,8 @@ export interface SkillSource {
 export interface HostFile {
   path: string;
   content: string;
+  /** 与人共用的文件：只有标记块（或我们那条记录）归我们，孤儿时摘掉自己的那块而不是删文件。 */
+  shared?: boolean;
 }
 
 export const BLOCK_BEGIN = '<!-- XFORGE:BEGIN -->';

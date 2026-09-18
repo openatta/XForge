@@ -98,6 +98,19 @@ export interface Policy {
   rules: PolicyRule[];
 }
 
+/** 宿主投影台账（命令行设计 D16）：sync 投了什么、各自的校验和；派生物。 */
+export interface HostsLedger {
+  version: 1;
+  providers: Array<{ id: string; files: HostFileRecord[] }>;
+}
+
+export interface HostFileRecord {
+  path: string;
+  /** owned：整个文件是我们投的，孤儿时删掉；shared：与人共用，孤儿时只摘掉我们那块。 */
+  kind: 'owned' | 'shared';
+  checksum: string;
+}
+
 export interface Hook {
   name: string;
   events: Array<'pre-tool-use'>;

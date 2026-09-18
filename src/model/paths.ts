@@ -93,6 +93,7 @@ export interface GovernancePaths {
   change: (id: string, scheme?: string) => ChangePaths;
   auditChain: string;
   auditLock: string;
+  hostsLedger: string;
   upgradeDir: string;
   txDir: string;
 }
@@ -129,6 +130,7 @@ export function governancePaths(projectRoot: string): GovernancePaths {
     change: (id, scheme = DEFAULT_SCHEME) => changePaths(projectRoot, join(changes, id), scheme),
     auditChain: join(root, '.audit', 'chain.jsonl'),
     auditLock: join(root, '.audit', 'chain.lock'),
+    hostsLedger: join(root, 'hosts.yaml'),
     upgradeDir: join(root, '.upgrade'),
     txDir: join(root, '.tx'),
   };

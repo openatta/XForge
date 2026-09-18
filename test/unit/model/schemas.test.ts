@@ -37,6 +37,11 @@ const samples: Record<SchemaName, { valid: unknown; invalid: unknown }> = {
     valid: { name: 'unit-tests', kind: 'command', command: { from: 'manifest' }, inputs: ['src/**'], timeout_seconds: 600 },
     invalid: { name: 'unit-tests', kind: 'command', inputs: ['src/**'] },
   },
+  hosts: {
+    valid: { version: 1, providers: [{ id: 'claude', files: [{ path: '.claude/skills/xforge/SKILL.md', kind: 'owned', checksum: `sha256:${SHA}` }] }] },
+    // 只有 owned 与 shared 两种归属
+    invalid: { version: 1, providers: [{ id: 'claude', files: [{ path: 'x', kind: 'mine', checksum: `sha256:${SHA}` }] }] },
+  },
   policy: {
     valid: { name: 'protected-governance', rules: [{ effect: 'deny', tools: ['write'], paths: ['xforge/.audit/**'] }] },
     // RF-13：paths 与 commands 至少一项

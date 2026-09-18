@@ -28,7 +28,7 @@ export const claudeProvider: Provider = {
     }
     if (input.hookCommand) {
       const path = join(input.root, '.claude', 'settings.json');
-      out.push({ path, content: await settingsWithHook(path, input.hookCommand) });
+      out.push({ path, content: await settingsWithHook(path, input.hookCommand), shared: true });
     }
     return out;
   },
@@ -36,6 +36,15 @@ export const claudeProvider: Provider = {
   async hookInstalled(root: string, command: string | null): Promise<boolean> {
     if (!command) return false;
     return (await enforceEntries(join(root, '.claude', 'settings.json'))).some((c) => c === command);
+  },
+
+  async detach(root: string, path: string): Promise<HostFile | null> {
+    if (path !== join(root, '.claude', 'settings.json')) return null;
+    const settings = await readSettings(path);
+    const hooks = settings['hooks'] as Record<string, HookEntry[]> | undefined;
+    if (!hooks?.['PreToolUse']) return null;
+    hooks['PreToolUse'] = hooks['PreToolUse'].filter((e) => !(e.hooks ?? []).some((h) => isEnforceCommand(h.command)));
+    return { path, content: JSON.stringify(settings, null, 2) + '\n', shared: true };
   },
 };
 
