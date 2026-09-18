@@ -17,3 +17,6 @@ test/.tmp/
 *.log
 .DS_Store
 scaffold/integrity.yaml
+
+# 本地内部文稿，不进仓库
+docs/internal/
