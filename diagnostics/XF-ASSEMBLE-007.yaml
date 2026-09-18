@@ -1,0 +1,7 @@
+code: XF-ASSEMBLE-007
+title: "宿主上有孤儿投影"
+meaning: "台账里有、按现在的脚手架与清单不该再有的文件：Skill 改过名、宿主布局变过，或清单里去掉了这个 provider。留着它，模型会读到两份不一样的指令。"
+remedy:
+  command: "xforge repair"
+  text: "删掉它；确认那不是你自己放在同名位置的文件。"
+variants: []

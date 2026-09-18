@@ -1,0 +1,6 @@
+code: XF-ASSEMBLE-010
+title: "共有文件的标记块被破坏"
+meaning: "AGENTS.md 或宿主设置这类与人共用的文件里，XFORGE 标记块缺失或标记不成对。控制面不会去猜块的边界：猜错会毁掉块外的内容。"
+remedy:
+  text: "人把一对标记补回去（或整块删掉再跑 xforge sync 重投），块外的内容保持原样。"
+variants: []

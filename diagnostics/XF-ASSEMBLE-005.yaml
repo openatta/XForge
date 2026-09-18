@@ -1,0 +1,7 @@
+code: XF-ASSEMBLE-005
+title: "清单里有不认得的 provider"
+meaning: "清单 platforms 里的某个名字没有对应的宿主适配：这个控制面版本不知道该往哪投、怎么执法。"
+remedy:
+  command: "xforge doctor"
+  text: "看 doctor 报的可用 provider 列表，改清单 platforms，或升级 CLI 到支持它的版本。"
+variants: []
