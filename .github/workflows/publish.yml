@@ -1,0 +1,65 @@
+name: publish
+
+# 发布走 npm trusted publishing（OIDC）：仓库里不放任何长期 token，
+# 发布凭证在运行时由 GitHub 签发，且只对这条 workflow 有效。
+#
+# 首次使用需先在 npm 网页配置 trusted publisher：
+#   @xforge/cli → Settings → Trusted Publisher → GitHub Actions
+#     Organization or user : openatta
+#     Repository           : XForge
+#     Workflow filename    : publish.yml
+#     Allowed actions      : 必须勾选允许 `npm publish`
+#   （npm 在 2026-09-03 之后新建的配置默认只允许 `npm stage publish`，
+#     不勾这一项会以 ENEEDAUTH 失败。）
+#
+# 触发方式：推 v* tag 自动发布；或在默认分支上手动 dispatch（可指定 ref，
+# 用于补发某个已存在的 tag）。workflow_dispatch 要求本文件存在于默认分支。
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: '要发布的 ref（tag 或 commit）。留空则使用触发本次运行的 ref。'
+        required: false
+        type: string
+  push:
+    tags: ['v*']
+
+permissions:
+  id-token: write # trusted publishing 必需：允许 Actions 签发 OIDC token
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      # trusted publishing 要求 Node >= 22.14 且 npm CLI >= 11.5.1；
+      # Node 22 自带的是 npm 10.x，不够，所以这里用 24。
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false # 发布构建不用缓存
+
+      - name: Show toolchain
+        run: node --version && npm --version
+
+      # tag 触发时先校验 tag 与 package.json 版本一致，避免发错版本
+      - name: Check tag matches package.json
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$pkg" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} 与 package.json ${pkg} 不一致"
+            exit 1
+          fi
+
+      - run: npm ci
+      - run: npm test
+      # access / registry / dist-tag 由 package.json 的 publishConfig 决定；
+      # 公开仓库 + trusted publishing 会自动附带 provenance。
+      - run: npm publish
