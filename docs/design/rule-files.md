@@ -658,7 +658,7 @@ variants:                             # 事故记忆：撞上才看到
     note: unit-tests 的 inputs 含 test/**，这是刻意的。
 ```
 
-码的格式 `XF-<AREA>-<NNN>`，`AREA ∈ MODEL · STATE · INSPECT · RUN · ATTEST · ADVANCE · ENFORCE · ASSEMBLE`。
+码的格式 `XF-<AREA>-<NNN>`，`AREA ∈ MODEL · STATE · INSPECT · RUN · ATTEST · ADVANCE · ENFORCE · ASSEMBLE · DOCTOR · REPAIR`。
 
 `RF-27` 代码里出现的每个诊断码在 `diagnostics/` 有文件，反之亦然（product 层测试双向比对）。
 `RF-28` 每份字典文件的 `remedy.command` 若非空，必须是本 CLI 的合法调用形式（用参数解析器干跑校验）。

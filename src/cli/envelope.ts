@@ -1,12 +1,20 @@
-// design: cli §1.1 — 一个信封：成功与否、结果、诊断、改动了哪些文件、下一步可以做什么。
+// design: cli §1.1 — 一个信封：成功与否、结果、诊断、改动了哪些文件、下一步可以做什么；边界在 §5.4。
 import type { Envelope, EnvelopeDiagnostic } from '../model/types.js';
 import type { ExitCode } from './errors.js';
 
 export interface Io {
   cwd: string;
   env: NodeJS.ProcessEnv;
+  stdin: NodeJS.ReadableStream;
   stdout: NodeJS.WritableStream;
   stderr: NodeJS.WritableStream;
+  /**
+   * 有没有人坐在终端前（`stdin` 与 `stderr` 都是 TTY，且没有 `CI`）。判断在边界做一次，
+   * 带着往下走：测试才能喂一段按键，而各命令不必各自去问终端。见 cli §5.4。
+   */
+  interactive: boolean;
+  /** 终端宽度：交互重画按它算，宽了会折行、折了就退不对行数。 */
+  columns: number;
 }
 
 export interface Outcome<R = unknown> {

@@ -16,7 +16,7 @@
 | **D3** | 简报 = `xforge state --orient` 的信封原文 + 本站 Skill 正文 + 会话指示；三段顺序由信封已定（0a → 1 → 0b），会话指示附在最后 | 定向就是 0 级 + 1 级；不另发明一份格式，控制面输出即简报 |
 | **D4** | 执行者回报 = 输出的**最后一行**，形如 `XFORGE-REPORT: done` / `XFORGE-REPORT: blocked <token>` / `XFORGE-REPORT: needs-human <一句话>`；入口只解析最后一行 | `只报状态不报过程`；解析最后一行，前面写什么都不会被搬回来 |
 | **D5** | 执行者按方案分型，本版只有一个 `xforge-executor` | 主文档《写入范围的权威》 |
-| **D6** | 宿主：`claude` 用子 Agent 隔离；`codex` 本版无隔离，站 Skill 在主会话执行（降级） | `隔离是优化不是语义` |
+| **D6** | 宿主：`claude` 用子 Agent 隔离；`codex` 本版无隔离，站 Skill 在主会话执行（降级）—— 它的 Agent 类型声明在配置层、由 `spawn_agent` 拉起，不是一个可以投影的文件（§5） | `隔离是优化不是语义` |
 | **D7** | Apply 站两层隔离：站执行者是协调者，每个包再派一个 `xforge-executor` 带包简报 | Skill 文档《不是每一站都隔离》 |
 | **D8** | 本地化区放在第四节 `## 本项目`，标记 `<!-- xforge:local:begin -->` / `<!-- xforge:local:end -->`，出厂时标记之间为空 | 与规则文件设计 D9 同一套标记 |
 | **D9** | 站 Skill 里不出现任何命令的完整用法说明；命令由信封 `next` 与简报第 ① 段的 `call_skeleton` 给出 | `不复制控制面能陈述的事实` |
@@ -194,7 +194,9 @@ description: design 站：把提案变成技术路径、作用域与工作包计
 | 宿主 | 入口与站 Skill | 执行者 | 执法 | 隔离 |
 | --- | --- | --- | --- | --- |
 | `claude` | `.claude/skills/<name>/SKILL.md` | `.claude/agents/xforge-executor.md`（frontmatter：`name` `description` `tools`；正文 = 提示词） | `.claude/settings.json` 的 `hooks.PreToolUse` | 入口用 Agent 工具派 `xforge-executor`，`prompt` = 简报 |
-| `codex` | `.codex/skills/<name>/SKILL.md`；`AGENTS.md` 标记块内一句「用 `xforge` Skill 推进」 | 不投影 | 无 | 入口在主会话内执行站 Skill；行为相同，只是不省 |
+| `codex` | `.codex/skills/<name>/SKILL.md`（实测：项目级 Skill 会在模型可见的提示里按名与描述列出）；`AGENTS.md` 标记块内一句「用 `xforge` Skill 推进」 | 不投影 | `.codex/hooks.json` 的 `hooks.PreToolUse`（命令行设计 D15：装了还要人在 `/hooks` 里过一遍） | 入口在主会话内执行站 Skill；行为相同，只是不省 |
+
+codex 这一版**为什么不投影执行者**：它的 Agent 类型不是项目里的一个文件 —— 类型声明在配置层（`config.toml` 的 `agents.<name>.description`），由模型用 `spawn_agent` 拉起，且项目层的 `config.toml` 是用户自己的配置（模型、沙箱都在里面）。更要紧的是「派一个执行者」这句话写在入口 Skill 正文里，正文按宿主分叉，「一份 Skill 两个宿主」就破了。降级是本版的选择：行为相同，只是不省（D6）。
 
 `SK-10` 两个宿主上同一场景的产出、台账、receipt 逐字节相同（live 层：同一 seed 项目分别在两宿主跑 quick，比对 `xforge/changes/` 去掉时间戳后的内容）。
 

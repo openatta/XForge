@@ -26,6 +26,7 @@
 | **D14** | `XF_LIVE_APPROVER=human\|mcp`，缺省 human：mcp 时 setup 往清单写一个假 MCP 审批者（`test/helpers/fake-mcp.mjs`，一律批准，把收到的请求记进 `mcp-requests.log`），harness 扮演的人不再批，模拟用户告诉模型「带 --via 的补救命令直接跑」 | 命令行设计 CLI-34：MCP 批与人批同形；live 层要看模型会不会按 `state` 的补救去跑 `--via` |
 | **D9** | 结果目录 `test/.tmp/live/<engine>/<scenario>/<时间戳>/`，git 忽略；`summary.md` 是人读的，`summary.json` 是机器读的 | 与合并门无关；可反复跑 |
 | **D10** | 每场景轮数上限 15；同一 `blocked` token 连续 3 轮判停 | 防止空转烧 token |
+| **D15** | 模型进场前先跑一段**装配体检段**（`harness/controlplane.ts`）：无 flag 的 `init`（默认值）、双宿主投影、`doctor`、`repair`、`update`（在途 → 回滚）；结果进 `summary.json` 的 `control_plane`，任一段不过就**在烧模型之前**停下 | 新动词在合并门里是拿仓库的 `bin` 跑的 integration 测试；live 层要证的是它们在**工作目录里那份装好的包**与**真实的树**上同样成立。放在模型进场前：树坏了再往上跑 15 轮，得到的不是数据，是浪费 |
 
 ---
 
@@ -66,6 +67,25 @@ seed/
 
 `LT-02` 每个 oracle 先对参考实现（`reference/<scenario>/`）全绿，再对模型的树跑。product 层测试把参考实现覆盖到种子上跑 oracle，保证 oracle 本身不坏。
 
+## 2.5 装配体检段
+
+场景开跑之前（`setupProject` 之后、第一轮模型之前），harness 用**工作目录里那份装好的包**在真实的树上过一遍装配动词。四段，各自记进 `summary.json` 的 `control_plane`：
+
+| 段 | 做什么 |
+| --- | --- |
+| 默认值与探测 | 空目录里 `xforge init --flow quick`，不给 `--platform` / `--language`：本机环境一次，一个**什么都探测不到**的环境（空 `HOME`、`PATH` 上只有 `node`、会话变量一个不留）再一次 |
+| provider 抽象 | `init --platform claude --platform codex`：两个宿主各投影一套，同一张 `doctor` 检查表在两棵树上都跑 |
+| doctor 与 repair | 项目自己的树上：先 `doctor`，再手改一个投影文件，再 `doctor` → `repair` → `sync` |
+| update 与回滚 | 拿装好的 `scaffold/` 复制一份当新版载荷（改一个受管文件、加一个新文件）：`update --payload … --to …` → 在途 → 旧名 `upgrade --status` → `--rollback` |
+
+它只碰项目自己的树与 `<workdir>/drill/` 下的一次性目录，跑完树的摘要必须与跑之前相等。任一段不过：写下报告就停下，不烧模型。
+
+`LT-09` 非交互的 `init` 不给 flag 时，清单里是文档默认值（`claude` / `zh-CN`）；本机环境与「一个宿主都探测不到」的环境给出的清单**逐字段相同** —— 探测结果不参与决策（`cli §5.4` 的「探测是线索，不是判决」）。
+`LT-10` 刚装配完的树 `doctor` 六项全 `ok`、退出码 0，且跑完之后树的摘要不变（一个字节都不写）。
+`LT-11` 往一个投影文件里添一行 → `doctor` 退出码 1 且点到 `XF-DOCTOR-002`；`repair` 退出码 0、`repaired` 为 `["projection"]`；紧接着 `sync` 的 `changed` 为空，整树摘要回到改动前。
+`LT-12` 对着改过的新版载荷 `update`：分类里点名那个被改的受管文件、`added` 里有新文件，且改过的那份**新正文真的铺到了盘上**（`applied` 列的是分类为 `unchanged` 的全部文件，不是写过的，所以拿盘上作证）；在途时 `doctor` 照跑并点到 `XF-DOCTOR-005`，旧名 `upgrade` 照跑且信封带 `XF-ASSEMBLE-005`；`--rollback` 之后整树摘要回到升级前。
+`LT-13` `init --platform claude --platform codex` 在两个宿主各自的原生位置投影出 Skill 与钩子：`.claude/settings.json` 里是 `--host claude` 的那条命令、`.codex/hooks.json` 里是 `--host codex` 的那条，`AGENTS.md` 标记块内是 codex 的入口说明；这棵树上的 `doctor` 除「宿主在场」（`XF-DOCTOR-001`，取决于本机装了什么）之外全 `ok`。
+
 ## 3. 驱动
 
 一轮 = 一次 `claude -p`：
@@ -94,10 +114,11 @@ claude -p "<第一轮：需求 + 用 /xforge 推进；之后：/xforge>" \
 {"engine":"claude","scenario":"solid","language":"zh-CN","model":"<result 里报的>",
  "outcome":"archived","turns":7,"reworks":0,"oracle":{"passed":9,"failed":0},"inspect_exit":0,
  "tokens":{"input":…, "output":…, "cache_read":…, "cache_creation":…, "per_turn":[…]},
+ "control_plane":{"defaults":{…},"providers":{…},"doctor":{…},"repair":{…},"update":{…},"tree_restored":true,"ok":true},
  "observations":{"show_calls":5,"direct_change_reads":0,"design_full_reads":1,"enforce_denies":0,"blocked_tokens":["…"]}}
 ```
 
-判定：`outcome`、`reworks` 与场景期望精确比较；oracle `failed == 0`；`inspect_exit == 0`。观测项只报不判（`CLI-29`、`SK-11` 在这里取数）。
+判定：`outcome`、`reworks` 与场景期望精确比较；oracle `failed == 0`；`inspect_exit == 0`。观测项只报不判（`CLI-29`、`SK-11` 在这里取数）。装配体检段在模型进场前就判过了（§2.5）：它不过的运行根本没有 summary，`control_plane` 是留给人事后看的记录。
 
 `LT-05` `summary.md` 里没有货币字段。
 
@@ -107,6 +128,7 @@ claude -p "<第一轮：需求 + 用 /xforge 推进；之后：/xforge>" \
 test/live/
   harness/   env.ts（引擎环境）  setup.ts（种子 + init + 基线）  engine.ts（一轮 claude -p 与落盘）
              human.ts（D4）  oracle.ts  faults.ts  score.ts  run.ts（循环）
+             controlplane.ts（D15 装配体检段：默认值、双宿主、doctor、repair、update）
   scenarios/invoicely/  seed/  requests/  reference/{quick,solid,major}/  oracle/test_{quick,solid,major}.py
   invoicely.live.ts    # 读 XF_LIVE_ENGINE / XF_LIVE_SCENARIO / XF_LIVE_LANGUAGE / XF_LIVE_GOVERNANCE / XF_LIVE_DRIVER
 ```
@@ -123,4 +145,7 @@ test/live/
 | `CLI-29` `show` ≥ 直接读 | `observations.show_calls` / `direct_change_reads` |
 | `SK-10` 两宿主产出相同 | 本版只跑 claude；codex 留待其宿主可非交互驱动 |
 | `SK-11` 设计文档整读 ≤ 1 | `observations.design_full_reads` |
+| `CLI-24` `update` 的逐文件分类与本地化区移植 | 真实装好的载荷上再跑一遍，含在途与回滚（§2.5，`LT-12`） |
+| `CLI-39`–`CLI-45` `doctor` / `repair` 的断言 | 同一张检查表在真实装好的包与真实的树上（§2.5，`LT-10` `LT-11`） |
+| `CLI-46`–`CLI-48` codex 的投影与钩子 | 两个宿主各投影一套，同一张检查表各跑一遍（§2.5，`LT-13`） |
 | `隔离是优化不是语义` | 子 Agent 转录在 `sessions/` 里可核对每站是否独立会话 |

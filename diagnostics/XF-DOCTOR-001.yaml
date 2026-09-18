@@ -1,0 +1,8 @@
+code: XF-DOCTOR-001
+title: 选中的宿主本机探测不到
+meaning: 清单 platforms 里的宿主，用会话变量、用户级配置目录、PATH 三路证据都没找到。投影已经写好，但这台机器上没有人会去读它。
+remedy:
+  text: 装上那个宿主，或者在清单里把它去掉（`xforge init` 之后手改 platforms）。
+variants:
+  - seen: 只在容器 / CI 里出现
+    note: 镜像里没装宿主是正常的；本机开发时才有意义。

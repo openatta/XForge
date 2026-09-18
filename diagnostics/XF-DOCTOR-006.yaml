@@ -1,0 +1,7 @@
+code: XF-DOCTOR-006
+title: 脚手架版本与载荷不同
+meaning: 清单里的 scaffold.version 不等于本次载荷版本。只是提示，不改退出码 —— 项目可以刻意停在旧脚手架上。
+remedy:
+  command: xforge update
+  text: 想跟上的话；先看 --status 的分类结果再决定。
+variants: []

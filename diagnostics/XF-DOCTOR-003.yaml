@@ -1,0 +1,10 @@
+code: XF-DOCTOR-003
+title: 声明的执法能力兑不了现
+meaning: 宿主声明了执法钩子，但这次没装上或跑不起来。两种：钩子命令不在 PATH 上，或者钩子没能装进宿主共享文件（那个文件读不懂——我们不覆盖别人写的文件，投影里就没有这条命令）。两种都让 state --orient 报的 enforcement available 变成空话：写入范围没人拦。
+remedy:
+  text: 把 CLI 装到宿主进程也能看到的 PATH 上（例如 npm i -g @xforge/cli），或改用绝对路径的钩子命令；诊断点名的那份宿主共享配置文件读不懂的，先修好它再 xforge sync。
+variants:
+  - seen: 从源码跑 CLI 时
+    note: 直接 node bin/xforge.js 跑起来的会话里，xforge-enforce 通常不在 PATH 上。
+  - seen: 宿主共享文件被别的手改坏了
+    note: .claude/settings.json 或 .codex/hooks.json 里有语法错误时，投影一个字节都不动它，钩子因此没装进去。

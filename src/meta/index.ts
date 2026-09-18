@@ -26,13 +26,22 @@ export const HELP = `xforge <命令> [选项]
       advance --archive                                     归档
 装配  init [--flow <n>] [--platform claude|codex]... [--language zh-CN|en]
       sync [--platform <n>]...
-      upgrade                                              暂存：快照、铺开新版、逐文件分类；项目改过的留在 xforge/.upgrade/incoming/
-      upgrade --status | --finish | --rollback             在途状态 / 完成（推进版本、写审计）/ 从快照恢复
+      update                                               换脚手架载荷：快照、铺开新版、逐文件分类；项目改过的留在 xforge/.upgrade/incoming/
+      update --status | --finish | --rollback              在途状态 / 完成（推进版本、写审计）/ 从快照恢复
+      doctor [--platform <n>]...                           体检这台机器与这次装配：宿主在不在、投影新不新鲜、钩子装没装上、骨架完不完整
+      repair [--platform <n>]...                           修能修的：重投影、从载荷补回缺的受管文件；其余原样报出来，说清为什么不动
       remove --confirm <项目目录名>                          拆除：删 xforge/ 与全部宿主投影，不可逆
 元    help · version · explain <code>
 
 通用  --text 只改呈现；退出码 0 成功 / 1 不能 / 2 用法 / 3 损坏或治理不可读
+
+upgrade 是 update 的旧名，仍可用，会多一条 deprecation 诊断。
 `;
+
+/** 这支 CLI 自带的载荷目录（包根下的 `scaffold/`）：版本从 `package.json` 来，载荷从它旁边来。 */
+export function payloadDir(): string {
+  return fileURLToPath(new URL('../../scaffold/', import.meta.url));
+}
 
 export function cliVersion(): string {
   const pkg = JSON.parse(readFileSync(fileURLToPath(new URL('../../package.json', import.meta.url)), 'utf8')) as { version: string };

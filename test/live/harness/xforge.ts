@@ -26,10 +26,10 @@ export interface XfResult {
   stderr: string;
 }
 
-export async function xforge(cwd: string, args: string[]): Promise<XfResult> {
+export async function xforge(cwd: string, args: string[], env?: NodeJS.ProcessEnv): Promise<XfResult> {
   let result: XfResult;
   try {
-    const { stdout, stderr } = await run('node', [binPath, ...args], { cwd, env: { ...process.env }, maxBuffer: 64 * 1024 * 1024 });
+    const { stdout, stderr } = await run('node', [binPath, ...args], { cwd, env: env ?? { ...process.env }, maxBuffer: 64 * 1024 * 1024 });
     result = { exit: 0, env: parse(stdout), stderr };
   } catch (error) {
     const e = error as { code?: number; stdout?: string; stderr?: string };

@@ -1,0 +1,9 @@
+code: XF-DOCTOR-004
+title: 脚手架不完整
+meaning: scaffold/integrity.yaml 里的文件缺了或在本地化区之外被改过；或者载荷里该有的钩子声明、清单语言对应的 Skill 源文件不在。缺 Skill 源文件时 sync 不会报错，它只是不投影那个 Skill。
+remedy:
+  command: xforge update
+  text: 用新版载荷补齐；自己改过的文件先备份。
+variants:
+  - seen: 只丢了 SKILL_cn.md
+    note: 清单语言是 zh-CN 时，那个 Skill 会静默地从宿主里消失 —— 这是这个码存在的理由。

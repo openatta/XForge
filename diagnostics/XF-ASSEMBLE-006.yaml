@@ -1,0 +1,7 @@
+code: XF-ASSEMBLE-006
+title: "交互被打断了"
+meaning: "在装配的提问里按了 Ctrl-C / Esc（或输入结束）。取消是人的决定，不是错误 —— 但也没答完，所以清单没建。"
+remedy:
+  command: "xforge init --platform claude"
+  text: "想好了再答，或者一开始就把答案用 flag 说出来。"
+variants: []

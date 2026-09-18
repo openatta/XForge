@@ -8,7 +8,7 @@ import { validate } from '../../src/model/schemas.js';
 import type { Diagnostic } from '../../src/model/types.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const CODE = /XF-(?:MODEL|STATE|INSPECT|RUN|ATTEST|ADVANCE|ENFORCE|ASSEMBLE)-\d{3}/g;
+const CODE = /XF-(?:MODEL|STATE|INSPECT|RUN|ATTEST|ADVANCE|ENFORCE|ASSEMBLE|DOCTOR|REPAIR)-\d{3}/g;
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {

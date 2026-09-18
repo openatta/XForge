@@ -9,6 +9,8 @@ describe('remove', () => {
     const p = await Project.create('remove');
     await p.write('package.json', '{"name":"r"}\n');
     await p.write('AGENTS.md', '# mine\n\nkeep\n');
+    // 别人自己的钩子：我们往里加自己的那条，也要原样留下他的。
+    await p.write('.codex/hooks.json', JSON.stringify({ hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: '/usr/bin/true', timeout: 5 }] }] } }, null, 2) + '\n');
     p.commit('seed');
     await p.xforge('init', '--flow', 'quick', '--platform', 'claude', '--platform', 'codex');
     expect(readFileSync(join(p.root, 'AGENTS.md'), 'utf8')).toContain('<!-- XFORGE:BEGIN -->');
@@ -26,6 +28,8 @@ describe('remove', () => {
     expect(existsSync(join(p.root, '.codex', 'skills', 'xforge-design'))).toBe(false);
     const settings = JSON.parse(readFileSync(join(p.root, '.claude', 'settings.json'), 'utf8')) as { hooks?: { PreToolUse?: unknown[] } };
     expect(settings.hooks?.PreToolUse ?? []).toEqual([]);
+    const hooks = JSON.parse(readFileSync(join(p.root, '.codex', 'hooks.json'), 'utf8')) as { hooks?: { PreToolUse?: Array<{ hooks: Array<{ command: string }> }> } };
+    expect(hooks.hooks?.PreToolUse?.map((e) => e.hooks.map((h) => h.command))).toEqual([['/usr/bin/true']]);
     expect(readFileSync(join(p.root, 'AGENTS.md'), 'utf8')).toBe('# mine\n\nkeep\n');
     expect(existsSync(join(p.root, 'package.json'))).toBe(true);
   });

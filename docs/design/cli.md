@@ -11,17 +11,21 @@
 
 | # | 决定 | 理由 |
 | --- | --- | --- |
-| **D1** | 五动词的命令名：读 `state`（位置）与 `show`（点名取材料，读的第二种形式）、验 `inspect`、产 `run`、证 `attest`、进 `advance`；装配 `init` `sync` `upgrade`；执法 `xforge-enforce`（独立可执行）；元信息 `help` `version` `explain` | 一个动词一个词；`inspect` 避开与站名 `check`/`verify` 撞车。`show` 单独成词是为了调用方便，性质仍是读：不写盘、随时可调、答案只随树变 |
+| **D1** | 五动词的命令名：读 `state`（位置）与 `show`（点名取材料，读的第二种形式）、验 `inspect`、产 `run`、证 `attest`、进 `advance`；装配 `init` `sync` `update`；执法 `xforge-enforce`（独立可执行）；元信息 `help` `version` `explain` | 一个动词一个词；`inspect` 避开与站名 `check`/`verify` 撞车。`show` 单独成词是为了调用方便，性质仍是读：不写盘、随时可调、答案只随树变 |
 | **D2** | 默认输出 JSON 信封；`--text` 只改呈现 | 主要读者是 Agent |
 | **D3** | 退出码：`0` 成功；`1` 成功执行但结论是「不能」（被挡、门失败、条件不满足）；`2` 用法错误；`3` 记录损坏或治理不可读（`失败朝安全`） | Agent 与 CI 都要靠退出码分流，三类补救不同 |
 | **D4** | `--change <id>` 缺省时：恰有一个未归档 Change 就用它，否则 `XF-STATE-001` 要求指定 | 单 Change 的项目零参数；多 Change 不猜 |
 | **D5** | `--scheme <id>` 选实现方案：不给就是默认方案，行为与目录布局与没有这个特性时完全一样；给了，实现侧的一切落在 `changes/<id>/<scheme>/`，规格侧共享。解析顺序 `--scheme` → 环境变量 `XFORGE_SCHEME` → 缺省。方案 id 是小写字母开头的字母数字与连字符，不能叫 `default`，不能撞 `specs`/`interfaces`/`ledgers`/`evidence`；第一次用 `state --scheme x` 就等于创建，位置在流程第一站，规格侧产出对它 `not-owed`，一次 `advance` 就到第一个实现侧的站 | 主文档《实现方案》；XIPD 的双路开发靠它 |
 | **D6** | `state` 默认只回 0b；`state --orient` 回 0a + 1 + 0b（按 0a → 1 → 0b 排） | 控制面无会话状态，「第一次」由调用方决定 |
 | **D7** | 站级审批与终局审批的 `attest approve` 记录事件，不移动；事件记下当时的站修订，批完再改产出审批作废（`approval-stale`）。交付即集成：`advance package --deliver` 在验证门当前且通过时直接落 `integrated`，没有人确认这一格（2026-09-17 用户决定：生成量太大，逐包人确认不现实，责任归到审批点；终局形态是 MCP 审批） | 主文档《两台状态机》《人的介入点》 |
-| **D8** | 宿主执法适配第一版只有 `claude`；没有钩子机制的宿主上，`sync` 投影 Skill 与执行者，`state --orient` 的 0a 段带 `enforcement: unavailable` | 拦不住时要让 Agent 与人都知道拦不住，而不是假装拦得住 |
+| **D8** | 宿主执法按宿主分派（`claude` 与 `codex` 各一份协议文件，§4）；**宿主不支持的动作朝安全那一边倒** —— codex 的 `PreToolUse` 没有「问」，`ask` 在那里降级成 `deny`。没有钩子机制的宿主上，`sync` 只投影 Skill 与执行者，`state --orient` 的 0a 段带 `enforcement: unavailable` | 拦不住时要让 Agent 与人都知道拦不住，而不是假装拦得住 |
 | **D9** | 卫生检查（声明了却没人用）作为 `inspect --hygiene` 存在，并由 `advance --archive` 在终局前跑一次 | 给它一个触发点，又不让顺利的 Change 主动调 `inspect` |
 | **D10** | 拆除是独立命令 `xforge remove --confirm <project-name>`（`project-name` 是项目根目录名），删 `xforge/` 与全部宿主投影（Skill、执行者、钩子、`AGENTS.md` 标记块）；不带或带错确认是 `XF-ASSEMBLE-004`；日常命令没有这个开关 | 破坏性动作要显式确认 |
 | **D11** | 「验」对 Skill 只做存在性检查（文件在、四节标题在、本地化区标记成对） | `不读散文的意思`；覆盖判定在 Skill 设计里由「本站承诺」条目化后再考虑 |
+| **D12** | 「TTY + 非 CI + 没给相应的 flag」时 `init` 才探测本机宿主并交互勾选；其余情形一律不探测，用文档默认值。安装器自己的话用英文 | 探测是给人看的线索，不是策略：控制面不因本机装了什么而改变结果，CI 才可复现。交互只发生在有人按键的地方；英文是因为这些话出现在语言选择之前 |
+| **D13** | 「装的事」与「记的事」分成两个命令：`doctor` 体检这台机器与这次装配（宿主在不在、投影新不新鲜、声明的能力兑没兑现、骨架完不完整、有没有残留），只读；找到的问题按 `blocking` 报（装配坏了不是「也许」是「不行」），版本落后是 `info`。记录本身的问题仍归 `inspect`（`XF-INSPECT-*`，退出码 3） | 两件事的补救完全不同：一个重装，一个改记录。混在一个命令里，退出码就没法分流，Agent 也只能猜该干嘛 |
+| **D14** | `repair` 只做「重写一遍就对」的事：重投影、从载荷补回**缺失**的受管文件；宿主不在场、钩子跑不起来、升级在途、**被改过的**骨架正文一概不动，原样报出来。修完重跑检查，不看结果不算修好 | 会覆盖人写过的正文、会删文件、会改环境的事都不是「修复」，是决定；而一次没落盘的修复比不修更坏 —— 调用方会以为好了 |
+| **D15** | codex 的钩子（`.codex/hooks.json` 的 `hooks.PreToolUse`）照投，`capabilities.enforcement` 记 `hook`；但「装了」与「会跑」之间隔着一步人的动作 —— **非托管钩子要在 `/hooks` 里过一遍才生效**（信任记在钩子定义的哈希上，改了就重新审），项目 `.codex/` 层没被信任时项目钩子根本不加载。这一步写进 `AGENTS.md` 标记块那句话里，不留给 `state --orient` 一句 `available` 去骗人 | 这个机制确实在（0.147 上 `apply_patch` 与 `Bash` 的 deny 实测拦得住），能力记 `none` 是另一种谎；但让人以为装完就拦住了同样是谎 |
 
 ---
 
@@ -353,22 +357,31 @@ xforge advance --archive
 
 ```
 xforge-enforce --host claude        # 读 stdin 载荷，写 stdout 决策；退出码恒 0（决策在输出里）
+xforge-enforce --host codex
 ```
 
 算法：
 
-1. 解析宿主载荷 → `{tool, action ∈ read|write|edit|shell, paths[], command?, cwd}`。解析失败 → **deny**（`失败朝安全`）。
+1. 按 `--host` 分派到宿主协议（`src/enforce/hosts/`，一个宿主一个文件）：解析宿主载荷 → `{tool, action ∈ read|write|edit|shell, paths[], command?, cwd}`。解析失败 → **deny**（`失败朝安全`）；`--host` 认不出 → **deny**，理由里点名那个宿主。
+   - `claude`：`tool_name` + `tool_input.file_path`；`Write`→write，`Edit`/`MultiEdit`/`NotebookEdit`→edit，`Bash`→shell，其余读工具→read。
+   - `codex`：同一个 `PreToolUse` 载荷里 `tool_name` 是 `Bash`（命令在 `tool_input.command`）或 `apply_patch`（**补丁正文**在 `tool_input.command`）—— `apply_patch` 的写入目标从正文的 `*** Add|Update|Delete File:` 与 `*** Move to:` 行里取，取不到任何一个 → 解析失败（一次看不见目标的写入不许悄悄过去）。两者都进下面同一套求值；`apply_patch` 归 `edit`。
+   - 认不出的工具（MCP 工具、宿主将来新增的）归 `other`：策略只能选 `read|write|edit|shell` 四类，`other` 因此谁也选不中 —— 执法的边界就是这四类，别把它读成「什么都拦得住」。
 2. 从 `cwd` 向上找治理根；找不到 → **allow**（不是 XForge 项目）。
 3. 读清单 `selected.policies` 与每份策略文件；任一读不出 → **deny**，附 `XF-ENFORCE-003` 与出路（§4.1）。
 4. 分发策略求值（规则文件设计 §3.3）；`deny` 则回。
 5. 若 `action ∈ write|edit` 且路径在项目根之内、`xforge/` 之外（项目外的路径不归投影管）：收集 `changes/*/evidence/projections/*.yaml` 与 `changes/*/<scheme>/evidence/projections/*.yaml` 中 `closed_by == null` 且 `workdir` 等于 `cwd` 或是 `cwd` 的祖先的投影；有 → 路径必须匹配它们 `allow` 的交集，否则 **deny** `XF-ENFORCE-002`；无 → 不施加。
-6. 输出宿主格式（claude：`{"hookSpecificOutput": {"permissionDecision": "deny", "permissionDecisionReason": "…"}}`）。
+6. 输出宿主格式，**放行 = 什么都不说**（退出码 0 + 空 stdout = 这次调用照常走它自己的审批与沙箱）：claude 与 codex 的 `PreToolUse` 拒的形状相同，`{"hookSpecificOutput": {"permissionDecision": "deny", "permissionDecisionReason": "…"}}`。
+   - **一个钩子的本分是拦与升级，不是放行**：claude 的 `permissionDecision: allow` 会跳过它自己的审批提示（用户的 deny / ask 规则照样生效，但默认会问一句的那些就不问了）—— 装上执法不该顺手把人的默认提醒关掉。所以两个宿主放行时都什么都不说。
+   - **`ask` 是宿主能力，不是策略效果**：codex 的 `PreToolUse` 没有「问」这一步 —— 回 `permissionDecision: ask` 会被它记成钩子失败然后**继续执行**，等于静默放行。所以在那里 `ask` 降级成 `deny`，理由里写明这一步要人点头（`拦不住别假装拦得住`）。claude 有 `ask`，照原样回。
 
 ### 4.1 出路
 
-治理不可读时仍放行的调用（`拒绝要留出路`）：`read` 动作；`shell` 命令且命令是 `xforge help|version|explain|state|show|inspect|init|sync` 之一（精确匹配首词与子命令；`inspect` 在列是因为 `XF-ENFORCE-003` 的出路就是它；不含 `run` `attest` `advance` `upgrade`）。
+治理不可读时仍放行的调用（`拒绝要留出路`）：`read` 动作；`shell` 命令且命令是 `xforge help|version|explain|state|show|inspect|init|sync` 之一（精确匹配首词与子命令；`inspect` 在列是因为 `XF-ENFORCE-003` 的出路就是它；不含 `run` `attest` `advance` `update`）。
 
 `CLI-19` 执法进程的模块加载集合不含 `src/verbs` 等（迁移方案 `MG-03`）；在空载荷、坏 YAML、缺清单三种输入下都输出 deny。
+`CLI-46` codex 载荷走同一套求值：`apply_patch` 正文里每个 `*** Add|Update|Delete File:` / `*** Move to:` 目标都当写入目标（受保护路径与在途投影都按它判），`Bash` 与 claude 同路；`--host` 认不出、`apply_patch` 正文里一个目标也取不到，两种都 deny。
+`CLI-47` codex 上 `ask` 降级成 `deny`（理由里写明要人点头）；claude 上仍是 `ask`。
+`CLI-49` 放行时两个宿主的 stdout 都是空的（退出码 0）：执法只否决或升级，不放行 —— 别把宿主自己的审批提示关掉。
 `CLI-20` 冷启动到输出决策的时间在基准机上 < 80 ms（integration 层量，超出报警不阻塞；数字进 README）。
 `CLI-21` 对同一载荷，执法输出是纯函数（没有时间戳、没有随机数）。
 
@@ -384,6 +397,8 @@ xforge init [--flow <name>] [--platform <name>]... [--language zh-CN|en]
 
 从零建 `xforge/`：复制载荷到 `scaffold/`（含 `integrity.yaml`）、生成清单（治理开关默认关、默认流程 `solid`）、空章程模板、空基线索引。已初始化时幂等：只补缺失文件，不覆盖，不改清单。然后执行一次 `sync`。
 
+清单已经存在时（重入）不问任何问题：没有要做的决定，提问只是噪音。
+
 ### 5.2 `sync`
 
 ```
@@ -395,29 +410,163 @@ xforge sync [--platform <name>]... [--depth auto|shallow|full]
 | 宿主 | 投影 |
 | --- | --- |
 | `claude` | `.claude/skills/<skill>/SKILL.md`（按清单 `language` 选源）；`.claude/agents/xforge-executor.md`；`.claude/settings.json` 的 `hooks.PreToolUse` 加 `xforge-enforce --host claude`（标记块内） |
-| `codex` | `.codex/skills/<skill>/SKILL.md`；`AGENTS.md` 标记块内的入口说明；无钩子（D8） |
+| `codex` | `.codex/skills/<skill>/SKILL.md`；`AGENTS.md` 标记块内的入口说明；`.codex/hooks.json` 的 `hooks.PreToolUse` 加 `xforge-enforce --host codex`（D15：装了还要人在 `/hooks` 里过一遍） |
 
 生成物带头注释「由 xforge sync 生成，改 `xforge/scaffold/` 后重跑」；手改被下一次 sync 覆盖并在信封 `diagnostics` 里 `warning` 报出。
 
+两份钩子落点的**共有文件**（`.claude/settings.json`、`.codex/hooks.json`）按同一个规矩办：能解析成 JSON 对象就在里面按命令串增删我们的钩子条目，**解析不了就一个字节都不动** —— 那是别人写的文件，覆盖它等于把里面的钩子删了。不动它，投影里就没有我们的钩子命令，`doctor` 的能力检查（§5.5 第 3 项）会说这件事。
+
 `CLI-22` `sync` 两次连跑，第二次 `changed` 为空。
-`CLI-23` 共有文件（`AGENTS.md`、`.claude/settings.json`）标记块之外的内容逐字节保留。
+`CLI-23` 共有文件（`AGENTS.md`、`.claude/settings.json`、`.codex/hooks.json`）标记块之外的内容逐字节保留。
+`CLI-48` 宿主共享钩子文件（`.claude/settings.json`、`.codex/hooks.json`）解析不了时，投影原样保留、一个字节不写；此时该宿主声明了执法钩子却没装上，`doctor` 报 `XF-DOCTOR-003`。
 
-### 5.3 `upgrade`
+### 5.3 `update`
 
 ```
-xforge upgrade            # 暂存：快照 scaffold/ → .upgrade/snapshot/，铺开新版到 .upgrade/incoming/，逐文件分类
-xforge upgrade --status   # 在途状态与分类结果
-xforge upgrade --finish   # 推进 scaffold.version，写 scaffold.upgraded 事件（含 kept 列表），删 .upgrade/
-xforge upgrade --rollback # 从快照整树恢复，删 .upgrade/
+xforge update            # 暂存：快照 scaffold/ → .upgrade/snapshot/，铺开新版到 .upgrade/incoming/，逐文件分类
+xforge update --status   # 在途状态与分类结果
+xforge update --finish   # 推进 scaffold.version，写 scaffold.upgraded 事件（含 kept 列表），删 .upgrade/
+xforge update --rollback # 从快照整树恢复，删 .upgrade/
 ```
+
+`upgrade` 是 `update` 的旧名（`1.0.1` 已发布，改名不能把用户绊倒）：照跑，信封末尾多一条 `XF-ASSEMBLE-005` 的 deprecation 诊断。命令名只有 `update` 进帮助文本与诊断的 `remedy`。
 
 分类：`unchanged`（校验和 = 旧完整性清单）→ 直接替换；`local-zone-only`（`RF-16`）→ 移植；`modified`（项目改过区域之外）→ 留在 `incoming/`，信封列出，人合并；`new` → 复制但不加进清单 `selected`。
 
-`.upgrade/` 存在时，除 `upgrade --*`、`state`、`show`、`inspect`、`help`、`version`、`explain` 之外的命令拒绝（`XF-ASSEMBLE-001`），哨兵可见。
+`.upgrade/` 存在时，除 `update --*`、`state`、`show`、`inspect`、`doctor`（只读）、`help`、`version`、`explain` 之外的命令拒绝（`XF-ASSEMBLE-001`），哨兵可见。
 没有可升级的版本是 `XF-ASSEMBLE-002`；没有在途升级却 `--finish` / `--rollback` 是 `XF-ASSEMBLE-003`。`--payload <dir>` 与 `--to <version>` 可指定新版载荷与目标版本（离线升级与测试用）。
 新版里没有、项目里还有的文件分类为 `orphan`，留着不动，由人决定。`--finish` 的审计事件记 `kept`：留给人的文件里最终没有采用新版正文的那些。
 
 `CLI-24` 对一个填了本地化区的 Skill 文件升级：新版正文 + 旧本地化区，逐字节可预测；对改了正文的文件：留 `incoming/`，不覆盖。
+
+### 5.4 探测与交互选择
+
+`init` 要建清单，清单里有两个值只能由人来定：装到哪些宿主、Skill 用哪种语言。它们的来源按「有没有人坐在终端前」分岔：
+
+| 情形 | 值从哪来 |
+| --- | --- |
+| `stdin` 与 `stderr` 都是 TTY，且没有 `CI` 环境变量 | 交互：探测本机装了哪些宿主，列出来让人勾 |
+| 其余（管道、CI、Agent 调用） | 不询问也不探测：用 flag，没有 flag 就用文档默认值（`claude` / `zh-CN`） |
+| 给了 `--platform` 与 `--language` | 不问：flag 是先把答案说出来的路 |
+
+**探测是线索，不是判决。** 三路证据，从强到弱：会话环境变量（在谁的会话里跑，谁就确定在场）、用户级配置目录（`~/.claude`、`~/.codex`）、`PATH` 上的可执行文件。探测结果**只用来画那张列表**，不参与任何决策 —— 非交互路径不因本机装了什么而改变结果，同一份 CI 配置在哪台机器上都得到同一份清单。
+
+列表（先是宿主，多选；再是语言，单选）。八十列上长这样 —— 备注一行装得下就同行，装不下就缩进到下一行，不切半句：
+
+```
+? Select the hosts to install into   (↑/↓ move · space toggle · enter confirm)
+❯ [✓] Claude Code    found: claude on PATH
+      Skills, an isolated executor, and the enforcement hook.
+  [ ] Codex CLI      not detected
+      Skills, an AGENTS.md entry point and the enforcement hook; no isolated executor here.
+```
+
+- 探测不到的项**灰掉且不可勾选**（`ESC[2m`；`NO_COLOR` 下退化成纯文本），光标也停不上去。
+- 备注跟在标签后面：一句话说清这个宿主投影什么、不投影什么（`HostProvider.note`）。
+- **一个宿主都没勾，回车不往下走**：`At least one tool must be selected.` 一个都没探测到时理由换成 `Nothing detected. Install one, or pass --platform <name> to choose anyway.` —— 出路写在提示里，因为这是同一个死胡同。
+- 语言一项必答，光标停在清单当前值上。
+- 安装器自己的话一律**英文**：它出现在语言选择之前，没有可依据的语言。
+- 列表画在 **`stderr`**：`stdout` 只有一个东西 —— 信封。
+- `Ctrl-C` / `Esc` 取消，`XF-ASSEMBLE-006`，退出码 1；取消是人的决定，不是错误。
+
+`CLI-36` 交互答完后写进清单的 `platforms` / `language` 与用 flag 给出时逐字节相同 —— 交互只改「值从哪来」，不改值本身。
+`CLI-37` 全程不往 `stdout` 写一个字节（`xforge init > out.json` 拿到的仍是干净信封）。
+`CLI-38` `NO_COLOR` 下重绘不出现任何转义序列（除了光标移动）。
+
+### 5.5 `doctor`
+
+```
+xforge doctor [--platform <name>]...
+```
+
+读：清单、脚手架的每份文件、宿主投影位置、本机（探测，同 §5.4）。写：无。不执行任何项目命令。
+`--platform` 限定查哪些宿主，缺省是清单里的那些；给了清单外的名字是用法错误（退出码 2）。
+
+**doctor 看「装的事」，`inspect` 看「记的事」。** 投影对不对得上、宿主在不在、骨架是不是被人改过 —— 补救是重装；receipt 链断没断、台账署没署名 —— 补救是改记录。退出码因此不同：doctor 的失败是 `blocking`（`ok: false`，退出码 1），记录坏了是 `XF-INSPECT-*`（退出码 3）。doctor 不替 `inspect` 跑一遍，只在 `next` 里指过去。
+
+装配坏了不是「也许」，是「不行」：清单说有执法钩子却跑不起来，就该让调用方停下来办这件事 —— 所以这些说法按 `blocking` 报，不是 `warning`（`warning` 的语义是「能走，但你知道一下」）。
+
+| # | 检查 | 码 | 为什么值得查 |
+| --- | --- | --- | --- |
+| 1 | 宿主在场：清单 `platforms` 里的每个宿主，本机探测得到 | `XF-DOCTOR-001` | 选中了一台本机没有的宿主，投影写得再对也没人读 |
+| 2 | 投影新鲜：`sync` 会写的每份文件与盘上逐字节一致 | `XF-DOCTOR-002` | 手改过投影，或上次 `sync` 之后脚手架变了 |
+| 3 | 能力兑现：声明了执法钩子的宿主，钩子真装进了宿主共享文件（投影里有那条命令），且钩子命令的第一个词能在本机解析到 | `XF-DOCTOR-003` | 「`enforcement: available`」不能是句空话（D8）：装不上与跑不起来同样是句空话 |
+| 4 | 骨架完整：`scaffold/integrity.yaml` 里的文件都在、本地化区之外没被改过；载荷该有的钩子文件在；清单语言对应的 Skill 源文件在 | `XF-DOCTOR-004` | 载荷缺 `SKILL_cn.md` 时 `sync` 会**静默**不投影那个 Skill（`loadSkills` 跳过读不出的） |
+| 5 | 残留：`.upgrade/` 还在；宿主投影目录里 xforge 前缀的、当前没人认领的文件 | `XF-DOCTOR-005` | 一次没走完的升级，或 Skill 下线后留在宿主里的孤儿 |
+| 6 | 版本：清单 `scaffold.version` 与本次载荷版本 | `XF-DOCTOR-006`（`info`） | 只提示，不改退出码 —— 项目可以刻意停在旧脚手架 |
+
+探测只有一处实现（§5.4）：`init` 拿它画列表，`doctor` 拿它做体检 —— 同一个问题只有一个答案。与 `init` 不同的是，`doctor` **不问有没有 TTY**：它本来就是人来叫的，探测是它的正事，不进清单、不改结果。
+
+`result`：
+
+```json
+{"results": [
+  {"id": "host", "status": "ok"},
+  {"id": "projection", "status": "fail", "detail": ".claude/settings.json 与 sync 会写的不一致"},
+  {"id": "version", "status": "info", "detail": "脚手架 1.0.0，本次载荷 1.0.1"}
+],
+ "problems": 1}
+```
+
+每项要么 `ok`，要么带上 `status` 与 `detail`；`problems` 是 `fail` 的项数。有一项 `fail` → `ok: false`、退出码 1；只有 `info` 或全 `ok` → `ok: true`、退出码 0。
+
+`next` 只指真能修的那一步：投影漂移与残留给 `xforge sync`，骨架与版本给 `xforge update`。宿主不在、钩子跑不起来是这台机器的事，没有命令可给 —— 那就什么都不指，别拿 `inspect` 凑数。
+
+`doctor` 只读，所以**升级在途时照跑**（§5.3 的哨兵名单里有它）：「现在什么状态」正是它要回答的问题。
+
+`CLI-39` 刚 `init` 完、没人动过的树：六项全 `ok`，`changed` 为空，退出码 0。
+`CLI-40` 手改一个投影文件（往 `.claude/skills/xforge/SKILL.md` 里加一个字）→ `XF-DOCTOR-002`，退出码 1；`sync` 之后这一项回 `ok`。
+`CLI-41` `doctor` 的 `changed` 恒为空，且跑完之后项目里每个文件的 mtime 与内容都不变（快照比对）。
+
+### 5.6 `repair`
+
+```
+xforge repair [--platform <name>]...
+```
+
+读：同 `doctor`（清单、脚手架、投影位置、本机）。写：只写两样 —— 宿主投影、脚手架里**缺失**的受管文件。
+
+`doctor` 说，`repair` 做：同一张检查表、同一次探测、同一份投影算法。`repair` 不另算一遍 —— 两处实现迟早会各说各话。
+
+**只修「重写一遍就对」的事，其余原样报出来。**
+
+| # | 检查项 | 修不修 | 怎么修 / 为什么不动它 |
+| --- | --- | --- | --- |
+| 1 | 宿主不在场 | 不修 | 装宿主不是 xforge 的事 |
+| 2 | 投影漂移 | **修** | 按当前脚手架重投影（与 `sync` 同一份实现） |
+| 3 | 能力兑不了现 | 不修 | `PATH` 是环境与安装方式的事，要人来改 |
+| 4 | 骨架不完整 | **只补缺的** | 从载荷补回缺失的受管文件（校验和对得上才补）；**改过的一个字不动** —— 那是有人写过的正文，覆盖它得先问人（`update` 会把它分到 `incoming/` 让人合并） |
+| 5 | 残留 | 不修 | 在途升级要选收尾还是回退；孤儿文件删不删是人的决定 |
+| 6 | 版本落后 | 不修 | 那是 `update` 的事，而且它不是「坏」 |
+
+补骨架与重投影在**同一个事务**里，要么都成要么都不动。顺序是依赖定的：投影从脚手架算出来，所以先补骨架 —— 补回去的 Skill 与钩子在同一轮里就能投出去。
+
+可修的项**无条件跑一遍**，不是「哪项报错才修哪项」：重投影是「投影 = 脚手架的函数」的重算，本来就不该只在出错时发生。少了这一遍，一个刚补回来的 Skill 要等到下一次 `sync` 才投影出去 —— 而 `repair` 刚说过它修好了。
+
+`repair` 不接 `--payload`：载荷就是这支 CLI 自带的 `scaffold/`。补一份别处的载荷是「升级」，不是「修复」。
+
+**修完重跑一遍检查**，不看结果不算修好 —— 一次没落盘的修复比不修更坏，调用方会以为好了。重跑是**重算现场再查**，不是拿修之前算好的那份投影重比：修之前的投影里没有刚补回来的那个 Skill，拿它当判据，孤儿检查会把刚投出去的 Skill 目录说成没人认领。
+
+`result` 与 `doctor` 同一个形状（同一个 `results`，同一个 `problems`），多一个 `repaired`（从「有问题」变成「没问题」的项）与一个 `unfixable`（**没解决的**：修不了的与修了没成的，每项一句为什么）：
+
+```json
+{"repaired": ["projection"],
+ "unfixable": [{"id": "host", "why": "装宿主不是 xforge 的事"}],
+ "results": [{"id": "host", "status": "fail", "detail": "宿主 claude 本机探测不到（清单里选中了它）"},
+             {"id": "projection", "status": "ok"}],
+ "problems": 1}
+```
+
+修不了的项**沿用 `XF-DOCTOR-*` 的码**：同一个发现，换个命令报出来不该换个名字，补救也还是同一条。`XF-REPAIR-*` 只留给「修的时候才可能出的事」：载荷里没有可信的副本（`XF-REPAIR-001`）、修完之后还是不一致（`XF-REPAIR-002`）。
+
+还剩 `fail` → `ok: false`、退出码 1；全修好 → 退出码 0。修不了不等于失败：把话说清楚，`repair` 就完成了它的活。
+
+`repair` 写盘，所以升级在途时被哨兵拦住（`XF-ASSEMBLE-001`）—— 与只读的 `doctor` 相反。
+
+`CLI-42` 手改一个投影文件后 `repair`：退出码 0，`repaired` 为 `["projection"]`，`changed` 列出那个文件，内容回到与 `sync` 逐字节相同。
+`CLI-43` 删掉一个受管文件（`scaffold/gates/ledgers.yaml`）后 `repair`：文件按载荷补回，校验和与完整性清单一致，退出码 0。
+`CLI-44` 在本地化区之外改过一个受管文件后 `repair`：那个文件**逐字节不变**，`XF-DOCTOR-004` 原样报出，退出码 1 —— 补缺不覆盖。
+`CLI-45` 清单里选中、本机却没有的宿主：`repair` 退出码 1，`repaired` 为空，`unfixable` 说出为什么（装宿主不是 xforge 的事），没有人被假装的修复骗到。
 
 ---
 
@@ -426,6 +575,7 @@ xforge upgrade --rollback # 从快照整树恢复，删 .upgrade/
 - `help [command]`：静态文本。
 - `version`：CLI 版本、协议版本；在项目里时附清单的脚手架版本。
 - `explain <code>`：读 `diagnostics/<code>.yaml`，回 meaning、remedy、variants。不需要项目目录。
+- `payloadDir()`：本 CLI 自带的载荷目录（包根下的 `scaffold/`）—— 版本从 `package.json` 来，载荷从它旁边来。`init` / `update` / `repair` 都从这一处取，`update --payload` 是它唯一的覆盖口。
 
 `CLI-25` `explain` 在非项目目录里可用；对每一个字典文件都能回。
 

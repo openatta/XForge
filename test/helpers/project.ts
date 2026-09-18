@@ -61,14 +61,23 @@ export class Project {
     }
   }
 
-  async enforce(payload: unknown, where: { cwd?: string; env?: Record<string, string> } = {}): Promise<{ decision: string; reason: string }> {
-    const child = execFile('node', [ENFORCE, '--host', 'claude'], { cwd: where.cwd ?? this.root, env: { ...process.env, ...(where.env ?? {}) } });
+  /** 裁决：放行时有的宿主什么都不说（空 stdout 就是放行，cli §4），claude 会显式回一条。 */
+  async enforce(payload: unknown, where: { cwd?: string; env?: Record<string, string>; host?: string } = {}): Promise<{ decision: string; reason: string }> {
+    const out = await this.enforceRaw(payload, where);
+    if (!out.trim()) return { decision: 'allow', reason: '' };
+    const parsed = JSON.parse(out) as { hookSpecificOutput?: { permissionDecision: string; permissionDecisionReason: string } };
+    const hook = parsed.hookSpecificOutput;
+    return hook ? { decision: hook.permissionDecision, reason: hook.permissionDecisionReason } : { decision: 'allow', reason: '' };
+  }
+
+  /** 原文 stdout：判定「什么都不说」要看原文，别让解析器替宿主说话。 */
+  async enforceRaw(payload: unknown, where: { cwd?: string; env?: Record<string, string>; host?: string } = {}): Promise<string> {
+    const child = execFile('node', [ENFORCE, '--host', where.host ?? 'claude'], { cwd: where.cwd ?? this.root, env: { ...process.env, ...(where.env ?? {}) } });
     child.stdin!.end(JSON.stringify(payload));
     let out = '';
     child.stdout!.on('data', (d: Buffer) => (out += d.toString()));
     await new Promise<void>((res) => child.on('close', () => res()));
-    const parsed = JSON.parse(out) as { hookSpecificOutput: { permissionDecision: string; permissionDecisionReason: string } };
-    return { decision: parsed.hookSpecificOutput.permissionDecision, reason: parsed.hookSpecificOutput.permissionDecisionReason };
+    return out;
   }
 }
 

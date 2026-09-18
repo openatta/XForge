@@ -1,0 +1,7 @@
+code: XF-DOCTOR-005
+title: 有残留
+meaning: 一次脚手架升级留在半路（.upgrade/ 还在），或者宿主投影目录里留着 xforge 认领过、现在没人认领的文件（Skill 下线或改名之后的孤儿）。
+remedy:
+  command: xforge update --status
+  text: 在途升级先 --finish 或 --rollback；孤儿文件对照 doctor 的 detail 逐个删。
+variants: []

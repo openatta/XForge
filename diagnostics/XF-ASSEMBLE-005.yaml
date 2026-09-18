@@ -1,0 +1,7 @@
+code: XF-ASSEMBLE-005
+title: "用了旧命令名"
+meaning: "`upgrade` 已更名为 `update`，旧名仍然照跑，只是每次都会带上这条诊断。"
+remedy:
+  command: "xforge update"
+  text: "改用新名；旧名会在后续版本里去掉。"
+variants: []

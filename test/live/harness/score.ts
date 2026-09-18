@@ -1,6 +1,7 @@
 // design: live-test §4 — 计分与观测；D6：只有 tokens，没有货币。
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import type { ControlPlaneReport } from './controlplane.js';
 import type { TurnResult, Usage } from './engine.js';
 
 export interface Observations {
@@ -102,6 +103,8 @@ export interface Summary {
   /** LT-07：Change 的规格 delta 里每条 Requirement 是否被模型自写的测试或保证说明的覆盖表引用；规格治理关着时为 null。 */
   requirement_coverage: { total: number; covered: number; missing: string[] } | null;
   baseline_changed: { spec: boolean; interface: boolean };
+  /** §2.5 D15：模型进场前的装配体检段（`LT-09`–`LT-13`）；它不过的运行根本走不到写 summary 这一步。 */
+  control_plane: ControlPlaneReport;
   model: string | undefined;
   outcome: string;
   stopped_at: string | null;
@@ -116,6 +119,8 @@ export interface Summary {
   blocked_tokens: string[];
   run_dir: string;
 }
+
+const flag = (b: boolean): string => (b ? '✓' : '✗');
 
 export function renderSummary(s: Summary): string {
   const t = s.tokens;
@@ -145,6 +150,17 @@ export function renderSummary(s: Summary): string {
     '| 轮 | input | output | cache_read | cache_creation | 内部轮次 | 用时 s |',
     '| --- | --- | --- | --- | --- | --- | --- |',
     ...t.per_turn.map((p) => `| ${p.turn} | ${p.input} | ${p.output} | ${p.cache_read} | ${p.cache_creation} | ${p.num_turns} | ${(p.duration_ms / 1000).toFixed(0)} |`),
+    '',
+    '## 装配体检段',
+    '',
+    '| 段 | 结果 |',
+    '| --- | --- |',
+    `| init 默认值（LT-09） | 本机 ${s.control_plane.defaults.platforms.join('、') || '?'} / ${s.control_plane.defaults.language || '?'} · 探测不到任何宿主时 ${s.control_plane.defaults.blind.platforms.join('、') || '?'} / ${s.control_plane.defaults.blind.language || '?'} |`,
+    `| 双宿主投影（LT-13） | claude 钩子 ${flag(s.control_plane.providers.claude_hook)} · codex 钩子 ${flag(s.control_plane.providers.codex_hook)} · codex Skill ${flag(s.control_plane.providers.codex_skills)} · AGENTS.md ${flag(s.control_plane.providers.agents_entry)} · doctor 退出码 ${s.control_plane.providers.doctor_exit} |`,
+    `| doctor（LT-10） | 退出码 ${s.control_plane.doctor.exit} · ${Object.entries(s.control_plane.doctor.results).map(([id, st]) => `${id} ${st}`).join(' · ')}${s.control_plane.doctor.read_only ? '' : ' · 竟然写了盘'} |`,
+    `| repair（LT-11） | 手改后 doctor 退出码 ${s.control_plane.repair.drift_exit}（${s.control_plane.repair.drift_codes.join('、') || '无码'}）→ repair 退出码 ${s.control_plane.repair.exit}，repaired [${s.control_plane.repair.repaired.join('、')}]，sync 又写了 ${s.control_plane.repair.sync_changed} 个文件 |`,
+    `| update（LT-12） | 退出码 ${s.control_plane.update.exit}，applied ${s.control_plane.update.applied.length} 个文件，added [${s.control_plane.update.added.join('、')}]，新正文落盘 ${flag(s.control_plane.update.laid_down)}，在途 ${s.control_plane.update.in_flight_codes.join('、') || '无码'}，旧名 ${s.control_plane.update.alias_codes.join('、') || '无码'}，回滚退出码 ${s.control_plane.update.rollback_exit} |`,
+    `| 树回到体检前 | ${flag(s.control_plane.tree_restored)} |`,
     '',
     '## 观测',
     '',

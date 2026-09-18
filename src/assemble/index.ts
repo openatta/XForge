@@ -1,40 +1,54 @@
 // design: cli §5 — 装配：init 从零建治理目录树（重入幂等），sync 把脚手架投影到宿主原生位置。
-import { existsSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { copyFile, mkdir, readdir, stat } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
+import { existsSync, rmSync } from 'node:fs';
+import { copyFile, mkdir, readdir } from 'node:fs/promises';
 import { basename, join, relative } from 'node:path';
 import fg from 'fast-glob';
 import type { Parsed } from '../cli/args.js';
 import { flagBool, flagList, flagString } from '../cli/args.js';
-import type { Outcome } from '../cli/envelope.js';
+import type { Io, Outcome } from '../cli/envelope.js';
+import type { EnvelopeDiagnostic } from '../model/types.js';
 import { CliError, UsageError } from '../cli/errors.js';
 import { ModelError } from '../model/errors.js';
 import { exists, readText, Transaction } from '../fs/transaction.js';
-import { BLOCK_BEGIN, claudeFiles, codexFiles, ENFORCE_COMMAND, stripMarkerBlock, type HostFile, type SkillSource } from '../hosts/index.js';
-import { cliVersion } from '../meta/index.js';
-import { findProjectRoot, governancePaths, type GovernancePaths } from '../model/paths.js';
-import type { Executor, Language, Manifest, Platform } from '../model/types.js';
+import { isPlatform, PLATFORMS, provider } from '../hosts/index.js';
+import { cliVersion, payloadDir } from '../meta/index.js';
+import { findProjectRoot, governancePaths } from '../model/paths.js';
+import type { Language, Manifest, Platform } from '../model/types.js';
 import { readYaml, toYaml } from '../model/yaml.js';
+import { doctor } from './doctor.js';
+import { askInit } from './interactive.js';
+import { repair } from './repair.js';
+import { projections, projectionContext } from './projection.js';
 import { upgradeFinish, upgradeRollback, upgradeStage, upgradeStatusReport, type UpgradeContext } from './upgrade.js';
 
-export const ASSEMBLE_VERBS = ['init', 'sync', 'upgrade', 'remove'] as const;
+export const ASSEMBLE_VERBS = ['init', 'sync', 'update', 'doctor', 'repair', 'remove'] as const;
 export type AssembleVerb = (typeof ASSEMBLE_VERBS)[number];
 
-export function payloadDir(): string {
-  return fileURLToPath(new URL('../../scaffold/', import.meta.url));
+/** 旧名仍可用：1.0.1 已经发出去了，改名不能把用户绊倒。用旧名会多一条 deprecation 诊断。 */
+export const VERB_ALIASES: Readonly<Record<string, AssembleVerb>> = { upgrade: 'update' };
+
+export function resolveAssembleVerb(verb: string): AssembleVerb | null {
+  if ((ASSEMBLE_VERBS as readonly string[]).includes(verb)) return verb as AssembleVerb;
+  return VERB_ALIASES[verb] ?? null;
 }
 
-export async function runAssemble(verb: AssembleVerb, parsed: Parsed, cwd: string, env: NodeJS.ProcessEnv): Promise<Outcome> {
+/** 用了旧名时附在信封末尾的一条诊断（不挡路，只是提醒）。 */
+export function deprecation(used: string, actual: AssembleVerb): EnvelopeDiagnostic {
+  return { code: 'XF-ASSEMBLE-005', severity: 'warning', message: `${used} 已更名为 ${actual}`, remedy: { command: `xforge ${actual}`, text: '旧名仍可用，但会一直是旧名' } };
+}
+
+export async function runAssemble(verb: AssembleVerb, parsed: Parsed, cwd: string, io: Io): Promise<Outcome> {
+  const env = io.env;
   switch (verb) {
     case 'init':
-      return init(cwd, parsed, env);
+      return init(cwd, parsed, io);
     case 'sync': {
       const root = await findProjectRoot(cwd, env);
       if (!root) throw new CliError('XF-STATE-002', '找不到治理根', 3, { command: 'xforge init', text: '先初始化' });
       const platforms = flagList(parsed, 'platform') as Platform[];
       return sync(root, platforms.length ? platforms : undefined);
     }
-    case 'upgrade': {
+    case 'update': {
       const root = await findProjectRoot(cwd, env);
       if (!root) throw new CliError('XF-STATE-002', '找不到治理根', 3, { command: 'xforge init', text: '先初始化' });
       const paths = governancePaths(root);
@@ -49,10 +63,24 @@ export async function runAssemble(verb: AssembleVerb, parsed: Parsed, cwd: strin
       if (flagBool(parsed, 'rollback')) return upgradeRollback(ctx);
       return upgradeStage(ctx);
     }
+    case 'doctor': {
+      const root = await findProjectRoot(cwd, env);
+      if (!root) throw new CliError('XF-STATE-002', '找不到治理根', 3, { command: 'xforge init', text: '先初始化' });
+      const platforms = flagList(parsed, 'platform') as Platform[];
+      checkPlatforms(platforms);
+      return doctor(root, platforms, env);
+    }
+    case 'repair': {
+      const root = await findProjectRoot(cwd, env);
+      if (!root) throw new CliError('XF-STATE-002', '找不到治理根', 3, { command: 'xforge init', text: '先初始化' });
+      const platforms = flagList(parsed, 'platform') as Platform[];
+      checkPlatforms(platforms);
+      return repair(root, platforms, env);
+    }
     case 'remove':
       return remove(cwd, flagString(parsed, 'confirm'), env);
     default:
-      throw new UsageError('用法: xforge init | sync | upgrade [--status|--finish|--rollback] | remove --confirm <项目目录名>');
+      throw new UsageError('用法: xforge init | sync | update [--status|--finish|--rollback] | doctor | repair | remove --confirm <项目目录名>');
   }
 }
 
@@ -72,34 +100,10 @@ async function remove(cwd: string, confirm: string | undefined, env: NodeJS.Proc
     removed.push(relative(root, p));
   };
   dropDir(paths.root);
-  for (const host of ['.claude', '.codex']) {
-    const skills = join(root, host, 'skills');
-    if (existsSync(skills)) for (const d of readdirSync(skills)) if (d === 'xforge' || d.startsWith('xforge-')) dropDir(join(skills, d));
-    dropDir(join(root, host, 'agents', 'xforge-executor.md'));
-  }
-  const settingsPath = join(root, '.claude', 'settings.json');
-  const settingsText = await readText(settingsPath);
-  if (settingsText) {
-    try {
-      const settings = JSON.parse(settingsText) as { hooks?: Record<string, Array<{ hooks?: Array<{ command?: string }> }>> };
-      const pre = settings.hooks?.['PreToolUse'];
-      if (pre) {
-        const kept = pre.filter((e) => !(e.hooks ?? []).some((h) => h.command === ENFORCE_COMMAND));
-        if (kept.length !== pre.length) {
-          settings.hooks!['PreToolUse'] = kept;
-          writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
-          removed.push(relative(root, settingsPath) + '#hooks.PreToolUse');
-        }
-      }
-    } catch {
-      // 不是我们写的 JSON，不动。
-    }
-  }
-  const agentsPath = join(root, 'AGENTS.md');
-  const agents = await readText(agentsPath);
-  if (agents && agents.includes(BLOCK_BEGIN)) {
-    writeFileSync(agentsPath, stripMarkerBlock(agents));
-    removed.push('AGENTS.md#XFORGE');
+  // 宿主投影：每个宿主自己说它占了哪些路径、共享文件里留了什么痕迹。
+  for (const id of PLATFORMS) {
+    for (const owned of await provider(id).ownership(root)) dropDir(owned);
+    removed.push(...(await provider(id).detach(root)));
   }
   return { result: { removed }, changed: removed, next: [] };
 }
@@ -114,8 +118,8 @@ const CONSTITUTION_TEMPLATE = `# 章程
 任何改变对外行为的改动，都要有能证明它的测试；没有测试的行为变更不进主线。
 `;
 
-async function init(cwd: string, parsed: Parsed, _env: NodeJS.ProcessEnv): Promise<Outcome<{ created: string[]; synced: string[] }>> {
-  const root = (await findProjectRoot(cwd, _env)) ?? cwd;
+async function init(cwd: string, parsed: Parsed, io: Io): Promise<Outcome<{ created: string[]; synced: string[] }>> {
+  const root = (await findProjectRoot(cwd, io.env)) ?? cwd;
   const paths = governancePaths(root);
   const payload = payloadDir();
   const created: string[] = [];
@@ -132,8 +136,7 @@ async function init(cwd: string, parsed: Parsed, _env: NodeJS.ProcessEnv): Promi
     const flows = (await listNames(join(payload, 'flows'))).map((f) => f.replace(/\.yaml$/, ''));
     const gates = (await listNames(join(payload, 'gates'))).map((f) => f.replace(/\.yaml$/, ''));
     const policies = (await listNames(join(payload, 'policies'))).map((f) => f.replace(/\.yaml$/, ''));
-    const platforms = flagList(parsed, 'platform') as Platform[];
-    const language = (flagString(parsed, 'language') ?? 'zh-CN') as Language;
+    const { platforms, language } = await answers(io, parsed);
     const flow = flagString(parsed, 'flow') ?? 'solid';
     if (!flows.includes(flow)) throw new UsageError(`没有流程 ${flow}；可选：${flows.join('、')}`);
     const manifest: Manifest = {
@@ -142,7 +145,7 @@ async function init(cwd: string, parsed: Parsed, _env: NodeJS.ProcessEnv): Promi
       governance: { spec: false, interface: false },
       flow: { default: flow },
       modules: [],
-      platforms: platforms.length ? platforms : ['claude'],
+      platforms,
       language,
       selected: { flows, gates, policies },
     };
@@ -165,17 +168,35 @@ async function listNames(dir: string): Promise<string[]> {
   }
 }
 
+/** 未知宿主是用法错误，不是静默跳过 —— 打错一个字母就少投影一套，没人会发现。 */
+function checkPlatforms(platforms: readonly Platform[]): void {
+  for (const p of platforms) if (!isPlatform(p)) throw new UsageError(`没有宿主 ${p}；可选：${PLATFORMS.join('、')}`);
+}
+
+function checkLanguage(language: string): asserts language is Language {
+  if (language !== 'zh-CN' && language !== 'en') throw new UsageError(`没有语言 ${language}；可选：zh-CN、en`);
+}
+
+/**
+ * 清单里那两个只能由人定的值：装到哪些宿主、Skill 用哪种语言。
+ * 有人坐在终端前就问，没有就用 flag 或文档默认值 —— 分岔只在「值从哪来」，见 cli §5.4。
+ */
+async function answers(io: Io, parsed: Parsed): Promise<{ platforms: Platform[]; language: Language }> {
+  const flags = flagList(parsed, 'platform') as Platform[];
+  checkPlatforms(flags);
+  const language = flagString(parsed, 'language');
+  if (language !== undefined) checkLanguage(language);
+  if (!io.interactive) return { platforms: flags.length ? flags : ['claude'], language: language ?? 'zh-CN' };
+  return askInit(io, { platforms: flags, ...(language !== undefined ? { language } : {}) });
+}
+
 export async function sync(root: string, only: readonly Platform[] | undefined): Promise<Outcome<{ files: string[] }>> {
   const paths = governancePaths(root);
   const manifest = await readYaml<Manifest>(paths.manifest, 'manifest');
   const platforms = only ?? manifest.platforms;
-  const skills = await loadSkills(paths, manifest.language);
-  const executor = await loadExecutor(paths, manifest.language);
-  const files: HostFile[] = [];
-  for (const p of platforms) {
-    if (p === 'claude') files.push(...(await claudeFiles(root, skills, executor, manifest.language)));
-    else if (p === 'codex') files.push(...(await codexFiles(root, skills)));
-  }
+  checkPlatforms(platforms);
+  // 投影怎么算只有一处实现（`projection.ts`）：sync 拿它写盘，doctor 拿它比对。
+  const files = await projections(await projectionContext(root, paths, manifest), platforms);
   const tx = new Transaction(root, paths.txDir);
   for (const f of files) {
     const current = await readText(f.path);
@@ -183,31 +204,4 @@ export async function sync(root: string, only: readonly Platform[] | undefined):
   }
   const changed = await tx.commit();
   return { result: { files: files.map((f) => relative(root, f.path)) }, changed, next: [] };
-}
-
-async function loadSkills(paths: GovernancePaths, language: Language): Promise<SkillSource[]> {
-  const dir = join(paths.scaffold, 'skills');
-  let names: string[];
-  try {
-    names = (await readdir(dir, { withFileTypes: true })).filter((d) => d.isDirectory()).map((d) => d.name).sort();
-  } catch {
-    return [];
-  }
-  const out: SkillSource[] = [];
-  for (const name of names) {
-    const text = await readText(paths.skill(name, language));
-    if (text !== null) out.push({ name, text });
-  }
-  return out;
-}
-
-async function loadExecutor(paths: GovernancePaths, language: Language): Promise<{ def: Executor; prompt: string } | null> {
-  const defPath = paths.executor('xforge-executor');
-  if (!(await exists(defPath))) return null;
-  const def = await readYaml<Executor>(defPath, 'executor');
-  const promptRel = language === 'zh-CN' ? def.prompt_file : def.prompt_file.replace(/_cn\.md$/, '.md');
-  const promptPath = join(join(defPath, '..'), promptRel);
-  const prompt = (await readText(promptPath)) ?? (await readText(join(join(defPath, '..'), def.prompt_file))) ?? '';
-  await stat(defPath);
-  return { def, prompt };
 }

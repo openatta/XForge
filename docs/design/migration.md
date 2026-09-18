@@ -15,7 +15,7 @@
 | **D2** | 仓库根就是 npm 包根 | 一个仓库一个包，`npm --prefix` 这类间接调用消失；标准 TS 项目的默认假设 |
 | **D3** | 包名保留 `@xforge/cli`；新线版本从 `1.0.0-alpha.1` 起，发布到 dist-tag `next`，稳定后转 `latest` | npm 上已有 `0.8.6`。分支名 `v1.0.0` 与 npm 版本线一致（分支最初叫 `v0.2.0`，2026-09-16 改名：旧线的 `v0.x` 标签与 npm 上的 `0.x` 发布一一对应，保持不动，新线分支按版本号命名，第一个是 `v1.0.0`）；发一个比 `0.8.6` 小的版本会让 `latest` 语义混乱 |
 | **D4** | 测试分四层：`unit`（纯函数与模块）、`integration`（在临时项目上跑真实命令）、`product`（README 与文档族的断言）、`live`（真实模型，手动或定时跑，不进合并门） | 分层思路在旧线已被证明有效；只是全部重写 |
-| **D5** | 构建时生成脚手架完整性清单（每个受管文件的校验和 + 脚手架版本），不记 CLI 版本 | 升级事务要逐文件分类「受管未改 / 项目改过」，没有已知校验和就分不了；CLI 版本匹配放在 `init`/`upgrade` 判，不放在每次调用 |
+| **D5** | 构建时生成脚手架完整性清单（每个受管文件的校验和 + 脚手架版本），不记 CLI 版本 | 升级事务要逐文件分类「受管未改 / 项目改过」，没有已知校验和就分不了；CLI 版本匹配放在 `init`/`update` 判，不放在每次调用 |
 | **D6** | 依赖只有 `yaml`、`ajv`、`ajv-formats`、`fast-glob`；不引入 MCP SDK | 外部审批服务自己调「证」，控制面不托管服务器 |
 | **D7** | 执法有独立入口 `bin/xforge-enforce.js`，只引入策略求值与 YAML 读取，不引入主 CLI | 执法每次工具调用都跑，进程启动是它的主要成本；主 CLI 的模块图不能拖它 |
 | **D8** | `README.md`、`AGENTS.md`、`CLAUDE.md` 按新布局重写；`docs/internal/` 随旧内容进 `legacy/` | 它们描述旧版本，留在原位只会被误读为现状 |
@@ -34,8 +34,9 @@
   src/
     cli/          参数解析、统一信封、--text 渲染、退出码
     verbs/        state · inspect · run · attest · advance        ← 命令行设计 §2
-    assemble/     init · sync · upgrade（升级事务：暂存 / 合并 / 完成 / 回滚）
-    enforce/      载荷解析、策略集装载、投影查找、决策           ← 命令行设计 §4
+    assemble/     init · sync · update（升级事务：暂存 / 合并 / 完成 / 回滚）
+    enforce/      策略集装载、投影查找、决策                     ← 命令行设计 §4
+      hosts/      一个宿主一份执法协议：载荷解析 + 裁决输出（claude · codex）
     meta/         help · version · explain（诊断码字典）
     model/        每种规则文件的加载器与校验                      ← 规则文件设计
     machines/     Stage 机与工作包机：转换表、前置条件、receipt 链

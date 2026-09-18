@@ -7,6 +7,8 @@ import { parse } from 'yaml';
 import { findProjectRoot, governancePaths } from '../model/paths.js';
 import { inFlightFor } from '../model/projection.js';
 import type { Policy, PolicyRule, Projection, ToolAction } from '../model/types.js';
+import { FALLBACK_PROTOCOL, PROTOCOLS } from './hosts/protocol.js';
+import type { Call, Decision } from './hosts/protocol.js';
 
 export interface EnforceIo {
   cwd: string;
@@ -15,28 +17,27 @@ export interface EnforceIo {
   stdout: NodeJS.WritableStream;
 }
 
-export type Decision = { decision: 'allow' | 'deny' | 'ask'; reason: string };
-
-export interface Call {
-  action: ToolAction | 'other';
-  paths: string[];
-  command?: string;
-  cwd: string;
-}
-
 const ESCAPE_ROUTE = new Set(['help', 'version', 'explain', 'state', 'show', 'inspect', 'init', 'sync']);
 
 export async function enforceMain(argv: readonly string[], io: EnforceIo): Promise<number> {
-  const host = argv.includes('--host') ? argv[argv.indexOf('--host') + 1] : 'claude';
+  const at = argv.indexOf('--host');
+  const host = at === -1 ? 'claude' : (argv[at + 1] ?? '');
+  const protocol = Object.hasOwn(PROTOCOLS, host) ? PROTOCOLS[host] : undefined;
   const raw = await readAll(io.stdin);
   let decision: Decision;
-  try {
-    const call = parseClaude(raw, io.cwd);
-    decision = await decide(call);
-  } catch (error) {
-    decision = { decision: 'deny', reason: `载荷无法解析（失败朝安全）：${(error as Error).message}` };
+  if (!protocol) {
+    // 认不出的宿主也要有话说，而且是不：没有协议就没人替它的载荷说话（cli §4）。
+    decision = { decision: 'deny', reason: `--host ${host ? `“${host}”` : '（空）'} 认不出来：这个宿主没有执法协议，拒绝` };
+  } else {
+    try {
+      decision = await decide(protocol.parse(raw, io.cwd));
+    } catch (error) {
+      decision = { decision: 'deny', reason: `载荷无法解析（失败朝安全）：${(error as Error).message}` };
+    }
   }
-  io.stdout.write(render(host ?? 'claude', decision) + '\n');
+  // 放行时宿主协议可以什么都不说（回 null）：空 stdout 就是「这次调用照常走它自己的审批与沙箱」。
+  const out = (protocol ?? FALLBACK_PROTOCOL).render(decision);
+  if (out !== null) io.stdout.write(out + '\n');
   return 0;
 }
 
@@ -44,24 +45,6 @@ async function readAll(stream: NodeJS.ReadableStream): Promise<string> {
   let out = '';
   for await (const chunk of stream) out += chunk.toString();
   return out;
-}
-
-const WRITE_TOOLS: Record<string, ToolAction> = { Write: 'write', Edit: 'edit', MultiEdit: 'edit', NotebookEdit: 'edit' };
-const READ_TOOLS = new Set(['Read', 'Glob', 'Grep', 'LS', 'WebFetch', 'WebSearch']);
-
-export function parseClaude(raw: string, fallbackCwd: string): Call {
-  const payload = JSON.parse(raw) as { tool_name?: string; tool_input?: Record<string, unknown>; cwd?: string };
-  const cwd = typeof payload.cwd === 'string' ? payload.cwd : fallbackCwd;
-  const tool = payload.tool_name ?? '';
-  const input = payload.tool_input ?? {};
-  if (tool === 'Bash') return { action: 'shell', paths: [], command: String(input['command'] ?? ''), cwd };
-  const write = WRITE_TOOLS[tool];
-  if (write) {
-    const p = String(input['file_path'] ?? input['notebook_path'] ?? '');
-    return { action: write, paths: p ? [p] : [], cwd };
-  }
-  if (READ_TOOLS.has(tool)) return { action: 'read', paths: [], cwd };
-  return { action: 'other', paths: [], cwd };
 }
 
 export async function decide(input: Call): Promise<Decision> {
@@ -263,11 +246,4 @@ async function inFlightProjections(changesDir: string, cwd: string): Promise<Pro
     }
   }
   return inFlightFor(all, cwd);
-}
-
-export function render(host: string, d: Decision): string {
-  if (host === 'claude') {
-    return JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: d.decision, permissionDecisionReason: d.reason } });
-  }
-  return JSON.stringify(d);
 }

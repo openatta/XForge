@@ -23,7 +23,7 @@ describe('meta verbs and the no-project paths', () => {
       const r = await bare.xforge(...args);
       expect(r.exit).toBe(0);
       expect(raw(r)).toContain('xforge <命令>');
-      for (const verb of ['state', 'show', 'inspect', 'run', 'attest', 'advance', 'init', 'sync', 'upgrade', 'remove', 'explain']) expect(raw(r)).toContain(verb);
+      for (const verb of ['state', 'show', 'inspect', 'run', 'attest', 'advance', 'init', 'sync', 'update', 'doctor', 'repair', 'remove', 'explain']) expect(raw(r)).toContain(verb);
     }
   });
 
@@ -51,7 +51,7 @@ describe('meta verbs and the no-project paths', () => {
   });
 
   it('XF-STATE-002 every project verb outside a governed tree exits 3 and points at init', async () => {
-    for (const args of [['state'], ['state', '--orient'], ['show', 'receipts'], ['inspect'], ['run'], ['advance'], ['attest', 'receipt'], ['sync'], ['upgrade'], ['remove', '--confirm', basename(bare.root)]]) {
+    for (const args of [['state'], ['state', '--orient'], ['show', 'receipts'], ['inspect'], ['run'], ['advance'], ['attest', 'receipt'], ['sync'], ['update'], ['upgrade'], ['doctor'], ['repair'], ['remove', '--confirm', basename(bare.root)]]) {
       const r = await bare.xforge(...args);
       expect(r.exit, args.join(' ')).toBe(3);
       expect(code(r), args.join(' ')).toBe('XF-STATE-002');

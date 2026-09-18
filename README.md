@@ -93,7 +93,7 @@ XFORGE_ROOT=<主检出目录>  XFORGE_SCHEME=<方案 id>
 
 ## 宿主
 
-`claude`：Skill、执行者子 Agent、执法钩子全部投影。`codex`：投影 Skill，没有钩子也没有隔离，定向里会明说 `enforcement: unavailable`。
+`claude`：Skill、执行者子 Agent、执法钩子全部投影。`codex`：投影 Skill、`AGENTS.md` 入口与执法钩子（`.codex/hooks.json`，装完要在 `/hooks` 里过一遍才生效），没有隔离子 Agent —— 行为相同，只是不省。没有钩子机制的宿主上，定向里会明说 `enforcement: unavailable`。
 
 ## 读什么
 

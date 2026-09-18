@@ -5,7 +5,7 @@
   "properties": {
     "code": {
       "type": "string",
-      "pattern": "^XF-(MODEL|STATE|INSPECT|RUN|ATTEST|ADVANCE|ENFORCE|ASSEMBLE)-[0-9]{3}$"
+      "pattern": "^XF-(MODEL|STATE|INSPECT|RUN|ATTEST|ADVANCE|ENFORCE|ASSEMBLE|DOCTOR|REPAIR)-[0-9]{3}$"
     },
     "title": {
       "type": "string",

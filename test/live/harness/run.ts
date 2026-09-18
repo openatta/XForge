@@ -3,6 +3,7 @@
 // LT-07：归档后核对规格 delta 里的每条 Requirement 都被模型自写的测试或 assurance.md 的覆盖表引用；规格治理开着时缺一条就判失败。
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { runControlPlane } from './controlplane.js';
 import { runTurn, type TurnResult } from './engine.js';
 import { engineEnv, engineModel, type Engine } from './env.js';
 import { plantDesignFault, PLANTED_SENTENCE, tamperReceiptAndInspect } from './faults.js';
@@ -69,7 +70,13 @@ export async function runScenario(opts: RunOptions): Promise<Summary> {
   const request = readFileSync(join(scenarioDir, 'requests', spec.request), 'utf8');
   await setupProject(paths, { repoRoot, scenarioDir, flow: spec.flow, language: opts.language, request, engine: opts.engine, governance, approver, mcpLog: join(paths.runDir, 'mcp-requests.log') });
   const baselineBefore = baselineDigest(paths.project);
-  useInstalledBin(join(paths.workDir, 'pkg', 'node_modules', '@xforge', 'cli', 'bin', 'xforge.js'));
+  const pkgRoot = join(paths.workDir, 'pkg', 'node_modules', '@xforge', 'cli');
+  useInstalledBin(join(pkgRoot, 'bin', 'xforge.js'));
+  // 装配体检段（§2.5 D15）：模型进场前，拿装好的包在真实的树上过一遍装配动词。树坏了就别再往上跑 15 轮。
+  const controlPlane = await runControlPlane(paths, { payload: join(pkgRoot, 'scaffold') });
+  if (!controlPlane.ok) {
+    throw new Error(`装配体检段没过，模型进场前停下（报告：${join(paths.runDir, 'control-plane.json')}）：\n${JSON.stringify(controlPlane, null, 2)}`);
+  }
   const env = engineEnv(opts.engine, repoRoot, paths.claudeConfig, paths.shim);
   const model = engineModel(env);
   const maxTurns = opts.maxTurns ?? (driver === 'stepwise' ? 30 : 15);
@@ -212,6 +219,7 @@ export async function runScenario(opts: RunOptions): Promise<Summary> {
     requirement_coverage: requirementCoverage,
     baseline_changed: { spec: baselineBefore.spec !== baselineAfter.spec, interface: baselineBefore.interface !== baselineAfter.interface },
     model: turns.find((t) => t.model)?.model ?? model,
+    control_plane: controlPlane,
     outcome,
     stopped_at: stoppedAt,
     turns: turns.length,

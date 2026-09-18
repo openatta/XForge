@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { readYaml } from './yaml.js';
 import type { Diagnostic } from './types.js';
 
-export const CODE = /^XF-(MODEL|STATE|INSPECT|RUN|ATTEST|ADVANCE|ENFORCE|ASSEMBLE)-\d{3}$/;
+export const CODE = /^XF-(MODEL|STATE|INSPECT|RUN|ATTEST|ADVANCE|ENFORCE|ASSEMBLE|DOCTOR|REPAIR)-\d{3}$/;
 
 export function diagnosticsDir(): string {
   return fileURLToPath(new URL('../../diagnostics/', import.meta.url));

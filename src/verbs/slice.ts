@@ -4,6 +4,7 @@ import { stat } from 'node:fs/promises';
 import fg from 'fast-glob';
 import { join } from 'node:path';
 import { exists, readText } from '../fs/transaction.js';
+import { enforcementAvailable } from '../hosts/index.js';
 import { isIsolated, isOwed } from '../model/flow.js';
 import { constitutionTitles, headings } from '../model/markdown.js';
 import { DEFAULT_SCHEME } from '../model/paths.js';
@@ -47,7 +48,7 @@ export async function invariants(project: Project, flow: Flow, ctx: ChangeCtx | 
     spec_domains: domains,
     constitution,
     declaration: ctx ? { id: ctx.declaration.id, flow: ctx.declaration.flow, risk: ctx.declaration.risk, impact: ctx.declaration.impact } : null,
-    enforcement: m.platforms.includes('claude') ? 'available' : 'unavailable',
+    enforcement: enforcementAvailable(m.platforms) ? 'available' : 'unavailable',
     call_skeleton: ['xforge state', 'xforge show <ref>（需要正文时）', 'xforge attest …（本站有人的介入点时）', 'xforge advance'],
   };
 }
