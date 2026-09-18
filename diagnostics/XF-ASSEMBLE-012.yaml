@@ -1,0 +1,7 @@
+code: XF-ASSEMBLE-012
+title: "provider 的探测与能力"
+meaning: "doctor 报的一条事实，不是问题：这个宿主本机装没装、执法此刻可不可用、有没有隔离、投了多少文件。"
+remedy:
+  command: "xforge doctor"
+  text: "不需要处理；投影不要求本机装着那个工具。"
+variants: []

@@ -25,7 +25,7 @@ export async function main(argv: readonly string[], io: Io): Promise<number> {
   }
   try {
     // 升级在途时，除升级自身与只读动词外一律拒绝：哨兵必须在命令面上可见。
-    const SENTINEL_OK = new Set(['help', 'version', 'explain', 'state', 'show', 'inspect', 'update', 'upgrade']);
+    const SENTINEL_OK = new Set(['help', 'version', 'explain', 'state', 'show', 'inspect', 'doctor', 'update', 'upgrade']);
     if (!SENTINEL_OK.has(verb)) {
       const root = await findProjectRoot(cwd);
       if (root && existsSync(join(root, 'xforge', '.upgrade', 'status.yaml'))) {

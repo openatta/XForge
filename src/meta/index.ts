@@ -28,6 +28,7 @@ export const HELP = `xforge <命令> [选项]
       sync [--platform <n>]...
       update                                               暂存：快照、铺开新版、逐文件分类；项目改过的留在 xforge/.upgrade/incoming/
       update --status | --finish | --rollback              在途状态 / 完成（推进版本、写审计、重投宿主）/ 从快照恢复
+      doctor [--platform <n>]...                           装配还对不对：投影、钩子、孤儿、版本；不写盘
       remove --confirm <项目目录名>                          拆除：删 xforge/ 与全部宿主投影，不可逆
 元    help · version · explain <code>
 

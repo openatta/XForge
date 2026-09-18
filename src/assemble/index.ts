@@ -1,6 +1,6 @@
 // design: cli §5 — 装配：init 从零建治理目录树（重入幂等），sync 把脚手架投影到宿主原生位置。
 import { existsSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { copyFile, mkdir, readdir, stat } from 'node:fs/promises';
+import { copyFile, mkdir, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { basename, join, relative } from 'node:path';
 import fg from 'fast-glob';
@@ -11,14 +11,16 @@ import { CliError, UsageError } from '../cli/errors.js';
 import { ModelError } from '../model/errors.js';
 import { exists, readText, Transaction } from '../fs/transaction.js';
 import { sha256 } from '../model/digest.js';
-import { hookCommandFor, knownProviderIds, providerFor, type HostFile, type SkillSource } from '../providers/index.js';
+import { knownProviderIds, providerFor, type HostFile } from '../providers/index.js';
+import { runDoctor } from './doctor.js';
+import { projectedFiles, pruneEmptyDirs, readLedger, rel } from './hosts.js';
 import { cliVersion } from '../meta/index.js';
 import { findProjectRoot, governancePaths, type GovernancePaths } from '../model/paths.js';
-import type { EnvelopeDiagnostic, Executor, HostsLedger, Language, Manifest, Platform } from '../model/types.js';
+import type { EnvelopeDiagnostic, HostsLedger, Language, Manifest, Platform } from '../model/types.js';
 import { readYaml, toYaml } from '../model/yaml.js';
 import { upgradeFinish, upgradeRollback, upgradeStage, upgradeStatusReport, type UpgradeContext } from './upgrade.js';
 
-export const ASSEMBLE_VERBS = ['init', 'sync', 'update', 'upgrade', 'remove'] as const;
+export const ASSEMBLE_VERBS = ['init', 'sync', 'update', 'upgrade', 'doctor', 'remove'] as const;
 export type AssembleVerb = (typeof ASSEMBLE_VERBS)[number];
 
 export function payloadDir(): string {
@@ -35,15 +37,19 @@ export async function runAssemble(verb: AssembleVerb, parsed: Parsed, cwd: strin
       const platforms = checkedPlatforms(parsed);
       return sync(root, platforms.length ? platforms : undefined);
     }
+    case 'doctor': {
+      const root = await findProjectRoot(cwd, env);
+      if (!root) throw new CliError('XF-STATE-002', '找不到治理根', 3, { command: 'xforge init', text: '先初始化' });
+      const paths = governancePaths(root);
+      const platforms = checkedPlatforms(parsed);
+      return runDoctor(root, paths, await loadManifest(paths), env, platforms.length ? platforms : undefined);
+    }
     case 'update':
     case 'upgrade': {
       const root = await findProjectRoot(cwd, env);
       if (!root) throw new CliError('XF-STATE-002', '找不到治理根', 3, { command: 'xforge init', text: '先初始化' });
       const paths = governancePaths(root);
-      const manifest = await readYaml<Manifest>(paths.manifest, 'manifest').catch((error: unknown) => {
-        if (error instanceof ModelError) throw new CliError(error.code, error.message, 3, { text: '按诊断里的路径与字段改清单' }, error.details);
-        throw error;
-      });
+      const manifest = await loadManifest(paths);
       const fixedNow = env['XFORGE_NOW'];
       const ctx: UpgradeContext = { root, paths, manifest, env, now: () => fixedNow ?? new Date().toISOString(), payloadDir: flagString(parsed, 'payload') ?? payloadDir(), targetVersion: flagString(parsed, 'to') ?? cliVersion() };
       const outcome = flagBool(parsed, 'status')
@@ -58,8 +64,16 @@ export async function runAssemble(verb: AssembleVerb, parsed: Parsed, cwd: strin
     case 'remove':
       return remove(cwd, flagString(parsed, 'confirm'), env);
     default:
-      throw new UsageError('用法: xforge init | update [--status|--finish|--rollback] | sync | remove --confirm <项目目录名>');
+      throw new UsageError('用法: xforge init | update [--status|--finish|--rollback] | sync | doctor | remove --confirm <项目目录名>');
   }
+}
+
+/** 清单读不出是损坏（退出码 3），不是「不能」。 */
+async function loadManifest(paths: GovernancePaths): Promise<Manifest> {
+  return readYaml<Manifest>(paths.manifest, 'manifest').catch((error: unknown) => {
+    if (error instanceof ModelError) throw new CliError(error.code, error.message, 3, { text: '按诊断里的路径与字段改清单' }, error.details);
+    throw error;
+  });
 }
 
 /** 旧名 `upgrade`：行为完全相同，只在信封里多一条 warning（命令行设计 D12）。 */
@@ -219,20 +233,13 @@ export async function sync(root: string, only: readonly Platform[] | undefined):
   const stale = only ? [] : ledger.providers.map((p) => p.id).filter((id) => !manifest.platforms.includes(id));
   const scope = [...new Set([...declared, ...stale])];
 
-  const skills = await loadSkills(paths, manifest.language);
-  const executor = await loadExecutor(paths, manifest.language);
   const diagnostics: EnvelopeDiagnostic[] = [];
   const projected = new Map<string, HostFile[]>();
-  for (const id of declared) {
-    const provider = providerFor(id);
-    if (!provider) {
-      throw new CliError('XF-ASSEMBLE-005', `清单里的 ${id} 不是这个版本认得的 provider`, 1, { command: 'xforge doctor', text: `认得的是：${knownProviderIds().join('、')}` });
+  for (const p of await projectedFiles(root, paths, manifest, declared)) {
+    if (p.hookMissing) {
+      diagnostics.push({ code: 'XF-ASSEMBLE-008', severity: 'warning', message: `${p.provider.id} 能执法，但没有 scaffold/hooks/enforce.yaml 可投：这一次没有投钩子`, remedy: { command: 'xforge doctor', text: '把钩子声明放回脚手架再 sync' } });
     }
-    const hookCommand = await hookCommandFor(paths, provider);
-    if (provider.capabilities.enforcement && hookCommand === null) {
-      diagnostics.push({ code: 'XF-ASSEMBLE-008', severity: 'warning', message: `${provider.id} 能执法，但没有 scaffold/hooks/enforce.yaml 可投：这一次没有投钩子`, remedy: { command: 'xforge doctor', text: '把钩子声明放回脚手架再 sync' } });
-    }
-    projected.set(id, await provider.project({ root, skills, executor, language: manifest.language, hookCommand }));
+    projected.set(p.provider.id, p.files);
   }
 
   const tx = new Transaction(root, paths.txDir);
@@ -282,31 +289,6 @@ export async function sync(root: string, only: readonly Platform[] | undefined):
   return { result: { files: files.map((f) => rel(root, f.path)), removed }, changed, diagnostics, next: [] };
 }
 
-function rel(root: string, path: string): string {
-  return relative(root, path).split('\\').join('/');
-}
-
-export async function readLedger(paths: GovernancePaths): Promise<HostsLedger> {
-  if (!(await exists(paths.hostsLedger))) return { version: 1, providers: [] };
-  return readYaml<HostsLedger>(paths.hostsLedger, 'hosts');
-}
-
-/** 删掉孤儿以后，空下来的投影目录跟着走；只往上走到项目根，且只删空目录。 */
-async function pruneEmptyDirs(root: string, removed: readonly string[]): Promise<void> {
-  for (const r of removed) {
-    let dir = join(root, r, '..');
-    while (dir.startsWith(root) && dir !== root) {
-      try {
-        if (readdirSync(dir).length) break;
-        rmSync(dir, { recursive: true, force: true }); // 上一行已确认它是空的
-      } catch {
-        break;
-      }
-      dir = join(dir, '..');
-    }
-  }
-}
-
 /** 命令行上给的 provider 名字当场校验：打错名字是用法错（退出码 2），不是清单损坏。 */
 function checkedPlatforms(parsed: Parsed): Platform[] {
   const given = flagList(parsed, 'platform');
@@ -314,29 +296,3 @@ function checkedPlatforms(parsed: Parsed): Platform[] {
   return given;
 }
 
-async function loadSkills(paths: GovernancePaths, language: Language): Promise<SkillSource[]> {
-  const dir = join(paths.scaffold, 'skills');
-  let names: string[];
-  try {
-    names = (await readdir(dir, { withFileTypes: true })).filter((d) => d.isDirectory()).map((d) => d.name).sort();
-  } catch {
-    return [];
-  }
-  const out: SkillSource[] = [];
-  for (const name of names) {
-    const text = await readText(paths.skill(name, language));
-    if (text !== null) out.push({ name, text });
-  }
-  return out;
-}
-
-async function loadExecutor(paths: GovernancePaths, language: Language): Promise<{ def: Executor; prompt: string } | null> {
-  const defPath = paths.executor('xforge-executor');
-  if (!(await exists(defPath))) return null;
-  const def = await readYaml<Executor>(defPath, 'executor');
-  const promptRel = language === 'zh-CN' ? def.prompt_file : def.prompt_file.replace(/_cn\.md$/, '.md');
-  const promptPath = join(join(defPath, '..'), promptRel);
-  const prompt = (await readText(promptPath)) ?? (await readText(join(join(defPath, '..'), def.prompt_file))) ?? '';
-  await stat(defPath);
-  return { def, prompt };
-}
