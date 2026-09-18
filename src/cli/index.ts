@@ -25,11 +25,11 @@ export async function main(argv: readonly string[], io: Io): Promise<number> {
   }
   try {
     // 升级在途时，除升级自身与只读动词外一律拒绝：哨兵必须在命令面上可见。
-    const SENTINEL_OK = new Set(['help', 'version', 'explain', 'state', 'show', 'inspect', 'upgrade']);
+    const SENTINEL_OK = new Set(['help', 'version', 'explain', 'state', 'show', 'inspect', 'update', 'upgrade']);
     if (!SENTINEL_OK.has(verb)) {
       const root = await findProjectRoot(cwd);
       if (root && existsSync(join(root, 'xforge', '.upgrade', 'status.yaml'))) {
-        throw new CliError('XF-ASSEMBLE-001', '一次脚手架升级在途，先完成或回滚它', 1, { command: 'xforge upgrade --status', text: '看在途状态' });
+        throw new CliError('XF-ASSEMBLE-001', '一次脚手架升级在途，先完成或回滚它', 1, { command: 'xforge update --status', text: '看在途状态' });
       }
     }
     let outcome: Outcome;

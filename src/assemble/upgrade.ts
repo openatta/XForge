@@ -43,7 +43,7 @@ export function upgradeInFlight(paths: GovernancePaths): boolean {
 
 /** 暂存：快照当前受管树，铺开新版，逐文件分类；能自动合的当场合，其余留给人。 */
 export async function upgradeStage(ctx: UpgradeContext): Promise<Outcome<UpgradeStatus & { applied: string[]; transplanted: string[]; added: string[] }>> {
-  if (upgradeInFlight(ctx.paths)) throw new CliError('XF-ASSEMBLE-001', '已有一次升级在途', 1, { command: 'xforge upgrade --status', text: '先 --finish 或 --rollback' });
+  if (upgradeInFlight(ctx.paths)) throw new CliError('XF-ASSEMBLE-001', '已有一次升级在途', 1, { command: 'xforge update --status', text: '先 --finish 或 --rollback' });
   const from = ctx.manifest.scaffold.version;
   if (from === ctx.targetVersion) throw new CliError('XF-ASSEMBLE-002', `脚手架已经是 ${from}，没有可升级的版本`, 1, { text: '装新版 CLI 后再跑' });
   const recorded: Integrity = existsSync(ctx.paths.integrity) ? await readYaml<Integrity>(ctx.paths.integrity, 'integrity') : { scaffold_version: from, files: {} };
@@ -93,20 +93,20 @@ export async function upgradeStage(ctx: UpgradeContext): Promise<Outcome<Upgrade
     result: { ...status, applied, transplanted, added },
     changed,
     next: pending.length
-      ? [{ command: 'xforge upgrade --status', why: `${pending.length} 个文件项目改过正文，在 xforge/.upgrade/incoming/ 里等人合并` }, { command: 'xforge upgrade --finish', why: '合并完成后' }, { command: 'xforge upgrade --rollback', why: '放弃这次升级' }]
-      : [{ command: 'xforge upgrade --finish', why: '没有需要人合并的文件' }],
+      ? [{ command: 'xforge update --status', why: `${pending.length} 个文件项目改过正文，在 xforge/.upgrade/incoming/ 里等人合并` }, { command: 'xforge update --finish', why: '合并完成后' }, { command: 'xforge update --rollback', why: '放弃这次升级' }]
+      : [{ command: 'xforge update --finish', why: '没有需要人合并的文件' }],
   };
 }
 
 export async function upgradeStatusReport(ctx: UpgradeContext): Promise<Outcome<UpgradeStatus | { in_flight: false }>> {
-  if (!upgradeInFlight(ctx.paths)) return { result: { in_flight: false }, next: [{ command: 'xforge upgrade', why: '没有在途的升级' }] };
+  if (!upgradeInFlight(ctx.paths)) return { result: { in_flight: false }, next: [{ command: 'xforge update', why: '没有在途的升级' }] };
   const status = await readYaml<UpgradeStatus>(statusPath(ctx.paths), 'upgrade-status');
-  return { result: status, next: [{ command: 'xforge upgrade --finish', why: '合并完成后' }, { command: 'xforge upgrade --rollback', why: '放弃' }] };
+  return { result: status, next: [{ command: 'xforge update --finish', why: '合并完成后' }, { command: 'xforge update --rollback', why: '放弃' }] };
 }
 
 /** 完成：推进版本锚点，重算完整性清单，写审计事件（记下人实际保留了什么），删哨兵。 */
 export async function upgradeFinish(ctx: UpgradeContext): Promise<Outcome<{ from: string; to: string; kept: string[]; event: string }>> {
-  if (!upgradeInFlight(ctx.paths)) throw new CliError('XF-ASSEMBLE-003', '没有在途的升级', 1, { command: 'xforge upgrade', text: '先暂存' });
+  if (!upgradeInFlight(ctx.paths)) throw new CliError('XF-ASSEMBLE-003', '没有在途的升级', 1, { command: 'xforge update', text: '先暂存' });
   const status = await readYaml<UpgradeStatus>(statusPath(ctx.paths), 'upgrade-status');
   const actor = (await gitIdentity(ctx.root)) ?? { name: 'xforge', email: 'xforge@local' };
   // kept：留给人的文件里，最终没有采用新版正文的那些（项目里的内容仍与新版不同）。
@@ -130,7 +130,7 @@ export async function upgradeFinish(ctx: UpgradeContext): Promise<Outcome<{ from
 
 /** 回滚：从快照整树恢复，删哨兵。 */
 export async function upgradeRollback(ctx: UpgradeContext): Promise<Outcome<{ restored: number }>> {
-  if (!upgradeInFlight(ctx.paths)) throw new CliError('XF-ASSEMBLE-003', '没有在途的升级', 1, { command: 'xforge upgrade', text: '先暂存' });
+  if (!upgradeInFlight(ctx.paths)) throw new CliError('XF-ASSEMBLE-003', '没有在途的升级', 1, { command: 'xforge update', text: '先暂存' });
   const snapshot = snapshotDir(ctx.paths);
   const files = await fg('**/*', { cwd: snapshot, onlyFiles: true, dot: false });
   rmSync(ctx.paths.scaffold, { recursive: true, force: true });

@@ -453,6 +453,7 @@ xforge update --rollback # 从快照整树恢复，删 .upgrade/
 
 旧名 `xforge upgrade` 继续可用一个小版本，行为完全相同，信封里多一条 `XF-ASSEMBLE-011` 的 `warning`（D12）。命令改名不动磁盘：哨兵目录仍是 `.upgrade/`，审计事件仍是 `scaffold.upgraded`，schema 仍叫 `upgrade-status`。
 
+`CLI-40` `update` 是正名：`upgrade` 行为相同，只多一条 `XF-ASSEMBLE-011` 的 `warning`；`--finish` 之后宿主上的投影已经是新版（收尾自动 `sync`），`next` 指向 `state --orient`。
 `CLI-24` 对一个填了本地化区的 Skill 文件升级：新版正文 + 旧本地化区，逐字节可预测；对改了正文的文件：留 `incoming/`，不覆盖。
 
 ### 5.4 `doctor`

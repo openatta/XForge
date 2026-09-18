@@ -1,4 +1,4 @@
-// design: cli §5.3 — CLI-24：本地化区移植、改过正文的留在 incoming、哨兵拒绝其它命令、完成与回滚。
+// design: cli §5.3 — CLI-24（本地化区移植、改过正文的留在 incoming、哨兵拒绝其它命令、完成与回滚）、CLI-40（update 是正名，upgrade 是旧名；--finish 收尾重投宿主）。
 import { beforeAll, describe, expect, it } from 'vitest';
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdtemp } from 'node:fs/promises';
@@ -9,7 +9,7 @@ import { Project, repoRoot } from '../helpers/project.js';
 
 const LOCAL = '<!-- xforge:local:begin -->\n我们的设计文档必须提到容量影响。\n<!-- xforge:local:end -->';
 
-describe('upgrade', () => {
+describe('update', () => {
   let p: Project;
   let payload: string;
   const skill = (name: string): string => join(p.root, 'xforge', 'scaffold', 'skills', name, 'SKILL_cn.md');
@@ -36,7 +36,7 @@ describe('upgrade', () => {
   });
 
   it('stages: unchanged files replaced, local zone transplanted, edited body left for the person, new file added but not selected', async () => {
-    const r = await p.xforge('upgrade', '--payload', payload, '--to', '9.9.9');
+    const r = await p.xforge('update', '--payload', payload, '--to', '9.9.9');
     expect(r.exit, JSON.stringify(r.env)).toBe(0);
     const res = r.env.result as { transplanted: string[]; pending: string[]; added: string[]; classified: Record<string, string> };
     expect(res.transplanted).toContain('skills/xforge-design/SKILL_cn.md');
@@ -53,18 +53,18 @@ describe('upgrade', () => {
     expect(manifest.selected.gates).not.toContain('lint');
   });
 
-  it('the sentinel refuses everything but upgrade and the read verbs while in flight', async () => {
+  it('the sentinel refuses everything but update and the read verbs while in flight', async () => {
     const blocked = await p.xforge('sync');
     expect(blocked.exit).toBe(1);
     expect(blocked.env.diagnostics[0]?.code).toBe('XF-ASSEMBLE-001');
     expect((await p.xforge('state')).exit).toBe(0);
-    const status = await p.xforge('upgrade', '--status');
+    const status = await p.xforge('update', '--status');
     expect((status.env.result as { pending: string[] }).pending).toEqual(['skills/xforge-check/SKILL_cn.md']);
   });
 
   it('rollback restores the snapshot byte for byte and clears the sentinel', async () => {
     const before = readFileSync(skill('xforge-design'), 'utf8');
-    const r = await p.xforge('upgrade', '--rollback');
+    const r = await p.xforge('update', '--rollback');
     expect(r.exit, JSON.stringify(r.env)).toBe(0);
     expect(readFileSync(skill('xforge-design'), 'utf8')).not.toBe(before);
     expect(readFileSync(skill('xforge-design'), 'utf8')).toContain('我们的设计文档必须提到容量影响');
@@ -74,8 +74,8 @@ describe('upgrade', () => {
   });
 
   it('finish advances the version anchor, rewrites integrity, records what was kept, and clears the sentinel', async () => {
-    expect((await p.xforge('upgrade', '--payload', payload, '--to', '9.9.9')).exit).toBe(0);
-    const r = await p.xforge('upgrade', '--finish');
+    expect((await p.xforge('update', '--payload', payload, '--to', '9.9.9')).exit).toBe(0);
+    const r = await p.xforge('update', '--finish');
     expect(r.exit, JSON.stringify(r.env)).toBe(0);
     expect((r.env.result as { kept: string[] }).kept).toEqual(['skills/xforge-check/SKILL_cn.md']);
     const manifest = parse(readFileSync(join(p.root, 'xforge', 'manifest.yaml'), 'utf8')) as { scaffold: { version: string } };
@@ -85,8 +85,23 @@ describe('upgrade', () => {
     expect(integrity.files['gates/lint.yaml']).toBeDefined();
     expect(readFileSync(join(p.root, 'xforge', '.audit', 'chain.jsonl'), 'utf8')).toContain('scaffold.upgraded');
     expect(existsSync(join(p.root, 'xforge', '.upgrade'))).toBe(false);
-    expect((await p.xforge('upgrade', '--finish')).env.diagnostics[0]?.code).toBe('XF-ASSEMBLE-003');
-    expect((await p.xforge('upgrade', '--payload', payload, '--to', '9.9.9')).env.diagnostics[0]?.code).toBe('XF-ASSEMBLE-002');
+    // CLI-40 收尾自动投一次：宿主上的 Skill 已经是新版，不用人再记一步 sync。
+    expect(readFileSync(join(p.root, '.claude', 'skills', 'xforge-design', 'SKILL.md'), 'utf8')).toContain('- 新版加的一条');
+    expect(r.env.changed.some((f) => f.startsWith('.claude/skills/'))).toBe(true);
+    expect(r.env.next[0]?.command).toBe('xforge state --orient');
+    expect((await p.xforge('update', '--finish')).env.diagnostics[0]?.code).toBe('XF-ASSEMBLE-003');
+    expect((await p.xforge('update', '--payload', payload, '--to', '9.9.9')).env.diagnostics[0]?.code).toBe('XF-ASSEMBLE-002');
     expect((await p.xforge('inspect', '--all', '--hygiene')).exit).toBe(0);
+  });
+
+  it('CLI-40 the old name still works and says so', async () => {
+    const r = await p.xforge('upgrade', '--status');
+    expect(r.exit, JSON.stringify(r.env)).toBe(0);
+    expect(r.env.result).toEqual({ in_flight: false });
+    const warning = r.env.diagnostics.find((d) => d.code === 'XF-ASSEMBLE-011');
+    expect(warning?.severity).toBe('warning');
+    expect(warning?.remedy?.command).toBe('xforge update');
+    // 正名不带这条。
+    expect((await p.xforge('update', '--status')).env.diagnostics).toEqual([]);
   });
 });

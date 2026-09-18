@@ -18,7 +18,7 @@ import type { EnvelopeDiagnostic, Executor, Language, Manifest, Platform } from 
 import { readYaml, toYaml } from '../model/yaml.js';
 import { upgradeFinish, upgradeRollback, upgradeStage, upgradeStatusReport, type UpgradeContext } from './upgrade.js';
 
-export const ASSEMBLE_VERBS = ['init', 'sync', 'upgrade', 'remove'] as const;
+export const ASSEMBLE_VERBS = ['init', 'sync', 'update', 'upgrade', 'remove'] as const;
 export type AssembleVerb = (typeof ASSEMBLE_VERBS)[number];
 
 export function payloadDir(): string {
@@ -35,6 +35,7 @@ export async function runAssemble(verb: AssembleVerb, parsed: Parsed, cwd: strin
       const platforms = checkedPlatforms(parsed);
       return sync(root, platforms.length ? platforms : undefined);
     }
+    case 'update':
     case 'upgrade': {
       const root = await findProjectRoot(cwd, env);
       if (!root) throw new CliError('XF-STATE-002', '找不到治理根', 3, { command: 'xforge init', text: '先初始化' });
@@ -45,16 +46,38 @@ export async function runAssemble(verb: AssembleVerb, parsed: Parsed, cwd: strin
       });
       const fixedNow = env['XFORGE_NOW'];
       const ctx: UpgradeContext = { root, paths, manifest, env, now: () => fixedNow ?? new Date().toISOString(), payloadDir: flagString(parsed, 'payload') ?? payloadDir(), targetVersion: flagString(parsed, 'to') ?? cliVersion() };
-      if (flagBool(parsed, 'status')) return upgradeStatusReport(ctx);
-      if (flagBool(parsed, 'finish')) return upgradeFinish(ctx);
-      if (flagBool(parsed, 'rollback')) return upgradeRollback(ctx);
-      return upgradeStage(ctx);
+      const outcome = flagBool(parsed, 'status')
+        ? await upgradeStatusReport(ctx)
+        : flagBool(parsed, 'finish')
+          ? await finishAndSync(ctx, root)
+          : flagBool(parsed, 'rollback')
+            ? await upgradeRollback(ctx)
+            : await upgradeStage(ctx);
+      return verb === 'upgrade' ? deprecated(outcome) : outcome;
     }
     case 'remove':
       return remove(cwd, flagString(parsed, 'confirm'), env);
     default:
-      throw new UsageError('用法: xforge init | sync | upgrade [--status|--finish|--rollback] | remove --confirm <项目目录名>');
+      throw new UsageError('用法: xforge init | update [--status|--finish|--rollback] | sync | remove --confirm <项目目录名>');
   }
+}
+
+/** 旧名 `upgrade`：行为完全相同，只在信封里多一条 warning（命令行设计 D12）。 */
+function deprecated(outcome: Outcome): Outcome {
+  const diagnostics = [...(outcome.diagnostics ?? []), { code: 'XF-ASSEMBLE-011', severity: 'warning' as const, message: 'upgrade 是旧名，用 update', remedy: { command: 'xforge update', text: '把脚本与文档里的 xforge upgrade 换掉' } }];
+  return { ...outcome, diagnostics };
+}
+
+/** `--finish` 收尾自动投一次：脚手架换了新版，宿主上还是旧的 Skill 没有意义（D12）。 */
+async function finishAndSync(ctx: UpgradeContext, root: string): Promise<Outcome> {
+  const finished = await upgradeFinish(ctx);
+  const synced = await sync(root, undefined);
+  return {
+    ...finished,
+    changed: [...(finished.changed ?? []), ...(synced.changed ?? [])],
+    diagnostics: [...(finished.diagnostics ?? []), ...(synced.diagnostics ?? [])],
+    next: [{ command: 'xforge state --orient', why: '新脚手架已投到宿主' }],
+  };
 }
 
 /** 拆除：整个治理目录与所有宿主投影一起删；破坏性，必须点名确认（命令行设计 D10）。 */
