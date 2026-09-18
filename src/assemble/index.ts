@@ -1,7 +1,6 @@
 // design: cli §5 — 装配：init 从零建治理目录树（重入幂等），sync 把脚手架投影到宿主原生位置。
-import { existsSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, rmSync, writeFileSync } from 'node:fs';
 import { copyFile, mkdir, readdir } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
 import { basename, join, relative } from 'node:path';
 import fg from 'fast-glob';
 import type { Parsed } from '../cli/args.js';
@@ -15,8 +14,8 @@ import { sha256 } from '../model/digest.js';
 import { detect, knownProviderIds, providerFor, providers, type HostFile } from '../providers/index.js';
 import { runDoctor } from './doctor.js';
 import { runRepair } from './repair.js';
-import { projectedFiles, pruneEmptyDirs, readLedger, rel } from './hosts.js';
-import { cliVersion } from '../meta/index.js';
+import { footprintOf, ledgerUnreadable, projectedFiles, pruneEmptyDirs, readLedger, rel } from './hosts.js';
+import { cliVersion, payloadDir } from '../meta/index.js';
 import { findProjectRoot, governancePaths, type GovernancePaths } from '../model/paths.js';
 import type { EnvelopeDiagnostic, HostsLedger, Language, Manifest, Platform } from '../model/types.js';
 import { readYaml, toYaml } from '../model/yaml.js';
@@ -24,10 +23,6 @@ import { upgradeFinish, upgradeRollback, upgradeStage, upgradeStatusReport, type
 
 export const ASSEMBLE_VERBS = ['init', 'sync', 'update', 'upgrade', 'doctor', 'repair', 'remove'] as const;
 export type AssembleVerb = (typeof ASSEMBLE_VERBS)[number];
-
-export function payloadDir(): string {
-  return fileURLToPath(new URL('../../scaffold/', import.meta.url));
-}
 
 export async function runAssemble(verb: AssembleVerb, parsed: Parsed, cwd: string, env: NodeJS.ProcessEnv, io?: Io): Promise<Outcome> {
   switch (verb) {
@@ -118,11 +113,12 @@ async function remove(cwd: string, confirm: string | undefined, env: NodeJS.Proc
     throw new CliError('XF-ASSEMBLE-004', `拆除会删掉 xforge/ 与全部宿主投影，需要 --confirm ${name}`, 1, { command: `xforge remove --confirm ${name}`, text: '点名确认后才执行；这是不可逆的' });
   }
   const paths = governancePaths(root);
-  const ledger = await readLedger(paths);
+  const { ledger } = await readLedger(paths);
   const removed: string[] = [];
 
-  for (const entry of ledger.providers) {
-    for (const record of entry.files) {
+  // 台账有就照台账拆，没有（或读不出）就按每个 provider 的已知布局拆：拆除不能因为丢了一份派生文件就漏掉东西。
+  for (const provider of providers()) {
+    for (const record of await footprintOf(root, ledger, provider)) {
       const abs = join(root, record.path);
       if (record.kind === 'owned') {
         if (!existsSync(abs)) continue;
@@ -130,14 +126,13 @@ async function remove(cwd: string, confirm: string | undefined, env: NodeJS.Proc
         removed.push(record.path);
         continue;
       }
-      const detached = await providerFor(entry.id)?.detach(root, abs);
-      if (detached) {
+      const detached = await provider.detach(root, abs);
+      if (detached && detached.content !== (await readText(abs))) {
         writeFileSync(abs, detached.content);
         removed.push(`${record.path}#XFORGE`);
       }
     }
   }
-  if (!ledger.providers.length) removed.push(...(await removeWithoutLedger(root)));
 
   if (existsSync(paths.root)) {
     rmSync(paths.root, { recursive: true, force: true });
@@ -145,37 +140,6 @@ async function remove(cwd: string, confirm: string | undefined, env: NodeJS.Proc
   }
   await pruneEmptyDirs(root, removed);
   return { result: { removed }, changed: removed, next: [] };
-}
-
-/** 台账出现之前装的项目：按每个 provider 的已知位置扫一遍。 */
-async function removeWithoutLedger(root: string): Promise<string[]> {
-  const removed: string[] = [];
-  for (const host of ['.claude', '.codex']) {
-    const skills = join(root, host, 'skills');
-    if (existsSync(skills)) {
-      for (const d of readdirSync(skills)) {
-        if (d !== 'xforge' && !d.startsWith('xforge-')) continue;
-        rmSync(join(skills, d), { recursive: true, force: true });
-        removed.push(`${host}/skills/${d}`);
-      }
-    }
-    const agent = join(root, host, 'agents', 'xforge-executor.md');
-    if (existsSync(agent)) {
-      rmSync(agent, { force: true });
-      removed.push(`${host}/agents/xforge-executor.md`);
-    }
-  }
-  for (const provider of [providerFor('claude'), providerFor('codex')]) {
-    if (!provider) continue;
-    for (const shared of [join(root, '.claude', 'settings.json'), join(root, 'AGENTS.md')]) {
-      if (!existsSync(shared)) continue;
-      const detached = await provider.detach(root, shared);
-      if (!detached || detached.content === (await readText(shared))) continue;
-      writeFileSync(shared, detached.content);
-      removed.push(`${rel(root, shared)}#XFORGE`);
-    }
-  }
-  return removed;
 }
 
 const CONSTITUTION_TEMPLATE = `# 章程
@@ -207,11 +171,12 @@ async function init(cwd: string, parsed: Parsed, env: NodeJS.ProcessEnv, io?: Io
     const gates = (await listNames(join(payload, 'gates'))).map((f) => f.replace(/\.yaml$/, ''));
     const policies = (await listNames(join(payload, 'policies'))).map((f) => f.replace(/\.yaml$/, ''));
     let platforms = checkedPlatforms(parsed);
-    let language = (flagString(parsed, 'language') ?? 'zh-CN') as Language;
+    let language = flagString(parsed, 'language') as Language | undefined;
     const flow = flagString(parsed, 'flow') ?? 'solid';
+    // 流程名先校验再提问：问完两道题才说「没有这个流程」是白问一遍。
     if (!flows.includes(flow)) throw new UsageError(`没有流程 ${flow}；可选：${flows.join('、')}`);
-    if (interactive(parsed, io)) {
-      const answers = await askAtInit(env, io!);
+    if (interactive(parsed, io, env)) {
+      const answers = await askAtInit(env, io!, { platforms, language });
       platforms = answers.platforms;
       language = answers.language;
     }
@@ -222,7 +187,7 @@ async function init(cwd: string, parsed: Parsed, env: NodeJS.ProcessEnv, io?: Io
       flow: { default: flow },
       modules: [],
       platforms: platforms.length ? platforms : ['claude'],
-      language,
+      language: language ?? 'zh-CN',
       selected: { flows, gates, policies },
     };
     tx.write(paths.manifest, toYaml(manifest));
@@ -237,13 +202,15 @@ async function init(cwd: string, parsed: Parsed, env: NodeJS.ProcessEnv, io?: Io
 }
 
 /**
- * 进交互的条件很窄（D15）：两端都是 TTY、没给任何装配选项、也没有 --no-input。
- * 不满足就走原来的路 —— live harness、integration 测试与 Agent 的调用全是非交互的。
+ * 有没有人坐在终端前（D15）。判的是 **stdin 与 stderr** —— 画面走 stderr，
+ * 判 stdout 会让 `xforge init > out.json` 在真人的终端里悄悄变成「不问」。
+ * `--no-input` 与 `CI` 各是一条明确的「别问」。不满足就走原来的路：
+ * live harness、integration 测试与 Agent 的调用全是非交互的。
  */
-function interactive(parsed: Parsed, io: Io | undefined): boolean {
-  if (!io?.stdin?.isTTY || !io.stdout.isTTY) return false;
+function interactive(parsed: Parsed, io: Io | undefined, env: NodeJS.ProcessEnv): boolean {
+  if (!io?.stdin?.isTTY || !io.stderr.isTTY) return false;
   if (flagBool(parsed, 'no-input')) return false;
-  return !flagList(parsed, 'platform').length && flagString(parsed, 'language') === undefined && flagString(parsed, 'flow') === undefined;
+  return !env['CI'];
 }
 
 /** 工具那一问的选项：探测到的可选，没探测到的灰显。一个都没探测到就全部放开，否则这一问无解。 */
@@ -265,11 +232,12 @@ export function toolChoices(env: NodeJS.ProcessEnv): Choice[] {
 }
 
 /** 装机那两问：工具（多选）与语言（单选）。文案是英文，画面走 stderr。 */
-async function askAtInit(env: NodeJS.ProcessEnv, io: Io): Promise<{ platforms: Platform[]; language: Language }> {
-  const tools = toolChoices(env);
-  const questions: Question[] = [
-    { key: 'platform', prompt: 'Which AI coding tools should XForge project into?', choices: tools, multi: true },
-    {
+async function askAtInit(env: NodeJS.ProcessEnv, io: Io, given: { platforms: Platform[]; language: Language | undefined }): Promise<{ platforms: Platform[]; language?: Language }> {
+  // 命令行上已经说出来的不再问：提问是替没说的那一半服务的，问一遍说过的话是噪音。
+  const questions: Question[] = [];
+  if (!given.platforms.length) questions.push({ key: 'platform', prompt: 'Which AI coding tools should XForge project into?', choices: toolChoices(env), multi: true });
+  if (given.language === undefined) {
+    questions.push({
       key: 'language',
       prompt: 'Which language should the projected Skills use?',
       choices: [
@@ -277,11 +245,16 @@ async function askAtInit(env: NodeJS.ProcessEnv, io: Io): Promise<{ platforms: P
         { value: 'en', label: 'English', note: 'translated from the Chinese source' },
       ],
       multi: false,
-    },
-  ];
+    });
+  }
+  if (!questions.length) return { platforms: given.platforms, ...(given.language ? { language: given.language } : {}) };
+  const view = { color: !env['NO_COLOR'], columns: Math.max(20, io.stderr.columns ?? 80) };
   try {
-    const answers = await ask(questions, { input: io.stdin!, output: io.stderr });
-    return { platforms: answers['platform'] ?? [], language: (answers['language']?.[0] ?? 'zh-CN') as Language };
+    const answers = await ask(questions, { input: io.stdin!, output: io.stderr, view });
+    return {
+      platforms: given.platforms.length ? given.platforms : (answers['platform'] ?? []),
+      ...(given.language ? { language: given.language } : answers['language']?.[0] ? { language: answers['language'][0] as Language } : {}),
+    };
   } catch (error) {
     if (error instanceof Aborted) throw new UsageError('init cancelled');
     throw error;
@@ -299,17 +272,22 @@ async function listNames(dir: string): Promise<string[]> {
 export async function sync(root: string, only: readonly Platform[] | undefined): Promise<Outcome<{ files: string[]; removed: string[] }>> {
   const paths = governancePaths(root);
   const manifest = await readYaml<Manifest>(paths.manifest, 'manifest');
-  const ledger = await readLedger(paths);
+  const { ledger, unreadable } = await readLedger(paths);
   const declared = only ?? manifest.platforms;
   // 台账里有、清单里已经没有的 provider：全量 sync 时也在范围内 —— 它投出去的文件要回收。
-  const stale = only ? [] : ledger.providers.map((p) => p.id).filter((id) => !manifest.platforms.includes(id));
+  // 台账读不出时按认得的 provider 全扫一遍：兜底认孤儿，比丢下它们不管强。
+  const stale = only ? [] : (unreadable ? knownProviderIds() : ledger.providers.map((p) => p.id)).filter((id) => !manifest.platforms.includes(id));
   const scope = [...new Set([...declared, ...stale])];
 
   const diagnostics: EnvelopeDiagnostic[] = [];
+  if (unreadable) diagnostics.push(ledgerUnreadable());
   const projected = new Map<string, HostFile[]>();
   for (const p of await projectedFiles(root, paths, manifest, declared)) {
     if (p.hookMissing) {
       diagnostics.push({ code: 'XF-ASSEMBLE-008', severity: 'warning', message: `${p.provider.id} 能执法，但没有 scaffold/hooks/enforce.yaml 可投：这一次没有投钩子`, remedy: { command: 'xforge doctor', text: '把钩子声明放回脚手架再 sync' } });
+    }
+    if (p.hookBlocked) {
+      diagnostics.push({ code: 'XF-ASSEMBLE-013', severity: 'warning', message: `${p.hookBlocked} 解析不成 JSON 对象：那是别人写的文件，一个字节都没动，${p.provider.id} 的执法钩子这一次没装进去`, remedy: { command: 'xforge doctor', text: '人把它改回合法的 JSON 再 sync' } });
     }
     projected.set(p.provider.id, p.files);
   }
@@ -324,7 +302,9 @@ export async function sync(root: string, only: readonly Platform[] | undefined):
   // 孤儿回收：台账里有、这一次不该再有的。owned 删掉；shared 只摘掉我们那块。
   const removed: string[] = [];
   for (const id of scope) {
-    const before = ledger.providers.find((p) => p.id === id)?.files ?? [];
+    const provider = providerFor(id);
+    if (!provider) continue;
+    const before = await footprintOf(root, ledger, provider);
     const keep = new Set((projected.get(id) ?? []).map((f) => rel(root, f.path)));
     for (const record of before) {
       if (keep.has(record.path)) continue;

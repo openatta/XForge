@@ -1,4 +1,7 @@
-// design: skills §5 — 宿主投影共用：生成物注记、共有文件的标记块合并。
+// design: skills §5 — 宿主投影共用：生成物注记、共有文件的标记块合并、台账不在时的兜底扫描。
+import { existsSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+
 export interface SkillSource {
   name: string;
   text: string;
@@ -35,6 +38,39 @@ export function mergeMarkerBlock(existing: string, block: string): string {
   if (b !== -1 && e !== -1 && e > b) return existing.slice(0, b) + rendered + existing.slice(e + BLOCK_END.length);
   const sep = existing.length === 0 ? '' : existing.endsWith('\n') ? '\n' : '\n\n';
   return `${existing}${sep}${rendered}\n`;
+}
+
+/** Skill 目录名的前缀：`xforge` 与 `xforge-*`。兜底扫描按它认自己投过的目录。 */
+export const SKILL_PREFIX = 'xforge';
+
+/**
+ * 按已知布局扫这个宿主目录下属于我们的文件：`<host>/skills/xforge*` 下的每一个文件，
+ * 加上执行者定义。台账在的时候用不上它 —— 这是台账不在时的兜底（命令行设计 `CLI-46`）。
+ */
+export function scanHostDir(root: string, hostDir: string, executor: string | null): Array<{ path: string; kind: 'owned' | 'shared' }> {
+  const out: Array<{ path: string; kind: 'owned' | 'shared' }> = [];
+  const skills = join(root, hostDir, 'skills');
+  if (existsSync(skills)) {
+    for (const name of readdirSync(skills).sort()) {
+      if (name !== SKILL_PREFIX && !name.startsWith(`${SKILL_PREFIX}-`)) continue;
+      for (const file of filesUnder(join(skills, name))) out.push({ path: file, kind: 'owned' });
+    }
+  }
+  if (executor) {
+    const agent = join(root, hostDir, 'agents', executor);
+    if (existsSync(agent)) out.push({ path: agent, kind: 'owned' });
+  }
+  return out;
+}
+
+function filesUnder(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+    const p = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...filesUnder(p));
+    else out.push(p);
+  }
+  return out;
 }
 
 /** 拆除：去掉标记块（及其前后各一个换行），块外逐字节保留。 */

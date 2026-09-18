@@ -1,6 +1,6 @@
 // design: cli §4 — 执法侧的载荷适配：每个宿主一份解析与渲染，按 --host 选。
 import { describe, expect, it } from 'vitest';
-import { payloadFor } from '../../../src/enforce/payloads/index.js';
+import { FALLBACK_PAYLOAD, payloadFor } from '../../../src/enforce/payloads/index.js';
 
 const claude = payloadFor('claude')!;
 const parse = (payload: unknown): ReturnType<typeof claude.parse> => claude.parse(JSON.stringify(payload), '/fallback');
@@ -20,16 +20,22 @@ describe('claude payload', () => {
     expect(() => claude.parse('not json', '/fallback')).toThrow();
   });
 
-  it('renders the hook answer claude understands', () => {
-    expect(JSON.parse(claude.render({ decision: 'deny', reason: 'x' }))).toEqual({
+  it('renders the hook answer claude understands, and says nothing to allow (CLI-45)', () => {
+    expect(JSON.parse(claude.render({ decision: 'deny', reason: 'x' })!)).toEqual({
       hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'x' },
     });
+    expect(JSON.parse(claude.render({ decision: 'ask', reason: 'y' })!)).toEqual({
+      hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask', permissionDecisionReason: 'y' },
+    });
+    // 显式 allow 会跳过 claude 自己的审批提示：治理钩子只否决或升级。
+    expect(claude.render({ decision: 'allow', reason: '' })).toBeNull();
   });
 });
 
 describe('the registry', () => {
-  it('has no adapter for a host it does not know', () => {
+  it('has no adapter for a host it does not know, and falls back to a shape hosts can read (CLI-39)', () => {
     expect(payloadFor('codex')).toBeUndefined();
     expect(payloadFor('zed')).toBeUndefined();
+    expect(FALLBACK_PAYLOAD).toBe(claude);
   });
 });

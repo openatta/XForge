@@ -108,8 +108,14 @@ XFORGE_ROOT=<主检出目录>  XFORGE_SCHEME=<方案 id>
 | `claude` | `.claude/skills/`、`.claude/agents/`、`.claude/settings.json` | 有 | 有（执行者子 Agent） |
 | `codex` | `.codex/skills/`、`AGENTS.md` 标记块 | 无 | 无（站 Skill 在主会话跑） |
 
-`state --orient` 的 `enforcement` 按**当前正在跑的那个宿主**算（`XFORGE_HOST` 指定），不按清单里有谁算：
-拦不住的时候要让 Agent 与人都知道拦不住。
+`state --orient` 的 `enforcement` 按**当前正在跑的那个宿主**算（`XFORGE_HOST` 指定），不按清单里有谁算，
+并且要三件事同时成立才说 `available`：这个宿主有执法钩子、钩子确实在它的原生位置里、
+**钩子命令在本机 `PATH` 上跑得起来**。拦不住的时候要让 Agent 与人都知道拦不住。
+
+> 最后一条实践上就是：**把 CLI 装到宿主进程也看得见的地方**（`npm i -g @xforge/cli`）。
+> 只在项目里装（`npx`）的话，钩子写进去了也起不来，宿主拿不到决策就继续执行 —— `doctor` 会报 `XF-ASSEMBLE-014`。
+
+执法钩子只否决与升级，**放行时什么都不说**：那样宿主自己的审批提示照常出现。
 
 ## 装配的五个命令
 
@@ -117,12 +123,18 @@ XFORGE_ROOT=<主检出目录>  XFORGE_SCHEME=<方案 id>
 xforge init      建 xforge/，投影到选中的宿主
 xforge update    脚手架跟上新版：暂存 → 人合并 → --finish（收尾自动重投）
 xforge sync      把 xforge/scaffold/ 的当前状态投到宿主，并回收孤儿
-xforge doctor    装配现在还对不对：投影缺没缺、被没被手改、钩子在不在、有没有孤儿
-xforge repair    把 doctor 报的、能自动修的修掉（--dry-run 先看计划）
+xforge doctor    装配现在还对不对：骨架完不完整、投影缺没缺、被没被手改、钩子在不在 / 跑不跑得起来、有没有孤儿
+xforge repair    把 doctor 报的、能自动修的修掉：从载荷补回缺的受管文件，再重投出问题的宿主（--dry-run 先看计划）
 ```
 
+`repair` 只做「重写一遍就对」的事：**缺的补回来**（校验和对得上才补），**改过的一个字不动**（那是 `update` 的活）。
+修完会按盘上再核一遍，没落盘就报出来 —— 一次假装成功的修复比不修更坏。
+
 投出去的东西记在 `xforge/hosts.yaml`：`sync` 据它回收孤儿，`doctor` 据它判漂移，`remove` 据它拆除。
-与人共用的文件（`AGENTS.md`、`.claude/settings.json`）只有标记块归它管，块外的内容逐字节不动。
+它是**派生物**：读不出或删掉了都不会让命令倒下，重投一次就回来。
+
+与人共用的文件（`AGENTS.md`、`.claude/settings.json`）只有我们那一块归它管，块外的内容逐字节不动；
+那份文件**解析不了就一个字节都不写** —— 覆盖它等于把人家的 `permissions` 与其余钩子一起删了。
 
 ## 读什么
 

@@ -1,5 +1,6 @@
 // design: migration §0 — D4 integration 层：在临时项目上跑真实的 bin/xforge.js。
 import { execFile, execFileSync } from 'node:child_process';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { mkdtemp, mkdir, realpath, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -11,6 +12,22 @@ const run = promisify(execFile);
 export const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const BIN = join(repoRoot, 'bin', 'xforge.js');
 const ENFORCE = join(repoRoot, 'bin', 'xforge-enforce.js');
+
+/**
+ * 装好的样子：`npm i -g` 会在 PATH 上放一个 `xforge-enforce`，钩子命令才跑得起来。
+ * 仓库里没有那个名字，所以测试自己搭一个 —— 否则每个项目的 `enforcement` 都是 `unavailable`（D8），
+ * 而那反映的是「测试没装 CLI」，不是被测代码的性质。要断言「没装」的那条路径，把它从 PATH 上拿掉即可。
+ */
+export const shimBin = join(repoRoot, 'test', '.tmp', 'bin');
+mkdirSync(shimBin, { recursive: true });
+writeFileSync(join(shimBin, 'xforge-enforce'), `#!/bin/sh\nexec node ${JSON.stringify(ENFORCE)} "$@"\n`, { mode: 0o755 });
+
+function withShim(env: Record<string, string> | undefined): Record<string, string> {
+  const merged = { ...process.env, ...(env ?? {}) } as Record<string, string>;
+  // 调用方自己给了 PATH 就照它来：那是「这台机器上没装」那条路径的测法。
+  if (env?.['PATH'] === undefined) merged['PATH'] = `${shimBin}:${merged['PATH'] ?? ''}`;
+  return merged;
+}
 
 export interface Result {
   exit: number;
@@ -53,7 +70,7 @@ export class Project {
   /** 在别的目录 / 环境下调用：worktree 里的方案会话就是 cwd=worktree + XFORGE_ROOT/XFORGE_SCHEME。 */
   async xforgeIn(where: { cwd?: string; env?: Record<string, string> }, ...args: string[]): Promise<Result> {
     try {
-      const { stdout, stderr } = await run('node', [BIN, ...args], { cwd: where.cwd ?? this.root, env: { ...process.env, XFORGE_NOW: '2026-09-15T10:00:00.000Z', ...(where.env ?? {}) } });
+      const { stdout, stderr } = await run('node', [BIN, ...args], { cwd: where.cwd ?? this.root, env: withShim({ XFORGE_NOW: '2026-09-15T10:00:00.000Z', ...(where.env ?? {}) }) });
       return { exit: 0, env: parse(stdout), stderr };
     } catch (error) {
       const e = error as { code?: number; stdout?: string; stderr?: string };
@@ -62,11 +79,13 @@ export class Project {
   }
 
   async enforce(payload: unknown, where: { cwd?: string; env?: Record<string, string> } = {}): Promise<{ decision: string; reason: string }> {
-    const child = execFile('node', [ENFORCE, '--host', 'claude'], { cwd: where.cwd ?? this.root, env: { ...process.env, ...(where.env ?? {}) } });
+    const child = execFile('node', [ENFORCE, '--host', 'claude'], { cwd: where.cwd ?? this.root, env: withShim(where.env) });
     child.stdin!.end(JSON.stringify(payload));
     let out = '';
     child.stdout!.on('data', (d: Buffer) => (out += d.toString()));
     await new Promise<void>((res) => child.on('close', () => res()));
+    // 放行 = 什么都不说（cli §4 第 6 步、CLI-45）：空 stdout 在这里还原成 allow，断言照旧读 decision。
+    if (out.trim() === '') return { decision: 'allow', reason: '' };
     const parsed = JSON.parse(out) as { hookSpecificOutput: { permissionDecision: string; permissionDecisionReason: string } };
     return { decision: parsed.hookSpecificOutput.permissionDecision, reason: parsed.hookSpecificOutput.permissionDecisionReason };
   }

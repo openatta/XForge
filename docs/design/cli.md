@@ -11,21 +11,21 @@
 
 | # | 决定 | 理由 |
 | --- | --- | --- |
-| **D1** | 五动词的命令名：读 `state`（位置）与 `show`（点名取材料，读的第二种形式）、验 `inspect`、产 `run`、证 `attest`、进 `advance`；装配 `init` `sync` `upgrade`；执法 `xforge-enforce`（独立可执行）；元信息 `help` `version` `explain` | 一个动词一个词；`inspect` 避开与站名 `check`/`verify` 撞车。`show` 单独成词是为了调用方便，性质仍是读：不写盘、随时可调、答案只随树变 |
+| **D1** | 五动词的命令名：读 `state`（位置）与 `show`（点名取材料，读的第二种形式）、验 `inspect`、产 `run`、证 `attest`、进 `advance`；装配 `init` `update` `sync` `doctor` `repair`（D12）；执法 `xforge-enforce`（独立可执行）；元信息 `help` `version` `explain` | 一个动词一个词；`inspect` 避开与站名 `check`/`verify` 撞车。`show` 单独成词是为了调用方便，性质仍是读：不写盘、随时可调、答案只随树变 |
 | **D2** | 默认输出 JSON 信封；`--text` 只改呈现 | 主要读者是 Agent |
 | **D3** | 退出码：`0` 成功；`1` 成功执行但结论是「不能」（被挡、门失败、条件不满足）；`2` 用法错误；`3` 记录损坏或治理不可读（`失败朝安全`） | Agent 与 CI 都要靠退出码分流，三类补救不同 |
 | **D4** | `--change <id>` 缺省时：恰有一个未归档 Change 就用它，否则 `XF-STATE-001` 要求指定 | 单 Change 的项目零参数；多 Change 不猜 |
 | **D5** | `--scheme <id>` 选实现方案：不给就是默认方案，行为与目录布局与没有这个特性时完全一样；给了，实现侧的一切落在 `changes/<id>/<scheme>/`，规格侧共享。解析顺序 `--scheme` → 环境变量 `XFORGE_SCHEME` → 缺省。方案 id 是小写字母开头的字母数字与连字符，不能叫 `default`，不能撞 `specs`/`interfaces`/`ledgers`/`evidence`；第一次用 `state --scheme x` 就等于创建，位置在流程第一站，规格侧产出对它 `not-owed`，一次 `advance` 就到第一个实现侧的站 | 主文档《实现方案》；XIPD 的双路开发靠它 |
 | **D6** | `state` 默认只回 0b；`state --orient` 回 0a + 1 + 0b（按 0a → 1 → 0b 排） | 控制面无会话状态，「第一次」由调用方决定 |
 | **D7** | 站级审批与终局审批的 `attest approve` 记录事件，不移动；事件记下当时的站修订，批完再改产出审批作废（`approval-stale`）。交付即集成：`advance package --deliver` 在验证门当前且通过时直接落 `integrated`，没有人确认这一格（2026-09-17 用户决定：生成量太大，逐包人确认不现实，责任归到审批点；终局形态是 MCP 审批） | 主文档《两台状态机》《人的介入点》 |
-| **D8** | `enforcement` 按**当前正在跑的那个宿主**算，不按清单里有谁算：该 provider 的能力里有执法钩子、且钩子确实在宿主原生位置里，才是 `available`，否则 `unavailable`。当前宿主由 `XFORGE_HOST` 指定，没有就取清单里能执法的第一个 | 拦不住时要让 Agent 与人都知道拦不住，而不是假装拦得住。清单里同时有能执法与不能执法的宿主时，只看清单会在不能执法的那个宿主里谎报 `available` |
+| **D8** | `enforcement` 按**当前正在跑的那个宿主**算，不按清单里有谁算。三件事同时成立才是 `available`：该 provider 的能力里有执法钩子、钩子确实在宿主原生位置里、**钩子命令的第一个词在本机 `PATH` 上解析得到**；缺一件就是 `unavailable`。当前宿主由 `XFORGE_HOST` 指定，没有就取清单里能执法的第一个 | 拦不住时要让 Agent 与人都知道拦不住，而不是假装拦得住。清单里同时有能执法与不能执法的宿主时，只看清单会在不能执法的那个宿主里谎报；而「钩子装上了」与「钩子跑得起来」也是两件事 —— 命令解析不到时宿主照常发起钩子、拿不到决策然后继续执行，这与没装没有区别 |
 | **D9** | 卫生检查（声明了却没人用）作为 `inspect --hygiene` 存在，并由 `advance --archive` 在终局前跑一次 | 给它一个触发点，又不让顺利的 Change 主动调 `inspect` |
 | **D10** | 拆除是独立命令 `xforge remove --confirm <project-name>`（`project-name` 是项目根目录名），删 `xforge/` 与全部宿主投影（Skill、执行者、钩子、`AGENTS.md` 标记块）；不带或带错确认是 `XF-ASSEMBLE-004`；日常命令没有这个开关 | 破坏性动作要显式确认 |
 | **D11** | 「验」对 Skill 只做存在性检查（文件在、四节标题在、本地化区标记成对） | `不读散文的意思`；覆盖判定在 Skill 设计里由「本站承诺」条目化后再考虑 |
 | **D12** | 装配面是五个命令：`init` `update` `sync` `doctor` `repair`；`update` 是原 `upgrade` 的新名（三段式不变），旧名保留一个小版本并在信封里 `warning`。改名只改命令：哨兵目录仍是 `.upgrade/`、审计事件仍是 `scaffold.upgraded`、schema 仍叫 `upgrade-status` | 装配的生命周期要在命令名上看得见（建起来 / 跟上新版 / 投出去 / 看对不对 / 修回去）。磁盘与审计里的名字是历史，改了旧链读不出，收益为零 |
 | **D13** | 宿主适配叫 **provider**，一分为二：装配侧（探测、能力、投影、诊断、修复）在 `src/providers/`，执法侧（载荷解析、决策渲染）在 `src/enforce/payloads/`；两侧不共享类型，也不互相 import | 执法入口的模块图不许触及装配侧（迁移方案 `MG-03`）。provider 会继续增加，两侧的变化频率与约束都不同 |
 | **D14** | 清单 `platforms` 的取值由闭集改为开放名字（`^[a-z][a-z0-9-]*$`）；认不认得由控制面运行时判，不认得是 `XF-ASSEMBLE-005` | 加一个 provider 不该改 schema、不该升清单格式版本 |
-| **D15** | `init` 在 `stdin`/`stdout` 都是 TTY、没给任何装配选项、也没有 `--no-input` 时进交互：先探测，再问工具（多选）与语言（单选），英文。交互 UI 全部走 stderr，stdout 仍只有信封。探测结果可由 `XFORGE_DETECT` 注入 | 人第一次装的那一屏不能污染 Agent 读的那条流（D2）。探测要能在没装任何工具的 CI 上测，就不能直接 spawn |
+| **D15** | `init` 在 **`stdin` 与 `stderr` 都是 TTY**、没有 `--no-input`、也没有 `CI` 环境变量时进交互：先探测，再**只问命令行没给的那一半** —— 工具（多选）与语言（单选），英文。交互 UI 全部走 stderr，stdout 仍只有信封。探测结果可由 `XFORGE_DETECT` 注入 | 人第一次装的那一屏不能污染 Agent 读的那条流（D2）。判的是 stderr 而不是 stdout：画面写在 stderr，判 stdout 会让 `xforge init > out.json` 在真人的终端里悄悄变成不问。已经用选项说出来的答案再问一遍是噪音。探测要能在没装任何工具的 CI 上测，就不能直接 spawn |
 | **D16** | 宿主投影有台账 `xforge/hosts.yaml`（provider → 投出去的文件 + 校验和）：`sync` 据它回收孤儿，`doctor` 据它判缺失与漂移，`remove` 据它拆除 | 「哪些文件是我投的」现在靠硬编码目录名猜，加到第三个 provider 就断。台账是派生物，丢了重投一次就有 |
 
 ---
@@ -68,7 +68,10 @@
 - 写入走受治理写入：临时文件 + rename；一次命令的多份写入与审计事件放同一事务，任一失败整体回滚（`写必须能回退`）。
 - 时间戳只出现在证据与审计里，不出现在 `state --orient` 的 0a 段。
 
+- **认不出的 `--flag` 是用法错**（退出码 `2`，列出这个命令认得的）。静默吞掉一个不认得的开关，比不支持它更坏：调用方写了 `repair --dry-run` 拿到的是一次真实的写盘，写了 `repair --platform codex` 改的却是别的宿主，而两次都退出 `0`。
+
 `CLI-04` 任一写命令在写第二个文件前被杀，重启后 `inspect` 报干净（事务目录残留时报 `XF-INSPECT-006` 并给清理命令）。
+`CLI-50` 每个命令认得的 `--flag` 是一张明表：给一个不在表上的开关退出码 `2`，stderr 列出认得的；`--text` `--field` `--cwd` 三个通用开关对所有命令都认。
 
 ### 1.3 位置怎么算
 
@@ -368,6 +371,8 @@ xforge-enforce --host claude        # 读 stdin 载荷，写 stdout 决策；退
 4. 分发策略求值（规则文件设计 §3.3）；`deny` 则回。
 5. 若 `action ∈ write|edit` 且路径在项目根之内、`xforge/` 之外（项目外的路径不归投影管）：收集 `changes/*/evidence/projections/*.yaml` 与 `changes/*/<scheme>/evidence/projections/*.yaml` 中 `closed_by == null` 且 `workdir` 等于 `cwd` 或是 `cwd` 的祖先的投影；有 → 路径必须匹配它们 `allow` 的交集，否则 **deny** `XF-ENFORCE-002`；无 → 不施加。
 6. 输出宿主格式（claude：`{"hookSpecificOutput": {"permissionDecision": "deny", "permissionDecisionReason": "…"}}`）。
+   - **放行什么都不说**：退出码 `0` + 空 stdout = 这次调用照常走宿主自己的审批与沙箱。一个治理钩子的本分是拦与升级，不是放行 —— claude 的 `permissionDecision: allow` 会跳过它自己的审批提示（用户写死的 deny / ask 规则照样生效，但「默认会问一句」的那些就不问了），装上执法不该顺手把人的默认提醒关掉。
+   - **认不出的宿主也用认得出的形状说话**：没有载荷适配器时裁决已经是 deny，回答仍按 claude 的 `hookSpecificOutput` 渲染 —— 那是这类钩子最通用的一套。回一个宿主读不懂的形状，等于把 deny 说成了一句它听不见的话（`失败朝安全` 只有落到宿主真的拦住才算数）。
 
 ### 4.1 出路
 
@@ -376,7 +381,8 @@ xforge-enforce --host claude        # 读 stdin 载荷，写 stdout 决策；退
 `CLI-19` 执法进程的模块加载集合不含 `src/verbs` 等（迁移方案 `MG-03`）；在空载荷、坏 YAML、缺清单三种输入下都输出 deny。
 `CLI-20` 冷启动到输出决策的时间在基准机上 < 80 ms（integration 层量，超出报警不阻塞；数字进 README）。
 `CLI-21` 对同一载荷，执法输出是纯函数（没有时间戳、没有随机数）。
-`CLI-39` 载荷适配按 `--host` 选：`claude` 回宿主认得的形状；没有适配器的宿主一律 deny，用通用形状回答（`失败朝安全`）。
+`CLI-39` 载荷适配按 `--host` 选：`claude` 回宿主认得的形状；没有适配器的宿主一律 deny，且用 claude 的形状回答 —— 认不出宿主不等于放弃拦截（`失败朝安全`）。
+`CLI-45` 放行时 stdout 逐字节为空、退出码 `0`：执法只否决或升级，从不显式放行，宿主自己的审批提示原样保留。deny 与 ask 照常输出宿主形状。
 
 ---
 
@@ -407,7 +413,7 @@ xforge init [--flow <name>] [--platform <name>]... [--language zh-CN|en] [--no-i
 
 从零建 `xforge/`：复制载荷到 `scaffold/`（含 `integrity.yaml`）、生成清单（治理开关默认关、默认流程 `solid`）、空章程模板、空基线索引。已初始化时幂等：只补缺失文件，不覆盖，不改清单。然后执行一次 `sync`。
 
-**交互（D15）**：`stdin` 与 `stdout` 都是 TTY、没给 `--platform` `--language` `--flow` 中的任何一个、也没有 `--no-input` 时，先探测，再问两道题 —— 工具（多选，至少一个）与语言（单选）—— 文案用英文。其余情况一律按选项与缺省直接跑，行为与没有这个特性时完全一样。
+**交互（D15）**：`stdin` 与 `stderr` 都是 TTY、没有 `--no-input`、也没有 `CI` 时，先探测，再问命令行还没回答的那几道 —— 工具（多选，至少一个）与语言（单选）—— 文案用英文。两个都给了就一道也不问。其余情况一律按选项与缺省直接跑，行为与没有这个特性时完全一样。
 
 - 交互 UI 全部写 stderr；stdout 仍然只有信封（D2）。
 - 探测不到的 provider 灰显但**可以选**，选中时标注未探测到：投影只是写文件，本机装没装是另一件事（先装 XForge 后装工具、A 机生成 B 机用，都是合法的）。
@@ -417,7 +423,8 @@ xforge init [--flow <name>] [--platform <name>]... [--language zh-CN|en] [--no-i
 
 一个 provider 都没探测到时，全部改为可选并注明「本机没探测到，文件照写」：否则新机器、容器与 CI 上这一问无解。
 
-`CLI-44` 交互只在两端都是 TTY、没给任何装配选项、也没有 `--no-input` 时发生；非交互的 `init` 行为与没有这个特性时逐字节相同（缺省 `claude` + `zh-CN` + `solid`，不问也不挂）。画面全部在 stderr：stdout 仍然只有信封。灰显项按空格不选中并说明「命令行上可以点名」；一个都没选中时回车不放行；一个都没探测到时全部可选。
+`CLI-44` 交互只在 `stdin` 与 `stderr` 都是 TTY、没有 `--no-input`、也没有 `CI` 时发生，且**只问命令行没给的那一半**（`--platform` 给了就只问语言，两个都给了一道也不问）；非交互的 `init` 行为与没有这个特性时逐字节相同（缺省 `claude` + `zh-CN` + `solid`，不问也不挂）。画面全部在 stderr，stdout 不是 TTY 也照问：stdout 仍然只有信封。灰显项按空格不选中并说明「命令行上可以点名」；一个都没选中时回车不放行；一个都没探测到时全部可选。
+`CLI-51` 画面按**列**算而不是按字符算：CJK 占两列，每行先截到终端宽度之内 —— 一旦有行折了，重画的「往上退 N 行」就退错，整屏花掉。按键读的是终端报的具名键（方向键发的是 `ESC [ A`），不自己解转义序列：自己解就得在「裸 `ESC` 是取消」与「`ESC` 是方向键的头一个字节」之间赌读不会被拆包。
 
 ### 5.2 `sync`
 
@@ -434,12 +441,14 @@ xforge sync [--platform <name>]... [--depth auto|shallow|full]
 
 - **孤儿回收**：台账里有、这一次不该再有的文件（Skill 改名、宿主布局变了、清单里去掉了某个 provider），`sync` 删掉并列进 `changed`。`--platform` 只投这一次点名的宿主，回收也只在这些宿主的范围内做。
 - **漂移**：投影前发现某个受管生成物在上次投出去之后被人改过（校验和与台账不符），照常覆盖，并在信封 `diagnostics` 里 `XF-ASSEMBLE-006` 级别 `warning` 报出它被覆盖了。
+- **共用文件读不懂就不动**：执法钩子落在宿主自己的配置文件里（`.claude/settings.json`），那份文件解析不成 JSON 对象时，`sync` **一个字节都不写** —— 那是别人写的文件，用一份只含我们钩子的新内容覆盖它，等于把人家的 `permissions` 与其余钩子一起删了。代价是这一次钩子没装进去，所以同时报 `XF-ASSEMBLE-013` 的 `warning`，并由 `doctor` 持续报出来。
 - 生成物带头注释「由 xforge sync 生成，改 `xforge/scaffold/` 后重跑」。
 
 `CLI-38` 执法钩子的命令串只来自 `scaffold/hooks/enforce.yaml`：改了声明再 `sync`，宿主设置里那条跟着变且只有一条（旧的被替换，不是并存）；声明不在时不投钩子，并报 `XF-ASSEMBLE-008` 的 `warning`。
 `CLI-41` 台账驱动的孤儿回收：Skill 改名或清单里去掉一个 provider 之后 `sync`，owned 的投影文件与空下来的目录都没了、`result.removed` 列出它们，shared 文件只被摘掉标记块（块外逐字节保留）；`--platform` 只动点名那个 provider 的台账条目。
 `CLI-22` `sync` 两次连跑，第二次 `changed` 为空。
-`CLI-23` 共有文件（`AGENTS.md`、`.claude/settings.json`）标记块之外的内容逐字节保留。
+`CLI-23` 共有文件（`AGENTS.md`、`.claude/settings.json`）标记块之外的内容逐字节保留；那份文件解析不成 JSON 对象时整份逐字节不变，`sync` 报 `XF-ASSEMBLE-013` 的 `warning`、`doctor` 报同一个码的 `blocking`。
+`CLI-46` 台账（`xforge/hosts.yaml`）是派生物：读不出时按空台账继续、报 `XF-ASSEMBLE-017` 的 `warning`，`sync` 照投并把台账重写回来；台账不在时孤儿由 provider 的已知位置兜底认出来，不因为丢了一份派生文件就永久失忆。
 
 ### 5.3 `update`（原 `upgrade`）
 
@@ -472,17 +481,26 @@ xforge doctor [--platform <name>]...
 | 码 | 发现 | `repair` |
 | --- | --- | --- |
 | `XF-ASSEMBLE-005` | 清单 `platforms` 里有控制面不认得的 provider | 不能：人改清单 |
-| `XF-ASSEMBLE-006` | 投影缺失或漂移：台账里有的文件不在了，或内容与台账的校验和不符 | 能：重投 |
+| `XF-ASSEMBLE-006` | 投影缺失或漂移：该投的文件不在了、内容与脚手架不符，或共有文件里我们那一块被整块拿掉了 | 能：重投 |
 | `XF-ASSEMBLE-007` | 孤儿：台账里有、按现在的脚手架与清单不该再有的文件 | 能：删 |
 | `XF-ASSEMBLE-008` | 该有执法钩子的宿主上，钩子不在原生位置里 | 能：补 |
 | `XF-ASSEMBLE-009` | 清单的 `scaffold.version` 与本 CLI 版本不一致 | 不能：`xforge update` |
-| `XF-ASSEMBLE-010` | 共有文件的标记块被破坏（缺块、标记不成对） | 不能：人看，机器动它会毁掉块外的内容 |
+| `XF-ASSEMBLE-010` | 共有文件的标记块被破坏（标记不成对、顺序反了） | 不能：人看，机器动它会毁掉块外的内容 |
+| `XF-ASSEMBLE-013` | 放钩子的宿主共享文件解析不成 JSON 对象，钩子没装进去 | 不能：人先把那份文件改回合法 |
+| `XF-ASSEMBLE-014` | 钩子装上了，但它的命令在本机 PATH 上解析不到：宿主拿不到决策会继续执行 | 不能：环境与安装方式的事 |
+| `XF-ASSEMBLE-015` | 骨架与 `scaffold/integrity.yaml` 对不上：受管文件缺失、本地化区之外被改过，或清单语言对应的 Skill 源文件不在 | 缺的能：从载荷补回；改过的不能 |
+| `XF-ASSEMBLE-017` | 投影台账读不出（按空台账继续） | 能：重投一次台账就回来 |
+
+**「块被整块拿掉」与「块被破坏」是两件事**：前者（`006`）边界仍然清楚，重投一次就对；后者（`010`）边界已经不可信，机器再写会毁掉块外的内容。两者都不能判成健康 —— 一个 `doctor` 说没问题、紧接着 `sync` 就改写那个文件的组合，比报错更坏。
 
 另报每个 provider 的事实：探测结果（装没装、版本）、能力（能不能执法、能不能隔离）、投了多少文件。这些既在 `result.providers` 里，也各有一条 `XF-ASSEMBLE-012` 的 `info` 诊断，好让 `--text` 对人可读。升级在途时报 `XF-ASSEMBLE-001` 并停在那里 —— 半升级的树没有「对不对」可言。
 
 退出码按 D3：有 `blocking` 发现 → `1`；清单或台账读不出 → `3`；干净 → `0`。`doctor` 在执法的出路名单里（§4.1）；`repair` 不在，它是写动作。
 
-`CLI-42` 发现表逐条：缺失、漂移、孤儿、钩子不在、标记块破坏、脚手架版本落后、不认得的 provider 各报对应的码，严重度按上表（`006` `008` `010` `005` 阻塞，`007` `009` 只是 `warning`）；干净的树退出码 `0`、`problems` 为 `0`；任何一次 `doctor` 的 `changed` 恒空；升级在途时只报 `XF-ASSEMBLE-001`。
+`CLI-42` 发现表逐条：缺失、漂移、孤儿、钩子不在、标记块破坏、脚手架版本落后、不认得的 provider 各报对应的码，严重度按上表（`006` `008` `010` `005` `013` `014` `015` 阻塞，`007` `009` `017` 只是 `warning`）；干净的树退出码 `0`、`problems` 为 `0`；任何一次 `doctor` 的 `changed` 恒空；升级在途时只报 `XF-ASSEMBLE-001`。
+`CLI-47` 共有文件里我们那一块被整块删掉之后 `doctor` 报 `XF-ASSEMBLE-006`（不是判健康），`repair` 把块补回来且块外逐字节不动；同一棵树上 `doctor` 干净时 `sync` 的 `changed` 必为空 —— 「医生说没病、下一步就改文件」这种组合不许存在。
+`CLI-48` `enforcement` 要同时满足两件事才算 `available`：钩子在宿主原生位置里，且钩子命令的第一个词在本机 PATH 上解析得到。把命令改成 PATH 上没有的名字再 `sync`，`state --orient` 报 `unavailable`，`doctor` 报 `XF-ASSEMBLE-014`。
+`CLI-49` 骨架检查：删掉一个受管文件报 `XF-ASSEMBLE-015` 且 `repair` 从载荷补回（校验和对得上才补）；在本地化区之外改过的文件同样报 `015`，但 `repair` 前后逐字节不变。清单语言对应的 `SKILL*.md` 不在时也报 `015` —— 这一份缺了 `sync` 会静默少投影一个 Skill。
 
 ### 5.5 `repair`
 
@@ -490,9 +508,16 @@ xforge doctor [--platform <name>]...
 xforge repair [--only <code>]... [--dry-run]
 ```
 
-先跑一次 `doctor`，再对报了问题的 provider 动手。**修法只有一个：按当前脚手架把那个 provider 重投一次，并回收它的孤儿** —— 与 `sync` 同一套算法，范围限定在出问题的那几个宿主上。这样 `XF-ASSEMBLE-006`（缺失或漂移）、`XF-ASSEMBLE-007`（孤儿）、`XF-ASSEMBLE-008`（钩子不在）一起被修掉，不需要三套修法。
+先跑一次 `doctor`，再对报了问题的 provider 动手。修法只有两个，**顺序由依赖定**：
 
-不能自动修的原样报出来，附人的下一步：`XF-ASSEMBLE-005`（清单里的名字）、`XF-ASSEMBLE-009`（版本落后，去 `update`）、`XF-ASSEMBLE-010`（标记块被破坏）。
+1. **补骨架**：`XF-ASSEMBLE-015` 里「缺失」那一类，从本 CLI 自带的载荷补回来，**校验和与完整性清单对得上才补**（对不上说明载荷不是这份清单说的那一版，拿它覆盖是把一份错的正文写进去）。在本地化区之外被改过的正文一个字不动 —— 那是有人写过的东西，合并是 `update` 的事。
+2. **重投影**：按当前脚手架把出问题的 provider 重投一次，并回收它的孤儿 —— 与 `sync` 同一套算法，范围限定在那几个宿主上。这样 `XF-ASSEMBLE-006`（缺失、漂移、块被整块拿掉）、`XF-ASSEMBLE-007`（孤儿）、`XF-ASSEMBLE-008`（钩子不在）一起被修掉。
+
+先补骨架再重投影：投影是脚手架的函数，刚补回来的 Skill 与钩子要在同一轮里投出去 —— 不然 `repair` 刚说修好了，那个 Skill 还得等下一次 `sync`。两步在同一个事务里，失败整体回滚。
+
+**修完按盘上再核一遍**：写进去的内容与该有的仍不一致就报 `XF-ASSEMBLE-016`，不算修好。一次没落盘的修复比不修更坏 —— 调用方会以为好了。
+
+不能自动修的原样报出来，附人的下一步：`XF-ASSEMBLE-005`（清单里的名字）、`XF-ASSEMBLE-009`（版本落后，去 `update`）、`XF-ASSEMBLE-010`（标记块被破坏）、`XF-ASSEMBLE-013`（共享文件读不懂）、`XF-ASSEMBLE-014`（钩子跑不起来）、`XF-ASSEMBLE-015` 里被改过的那些。
 **报了 `XF-ASSEMBLE-010` 的 provider 这一轮整个不碰**：标记块的边界已经不可信，投影会把块外的内容一起毁掉。
 
 - `--dry-run`：只报打算重投哪些 provider、为了哪几条发现，`changed` 为空。

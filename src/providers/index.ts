@@ -43,6 +43,13 @@ export interface Provider {
   project(input: ProjectionInput): Promise<HostFile[]>;
   /** 钩子是否确实在宿主原生位置里；没有执法能力的 provider 恒 false。 */
   hookInstalled(root: string, command: string | null): Promise<boolean>;
+  /** 钩子该落进去的共用文件读不懂（于是这一次装不进去）时回它的路径，否则 null。没有这类文件的 provider 不实现。 */
+  hookBlocked?(root: string): Promise<string | null>;
+  /**
+   * 台账没得可说时的兜底：按这个 provider 的已知布局，它此刻可能占着哪些路径（绝对路径）。
+   * 台账是派生物 —— 丢一份派生文件不该让「哪些文件是我投的」这个问题永久没有答案。
+   */
+  footprint(root: string): Promise<Array<{ path: string; kind: 'owned' | 'shared' }>>;
   /** 从共用文件里摘掉我们那块（块外逐字节保留）；不归我们管就回 null。 */
   detach(root: string, path: string): Promise<HostFile | null>;
 }
@@ -91,6 +98,15 @@ export function parseDetect(raw: string | undefined): Map<string, string> | null
 }
 
 function onPath(binary: string, env: NodeJS.ProcessEnv): string | null {
+  // 带路径分隔符的就是路径本身，不去 PATH 上找。
+  if (binary.includes('/') || binary.includes('\\')) {
+    try {
+      accessSync(binary, constants.X_OK);
+      return binary;
+    } catch {
+      return null;
+    }
+  }
   for (const dir of (env['PATH'] ?? '').split(delimiter)) {
     if (!dir) continue;
     const candidate = join(dir, binary);
@@ -102,6 +118,15 @@ function onPath(binary: string, env: NodeJS.ProcessEnv): string | null {
     }
   }
   return null;
+}
+
+/**
+ * 钩子的命令跑不跑得起来：宿主是拿这条命令去起进程的，第一个词解析不到就是起不来 ——
+ * 宿主照常发起钩子、拿不到决策、然后继续执行，与没装钩子没有区别（命令行设计 D8）。
+ */
+export function hookRunnable(command: string | null, env: NodeJS.ProcessEnv): boolean {
+  const binary = command?.trim().split(/\s+/)[0];
+  return binary ? onPath(binary, env) !== null : false;
 }
 
 /** 执法钩子命令串：声明是唯一出处（规则文件设计 §3.5），provider 不许写死。 */
@@ -124,10 +149,16 @@ export function currentProvider(manifest: Manifest, env: NodeJS.ProcessEnv): Pro
   return known.find((p) => p.capabilities.enforcement) ?? known[0];
 }
 
-/** 写入范围此刻拦不拦得住：当前宿主有执法能力，且钩子确实在原生位置里。 */
+/**
+ * 写入范围此刻拦不拦得住（命令行设计 D8）。三件事缺一不可：
+ * 当前宿主有执法能力、钩子确实在它的原生位置里、钩子命令在这台机器上跑得起来。
+ * 少判最后一条，就会在「装上了但 PATH 上没有」时报 `available` —— 那是句半真的谎。
+ */
 export async function enforcementActive(root: string, paths: GovernancePaths, manifest: Manifest, env: NodeJS.ProcessEnv): Promise<boolean> {
   const provider = currentProvider(manifest, env);
   if (!provider || !provider.capabilities.enforcement) return false;
   if (!manifest.platforms.includes(provider.id)) return false;
-  return provider.hookInstalled(root, await hookCommandFor(paths, provider));
+  const command = await hookCommandFor(paths, provider);
+  if (!(await provider.hookInstalled(root, command))) return false;
+  return hookRunnable(command, env);
 }

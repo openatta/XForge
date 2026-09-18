@@ -1,6 +1,7 @@
-// design: cli §5.1 — 装机那一屏：探测 → 多选工具 → 单选语言。按键 → 状态 → 渲染是纯函数，UI 全部走 stderr。
+// design: cli §5.1 — 装机那一屏：探测 → 多选工具 → 单选语言。按键 → 状态 → 画面是纯函数，UI 全部走 stderr。
+import { emitKeypressEvents } from 'node:readline';
+
 const ESC = String.fromCharCode(27);
-const CTRL_C = String.fromCharCode(3);
 
 export interface Choice {
   value: string;
@@ -26,14 +27,26 @@ export interface SelectState {
 
 export type Key = 'up' | 'down' | 'space' | 'enter' | 'abort' | 'other';
 
-/** 终端字节序列 → 我们认得的按键。 */
-export function decodeKey(seq: string): Key {
-  if (seq === CTRL_C || seq === ESC) return 'abort';
-  if (seq === '\r' || seq === '\n') return 'enter';
-  if (seq === ' ') return 'space';
-  if (seq === `${ESC}[A` || seq === 'k') return 'up';
-  if (seq === `${ESC}[B` || seq === 'j') return 'down';
-  return 'other';
+/** 终端发来的一次按键（`readline` 的具名事件）→ 我们认得的按键。 */
+export function keyOf(str: string | undefined, meta: { name?: string; ctrl?: boolean } | undefined): Key {
+  if (meta?.ctrl && (meta.name === 'c' || meta.name === 'd')) return 'abort';
+  switch (meta?.name) {
+    case 'up':
+    case 'k':
+      return 'up';
+    case 'down':
+    case 'j':
+      return 'down';
+    case 'space':
+      return 'space';
+    case 'return':
+    case 'enter':
+      return 'enter';
+    case 'escape':
+      return 'abort';
+    default:
+      return str === ' ' ? 'space' : str === '\r' || str === '\n' ? 'enter' : 'other';
+  }
 }
 
 const selectable = (q: Question): Choice[] => q.choices.filter((c) => !c.disabled);
@@ -84,26 +97,66 @@ const DIM = `${ESC}[2m`;
 const CYAN = `${ESC}[36m`;
 const RESET = `${ESC}[0m`;
 
-/** 一问的完整画面（行数组）。`color` 关掉时不带任何转义，好断言。 */
-export function renderQuestion(q: Question, state: SelectState, color = true): string[] {
-  const dim = (t: string): string => (color ? `${DIM}${t}${RESET}` : t);
-  const mark = (t: string): string => (color ? `${CYAN}${t}${RESET}` : t);
-  const lines = [`? ${q.prompt} ${dim(q.multi ? '(space to select, enter to confirm)' : '(space to choose, enter to confirm)')}`];
+/** 零宽字符不占位，CJK 与 emoji 占两列。 */
+const ZERO = /[̀-ͯ​-‏⁠︀-️]/;
+const WIDE = /[ᄀ-ᅟ⺀-〾ぁ-㏿㐀-䶿一-鿿ꀀ-꓏가-힣豈-﫿︰-﹯＀-｠￠-￦]|[\u{1f300}-\u{1faff}]|[\u{20000}-\u{3fffd}]/u;
+
+/**
+ * 一行占几列。**不是 `String.length`**：终端按列折行，而重画靠「往上退 N 行」，
+ * 一旦有行折了，退的行数就错了，整屏花掉。中文标签的行按字符数算会短掉一半。
+ */
+export function displayWidth(text: string): number {
+  let n = 0;
+  for (const ch of text) {
+    if (ZERO.test(ch)) continue;
+    n += WIDE.test(ch) ? 2 : 1;
+  }
+  return n;
+}
+
+/** 截到装得下：宁可少一句话，也不能让画面折行。 */
+export function clip(text: string, columns: number): string {
+  if (columns <= 1 || displayWidth(text) <= columns) return text;
+  let out = '';
+  let used = 0;
+  for (const ch of text) {
+    const w = displayWidth(ch);
+    if (used + w > columns - 1) break;
+    out += ch;
+    used += w;
+  }
+  return `${out}…`;
+}
+
+export interface View {
+  /** 画面带不带颜色；`NO_COLOR` 与测试里关掉。 */
+  color: boolean;
+  /** 终端宽度。 */
+  columns: number;
+}
+
+/** 一问的完整画面（行数组）。每行都已经截到 `columns` 之内。 */
+export function renderQuestion(q: Question, state: SelectState, view: View): string[] {
+  const dim = (t: string): string => (view.color ? `${DIM}${t}${RESET}` : t);
+  const mark = (t: string): string => (view.color ? `${CYAN}${t}${RESET}` : t);
+  const line = (t: string): string => clip(t, view.columns);
+  const hint = q.multi ? '(space to select, enter to confirm)' : '(space to choose, enter to confirm)';
+  const lines = [`${line(`? ${q.prompt} ${hint}`)}`];
   for (const [i, c] of q.choices.entries()) {
     const box = state.selected.includes(c.value) ? '[x]' : '[ ]';
-    const head = i === state.cursor ? mark('>') : ' ';
-    const body = `${head} ${box} ${c.label}${c.note ? `  ${c.note}` : ''}`;
-    lines.push(c.disabled ? dim(body) : body);
+    const onCursor = i === state.cursor;
+    // 先截再上色：转义序列不占列，算进宽度会把行截短。
+    const body = line(`${onCursor ? '>' : ' '} ${box} ${c.label}${c.note ? `  ${c.note}` : ''}`);
+    lines.push(c.disabled ? dim(body) : onCursor ? mark('>') + body.slice(1) : body);
   }
-  if (state.error) lines.push(dim(`  ${state.error}`));
+  if (state.error) lines.push(dim(line(`  ${state.error}`)));
   return lines;
 }
 
 export interface Terminal {
   input: NodeJS.ReadableStream & { setRawMode?: (on: boolean) => void; resume?: () => void; pause?: () => void };
   output: NodeJS.WritableStream;
-  /** 画面带不带颜色；测试里关掉。 */
-  color?: boolean;
+  view: View;
 }
 
 export class Aborted extends Error {
@@ -115,6 +168,7 @@ export class Aborted extends Error {
 /** 逐问问完。答案按 question.key 归组。人按 Esc / Ctrl-C 就抛，调用方当作「没答」。 */
 export async function ask(questions: readonly Question[], term: Terminal): Promise<Record<string, string[]>> {
   const answers: Record<string, string[]> = {};
+  emitKeypressEvents(term.input);
   term.input.setRawMode?.(true);
   term.input.resume?.();
   try {
@@ -127,26 +181,27 @@ export async function ask(questions: readonly Question[], term: Terminal): Promi
 }
 
 /**
- * 一问。用 data 监听而不是 for-await：后者在 return 时会把流关掉，
- * 第二问就没得读了（同一个 stdin 要问好几遍）。
+ * 一问。用具名按键事件而不是自己解转义序列：方向键发的是 `ESC [ A`，
+ * 自己解就得在「裸 ESC = 取消」与「ESC 是方向键的头一个字节」之间赌一把 —— 读被拆包就整个挂掉。
  */
 async function askOne(q: Question, term: Terminal): Promise<string[]> {
   let state = initialState(q);
   let painted = 0;
   const paint = (): void => {
     if (painted) term.output.write(`${ESC}[${painted}A${ESC}[0J`);
-    const lines = renderQuestion(q, state, term.color !== false);
+    const lines = renderQuestion(q, state, term.view);
     term.output.write(lines.join('\n') + '\n');
     painted = lines.length;
   };
   paint();
   return new Promise<string[]>((resolve, reject) => {
+    // 按键可能比重画快（粘贴、连按）：先到的排队，一个都不丢。
     const done = (): void => {
-      term.input.off('data', onData);
+      term.input.off('keypress', onKeypress);
       term.input.off('end', onEnd);
     };
-    const onData = (chunk: Buffer | string): void => {
-      const key = decodeKey(chunk.toString());
+    const onKeypress = (str: string | undefined, meta: { name?: string; ctrl?: boolean } | undefined): void => {
+      const key = keyOf(str, meta);
       if (key === 'abort') {
         done();
         reject(new Aborted());
@@ -164,7 +219,7 @@ async function askOne(q: Question, term: Terminal): Promise<string[]> {
       done();
       reject(new Aborted());
     };
-    term.input.on('data', onData);
+    term.input.on('keypress', onKeypress);
     term.input.once('end', onEnd);
   });
 }

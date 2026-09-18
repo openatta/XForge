@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { parse } from 'yaml';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { Project, repoRoot } from '../helpers/project.js';
 
 interface Settings {
@@ -112,12 +112,15 @@ describe('the payload adapter is chosen by --host (CLI-39)', () => {
     await p.xforge('init', '--flow', 'quick');
   });
 
-  it('claude gets claude-shaped answers; a host with no adapter is denied in the generic shape', async () => {
-    const ok = JSON.parse(await enforceRaw(p.root, 'claude', { tool_name: 'Read', tool_input: {}, cwd: p.root })) as { hookSpecificOutput: { permissionDecision: string } };
-    expect(ok.hookSpecificOutput.permissionDecision).toBe('allow');
-    const unknown = JSON.parse(await enforceRaw(p.root, 'zed', { tool_name: 'Read', tool_input: {}, cwd: p.root })) as { decision: string; reason: string };
-    expect(unknown.decision).toBe('deny');
-    expect(unknown.reason).toContain('zed');
+  it('claude gets claude-shaped answers; a host with no adapter is denied in a shape the host can read', async () => {
+    // CLI-45：放行什么都不说 —— 显式 allow 会跳过宿主自己的审批提示。
+    expect(await enforceRaw(p.root, 'claude', { tool_name: 'Read', tool_input: {}, cwd: p.root })).toBe('');
+    const denied = JSON.parse(await enforceRaw(p.root, 'claude', { tool_name: 'Write', tool_input: { file_path: join(p.root, 'xforge', 'manifest.yaml') }, cwd: p.root })) as { hookSpecificOutput: { permissionDecision: string } };
+    expect(denied.hookSpecificOutput.permissionDecision).toBe('deny');
+    // CLI-39：认不出的宿主仍然拦，且用宿主读得懂的形状说 —— 回一个它读不懂的形状等于没拦。
+    const unknown = JSON.parse(await enforceRaw(p.root, 'zed', { tool_name: 'Read', tool_input: {}, cwd: p.root })) as { hookSpecificOutput: { permissionDecision: string; permissionDecisionReason: string } };
+    expect(unknown.hookSpecificOutput.permissionDecision).toBe('deny');
+    expect(unknown.hookSpecificOutput.permissionDecisionReason).toContain('zed');
   });
 });
 
@@ -181,5 +184,156 @@ describe('the projection ledger recovers orphans (CLI-41)', () => {
     expect((r.env.result as { removed: string[] }).removed).toEqual([]);
     expect(entry('codex')).toEqual(before);
     expect(existsSync(join(p.root, '.codex', 'skills', 'xforge', 'SKILL.md'))).toBe(true);
+  });
+});
+
+describe('a host config file we cannot read is left alone (CLI-23)', () => {
+  const MINE = '{\n  // 我自己的权限设置\n  "permissions": { "allow": ["Bash(ls:*)"] },\n  "env": { "FOO": "bar" }\n}\n';
+  let p: Project;
+  const settingsPath = (): string => join(p.root, '.claude', 'settings.json');
+
+  beforeAll(async () => {
+    p = await Project.create('unreadable');
+    await p.xforge('init', '--flow', 'quick', '--platform', 'claude');
+    writeFileSync(settingsPath(), MINE);
+  });
+
+  it('sync writes not one byte, says why, and doctor keeps saying it', async () => {
+    const r = await p.xforge('sync');
+    expect(r.exit, JSON.stringify(r.env)).toBe(0);
+    // 覆盖它等于把人家的 permissions 与其余钩子一起删掉。
+    expect(readFileSync(settingsPath(), 'utf8')).toBe(MINE);
+    expect(r.env.changed).not.toContain('.claude/settings.json');
+    const blocked = r.env.diagnostics.find((d) => d.code === 'XF-ASSEMBLE-013');
+    expect(blocked?.severity).toBe('warning');
+    expect(blocked?.message).toContain('.claude/settings.json');
+
+    const d = await p.xforge('doctor');
+    expect(d.exit).toBe(1);
+    expect(d.env.diagnostics.find((x) => x.code === 'XF-ASSEMBLE-013')?.severity).toBe('blocking');
+    // 钩子没装进去，enforcement 就不许说 available。
+    const orient = await p.xforge('state', '--orient');
+    expect((orient.env.result as { orient: { invariants: { enforcement: string } } }).orient.invariants.enforcement).toBe('unavailable');
+    expect(readFileSync(settingsPath(), 'utf8')).toBe(MINE);
+  });
+
+  it('repair does not touch it either, and once it parses the hook goes in', async () => {
+    const r = await p.xforge('repair');
+    expect(readFileSync(settingsPath(), 'utf8')).toBe(MINE);
+    expect(r.env.diagnostics.some((d) => d.code === 'XF-ASSEMBLE-013')).toBe(true);
+
+    writeFileSync(settingsPath(), '{\n  "env": { "FOO": "bar" }\n}\n');
+    expect((await p.xforge('sync')).exit).toBe(0);
+    expect(enforceCommands(p)).toEqual(['xforge-enforce --host claude']);
+    expect((settings(p) as unknown as { env: { FOO: string } }).env.FOO).toBe('bar');
+    expect((await p.xforge('doctor')).env.diagnostics.some((d) => d.code === 'XF-ASSEMBLE-013')).toBe(false);
+  });
+});
+
+describe('a hook that is installed but cannot run is not available (CLI-48)', () => {
+  let p: Project;
+  /** 这台机器上没装 CLI：PATH 上有 node（否则连命令都起不来），但没有 xforge-enforce。 */
+  const bare = { PATH: `${dirname(process.execPath)}:/usr/bin:/bin` };
+
+  beforeAll(async () => {
+    p = await Project.create('hookpath');
+    await p.xforge('init', '--flow', 'quick', '--platform', 'claude');
+  });
+
+  it('装上了 ≠ 跑得起来：PATH 上没有就报 XF-ASSEMBLE-014，enforcement 说 unavailable', async () => {
+    expect(enforceCommands(p)).toEqual(['xforge-enforce --host claude']);
+    const orient = async (env?: Record<string, string>): Promise<string> =>
+      ((await p.xforgeIn({ ...(env ? { env } : {}) }, 'state', '--orient')).env.result as { orient: { invariants: { enforcement: string } } }).orient.invariants.enforcement;
+
+    expect(await orient()).toBe('available');
+    expect(await orient(bare)).toBe('unavailable');
+
+    const d = await p.xforgeIn({ env: bare }, 'doctor');
+    expect(d.exit).toBe(1);
+    const found = d.env.diagnostics.find((x) => x.code === 'XF-ASSEMBLE-014');
+    expect(found?.severity).toBe('blocking');
+    expect(found?.message).toContain('xforge-enforce');
+    // 钩子明明在设置里，所以不该报成「不在」。
+    expect(d.env.diagnostics.some((x) => x.code === 'XF-ASSEMBLE-008')).toBe(false);
+    // 装好的机器上这条发现不存在。
+    expect((await p.xforge('doctor')).env.diagnostics.some((x) => x.code === 'XF-ASSEMBLE-014')).toBe(false);
+  });
+
+  it('修不了它：环境与安装方式是人的事，repair 不假装修好', async () => {
+    const r = await p.xforgeIn({ env: bare }, 'repair');
+    expect(r.exit).toBe(1);
+    expect((r.env.result as { left: Array<{ code: string }> }).left.map((x) => x.code)).toContain('XF-ASSEMBLE-014');
+  });
+});
+
+describe('the ledger is a derived file, not the truth (CLI-46)', () => {
+  let p: Project;
+  const ledgerPath = (): string => join(p.root, 'xforge', 'hosts.yaml');
+  const orphan = (): string => join(p.root, '.claude', 'skills', 'xforge-design', 'SKILL.md');
+
+  beforeAll(async () => {
+    p = await Project.create('ledgerloss');
+    await p.xforge('init', '--flow', 'quick', '--platform', 'claude');
+  });
+
+  it('坏掉的台账不让 sync 与 doctor 倒下，重投一次就回来了', async () => {
+    writeFileSync(ledgerPath(), 'providers: [[[bad\n');
+    const d = await p.xforge('doctor');
+    expect(d.exit, JSON.stringify(d.env)).toBe(0); // 只是 warning：台账丢了不等于装配坏了
+    expect(d.env.diagnostics.find((x) => x.code === 'XF-ASSEMBLE-017')?.severity).toBe('warning');
+
+    const r = await p.xforge('sync');
+    expect(r.exit, JSON.stringify(r.env)).toBe(0);
+    expect(r.env.diagnostics.some((x) => x.code === 'XF-ASSEMBLE-017')).toBe(true);
+    expect(parse(readFileSync(ledgerPath(), 'utf8'))).toMatchObject({ version: 1 });
+    expect((await p.xforge('doctor')).env.diagnostics.some((x) => x.code === 'XF-ASSEMBLE-017')).toBe(false);
+  });
+
+  it('台账被删掉之后孤儿仍然认得出来，不永久失忆', async () => {
+    rmSync(join(p.root, 'xforge', 'scaffold', 'skills', 'xforge-design'), { recursive: true });
+    rmSync(ledgerPath());
+    expect(existsSync(orphan())).toBe(true);
+
+    const d = await p.xforge('doctor');
+    expect(d.env.diagnostics.some((x) => x.code === 'XF-ASSEMBLE-007')).toBe(true);
+    const r = await p.xforge('sync');
+    expect((r.env.result as { removed: string[] }).removed).toContain('.claude/skills/xforge-design/SKILL.md');
+    expect(existsSync(orphan())).toBe(false);
+    expect((await p.xforge('doctor')).env.diagnostics.some((x) => x.code === 'XF-ASSEMBLE-007')).toBe(false);
+  });
+});
+
+describe('a shared block taken out whole is a finding, not health (CLI-47)', () => {
+  let p: Project;
+  const agents = (): string => join(p.root, 'AGENTS.md');
+
+  beforeAll(async () => {
+    p = await Project.create('stripped');
+    await p.write('AGENTS.md', '# 我的项目\n\n这一段是人写的。\n');
+    await p.xforge('init', '--flow', 'quick', '--platform', 'codex');
+  });
+
+  it('doctor 报 006，repair 补回来，块外逐字节不动', async () => {
+    const withBlock = readFileSync(agents(), 'utf8');
+    expect(withBlock).toContain('<!-- XFORGE:BEGIN -->');
+    writeFileSync(agents(), '# 我的项目\n\n这一段是人写的。\n');
+
+    const d = await p.xforge('doctor');
+    expect(d.exit, JSON.stringify(d.env)).toBe(1);
+    const found = d.env.diagnostics.find((x) => x.code === 'XF-ASSEMBLE-006');
+    expect(found?.severity).toBe('blocking');
+    expect(found?.message).toContain('AGENTS.md');
+
+    const r = await p.xforge('repair');
+    expect(r.exit, JSON.stringify(r.env)).toBe(0);
+    const after = readFileSync(agents(), 'utf8');
+    expect(after).toBe(withBlock);
+    expect(after.startsWith('# 我的项目\n\n这一段是人写的。\n')).toBe(true);
+  });
+
+  it('doctor 干净的树上 sync 不会有改动 —— 「说没病、下一步就改文件」不存在', async () => {
+    const d = await p.xforge('doctor');
+    expect(d.env.diagnostics.filter((x) => x.severity !== 'info')).toEqual([]);
+    expect((await p.xforge('sync')).env.changed).toEqual([]);
   });
 });

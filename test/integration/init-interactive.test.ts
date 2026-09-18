@@ -18,14 +18,15 @@ interface Session {
   wait: (text: string) => Promise<void>;
 }
 
-/** 两端都装成 TTY，其余按真实的走。 */
+/** stdin 与 stderr 装成 TTY（画面走 stderr），stdout 故意**不是** TTY —— `xforge init > out.json` 就是这个样子。 */
 function start(argv: string[], cwd: string, env: Record<string, string>): Session {
   const stdin = new PassThrough() as PassThrough & { isTTY?: boolean; setRawMode?: (on: boolean) => void };
   stdin.isTTY = true;
   stdin.setRawMode = (): void => undefined;
-  const stdout = new PassThrough() as PassThrough & { isTTY?: boolean };
-  stdout.isTTY = true;
-  const stderr = new PassThrough();
+  const stdout = new PassThrough();
+  const stderr = new PassThrough() as PassThrough & { isTTY?: boolean; columns?: number };
+  stderr.isTTY = true;
+  stderr.columns = 200;
   let screen = '';
   let envelope = '';
   stderr.on('data', (d: Buffer) => (screen += d.toString()));
@@ -83,13 +84,35 @@ describe('interactive init (CLI-44)', () => {
     expect(s.seen()).toContain(ESC); // 画面才有颜色与光标控制
   });
 
-  it('any assembly option at all turns the questions off', async () => {
-    const p = await Project.create('interactive-flags');
+  it('只问命令行没说的那一半：给了 --platform 就只问语言', async () => {
+    const p = await Project.create('interactive-half');
     const s = start(['init', '--platform', 'codex'], p.root, { XFORGE_DETECT: 'claude:none,codex:none', XFORGE_NOW: '2026-09-15T10:00:00.000Z' });
+    await s.wait('Which language should the projected Skills use?');
+    expect(s.seen()).not.toContain('Which AI coding tools'); // 说过的话不再问一遍
+    await s.key('\r');
     expect(await s.exit).toBe(0);
-    expect(s.seen()).toBe('');
-    const manifest = parse(readFileSync(join(p.root, 'xforge', 'manifest.yaml'), 'utf8')) as { platforms: string[] };
+    const manifest = parse(readFileSync(join(p.root, 'xforge', 'manifest.yaml'), 'utf8')) as { platforms: string[]; language: string };
     expect(manifest.platforms).toEqual(['codex']); // 没探测到也照投：命令行点名就是那条出路
+    expect(manifest.language).toBe('zh-CN');
+  });
+
+  it('两个答案都给了就一个字都不问；--no-input 与 CI 各是一条明确的「别问」', async () => {
+    const both = await Project.create('interactive-none');
+    const a = start(['init', '--platform', 'codex', '--language', 'en'], both.root, { XFORGE_DETECT: 'claude:none', XFORGE_NOW: '2026-09-15T10:00:00.000Z' });
+    expect(await a.exit).toBe(0);
+    expect(a.seen()).toBe('');
+
+    const quiet = await Project.create('interactive-noinput');
+    const b = start(['init', '--no-input'], quiet.root, { XFORGE_DETECT: 'claude:2.1.0', XFORGE_NOW: '2026-09-15T10:00:00.000Z' });
+    expect(await b.exit).toBe(0);
+    expect(b.seen()).toBe('');
+
+    const ci = await Project.create('interactive-ci');
+    const c = start(['init'], ci.root, { CI: '1', XFORGE_DETECT: 'claude:2.1.0', XFORGE_NOW: '2026-09-15T10:00:00.000Z' });
+    expect(await c.exit).toBe(0);
+    expect(c.seen()).toBe('');
+    const manifest = parse(readFileSync(join(ci.root, 'xforge', 'manifest.yaml'), 'utf8')) as { platforms: string[]; language: string };
+    expect(manifest).toMatchObject({ platforms: ['claude'], language: 'zh-CN' });
   });
 
   it('esc leaves the project untouched', async () => {

@@ -23,7 +23,13 @@ export const claudePayload: PayloadAdapter = {
     return { action: 'other', paths: [], cwd };
   },
 
-  render(d: Decision): string {
+  /**
+   * 放行**什么都不说**：`permissionDecision: allow` 会跳过 claude 自己的审批提示
+   * （人写死的 deny / ask 规则照样生效，但「默认会问一句」的那些就不问了）。
+   * 一个治理钩子的本分是拦与升级，不是放行 —— 空 stdout = 没有意见，这次调用照常走宿主的权限流程。
+   */
+  render(d: Decision): string | null {
+    if (d.decision === 'allow') return null;
     return JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: d.decision, permissionDecisionReason: d.reason } });
   },
 };

@@ -83,3 +83,63 @@ describe('repair (CLI-43)', () => {
     expect(existsSync(join(p.root, '.claude', 'skills', 'xforge-design', 'SKILL.md'))).toBe(true);
   });
 });
+
+describe('the scaffold checks itself against its own integrity manifest (CLI-49)', () => {
+  let p: Project;
+  const scaffold = (rel: string): string => join(p.root, 'xforge', 'scaffold', rel);
+  const codesOf = async (): Promise<string[]> => (await p.xforge('doctor')).env.diagnostics.filter((d) => d.severity !== 'info').map((d) => d.code);
+
+  beforeEach(async () => {
+    p = await Project.create('scaffoldcheck');
+    await p.xforge('init', '--flow', 'quick', '--platform', 'claude');
+  });
+
+  it('删掉一个受管文件：报 015，repair 从载荷补回来', async () => {
+    const gate = scaffold('gates/ledgers.yaml');
+    const before = readFileSync(gate, 'utf8');
+    rmSync(gate);
+    expect(await codesOf()).toContain('XF-ASSEMBLE-015');
+
+    const r = await p.xforge('repair');
+    expect(r.exit, JSON.stringify(r.env)).toBe(0);
+    expect((r.env.result as { restored: string[] }).restored).toContain('gates/ledgers.yaml');
+    expect(readFileSync(gate, 'utf8')).toBe(before);
+    expect(await codesOf()).not.toContain('XF-ASSEMBLE-015');
+  });
+
+  it('本地化区之外被改过的正文：报 015，但 repair 一个字节都不动', async () => {
+    const gate = scaffold('gates/ledgers.yaml');
+    writeFileSync(gate, readFileSync(gate, 'utf8') + '\n# 人写的一行\n');
+    const mine = readFileSync(gate, 'utf8');
+    expect(await codesOf()).toContain('XF-ASSEMBLE-015');
+
+    const r = await p.xforge('repair');
+    expect(readFileSync(gate, 'utf8')).toBe(mine); // 覆盖它得先问人 —— 那是 update 的活
+    expect(r.env.diagnostics.some((d) => d.code === 'XF-ASSEMBLE-015')).toBe(true);
+    expect(r.exit).toBe(1);
+  });
+
+  it('清单语言对应的 Skill 源没了：sync 会静默少投影一个，所以 doctor 必须说出来', async () => {
+    rmSync(scaffold('skills/xforge-design/SKILL_cn.md'));
+    const d = await p.xforge('doctor');
+    const found = d.env.diagnostics.find((x) => x.code === 'XF-ASSEMBLE-015' && x.message.includes('xforge-design'));
+    expect(found?.severity).toBe('blocking');
+    expect(found?.message).toContain('SKILL_cn.md');
+
+    const r = await p.xforge('repair');
+    expect(r.exit, JSON.stringify(r.env)).toBe(0);
+    expect(existsSync(scaffold('skills/xforge-design/SKILL_cn.md'))).toBe(true);
+    // 补回来的那一份在同一轮里就投出去了，不用再跑一次 sync。
+    expect(existsSync(join(p.root, '.claude', 'skills', 'xforge-design', 'SKILL.md'))).toBe(true);
+    expect((await p.xforge('sync')).env.changed).toEqual([]);
+  });
+
+  it('--dry-run 只说打算补什么，不写盘', async () => {
+    rmSync(scaffold('gates/ledgers.yaml'));
+    const r = await p.xforge('repair', '--dry-run');
+    expect(r.env.changed).toEqual([]);
+    expect((r.env.result as { restored: string[]; dry_run: boolean }).dry_run).toBe(true);
+    expect((r.env.result as { restored: string[] }).restored).toContain('gates/ledgers.yaml');
+    expect(existsSync(scaffold('gates/ledgers.yaml'))).toBe(false);
+  });
+});

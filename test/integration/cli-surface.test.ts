@@ -90,7 +90,7 @@ describe('meta verbs and the no-project paths', () => {
     expect(r.exit, JSON.stringify(r.env)).toBe(0);
     const manifest = parse(readFileSync(join(fresh.root, 'xforge', 'manifest.yaml'), 'utf8')) as { language: string; platforms: string[]; flow: { default: string } };
     expect(manifest).toMatchObject({ language: 'zh-CN', platforms: ['claude'], flow: { default: 'solid' } });
-    expect((await fresh.xforge('sync', '--no-input')).exit).toBe(0);
+    expect((await fresh.xforge('init', '--no-input')).exit).toBe(0); // 显式非交互：重入幂等，什么都不问
   });
 
   it('sync --platform projects only the named host, leaving the others alone', async () => {
@@ -294,5 +294,35 @@ describe('the command surface on a quick change', () => {
     expect((done.env.result as { to: string }).to).toBe('archived');
     const receipts = await p.xforge('show', 'receipts', '--change', CHANGE);
     expect((receipts.env.result as { content: Array<{ kind: string }> }).content.map((r) => r.kind)).toContain('archive');
+  });
+});
+
+describe('a flag the command does not know is a usage error (CLI-50)', () => {
+  let p: Project;
+  beforeAll(async () => {
+    p = await Project.create('flags');
+    await p.xforge('init', '--flow', 'quick');
+  });
+
+  it('打错的开关当场退出 2 并列出认得的，而不是被吞掉', async () => {
+    const r = await p.xforge('doctor', '--whatever');
+    expect(r.exit).toBe(2);
+    expect(r.stderr).toContain('--whatever');
+    expect(r.stderr).toContain('--platform');
+  });
+
+  it('不支持的开关也是用法错：吞掉它等于对调用方撒谎', async () => {
+    // repair 没有 --platform（它按发现算范围）：吞掉就会「说改了 codex、其实改了 claude」。
+    const wrong = await p.xforge('repair', '--platform', 'codex');
+    expect(wrong.exit).toBe(2);
+    expect(wrong.stderr).toContain('--platform');
+    // 而 doctor 有它，同一个开关在那里照常工作。
+    expect((await p.xforge('doctor', '--platform', 'claude')).exit).toBe(0);
+  });
+
+  it('通用开关对每个命令都认', async () => {
+    expect((await p.xforge('doctor', '--text')).exit).toBe(0);
+    expect((await p.xforge('state', '--field', 'position')).exit).toBe(0);
+    expect((await p.xforge('repair', '--dry-run')).exit).toBe(0);
   });
 });

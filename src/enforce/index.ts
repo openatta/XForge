@@ -7,7 +7,7 @@ import { parse } from 'yaml';
 import { findProjectRoot, governancePaths } from '../model/paths.js';
 import { inFlightFor } from '../model/projection.js';
 import type { Policy, PolicyRule, Projection, ToolAction } from '../model/types.js';
-import { payloadFor, type Call, type Decision } from './payloads/index.js';
+import { FALLBACK_PAYLOAD, payloadFor, type Call, type Decision } from './payloads/index.js';
 
 export type { Call, Decision } from './payloads/index.js';
 
@@ -24,18 +24,20 @@ export async function enforceMain(argv: readonly string[], io: EnforceIo): Promi
   const host = (argv.includes('--host') ? argv[argv.indexOf('--host') + 1] : 'claude') ?? 'claude';
   const adapter = payloadFor(host);
   const raw = await readAll(io.stdin);
-  if (!adapter) {
-    // 不认得这个宿主的载荷格式：看不懂就不放行（`失败朝安全`）。回答用通用形状，至少人能读。
-    io.stdout.write(JSON.stringify({ decision: 'deny', reason: `XF-ENFORCE-003 不认得宿主 ${host} 的载荷格式（失败朝安全）` }) + '\n');
-    return 0;
-  }
   let decision: Decision;
-  try {
-    decision = await decide(adapter.parse(raw, io.cwd));
-  } catch (error) {
-    decision = { decision: 'deny', reason: `载荷无法解析（失败朝安全）：${(error as Error).message}` };
+  if (!adapter) {
+    // 不认得这个宿主的载荷格式：看不懂就不放行（`失败朝安全`）。
+    decision = { decision: 'deny', reason: `XF-ENFORCE-003 不认得宿主 ${host} 的载荷格式（失败朝安全）` };
+  } else {
+    try {
+      decision = await decide(adapter.parse(raw, io.cwd));
+    } catch (error) {
+      decision = { decision: 'deny', reason: `载荷无法解析（失败朝安全）：${(error as Error).message}` };
+    }
   }
-  io.stdout.write(adapter.render(decision) + '\n');
+  // 拒绝要用宿主听得见的形状说；放行则一个字节都不写（命令行设计 §4 第 6 步）。
+  const answer = (adapter ?? FALLBACK_PAYLOAD).render(decision);
+  if (answer !== null) io.stdout.write(answer + '\n');
   return 0;
 }
 

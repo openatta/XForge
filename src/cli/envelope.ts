@@ -7,8 +7,9 @@ export interface Io {
   env: NodeJS.ProcessEnv;
   /** 只有 init 的交互用得上；没有它就一律非交互（命令行设计 D15）。 */
   stdin?: NodeJS.ReadableStream & { isTTY?: boolean; setRawMode?: (on: boolean) => void };
-  stdout: NodeJS.WritableStream & { isTTY?: boolean };
-  stderr: NodeJS.WritableStream;
+  stdout: NodeJS.WritableStream;
+  /** 交互的画面全写这里（stdout 只有信封）；`isTTY` 与 `columns` 因此也从这一头看。 */
+  stderr: NodeJS.WritableStream & { isTTY?: boolean; columns?: number };
 }
 
 export interface Outcome<R = unknown> {

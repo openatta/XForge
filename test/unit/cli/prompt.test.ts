@@ -1,7 +1,7 @@
-// design: cli §5.1 — CLI-44 的组件那一半：按键 → 状态 → 画面是纯函数，灰显不可选，必选未满足不放行。
+// design: cli §5.1 — CLI-44 的组件那一半：按键 → 状态 → 画面是纯函数，灰显不可选，必选未满足不放行；CLI-51：按列算宽度、读具名键。
 import { describe, expect, it } from 'vitest';
 import { PassThrough } from 'node:stream';
-import { ask, decodeKey, initialState, onKey, renderQuestion, type Question } from '../../../src/cli/prompt.js';
+import { ask, clip, displayWidth, initialState, keyOf, onKey, renderQuestion, type Question, type View } from '../../../src/cli/prompt.js';
 
 const ESC = String.fromCharCode(27);
 
@@ -27,15 +27,31 @@ const language: Question = {
 };
 
 describe('keys', () => {
-  it('maps the sequences a terminal actually sends', () => {
-    expect(decodeKey(`${ESC}[A`)).toBe('up');
-    expect(decodeKey(`${ESC}[B`)).toBe('down');
-    expect(decodeKey('k')).toBe('up');
-    expect(decodeKey(' ')).toBe('space');
-    expect(decodeKey('\r')).toBe('enter');
-    expect(decodeKey(String.fromCharCode(3))).toBe('abort');
-    expect(decodeKey(ESC)).toBe('abort');
-    expect(decodeKey('x')).toBe('other');
+  it('reads the named keys a terminal reports, not raw escape bytes', () => {
+    expect(keyOf(undefined, { name: 'up' })).toBe('up');
+    expect(keyOf(undefined, { name: 'down' })).toBe('down');
+    expect(keyOf('k', { name: 'k' })).toBe('up');
+    expect(keyOf(' ', { name: 'space' })).toBe('space');
+    expect(keyOf('\r', { name: 'return' })).toBe('enter');
+    expect(keyOf(undefined, { name: 'c', ctrl: true })).toBe('abort');
+    expect(keyOf(undefined, { name: 'escape' })).toBe('abort');
+    expect(keyOf('x', { name: 'x' })).toBe('other');
+    // 方向键发的是 ESC [ A：自己解转义序列就得赌它不被拆包，裸 ESC 会被当成取消。
+    expect(keyOf(ESC, { name: 'up' })).toBe('up');
+  });
+});
+
+describe('width', () => {
+  it('counts columns, not characters: CJK takes two', () => {
+    expect(displayWidth('abc')).toBe(3);
+    expect(displayWidth('中文')).toBe(4);
+    expect(displayWidth('a中')).toBe(3);
+  });
+
+  it('clips a line to what the terminal can hold — a wrapped line breaks the redraw', () => {
+    expect(clip('abcdef', 80)).toBe('abcdef');
+    expect(clip('abcdef', 4)).toBe('abc…');
+    expect(displayWidth(clip('中文中文中文', 7))).toBeLessThanOrEqual(7);
   });
 });
 
@@ -78,12 +94,18 @@ describe('selection', () => {
 
 describe('the picture', () => {
   it('shows the box, the cursor and every note, in English', () => {
-    const lines = renderQuestion(tools, { cursor: 0, selected: ['claude'] }, false);
+    const view: View = { color: false, columns: 200 };
+    const lines = renderQuestion(tools, { cursor: 0, selected: ['claude'] }, view);
     expect(lines[0]).toBe('? Which AI coding tools should XForge project into? (space to select, enter to confirm)');
     expect(lines[1]).toBe('> [x] Claude Code  detected 2.1.0');
     expect(lines[2]).toBe('  [ ] Codex CLI  not detected');
     expect(lines[3]).toBe('  [ ] Zed  detected');
     expect(lines.join('\n')).not.toContain(ESC);
+  });
+
+  it('every line fits the terminal, so the redraw can count rows', () => {
+    const narrow = renderQuestion(tools, { cursor: 0, selected: [] }, { color: false, columns: 30 });
+    for (const l of narrow) expect(displayWidth(l)).toBeLessThanOrEqual(30);
   });
 });
 
@@ -93,7 +115,7 @@ describe('asking', () => {
     const output = new PassThrough();
     const seen: string[] = [];
     output.on('data', (d: Buffer) => seen.push(d.toString()));
-    const answers = ask([tools, language], { input, output, color: false });
+    const answers = ask([tools, language], { input, output, view: { color: false, columns: 200 } });
     input.write(' '); // claude
     input.write(`${ESC}[B`); // 跳过灰显的 codex，落在 zed
     input.write(' '); // zed
