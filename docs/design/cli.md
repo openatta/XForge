@@ -486,12 +486,18 @@ xforge doctor [--platform <name>]...
 xforge repair [--only <code>]... [--dry-run]
 ```
 
-跑一次 `doctor`，对每条能自动修的发现执行它的修法：`XF-ASSEMBLE-006` 重投、`XF-ASSEMBLE-007` 删、`XF-ASSEMBLE-008` 补钩子；修完更新台账。不能自动修的原样报出来，附人的下一步 —— **`repair` 不碰标记块之外的任何字节，也不改清单**。
+先跑一次 `doctor`，再对报了问题的 provider 动手。**修法只有一个：按当前脚手架把那个 provider 重投一次，并回收它的孤儿** —— 与 `sync` 同一套算法，范围限定在出问题的那几个宿主上。这样 `XF-ASSEMBLE-006`（缺失或漂移）、`XF-ASSEMBLE-007`（孤儿）、`XF-ASSEMBLE-008`（钩子不在）一起被修掉，不需要三套修法。
 
-- `--dry-run`：只报打算做什么，`changed` 为空。
-- `--only <code>`：只修这一类。
+不能自动修的原样报出来，附人的下一步：`XF-ASSEMBLE-005`（清单里的名字）、`XF-ASSEMBLE-009`（版本落后，去 `update`）、`XF-ASSEMBLE-010`（标记块被破坏）。
+**报了 `XF-ASSEMBLE-010` 的 provider 这一轮整个不碰**：标记块的边界已经不可信，投影会把块外的内容一起毁掉。
+
+- `--dry-run`：只报打算重投哪些 provider、为了哪几条发现，`changed` 为空。
+- `--only <code>`：只处理报了这个码的 provider。
 - 写盘走受治理写入（§1.2）：一次 `repair` 的全部改动在同一事务里，失败整体回滚。
-- 幂等：`repair` 之后 `doctor` 干净，再 `repair` 一次 `changed` 为空。
+- **repair 不改清单，也不碰标记块之外的任何字节。**
+- 幂等：`repair` 之后 `doctor` 只剩不能自动修的那些，再 `repair` 一次 `changed` 为空。
+
+`CLI-43` 注入缺失、漂移、孤儿、钩子不在四种问题各一处：一次 `repair` 之后 `doctor` 干净、再 `repair` 一次 `changed` 为空；`--dry-run` 不写盘；标记块被破坏的 provider 在 `repair` 前后逐字节不变，且那条发现仍在。
 
 ### 5.6 `remove`
 

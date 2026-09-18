@@ -13,6 +13,7 @@ import { exists, readText, Transaction } from '../fs/transaction.js';
 import { sha256 } from '../model/digest.js';
 import { knownProviderIds, providerFor, type HostFile } from '../providers/index.js';
 import { runDoctor } from './doctor.js';
+import { runRepair } from './repair.js';
 import { projectedFiles, pruneEmptyDirs, readLedger, rel } from './hosts.js';
 import { cliVersion } from '../meta/index.js';
 import { findProjectRoot, governancePaths, type GovernancePaths } from '../model/paths.js';
@@ -20,7 +21,7 @@ import type { EnvelopeDiagnostic, HostsLedger, Language, Manifest, Platform } fr
 import { readYaml, toYaml } from '../model/yaml.js';
 import { upgradeFinish, upgradeRollback, upgradeStage, upgradeStatusReport, type UpgradeContext } from './upgrade.js';
 
-export const ASSEMBLE_VERBS = ['init', 'sync', 'update', 'upgrade', 'doctor', 'remove'] as const;
+export const ASSEMBLE_VERBS = ['init', 'sync', 'update', 'upgrade', 'doctor', 'repair', 'remove'] as const;
 export type AssembleVerb = (typeof ASSEMBLE_VERBS)[number];
 
 export function payloadDir(): string {
@@ -44,6 +45,19 @@ export async function runAssemble(verb: AssembleVerb, parsed: Parsed, cwd: strin
       const platforms = checkedPlatforms(parsed);
       return runDoctor(root, paths, await loadManifest(paths), env, platforms.length ? platforms : undefined);
     }
+    case 'repair': {
+      const root = await findProjectRoot(cwd, env);
+      if (!root) throw new CliError('XF-STATE-002', '找不到治理根', 3, { command: 'xforge init', text: '先初始化' });
+      const paths = governancePaths(root);
+      return runRepair(root, paths, await loadManifest(paths), env, {
+        only: flagList(parsed, 'only'),
+        dryRun: flagBool(parsed, 'dry-run'),
+        reproject: async (ids) => {
+          const outcome = await sync(root, ids);
+          return { changed: outcome.changed ?? [], diagnostics: outcome.diagnostics ?? [] };
+        },
+      });
+    }
     case 'update':
     case 'upgrade': {
       const root = await findProjectRoot(cwd, env);
@@ -64,7 +78,7 @@ export async function runAssemble(verb: AssembleVerb, parsed: Parsed, cwd: strin
     case 'remove':
       return remove(cwd, flagString(parsed, 'confirm'), env);
     default:
-      throw new UsageError('用法: xforge init | update [--status|--finish|--rollback] | sync | doctor | remove --confirm <项目目录名>');
+      throw new UsageError('用法: xforge init | update [--status|--finish|--rollback] | sync | doctor | repair | remove --confirm <项目目录名>');
   }
 }
 

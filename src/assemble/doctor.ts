@@ -30,6 +30,8 @@ export interface DoctorResult {
 export interface Finding extends EnvelopeDiagnostic {
   /** 这条发现指的对象：项目根相对路径，或 provider id。 */
   subject: string;
+  /** 哪个 provider 的事；不归任何 provider 的（版本、哨兵）没有这一项。 */
+  provider?: string;
 }
 
 export interface DoctorReport {
@@ -69,27 +71,27 @@ export async function doctorReport(root: string, paths: GovernancePaths, manifes
       const current = await readText(file.path);
       if (current === null) {
         issues.add('XF-ASSEMBLE-006');
-        findings.push({ subject: path, code: 'XF-ASSEMBLE-006', severity: 'blocking', message: `${path} 该投而不在`, remedy: { command: 'xforge repair', text: '重投一次' } });
+        findings.push({ subject: path, provider: p.provider.id, code: 'XF-ASSEMBLE-006', severity: 'blocking', message: `${path} 该投而不在`, remedy: { command: 'xforge repair', text: '重投一次' } });
         continue;
       }
       if (file.shared) {
         const broken = markerBroken(current);
         if (broken) {
           issues.add('XF-ASSEMBLE-010');
-          findings.push({ subject: path, code: 'XF-ASSEMBLE-010', severity: 'blocking', message: `${path} 的 XFORGE 标记块${broken}`, remedy: { text: '人把一对标记补回去，或整块删掉再 sync' } });
+          findings.push({ subject: path, provider: p.provider.id, code: 'XF-ASSEMBLE-010', severity: 'blocking', message: `${path} 的 XFORGE 标记块${broken}`, remedy: { text: '人把一对标记补回去，或整块删掉再 sync' } });
           continue;
         }
         const mine = blockOf(current);
         const want = blockOf(file.content);
         if (want !== null && mine !== null && mine !== want) {
           issues.add('XF-ASSEMBLE-006');
-          findings.push({ subject: path, code: 'XF-ASSEMBLE-006', severity: 'blocking', message: `${path} 的 XFORGE 块被改过，与脚手架不符`, remedy: { command: 'xforge repair', text: '重投那一块；块外的内容不动' } });
+          findings.push({ subject: path, provider: p.provider.id, code: 'XF-ASSEMBLE-006', severity: 'blocking', message: `${path} 的 XFORGE 块被改过，与脚手架不符`, remedy: { command: 'xforge repair', text: '重投那一块；块外的内容不动' } });
         }
         continue;
       }
       if (current !== file.content) {
         issues.add('XF-ASSEMBLE-006');
-        findings.push({ subject: path, code: 'XF-ASSEMBLE-006', severity: 'blocking', message: `${path} 是生成物，但内容与脚手架不符（被手改过）`, remedy: { command: 'xforge repair', text: '要保留的改动写进 xforge/scaffold/ 的本地化区，再重投' } });
+        findings.push({ subject: path, provider: p.provider.id, code: 'XF-ASSEMBLE-006', severity: 'blocking', message: `${path} 是生成物，但内容与脚手架不符（被手改过）`, remedy: { command: 'xforge repair', text: '要保留的改动写进 xforge/scaffold/ 的本地化区，再重投' } });
       }
     }
 
@@ -98,7 +100,7 @@ export async function doctorReport(root: string, paths: GovernancePaths, manifes
     for (const record of ledger.providers.find((x) => x.id === p.provider.id)?.files ?? []) {
       if (expected.has(record.path)) continue;
       issues.add('XF-ASSEMBLE-007');
-      findings.push({ subject: record.path, code: 'XF-ASSEMBLE-007', severity: 'warning', message: `${record.path} 是 ${p.provider.id} 留下的孤儿`, remedy: { command: 'xforge repair', text: record.kind === 'owned' ? '删掉它' : '摘掉里面 XFORGE 的那块' } });
+      findings.push({ subject: record.path, provider: p.provider.id, code: 'XF-ASSEMBLE-007', severity: 'warning', message: `${record.path} 是 ${p.provider.id} 留下的孤儿`, remedy: { command: 'xforge repair', text: record.kind === 'owned' ? '删掉它' : '摘掉里面 XFORGE 的那块' } });
     }
 
     // 3 执法钩子：该有的在不在。
@@ -111,6 +113,7 @@ export async function doctorReport(root: string, paths: GovernancePaths, manifes
         issues.add('XF-ASSEMBLE-008');
         findings.push({
           subject: p.provider.id,
+          provider: p.provider.id,
           code: 'XF-ASSEMBLE-008',
           severity: 'blocking',
           message: p.hookMissing ? `${p.provider.id} 能执法，但脚手架里没有钩子声明可投` : `${p.provider.id} 的执法钩子不在宿主原生位置里：写入范围此刻没有人拦`,
@@ -125,6 +128,7 @@ export async function doctorReport(root: string, paths: GovernancePaths, manifes
     reports.push(report);
     findings.push({
       subject: p.provider.id,
+      provider: p.provider.id,
       code: 'XF-ASSEMBLE-012',
       severity: 'info',
       message: `${p.provider.displayName}：本机${found.installed ? `已装${found.version ? ` ${found.version}` : ''}` : '未探测到'}，执法 ${enforcement}，隔离 ${p.provider.capabilities.isolation ? '有' : '无'}，投影 ${p.files.length} 个文件`,
@@ -138,7 +142,7 @@ export async function doctorReport(root: string, paths: GovernancePaths, manifes
 
 export async function runDoctor(root: string, paths: GovernancePaths, manifest: Manifest, env: NodeJS.ProcessEnv, only: readonly string[] | undefined): Promise<Outcome<DoctorResult>> {
   const { findings, result } = await doctorReport(root, paths, manifest, env, only);
-  const diagnostics: EnvelopeDiagnostic[] = findings.map(({ subject: _subject, ...d }) => d);
+  const diagnostics: EnvelopeDiagnostic[] = findings.map(({ subject: _subject, provider: _provider, ...d }) => d);
   const fixable = findings.some((f) => f.severity !== 'info' && REPAIRABLE.has(f.code));
   const outcome: Outcome<DoctorResult> = { result, changed: [], diagnostics, next: fixable ? [{ command: 'xforge repair', why: '能自动修的都修掉' }] : [] };
   return outcome;
