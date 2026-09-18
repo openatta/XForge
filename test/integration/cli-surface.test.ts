@@ -84,6 +84,15 @@ describe('meta verbs and the no-project paths', () => {
     expect(readFileSync(join(bare.root, '.claude', 'skills', 'xforge', 'SKILL.md'), 'utf8')).toContain('You are the orchestrator');
   });
 
+  it('CLI-44 with no tty and no options init takes the defaults instead of asking', async () => {
+    const fresh = await Project.create('noninteractive');
+    const r = await fresh.xforge('init'); // 没有 TTY：不问，不挂
+    expect(r.exit, JSON.stringify(r.env)).toBe(0);
+    const manifest = parse(readFileSync(join(fresh.root, 'xforge', 'manifest.yaml'), 'utf8')) as { language: string; platforms: string[]; flow: { default: string } };
+    expect(manifest).toMatchObject({ language: 'zh-CN', platforms: ['claude'], flow: { default: 'solid' } });
+    expect((await fresh.xforge('sync', '--no-input')).exit).toBe(0);
+  });
+
   it('sync --platform projects only the named host, leaving the others alone', async () => {
     const r = await bare.xforge('sync', '--platform', 'codex');
     expect(r.exit, JSON.stringify(r.env)).toBe(0);

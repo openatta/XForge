@@ -42,7 +42,7 @@ export async function main(argv: readonly string[], io: Io): Promise<number> {
       if (!code) throw new UsageError('用法: xforge explain <code>');
       outcome = await runExplain(code);
     } else if ((VERBS as readonly string[]).includes(verb)) outcome = await dispatchVerb(verb as Verb, parsed, cwd, io.env);
-    else if ((ASSEMBLE_VERBS as readonly string[]).includes(verb)) outcome = await runAssemble(verb as AssembleVerb, parsed, cwd, io.env);
+    else if ((ASSEMBLE_VERBS as readonly string[]).includes(verb)) outcome = await runAssemble(verb as AssembleVerb, parsed, cwd, io.env, io);
     else throw new UsageError(`未知命令 ${verb}\n\n${HELP}`);
     const { env, exit } = envelope(verb, outcome);
     emit(io, env, { text, ...(field ? { field } : {}) });

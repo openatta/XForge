@@ -6,12 +6,13 @@ import { basename, join, relative } from 'node:path';
 import fg from 'fast-glob';
 import type { Parsed } from '../cli/args.js';
 import { flagBool, flagList, flagString } from '../cli/args.js';
-import type { Outcome } from '../cli/envelope.js';
+import type { Io, Outcome } from '../cli/envelope.js';
+import { Aborted, ask, type Choice, type Question } from '../cli/prompt.js';
 import { CliError, UsageError } from '../cli/errors.js';
 import { ModelError } from '../model/errors.js';
 import { exists, readText, Transaction } from '../fs/transaction.js';
 import { sha256 } from '../model/digest.js';
-import { knownProviderIds, providerFor, type HostFile } from '../providers/index.js';
+import { detect, knownProviderIds, providerFor, providers, type HostFile } from '../providers/index.js';
 import { runDoctor } from './doctor.js';
 import { runRepair } from './repair.js';
 import { projectedFiles, pruneEmptyDirs, readLedger, rel } from './hosts.js';
@@ -28,10 +29,10 @@ export function payloadDir(): string {
   return fileURLToPath(new URL('../../scaffold/', import.meta.url));
 }
 
-export async function runAssemble(verb: AssembleVerb, parsed: Parsed, cwd: string, env: NodeJS.ProcessEnv): Promise<Outcome> {
+export async function runAssemble(verb: AssembleVerb, parsed: Parsed, cwd: string, env: NodeJS.ProcessEnv, io?: Io): Promise<Outcome> {
   switch (verb) {
     case 'init':
-      return init(cwd, parsed, env);
+      return init(cwd, parsed, env, io);
     case 'sync': {
       const root = await findProjectRoot(cwd, env);
       if (!root) throw new CliError('XF-STATE-002', '找不到治理根', 3, { command: 'xforge init', text: '先初始化' });
@@ -187,8 +188,8 @@ const CONSTITUTION_TEMPLATE = `# 章程
 任何改变对外行为的改动，都要有能证明它的测试；没有测试的行为变更不进主线。
 `;
 
-async function init(cwd: string, parsed: Parsed, _env: NodeJS.ProcessEnv): Promise<Outcome<{ created: string[]; synced: string[] }>> {
-  const root = (await findProjectRoot(cwd, _env)) ?? cwd;
+async function init(cwd: string, parsed: Parsed, env: NodeJS.ProcessEnv, io?: Io): Promise<Outcome<{ created: string[]; synced: string[] }>> {
+  const root = (await findProjectRoot(cwd, env)) ?? cwd;
   const paths = governancePaths(root);
   const payload = payloadDir();
   const created: string[] = [];
@@ -205,10 +206,15 @@ async function init(cwd: string, parsed: Parsed, _env: NodeJS.ProcessEnv): Promi
     const flows = (await listNames(join(payload, 'flows'))).map((f) => f.replace(/\.yaml$/, ''));
     const gates = (await listNames(join(payload, 'gates'))).map((f) => f.replace(/\.yaml$/, ''));
     const policies = (await listNames(join(payload, 'policies'))).map((f) => f.replace(/\.yaml$/, ''));
-    const platforms = checkedPlatforms(parsed);
-    const language = (flagString(parsed, 'language') ?? 'zh-CN') as Language;
+    let platforms = checkedPlatforms(parsed);
+    let language = (flagString(parsed, 'language') ?? 'zh-CN') as Language;
     const flow = flagString(parsed, 'flow') ?? 'solid';
     if (!flows.includes(flow)) throw new UsageError(`没有流程 ${flow}；可选：${flows.join('、')}`);
+    if (interactive(parsed, io)) {
+      const answers = await askAtInit(env, io!);
+      platforms = answers.platforms;
+      language = answers.language;
+    }
     const manifest: Manifest = {
       version: 1,
       scaffold: { version: cliVersion() },
@@ -228,6 +234,58 @@ async function init(cwd: string, parsed: Parsed, _env: NodeJS.ProcessEnv): Promi
   created.push(...(await tx.commit()));
   const synced = await sync(root, undefined);
   return { result: { created, synced: synced.changed ?? [] }, changed: [...created, ...(synced.changed ?? [])], next: [{ command: 'xforge state --orient', why: '看这个项目的定向' }] };
+}
+
+/**
+ * 进交互的条件很窄（D15）：两端都是 TTY、没给任何装配选项、也没有 --no-input。
+ * 不满足就走原来的路 —— live harness、integration 测试与 Agent 的调用全是非交互的。
+ */
+function interactive(parsed: Parsed, io: Io | undefined): boolean {
+  if (!io?.stdin?.isTTY || !io.stdout.isTTY) return false;
+  if (flagBool(parsed, 'no-input')) return false;
+  return !flagList(parsed, 'platform').length && flagString(parsed, 'language') === undefined && flagString(parsed, 'flow') === undefined;
+}
+
+/** 工具那一问的选项：探测到的可选，没探测到的灰显。一个都没探测到就全部放开，否则这一问无解。 */
+export function toolChoices(env: NodeJS.ProcessEnv): Choice[] {
+  const tools: Choice[] = providers().map((p) => {
+    const found = detect(p, env);
+    const choice: Choice = { value: p.id, label: p.displayName };
+    choice.note = found.installed ? `detected${found.version ? ` ${found.version}` : ''}` : 'not detected';
+    if (!found.installed) choice.disabled = true;
+    return choice;
+  });
+  if (tools.every((t) => t.disabled)) {
+    for (const t of tools) {
+      delete t.disabled;
+      t.note = 'not detected here — files are written anyway';
+    }
+  }
+  return tools;
+}
+
+/** 装机那两问：工具（多选）与语言（单选）。文案是英文，画面走 stderr。 */
+async function askAtInit(env: NodeJS.ProcessEnv, io: Io): Promise<{ platforms: Platform[]; language: Language }> {
+  const tools = toolChoices(env);
+  const questions: Question[] = [
+    { key: 'platform', prompt: 'Which AI coding tools should XForge project into?', choices: tools, multi: true },
+    {
+      key: 'language',
+      prompt: 'Which language should the projected Skills use?',
+      choices: [
+        { value: 'zh-CN', label: 'Chinese (zh-CN)', note: 'the language the Skills are authored in' },
+        { value: 'en', label: 'English', note: 'translated from the Chinese source' },
+      ],
+      multi: false,
+    },
+  ];
+  try {
+    const answers = await ask(questions, { input: io.stdin!, output: io.stderr });
+    return { platforms: answers['platform'] ?? [], language: (answers['language']?.[0] ?? 'zh-CN') as Language };
+  } catch (error) {
+    if (error instanceof Aborted) throw new UsageError('init cancelled');
+    throw error;
+  }
 }
 
 async function listNames(dir: string): Promise<string[]> {

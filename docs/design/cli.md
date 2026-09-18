@@ -415,6 +415,10 @@ xforge init [--flow <name>] [--platform <name>]... [--language zh-CN|en] [--no-i
 
 清单 `platforms` 里出现控制面不认得的名字是 `XF-ASSEMBLE-005`（D14）。
 
+一个 provider 都没探测到时，全部改为可选并注明「本机没探测到，文件照写」：否则新机器、容器与 CI 上这一问无解。
+
+`CLI-44` 交互只在两端都是 TTY、没给任何装配选项、也没有 `--no-input` 时发生；非交互的 `init` 行为与没有这个特性时逐字节相同（缺省 `claude` + `zh-CN` + `solid`，不问也不挂）。画面全部在 stderr：stdout 仍然只有信封。灰显项按空格不选中并说明「命令行上可以点名」；一个都没选中时回车不放行；一个都没探测到时全部可选。
+
 ### 5.2 `sync`
 
 ```

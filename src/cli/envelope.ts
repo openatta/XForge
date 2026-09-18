@@ -5,7 +5,9 @@ import type { ExitCode } from './errors.js';
 export interface Io {
   cwd: string;
   env: NodeJS.ProcessEnv;
-  stdout: NodeJS.WritableStream;
+  /** 只有 init 的交互用得上；没有它就一律非交互（命令行设计 D15）。 */
+  stdin?: NodeJS.ReadableStream & { isTTY?: boolean; setRawMode?: (on: boolean) => void };
+  stdout: NodeJS.WritableStream & { isTTY?: boolean };
   stderr: NodeJS.WritableStream;
 }
 
