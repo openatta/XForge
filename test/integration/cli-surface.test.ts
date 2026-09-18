@@ -23,7 +23,7 @@ describe('meta verbs and the no-project paths', () => {
       const r = await bare.xforge(...args);
       expect(r.exit).toBe(0);
       expect(raw(r)).toContain('xforge <命令>');
-      for (const verb of ['state', 'show', 'inspect', 'run', 'attest', 'advance', 'init', 'sync', 'update', 'remove', 'explain']) expect(raw(r)).toContain(verb);
+      for (const verb of ['state', 'show', 'inspect', 'run', 'attest', 'advance', 'init', 'sync', 'update', 'doctor', 'repair', 'remove', 'explain']) expect(raw(r)).toContain(verb);
     }
   });
 
