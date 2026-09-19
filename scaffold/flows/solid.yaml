@@ -88,11 +88,13 @@ stages:
             - 方案名：为什么不选（它的代价）
             <!-- xforge:entries:end -->
           至少一个有代价的替代。
-    ledgers: []
-    gates: [structure, constitution]
+    ledgers: [exit/spec-conflicts]
+    gates: [structure, constitution, ledgers]
     exit:
       - {kind: gate, ref: structure}
       - {kind: gate, ref: constitution}
+      - {kind: gate, ref: ledgers}
+      - {kind: attested, ref: exit/spec-conflicts}
     rework_to: [propose]
   - id: check
     skill: xforge-check

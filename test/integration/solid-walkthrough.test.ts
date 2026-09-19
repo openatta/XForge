@@ -52,6 +52,7 @@ describe('solid walkthrough', () => {
       '## 被否决的方案', '<!-- xforge:entries:begin kind=alternatives -->', '- 数据库唯一索引：需要数据库，超出本次范围。', '<!-- xforge:entries:end -->', '',
     ].join('\n'));
     await p.write(c('work-packages.yaml'), 'packages:\n  - id: P-01\n    title: 领域模型\n    depends_on: []\n    paths: ["src/core/**"]\n    verify: {gate: unit-tests}\n    criteria: [{id: C-1, text: "幂等键冲突返回同一订单"}]\n    review: required\n');
+    await p.write(c('ledgers/exit/spec-conflicts.yaml'), 'kind: exit/spec-conflicts\nentries: []\n'); // design 站的出口条件：没矛盾就空（skills D15）
     const show = await p.xforge('show', 'doc:design.md#失败模式');
     expect(show.exit, JSON.stringify(show.env)).toBe(0);
     const sr = show.env.result as { content: string; complete: boolean; omitted: string[] };

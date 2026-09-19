@@ -34,6 +34,7 @@ describe('two schemes on one change', () => {
     await p.write(c('proposal.md'), '# dual\n\n## 背景\nx\n## 目标\ny\n## 非目标\nz\n## 为什么选这条流程\nlow\n## 影响面\nnone\n');
     await p.write(c('scope.yaml'), 'scheme: default\npaths: ["src/**"]\n');
     await p.write(c('work-packages.yaml'), 'packages:\n  - id: P-01\n    title: impl\n    depends_on: []\n    paths: ["src/**"]\n    verify: {gate: unit-tests}\n    criteria: [{id: C-1, text: "impl works"}]\n    review: none\n');
+    await p.write(c('ledgers/exit/spec-conflicts.yaml'), 'kind: exit/spec-conflicts\nentries: []\n'); // design 站的出口条件：没矛盾就空（skills D15）
     wt = realpathSync(mkdtempSync(join(tmpdir(), 'xforge-dual-wt-')));
     execFileSync('git', ['worktree', 'add', '-q', '--detach', wt, 'HEAD'], { cwd: p.root });
   });
@@ -52,6 +53,7 @@ describe('two schemes on one change', () => {
   it('RF-33 the structure gate refuses a scope declared for another scheme; state then lists both schemes', async () => {
     await p.write(b('scope.yaml'), 'scheme: default\npaths: ["tests/**"]\n');
     await p.write(b('work-packages.yaml'), 'packages:\n  - id: P-01\n    title: blackbox tests\n    depends_on: []\n    paths: ["tests/**"]\n    verify: {gate: unit-tests}\n    criteria: [{id: C-1, text: "tests exist"}]\n    review: none\n');
+    await p.write(c('ledgers/exit/spec-conflicts.yaml'), 'kind: exit/spec-conflicts\nentries: []\n'); // design 站的出口条件：没矛盾就空（skills D15）
     const wrong = await p.xforge('run', '--gate', 'structure', '--scheme', 'blackbox');
     expect(wrong.exit).toBe(1);
     expect(wrong.env.diagnostics.find((d) => d.code === 'XF-RUN-003')?.message).toContain('scheme 是 default');

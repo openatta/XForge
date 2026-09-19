@@ -46,6 +46,7 @@ describe('MCP approval', () => {
     await p.write(c('proposal.md'), '# mcp\n\n## 背景\nx\n## 目标\ny\n## 非目标\nz\n## 为什么选这条流程\nlow\n## 影响面\nnone\n');
     await p.write(c('scope.yaml'), 'scheme: default\npaths: ["src/**"]\n');
     await p.write(c('work-packages.yaml'), 'packages:\n  - id: P-01\n    title: one\n    depends_on: []\n    paths: ["src/**"]\n    verify: {gate: unit-tests}\n    criteria: [{id: C-1, text: "works"}]\n    review: none\n');
+    await p.write(c('ledgers/exit/spec-conflicts.yaml'), 'kind: exit/spec-conflicts\nentries: []\n'); // design 站的出口条件：没矛盾就空（skills D15）
     expect((await p.xforge('advance')).exit).toBe(0);
     const d = await p.xforge('advance', 'package', 'P-01', '--dispatch');
     const execution = (d.env.result as { execution: string }).execution;

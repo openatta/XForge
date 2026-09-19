@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parse } from 'yaml';
 import { headings, localZone } from '../../src/model/markdown.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -111,6 +112,36 @@ describe('停下条件与控制面的词汇要对得上（SK-14）', () => {
     for (const file of ['SKILL_cn.md', 'SKILL.md']) {
       const text = read('xforge', file);
       expect(/没有这个 token|no such token/.test(text), file).toBe(true);
+    }
+  });
+});
+
+describe('需要人的停下都要有落点（SK-15）', () => {
+  const flows = ['quick', 'solid', 'major'] as const;
+  const flowOf = (name: string): { stages: Array<{ id: string; ledgers?: string[]; exit?: Array<Record<string, string>> }> } =>
+    parse(readFileSync(join(root, 'scaffold', 'flows', `${name}.yaml`), 'utf8')) as { stages: Array<{ id: string; ledgers?: string[]; exit?: Array<Record<string, string>> }> };
+
+  it('报 needs-human 的站，在每条用到它的流程里都有台账接住', () => {
+    const offenders: string[] = [];
+    for (const station of STATIONS) {
+      const says = /needs-human/.test(read(`xforge-${station}`, 'SKILL_cn.md'));
+      if (!says) continue;
+      for (const flow of flows) {
+        const stage = flowOf(flow).stages.find((s) => s.id === station);
+        if (!stage) continue; // 这条流程没这一站
+        // 一句只存在于对话里的「要人裁决」，关掉会话就没了，而控制面看不见它。
+        if (!(stage.ledgers ?? []).length) offenders.push(`${flow}/${station}: 会报 needs-human 却没有台账`);
+      }
+    }
+    expect(offenders, offenders.join('\n')).toEqual([]);
+  });
+
+  it('design 站的 spec-conflicts 台账在出口条件里 —— 只写不验等于没写', () => {
+    for (const flow of ['solid', 'major'] as const) {
+      const stage = flowOf(flow).stages.find((s) => s.id === 'design')!;
+      expect(stage.ledgers, flow).toContain('exit/spec-conflicts');
+      const attested = (stage.exit ?? []).some((e) => e['kind'] === 'attested' && e['ref'] === 'exit/spec-conflicts');
+      expect(attested, `${flow} 的 design 站没把 exit/spec-conflicts 写进出口条件`).toBe(true);
     }
   });
 });

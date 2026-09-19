@@ -16,12 +16,15 @@ Use the brief if you were given one; otherwise run `xforge state --orient` first
 - The scope covers every path in the plan, and no more.
 
 ## 边界
-- Write only the implementation-side `scope.yaml`, `design.md`, `work-packages.yaml`.
+- Write only the implementation-side `scope.yaml`, `design.md`, `work-packages.yaml`, plus the ledger `ledgers/exit/spec-conflicts.yaml`.
 - No code; do not edit the proposal or the spec delta.
 
 ## 停下
-- A contradiction in the spec → do not resolve it yourself; end with `needs-human <which two clauses conflict and why they cannot both hold>`.
+- **Always write `ledgers/exit/spec-conflicts.yaml`**: with `entries: []` when you found none. It is one of this station's exit conditions.
+- A contradiction in the spec → do not resolve it yourself: record each one as an entry in that ledger (name the two clauses and why they
+  cannot both hold), then end with `needs-human <one sentence on what needs deciding>`. The station only exits once a person decides and signs.
   Do not use `blocked`: that channel is for blockers the control plane computes, and it cannot read what prose means, so it has no remedy to offer.
+  Writing it into the ledger is what keeps it **on the tree**: come back in a different session and `xforge state` still reports whose signature is missing.
 
 ## 本项目
 <!-- xforge:local:begin -->

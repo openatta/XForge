@@ -125,6 +125,7 @@ describe('the command surface on a quick change', () => {
     await p.write(c('proposal.md'), '# surface\n\n## 背景\nx\n## 目标\ny\n## 非目标\nz\n## 为什么选这条流程\nlow\n## 影响面\nnone\n');
     await p.write(c('scope.yaml'), 'scheme: default\npaths: ["src/**"]\n');
     await p.write(c('work-packages.yaml'), 'packages:\n  - id: P-01\n    title: one\n    depends_on: []\n    paths: ["src/**"]\n    verify: {gate: unit-tests}\n    criteria: [{id: C-1, text: "works"}]\n    review: none\n');
+    await p.write(c('ledgers/exit/spec-conflicts.yaml'), 'kind: exit/spec-conflicts\nentries: []\n'); // design 站的出口条件：没矛盾就空（skills D15）
     // 一条接口基线，给 show interface: 用。
     await p.write('xforge/interfaces/index.yaml', 'domains:\n  - {id: order-core, path: order-core}\n');
     await p.write('xforge/interfaces/order-core/index.yaml', 'entries:\n  - {id: "fn:createOrder", capability: api, title: 创建订单}\n');

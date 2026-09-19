@@ -117,6 +117,7 @@ describe('robustness', () => {
     await p.write(c('scope.yaml'), 'scheme: default\npaths: ["src/**"]\n');
     await p.write(c('design.md'), ['# 设计', '', '## 技术路径', 'a', '## 集成点', 'b', '## 失败模式', 'c', '## 迁移与回滚', 'd', '## 被否决的方案', '<!-- xforge:entries:begin kind=alternatives -->', '- e', '<!-- xforge:entries:end -->', ''].join('\n'));
     await p.write(c('work-packages.yaml'), 'packages:\n  - id: P-01\n    title: t\n    depends_on: []\n    paths: ["src/core/**"]\n    verify: {gate: unit-tests}\n    criteria: [{id: C-1, text: x}]\n    review: none\n');
+    await p.write(c('ledgers/exit/spec-conflicts.yaml'), 'kind: exit/spec-conflicts\nentries: []\n'); // design 站的出口条件：没矛盾就空（skills D15）
     const a = await p.xforge('advance');
     expect(a.exit, JSON.stringify(a.env)).toBe(0);
     const fromAdvance = (a.env.result as { stage: unknown }).stage;
@@ -162,6 +163,7 @@ describe('robustness', () => {
         await p.write(c('scope.yaml'), 'scheme: default\npaths: ["src/**"]\n');
         await p.write(c('design.md'), '# d\n\n## 技术路径\nx\n## 集成点\nx\n## 失败模式\nx\n## 迁移与回滚\nx\n## 被否决的方案\n<!-- xforge:entries:begin kind=alternatives -->\n- a\n<!-- xforge:entries:end -->\n');
         await p.write(c('work-packages.yaml'), 'packages:\n  - id: P-01\n    title: t\n    depends_on: []\n    paths: ["src/core/**"]\n    verify: {gate: unit-tests}\n    criteria: [{id: C-1, text: x}]\n    review: none\n');
+        await p.write(c('ledgers/exit/spec-conflicts.yaml'), 'kind: exit/spec-conflicts\nentries: []\n'); // design 站的出口条件：没矛盾就空（skills D15）
       }
       if (stage === 'check') {
         await p.write(c('ledgers/review-findings.yaml'), 'kind: review-findings\nentries: []\n');

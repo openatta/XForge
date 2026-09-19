@@ -65,6 +65,7 @@ describe('diagnostic paths on a solid change', () => {
     await p.write(c('scope.yaml'), 'scheme: default\npaths: ["src/**"]\n');
     await p.write(c('design.md'), ['# 设计', '', '## 技术路径', 'a', '## 集成点', 'b', '## 失败模式', 'c', '## 迁移与回滚', 'd', '## 被否决的方案', '<!-- xforge:entries:begin kind=alternatives -->', '- e', '<!-- xforge:entries:end -->', ''].join('\n'));
     await p.write(c('work-packages.yaml'), PLAN());
+    await p.write(c('ledgers/exit/spec-conflicts.yaml'), 'kind: exit/spec-conflicts\nentries: []\n'); // design 站的出口条件：没矛盾就空（skills D15）
     const a = await p.xforge('advance');
     expect(a.exit, JSON.stringify(a.env)).toBe(0);
     expect((a.env.result as { to: string }).to).toBe('check');
@@ -111,11 +112,13 @@ describe('diagnostic paths on a solid change', () => {
 
   it('XF-ADVANCE-006 a package whose paths fall outside the scope cannot be dispatched', async () => {
     await p.write(c('work-packages.yaml'), PLAN('  - id: P-03\n    title: docs\n    depends_on: []\n    paths: ["docs/**"]\n    verify: {gate: unit-tests}\n    criteria: [{id: C-3, text: "x"}]\n    review: none\n'));
+    await p.write(c('ledgers/exit/spec-conflicts.yaml'), 'kind: exit/spec-conflicts\nentries: []\n'); // design 站的出口条件：没矛盾就空（skills D15）
     const r = await p.xforge('advance', 'package', 'P-03', '--dispatch');
     expect(r.exit).toBe(1);
     expect(code(r)).toBe('XF-ADVANCE-006');
     expect(r.env.diagnostics[0]?.message).toContain('docs/**');
     await p.write(c('work-packages.yaml'), PLAN());
+    await p.write(c('ledgers/exit/spec-conflicts.yaml'), 'kind: exit/spec-conflicts\nentries: []\n'); // design 站的出口条件：没矛盾就空（skills D15）
   });
 
   it('unclaimed:<path> a change in the scope that no package claims blocks the stage exit', async () => {

@@ -14,6 +14,7 @@
 | **D1** | 入口 Skill 名 `xforge`；站 Skill 名 `xforge-<stage>`（`propose` `clarify` `design` `check` `apply` `verify`）；执行者名 `xforge-executor` | 用户只记一个名字；站名来自流程 |
 | **D2** | 站 Skill 文件 = frontmatter + 恰好四个二级标题：`## 判断` `## 边界` `## 停下` `## 本项目`，第四节的正文包在本地化区标记里 | `四节`；标题固定让「验」的存在性检查能做（命令行设计 D11） |
 | **D3** | 简报 = `xforge state --orient` 的信封原文 + 本站 Skill 正文 + 会话指示；三段顺序由信封已定（0a → 1 → 0b），会话指示附在最后 | 定向就是 0 级 + 1 级；不另发明一份格式，控制面输出即简报 |
+| **D15** | 需要人的停下都要有**落点**：一份台账。`needs-human` 只让话传出去，台账才让这件事留在树上 —— `state` 报得出 `attest-missing`、有 `xforge attest entry …` 可执行、换个会话回来还在。design 站因此挂 `exit/spec-conflicts`；空台账零成本（`attested` 对空条目恒真），有条目才产生人的介入点 | 一句只存在于对话里的「要人裁决」，关掉会话就没了，而控制面看不见它，自动驱动会干等。clarify 早就是这个形状（`exit/material-questions`），design 缺的就是它 |
 | **D14** | `blocked <token>` 里的 token **必须是控制面真会产出的那一个**（`blockers[].token`，含 `unclaimed:<路径>` 这种带后缀的形式）。控制面判不出来的停下理由一律走 `needs-human` | 两套词汇对不上时，入口拿着一个查不到的 token 去问 `blockers`，什么也说不出来 —— 用户看到的是「被挡住了，但控制面说没东西挡着」。规格里两条 WHEN 互斥不互斥是对散文意思的判断，控制面按 `不读散文的意思` 结构上就产不出这种 blocker，所以它不该占用 `blocked` 这条道 |
 | **D4** | 执行者回报 = 输出的**最后一行**，形如 `XFORGE-REPORT: done` / `XFORGE-REPORT: blocked <token>` / `XFORGE-REPORT: needs-human <一句话>`；入口只解析最后一行 | `只报状态不报过程`；解析最后一行，前面写什么都不会被搬回来 |
 | **D5** | 执行者按方案分型，本版只有一个 `xforge-executor` | 主文档《写入范围的权威》 |
@@ -113,7 +114,7 @@ description: design 站：把提案变成技术路径、作用域与工作包计
 | --- | --- | --- | --- |
 | **propose** | 目标是否有边界：一句话说得清「做完是什么样」；非目标是否列了最容易被误加的那件事；风险等级是否与影响面一致；规格 delta 是否先复用了 `spec_domains` 里已有的名字再发明新的 | 只写规格侧文件；不碰 `src/` | 用户说不清目标 → 问用户；影响面含 `interface` 而接口治理关 → 停，交给人决定开不开 |
 | **clarify** | 哪些问题是「材料问题」（答案会改变设计）而不是好奇；每条问题是否给了默认答案让人只需否决 | 只写 `ledgers/exit/material-questions.yaml` | 每条问题都要人答 → `needs-human`，一次带全部问题 |
-| **design** | 技术路径是否能被一个不看实现的人按规格写出黑盒测试；被否决的方案是否真的被考虑过（至少一个有代价的替代）；工作包切分是否让每个包能独立验证；作用域是否覆盖计划里全部路径且不多 | 只写实现侧的 `scope.yaml` `design.md` `work-packages.yaml`；不写代码 | 规格里有矛盾 → `needs-human <哪两条冲突>`，交给人裁决（控制面读不出散文的意思，永远不会为这种事产出 blocker，见 D14） |
+| **design** | 技术路径是否能被一个不看实现的人按规格写出黑盒测试；被否决的方案是否真的被考虑过（至少一个有代价的替代）；工作包切分是否让每个包能独立验证；作用域是否覆盖计划里全部路径且不多 | 只写实现侧的 `scope.yaml` `design.md` `work-packages.yaml`；不写代码 | 每次写 `ledgers/exit/spec-conflicts.yaml`（没矛盾就空）；有矛盾 → 逐条写进台账 + `needs-human`，人裁决署名后才出站（D15） |
 | **check** | 提案、规格、设计是否在描述同一个行为；每条发现是否指向一个可定位的东西；章程逐条答复时「不适用」是否说得出理由 | 只写两份台账；不改设计 | 发现的答复要人 → `needs-human`；站级审批 → `needs-human` |
 | **apply** | 协调者：派工顺序按依赖；每个包的执行者只拿包简报；交付记录里的完成判据证据是否可定位 | 协调者不写 `src/`；包执行者只写包 `paths` | 交付登记即集成，没有人确认；无归属改动 → `blocked unclaimed:<路径>`（用控制面真实产出的那一个 token） |
 | **verify** | 保证说明的「连贯性」是否指出了分叉处而不是复述；收据签署前每道门是否当前 | 只写 `assurance.md` 与收据台账；不改代码 | 门失败 → 不修，`blocked gate-failed`，交 apply 返工；签署 → `needs-human` |
@@ -165,6 +166,7 @@ description: design 站：把提案变成技术路径、作用域与工作包计
 | `XFORGE-REPORT: blocked <token>` | `xforge state`，取 `blockers` 里该 token 的 remedy 给用户；查不到就原样转述那一行 |
 | `XFORGE-REPORT: needs-human <一句话>` | 把那句话交给用户 |
 
+`SK-15` 每个会报 `needs-human` 的站，在流程定义里都有至少一份台账接住它（`ledgers` 非空）；design 站在 solid 与 major 上都挂着 `exit/spec-conflicts`，且它在出口条件里（product 层对 `scaffold/flows/*.yaml` 与六份 Skill 交叉检查）。
 `SK-14` 站 Skill 的「停下」一节里出现的每个 `blocked <token>`，都能在控制面产出的 token 集合里找到（带后缀的按前缀算）；产不出的理由只准写成 `needs-human`（product 层对六份 Skill 与 `src/verbs/exit.ts` 交叉检查）。
 `SK-08` 执行者提示词里写明「最后一行必须是 `XFORGE-REPORT:` 开头的三种之一」；product 层测试用三种样例输出与一种非法输出验证入口的解析规则（非法 → 视为 `blocked report-malformed`）。
 

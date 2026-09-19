@@ -16,12 +16,15 @@ description: design 站：把提案变成技术路径、作用域与工作包计
 - 作用域覆盖计划里的全部路径，且不多。
 
 ## 边界
-- 只写实现侧的 `scope.yaml`、`design.md`、`work-packages.yaml`。
+- 只写实现侧的 `scope.yaml`、`design.md`、`work-packages.yaml`，外加台账 `ledgers/exit/spec-conflicts.yaml`。
 - 不写代码，不改提案与规格 delta。
 
 ## 停下
-- 规格里有矛盾 → 不要自己裁决，最后一行 `needs-human <哪两条冲突、为什么不能两立>`，交给人。
+- **每次都要写 `ledgers/exit/spec-conflicts.yaml`**：没发现矛盾就写 `entries: []`，这是本站的出口条件之一。
+- 规格里有矛盾 → 不要自己裁决：把每条矛盾写成台账里的一个条目（点名是哪两条、为什么不能两立），
+  再用最后一行 `needs-human <一句话说清要裁决什么>` 交给人。人裁决并署名之后才出得了站。
   不要用 `blocked`：那条道是给控制面算得出来的阻塞用的，规格的意思它读不出来，也就没有 remedy 可念。
+  写进台账是为了让这件事**留在树上**：换一个会话再回来，`xforge state` 仍然报得出还差谁的签名。
 
 ## 本项目
 <!-- xforge:local:begin -->

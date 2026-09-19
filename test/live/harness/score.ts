@@ -70,6 +70,11 @@ export function observe(files: string[]): Observations {
           }
         }
         if (block['type'] === 'tool_result' && block['is_error'] === true) {
+          // 同一条结果会同时出现在主会话与子 Agent 的转录里：按 tool_use_id 去重，
+          // 不然一次拒绝被记成两次 —— 而 deny 是每次运行都要逐条对的指标。
+          const id = String(block['tool_use_id'] ?? '');
+          if (id && seen.has(`result:${id}`)) continue;
+          if (id) seen.add(`result:${id}`);
           // 钩子的拒绝以诊断码开头且 is_error；工具输出里顺带出现这个字符串（explain、grep 源码）不算。
           const text = typeof block['content'] === 'string' ? block['content'] : '';
           if (/^XF-ENFORCE-00\d/.test(text.trim())) o.enforce_denies += 1;

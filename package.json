@@ -1,6 +1,6 @@
 {
   "name": "@xforge/cli",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Git-native control plane for governed AI-assisted software development",
   "license": "Apache-2.0",
   "keywords": [
