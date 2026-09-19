@@ -26,8 +26,10 @@ describe('doctor (CLI-42)', () => {
     const res = result(r);
     expect(res.problems).toBe(0);
     expect(res.providers.find((x) => x.id === 'claude')).toMatchObject({ enforcement: 'available', installed: true });
-    expect(res.providers.find((x) => x.id === 'codex')).toMatchObject({ enforcement: 'not-supported', installed: false });
-    expect(r.env.diagnostics.every((d) => d.severity === 'info')).toBe(true);
+    // codex 能执法，但钩子要人在它的 /hooks 里放行一次，那一步我们看不见（D8）。
+    expect(res.providers.find((x) => x.id === 'codex')).toMatchObject({ enforcement: 'unavailable', installed: false });
+    // 只剩 codex 那条「要人在 /hooks 里放行」的提醒；它是事实，不是树上的问题。
+    expect(r.env.diagnostics.every((d) => d.severity === 'info' || d.code === 'XF-ASSEMBLE-014')).toBe(true);
   });
 
   it('XF-ASSEMBLE-006 a projection that is gone, or edited by hand', async () => {

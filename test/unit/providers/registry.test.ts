@@ -20,10 +20,13 @@ describe('provider registry', () => {
   it('capabilities say what each host can do, and name the mechanism (D13)', () => {
     expect(providerFor('claude')!.capabilities).toEqual({ enforcement: 'hook', isolation: true });
     expect(providerFor('claude')!.hookFile).toBe('.claude/settings.json'); // 落点是声明，不是写死在判定里
-    expect(providerFor('codex')!.capabilities).toEqual({ enforcement: 'none', isolation: false });
-    expect(providerFor('codex')!.hookFile).toBeUndefined();
+    expect(providerFor('codex')!.capabilities).toEqual({ enforcement: 'hook', isolation: false });
+    expect(providerFor('codex')!.hookFile).toBe('.codex/config.toml');
+    // codex 的钩子装上之后还要人在它的 /hooks 里放行一次，而那一步我们看不见（D8）。
+    expect(providerFor('codex')!.hookNeedsHostTrust).toBe(true);
+    expect(providerFor('claude')!.hookNeedsHostTrust).toBeUndefined();
     expect(canEnforce(providerFor('claude')!)).toBe(true);
-    expect(canEnforce(providerFor('codex')!)).toBe(false);
+    expect(canEnforce(providerFor('codex')!)).toBe(true);
   });
 });
 
@@ -53,6 +56,7 @@ describe('detection', () => {
 describe('current host (D8)', () => {
   it('XFORGE_HOST wins, then the first host in the manifest that can enforce', () => {
     expect(currentProvider(manifest(['claude', 'codex']), { XFORGE_HOST: 'codex' })?.id).toBe('codex');
+    // 两个都能执法时优先选验得出来的那个：否则整个项目白白报 unavailable。
     expect(currentProvider(manifest(['codex', 'claude']), {})?.id).toBe('claude');
     expect(currentProvider(manifest(['codex']), {})?.id).toBe('codex');
     expect(currentProvider(manifest(['zed']), {})).toBeUndefined();
@@ -61,13 +65,13 @@ describe('current host (D8)', () => {
 });
 
 describe('hook command (rule-files §3.5)', () => {
-  it('comes from the declaration with ${platform} expanded, and only for hosts that can enforce', async () => {
+  it('comes from the declaration with ${platform} expanded, per host', async () => {
     const root = await mkdtemp(join(tmpdir(), 'xforge-hook-'));
     const paths = governancePaths(root);
     await mkdir(join(paths.scaffold, 'hooks'), { recursive: true });
     await writeFile(paths.hook('enforce'), 'name: enforce\nevents: [pre-tool-use]\ncommand: "xforge-enforce --host ${platform}"\n');
     expect(await hookCommandFor(paths, providerFor('claude')!)).toBe('xforge-enforce --host claude');
-    expect(await hookCommandFor(paths, providerFor('codex')!)).toBeNull();
+    expect(await hookCommandFor(paths, providerFor('codex')!)).toBe('xforge-enforce --host codex');
   });
 
   it('is null when the declaration is gone', async () => {

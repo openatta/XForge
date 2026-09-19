@@ -1,6 +1,7 @@
 // design: cli §4 — provider 执法侧：每个宿主一份载荷解析与决策渲染。装配侧（src/providers）在这里一个字也够不着（MG-03）。
 import type { ToolAction } from '../../model/types.js';
 import { claudePayload } from './claude.js';
+import { codexPayload } from './codex.js';
 
 export interface Call {
   action: ToolAction | 'other';
@@ -19,7 +20,7 @@ export interface PayloadAdapter {
   render(decision: Decision): string | null;
 }
 
-const REGISTRY: readonly PayloadAdapter[] = [claudePayload];
+const REGISTRY: readonly PayloadAdapter[] = [claudePayload, codexPayload];
 
 export function payloadFor(host: string): PayloadAdapter | undefined {
   return REGISTRY.find((a) => a.id === host);

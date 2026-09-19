@@ -55,6 +55,12 @@ export interface Provider {
   /** 钩子该落进去的共用文件读不懂（于是这一次装不进去）时回它的路径，否则 null。没有这类文件的 provider 不实现。 */
   hookBlocked?(root: string): Promise<string | null>;
   /**
+   * 钩子装进去之后还要**宿主那边的人再放行一次**才会跑（codex 的 `/hooks` 信任），
+   * 而那一步控制面看不见。置真时 `enforcement` 一律报 `unavailable`：
+   * 看不见的事不能当成看见了（D8）。
+   */
+  hookNeedsHostTrust?: boolean;
+  /**
    * 台账没得可说时的兜底：按这个 provider 的已知布局，它此刻可能占着哪些路径（绝对路径）。
    * 台账是派生物 —— 丢一份派生文件不该让「哪些文件是我投的」这个问题永久没有答案。
    */
@@ -176,7 +182,8 @@ export function currentProvider(manifest: Manifest, env: NodeJS.ProcessEnv): Pro
   const named = env['XFORGE_HOST'];
   if (named) return providerFor(named);
   const known = manifest.platforms.map((id) => providerFor(id)).filter((p): p is Provider => p !== undefined);
-  return known.find((p) => canEnforce(p)) ?? known[0];
+  // 先挑验得出来的那个：两个宿主都能执法时，选需要宿主再放行的那个会让整个项目白白报 unavailable。
+  return known.find((p) => canEnforce(p) && !p.hookNeedsHostTrust) ?? known.find((p) => canEnforce(p)) ?? known[0];
 }
 
 /**
@@ -190,5 +197,7 @@ export async function enforcementActive(root: string, paths: GovernancePaths, ma
   const provider = currentProvider(manifest, env);
   if (!provider || !canEnforce(provider)) return false;
   if (!manifest.platforms.includes(provider.id)) return false;
+  // 宿主那边还要人放行一次、而我们看不见那一步：只能报 unavailable。
+  if (provider.hookNeedsHostTrust) return false;
   return provider.hookInstalled(root, await hookCommandFor(paths, provider));
 }

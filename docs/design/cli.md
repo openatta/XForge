@@ -18,7 +18,7 @@
 | **D5** | `--scheme <id>` 选实现方案：不给就是默认方案，行为与目录布局与没有这个特性时完全一样；给了，实现侧的一切落在 `changes/<id>/<scheme>/`，规格侧共享。解析顺序 `--scheme` → 环境变量 `XFORGE_SCHEME` → 缺省。方案 id 是小写字母开头的字母数字与连字符，不能叫 `default`，不能撞 `specs`/`interfaces`/`ledgers`/`evidence`；第一次用 `state --scheme x` 就等于创建，位置在流程第一站，规格侧产出对它 `not-owed`，一次 `advance` 就到第一个实现侧的站 | 主文档《实现方案》；XIPD 的双路开发靠它 |
 | **D6** | `state` 默认只回 0b；`state --orient` 回 0a + 1 + 0b（按 0a → 1 → 0b 排） | 控制面无会话状态，「第一次」由调用方决定 |
 | **D7** | 站级审批与终局审批的 `attest approve` 记录事件，不移动；事件记下当时的站修订，批完再改产出审批作废（`approval-stale`）。交付即集成：`advance package --deliver` 在验证门当前且通过时直接落 `integrated`，没有人确认这一格（2026-09-17 用户决定：生成量太大，逐包人确认不现实，责任归到审批点；终局形态是 MCP 审批） | 主文档《两台状态机》《人的介入点》 |
-| **D8** | `enforcement` 按**当前正在跑的那个宿主**算，不按清单里有谁算：该 provider 的能力里有执法钩子、且钩子确实在宿主原生位置里，才是 `available`。当前宿主由 `XFORGE_HOST` 指定，没有就取清单里能执法的第一个。**「钩子跑不跑得起来」不进这个判定** —— 钩子由宿主进程去起、用的是宿主的 `PATH`，控制面只看得见自己那一份，两边不一样是常态；那条留给 `doctor` 的 `XF-ASSEMBLE-014` `warning` | 拦不住时要让 Agent 与人都知道拦不住，而不是假装拦得住。清单里同时有能执法与不能执法的宿主时，只看清单会在不能执法的那个宿主里谎报。但**只报验得出来的**：拿自己的 `PATH` 去替宿主回答，在两边不同时会把「拦得住」报成「拦不住」，那与反过来谎报同样是错，只是错在另一头（2026-09-19 live 实测到：模型会话的 `PATH` 里有钩子、harness 调 `doctor` 的那一份没有，于是报了假的 `unavailable`） |
+| **D8** | `enforcement` 按**当前正在跑的那个宿主**算，不按清单里有谁算：该 provider 的能力里有执法钩子、且钩子确实在宿主原生位置里，才是 `available`。当前宿主由 `XFORGE_HOST` 指定，没有就取清单里能执法的第一个。**宿主那边还要人再放行一次的**（codex 的 `/hooks` 信任），一律报 `unavailable` —— 那一步控制面看不见，看不见的事不能当成看见了。**「钩子跑不跑得起来」也不进这个判定** —— 钩子由宿主进程去起、用的是宿主的 `PATH`，控制面只看得见自己那一份，两边不一样是常态；那条留给 `doctor` 的 `XF-ASSEMBLE-014` `warning` | 拦不住时要让 Agent 与人都知道拦不住，而不是假装拦得住。清单里同时有能执法与不能执法的宿主时，只看清单会在不能执法的那个宿主里谎报。但**只报验得出来的**：拿自己的 `PATH` 去替宿主回答，在两边不同时会把「拦得住」报成「拦不住」，那与反过来谎报同样是错，只是错在另一头（2026-09-19 live 实测到：模型会话的 `PATH` 里有钩子、harness 调 `doctor` 的那一份没有，于是报了假的 `unavailable`） |
 | **D9** | 卫生检查（声明了却没人用）作为 `inspect --hygiene` 存在，并由 `advance --archive` 在终局前跑一次 | 给它一个触发点，又不让顺利的 Change 主动调 `inspect` |
 | **D10** | 拆除是独立命令 `xforge remove --confirm <project-name>`（`project-name` 是项目根目录名），删 `xforge/` 与全部宿主投影（Skill、执行者、钩子、`AGENTS.md` 标记块）；不带或带错确认是 `XF-ASSEMBLE-004`；日常命令没有这个开关 | 破坏性动作要显式确认 |
 | **D11** | 「验」对 Skill 只做存在性检查（文件在、四节标题在、本地化区标记成对） | `不读散文的意思`；覆盖判定在 Skill 设计里由「本站承诺」条目化后再考虑 |
@@ -386,6 +386,7 @@ xforge-enforce --host claude        # 读 stdin 载荷，写 stdout 决策；退
 `CLI-20` 冷启动到输出决策的时间在基准机上 < 80 ms（integration 层量，超出报警不阻塞；数字进 README）。
 `CLI-21` 对同一载荷，执法输出是纯函数（没有时间戳、没有随机数）。
 `CLI-39` 载荷适配按 `--host` 选：`claude` 回宿主认得的形状；没有适配器的宿主一律 deny，且用 claude 的形状回答 —— 认不出宿主不等于放弃拦截（`失败朝安全`）。
+`CLI-57` codex 的载荷与 claude 同形（`tool_name` / `tool_input` / `cwd`），`apply_patch` 是**当成一条 `Bash` 命令**发来的、补丁正文在 `tool_input.command` 里：写入目标从 `*** Add|Update|Delete File:` 与 `*** Move to:` 行取，有 `*** Begin Patch` 却一个目标都取不到就按解析失败 deny。它的引擎只收 `deny` 且理由不能为空，所以 `ask` 在那里降级成 `deny` 并写明要人点头（2026-09-19 在 codex 0.155.1 上实测）。
 `CLI-45` 放行时 stdout 逐字节为空、退出码 `0`：执法只否决或升级，从不显式放行，宿主自己的审批提示原样保留。deny 与 ask 照常输出宿主形状。
 
 ---
@@ -443,7 +444,7 @@ xforge sync [--platform <name>]... [--depth auto|shallow|full]
 | 宿主 | 投影 |
 | --- | --- |
 | `claude` | `.claude/skills/<skill>/SKILL.md`（按清单 `language` 选源）；`.claude/agents/xforge-executor.md`；`.claude/settings.json` 的 `hooks.PreToolUse` 加 `scaffold/hooks/enforce.yaml` 展开后的命令（标记块内） |
-| `codex` | `.codex/skills/<skill>/SKILL.md`；`AGENTS.md` 标记块内的入口说明；无钩子（D8） |
+| `codex` | `.codex/skills/<skill>/SKILL.md`；`AGENTS.md` 标记块内的入口说明；`.codex/config.toml` 标记块内的 `[[hooks.PreToolUse]]`（TOML 用 `#` 注释做标记）。钩子装上之后要人在 codex 的 `/hooks` 里放行一次才会跑，所以 `enforcement` 照实报 `unavailable`（D8） |
 
 - **孤儿回收**：台账里有、这一次不该再有的文件（Skill 改名、宿主布局变了、清单里去掉了某个 provider），`sync` 删掉并列进 `changed`。`--platform` 只投这一次点名的宿主，回收也只在这些宿主的范围内做。
 - **漂移**：投影前发现某个受管生成物在上次投出去之后被人改过（校验和与台账不符），照常覆盖，并在信封 `diagnostics` 里 `XF-ASSEMBLE-006` 级别 `warning` 报出它被覆盖了。

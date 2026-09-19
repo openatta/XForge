@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { parse } from 'yaml';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { Project, repoRoot } from '../helpers/project.js';
 
 interface Settings {
@@ -168,7 +168,9 @@ describe('the projection ledger recovers orphans (CLI-41)', () => {
     writeFileSync(manifestPath, readFileSync(manifestPath, 'utf8').replace(/platforms:\n(  - .*\n)+/, 'platforms:\n  - claude\n'));
     const r = await p.xforge('sync');
     expect(r.exit, JSON.stringify(r.env)).toBe(0);
-    expect(existsSync(join(p.root, '.codex'))).toBe(false);
+    // owned 的整个删掉；.codex/config.toml 是共有文件，只摘掉我们那块，所以目录还在。
+    expect(existsSync(join(p.root, '.codex', 'skills'))).toBe(false);
+    expect(readFileSync(join(p.root, '.codex', 'config.toml'), 'utf8')).not.toContain('XFORGE:BEGIN');
     expect(readFileSync(join(p.root, 'AGENTS.md'), 'utf8')).toBe('# mine\n\nkeep\n');
     expect(ledger().providers.map((x) => x.id)).toEqual(['claude']);
   });
@@ -358,7 +360,48 @@ describe('a shared block taken out whole is a finding, not health (CLI-47)', () 
 
   it('doctor 干净的树上 sync 不会有改动 —— 「说没病、下一步就改文件」不存在', async () => {
     const d = await p.xforge('doctor');
-    expect(d.env.diagnostics.filter((x) => x.severity !== 'info')).toEqual([]);
+    // 014 是「钩子要人在宿主那边放行」的提醒，不是树上的问题；除它之外应当干净。
+    expect(d.env.diagnostics.filter((x) => x.severity !== 'info' && x.code !== 'XF-ASSEMBLE-014')).toEqual([]);
     expect((await p.xforge('sync')).env.changed).toEqual([]);
+  });
+});
+
+describe('codex 的执法钩子与它的信任闸门（CLI-57）', () => {
+  let p: Project;
+  const config = (): string => join(p.root, '.codex', 'config.toml');
+  const orient = async (): Promise<string> =>
+    ((await p.xforge('state', '--orient')).env.result as { orient: { invariants: { enforcement: string } } }).orient.invariants.enforcement;
+
+  beforeAll(async () => {
+    p = await Project.create('codexhook');
+    await p.write('.codex/config.toml', 'model = "gpt-5"\n');
+    await p.xforge('init', '--flow', 'quick', '--platform', 'codex');
+  });
+
+  it('钩子进 .codex/config.toml 的标记块，块外逐字节保留', () => {
+    const text = readFileSync(config(), 'utf8');
+    expect(text.startsWith('model = "gpt-5"\n')).toBe(true); // 人写的那行不动
+    // 事件键是 PascalCase、matcher 要给 *：2026-09-19 在 codex 0.155.1 上实测出来的形状。
+    expect(text).toContain('[[hooks.PreToolUse]]');
+    expect(text).toContain('matcher = "*"');
+    expect(text).toContain('command = "xforge-enforce --host codex"');
+    expect(text).toContain('# XFORGE:BEGIN'); // TOML 没有 HTML 注释
+  });
+
+  it('装上了也不说 available —— 那一步要人在 codex 的 /hooks 里放行，我们看不见', async () => {
+    expect(await orient()).toBe('unavailable');
+    const d = await p.xforge('doctor');
+    const found = d.env.diagnostics.find((x) => x.code === 'XF-ASSEMBLE-014');
+    expect(found?.severity).toBe('warning');
+    expect(found?.message).toContain('/hooks');
+    // doctor 与 orient 必须同一个答案。
+    expect((d.env.result as { providers: Array<{ id: string; enforcement: string }> }).providers.find((x) => x.id === 'codex')?.enforcement).toBe('unavailable');
+    expect(d.exit).toBe(0); // warning 不改退出码
+  });
+
+  it('remove 把那一块摘掉，人写的那行还在', async () => {
+    const r = await p.xforge('remove', '--confirm', basename(p.root));
+    expect(r.exit, JSON.stringify(r.env)).toBe(0);
+    expect(readFileSync(config(), 'utf8')).toBe('model = "gpt-5"\n');
   });
 });

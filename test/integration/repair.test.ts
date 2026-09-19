@@ -33,12 +33,13 @@ describe('repair (CLI-43)', () => {
   it('fixes all four in one pass, then has nothing left to do', async () => {
     await breakFour();
     // 那个多出来的 Skill 两个宿主各投了一份，所以孤儿有两条。
-    expect(codes(await p.xforge('doctor'))).toEqual(['XF-ASSEMBLE-006', 'XF-ASSEMBLE-006', 'XF-ASSEMBLE-007', 'XF-ASSEMBLE-007', 'XF-ASSEMBLE-008']);
+    expect(codes(await p.xforge('doctor'))).toEqual(['XF-ASSEMBLE-006', 'XF-ASSEMBLE-006', 'XF-ASSEMBLE-007', 'XF-ASSEMBLE-007', 'XF-ASSEMBLE-008', 'XF-ASSEMBLE-014']);
     const r = await p.xforge('repair');
     expect(r.exit, JSON.stringify(r.env)).toBe(0);
     expect(repaired(r).repaired).toEqual(['claude', 'codex']);
     expect(repaired(r).fixed.map((f) => f.code).sort()).toEqual(['XF-ASSEMBLE-006', 'XF-ASSEMBLE-006', 'XF-ASSEMBLE-007', 'XF-ASSEMBLE-007', 'XF-ASSEMBLE-008']);
-    expect(repaired(r).left).toEqual([]);
+    // 留下的只有 codex 的信任提醒：那一步要人去 codex 里做，repair 修不了也不假装修得了。
+    expect(repaired(r).left.map((f) => f.code)).toEqual(['XF-ASSEMBLE-014']);
     const after = await p.xforge('doctor');
     expect(after.exit).toBe(0);
     expect((after.env.result as { problems: number }).problems).toBe(0);

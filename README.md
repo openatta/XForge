@@ -106,7 +106,7 @@ XFORGE_ROOT=<主检出目录>  XFORGE_SCHEME=<方案 id>
 | provider | 投影 | 执法钩子 | 隔离 |
 | --- | --- | --- | --- |
 | `claude` | `.claude/skills/`、`.claude/agents/`、`.claude/settings.json` | 有 | 有（执行者子 Agent） |
-| `codex` | `.codex/skills/`、`AGENTS.md` 标记块 | 无 | 无（站 Skill 在主会话跑） |
+| `codex` | `.codex/skills/`、`AGENTS.md`、`.codex/config.toml` 标记块 | 有（装上后要在 codex 的 `/hooks` 里放行一次） | 无（站 Skill 在主会话跑） |
 
 `state --orient` 的 `enforcement` 按**当前正在跑的那个宿主**算（`XFORGE_HOST` 指定），不按清单里有谁算，
 并且要三件事同时成立才说 `available`：这个宿主有执法钩子、钩子确实在它的原生位置里、

@@ -108,14 +108,15 @@ export async function doctorReport(root: string, paths: GovernancePaths, manifes
         continue;
       }
       if (file.shared) {
-        const broken = markerBroken(current);
+        const broken = markerBroken(current, file.markers ?? { begin: BLOCK_BEGIN, end: BLOCK_END });
         if (broken) {
           issues.add('XF-ASSEMBLE-010');
           findings.push({ subject: path, provider: p.provider.id, code: 'XF-ASSEMBLE-010', severity: 'blocking', message: `${path} 的 XFORGE 标记块${broken}`, remedy: { text: '人把一对标记补回去，或整块删掉再 sync' } });
           continue;
         }
-        const mine = blockOf(current);
-        const want = blockOf(file.content);
+        const marks = file.markers ?? { begin: BLOCK_BEGIN, end: BLOCK_END };
+        const mine = blockOf(current, marks);
+        const want = blockOf(file.content, marks);
         if (want === null) continue; // 这个共用文件不靠标记块认（如 settings.json），钩子那一项去查
         if (mine === null) {
           // 块被整块拿掉了。边界还是清楚的（与 010 不同），重投一次就对 —— 但绝不能判成健康：
@@ -153,8 +154,9 @@ export async function doctorReport(root: string, paths: GovernancePaths, manifes
     if (canEnforce(p.provider)) {
       const installed = await p.provider.hookInstalled(root, hookCommand);
       const runnable = hookRunnable(hookCommand, env);
-      // enforcement 只认验得出来的那一半：钩子在不在。跑不跑得起来是对宿主 PATH 的猜测（见下）。
-      enforcement = installed ? 'available' : 'unavailable';
+      // enforcement 只认验得出来的那一半：钩子在不在，以及宿主那边还要不要人再放行一次。
+      // 跑不跑得起来是对宿主 PATH 的猜测（见下），不进这个判定。
+      enforcement = installed && !p.provider.hookNeedsHostTrust ? 'available' : 'unavailable';
       if (p.hookBlocked) {
         // 装不进去的原因比「不在」更具体：那份文件不是我们的，修它是人的事。
         issues.add('XF-ASSEMBLE-013');
@@ -169,6 +171,10 @@ export async function doctorReport(root: string, paths: GovernancePaths, manifes
           message: p.hookMissing ? `${p.provider.id} 能执法，但脚手架里没有钩子声明可投` : `${p.provider.id} 的执法钩子不在宿主原生位置里：写入范围此刻没有人拦`,
           remedy: p.hookMissing ? { text: '把 scaffold/hooks/enforce.yaml 放回去，再 xforge repair' } : { command: 'xforge repair', text: '补回钩子' },
         });
+      } else if (p.provider.hookNeedsHostTrust) {
+        // 装进去了，但要人在宿主那边再放行一次 —— 我们看不见那一步，所以不敢说 available。
+        issues.add('XF-ASSEMBLE-014');
+        findings.push({ subject: p.provider.id, provider: p.provider.id, code: 'XF-ASSEMBLE-014', severity: 'warning', message: `${p.provider.id} 的执法钩子已装进 ${p.provider.hookFile}，但它要你在宿主里再放行一次才会跑（codex 的 \`/hooks\`）；改过之后要重新放行`, remedy: { text: '在 codex 里打开 /hooks，把 xforge-enforce 那条过一遍；在那之前 enforcement 照实报 unavailable' } });
       } else if (!runnable) {
         // 装上了 ≠ 跑得起来。但这一条是**猜测**：钩子由宿主进程起，用的是宿主的 PATH，
         // 我们只看得见自己的。所以它是 warning，也不参与上面的 enforcement 判定。
@@ -203,9 +209,9 @@ export const REPAIRABLE = new Set(['XF-ASSEMBLE-006', 'XF-ASSEMBLE-007', 'XF-ASS
 /** 骨架发现单独一条路：它不归任何 provider，修法是从载荷补回而不是重投。 */
 export const SCAFFOLD_CODE = 'XF-ASSEMBLE-015';
 
-function markerBroken(text: string): string | null {
-  const b = text.indexOf(BLOCK_BEGIN);
-  const e = text.indexOf(BLOCK_END);
+function markerBroken(text: string, marks: { begin: string; end: string }): string | null {
+  const b = text.indexOf(marks.begin);
+  const e = text.indexOf(marks.end);
   if (b === -1 && e === -1) return null;
   if (b === -1) return '只有结束标记';
   if (e === -1) return '只有开始标记';
@@ -213,9 +219,9 @@ function markerBroken(text: string): string | null {
   return null;
 }
 
-function blockOf(text: string): string | null {
-  const b = text.indexOf(BLOCK_BEGIN);
-  const e = text.indexOf(BLOCK_END);
+function blockOf(text: string, marks: { begin: string; end: string }): string | null {
+  const b = text.indexOf(marks.begin);
+  const e = text.indexOf(marks.end);
   if (b === -1 || e === -1 || e < b) return null;
-  return text.slice(b + BLOCK_BEGIN.length, e);
+  return text.slice(b + marks.begin.length, e);
 }
