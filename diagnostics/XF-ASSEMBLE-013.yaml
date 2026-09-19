@@ -1,0 +1,7 @@
+code: XF-ASSEMBLE-013
+title: "宿主共享文件读不懂"
+meaning: "执法钩子要落进宿主自己的配置文件（如 .claude/settings.json），但那份文件解析不成 JSON 对象。那是别人写的文件，控制面一个字节都不动，于是这一次钩子没能装进去：写入范围此刻没有人拦。"
+remedy:
+  command: "xforge doctor"
+  text: "人把那份配置文件改成合法的 JSON 对象，再 xforge sync；在那之前别指望执法拦得住。"
+variants: []

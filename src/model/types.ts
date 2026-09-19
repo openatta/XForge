@@ -6,7 +6,8 @@ export type Side = 'spec' | 'impl';
 export type ReadContract = 'entries' | 'skeleton' | 'mixed';
 export type HumanPoint = 'body' | 'tail' | 'none';
 export type ToolAction = 'read' | 'write' | 'edit' | 'shell';
-export type Platform = 'claude' | 'codex';
+/** provider 的 id：开放集（命令行设计 D14）；认不认得由注册表运行时判。 */
+export type Platform = string;
 export type Language = 'zh-CN' | 'en';
 
 export interface Manifest {
@@ -95,6 +96,19 @@ export interface PolicyRule {
 export interface Policy {
   name: string;
   rules: PolicyRule[];
+}
+
+/** 宿主投影台账（命令行设计 D16）：sync 投了什么、各自的校验和；派生物。 */
+export interface HostsLedger {
+  version: 1;
+  providers: Array<{ id: string; files: HostFileRecord[] }>;
+}
+
+export interface HostFileRecord {
+  path: string;
+  /** owned：整个文件是我们投的，孤儿时删掉；shared：与人共用，孤儿时只摘掉我们那块。 */
+  kind: 'owned' | 'shared';
+  checksum: string;
 }
 
 export interface Hook {

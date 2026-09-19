@@ -7,6 +7,7 @@ import { exists, readText } from '../fs/transaction.js';
 import { isIsolated, isOwed } from '../model/flow.js';
 import { constitutionTitles, headings } from '../model/markdown.js';
 import { DEFAULT_SCHEME } from '../model/paths.js';
+import { enforcementActive } from '../providers/index.js';
 import type { BaselineDomains, BaselineEntries, Flow, Stage } from '../model/types.js';
 import { readYaml } from '../model/yaml.js';
 import { artifactPath, owedItems, type ChangeCtx, type Project } from './context.js';
@@ -47,7 +48,7 @@ export async function invariants(project: Project, flow: Flow, ctx: ChangeCtx | 
     spec_domains: domains,
     constitution,
     declaration: ctx ? { id: ctx.declaration.id, flow: ctx.declaration.flow, risk: ctx.declaration.risk, impact: ctx.declaration.impact } : null,
-    enforcement: m.platforms.includes('claude') ? 'available' : 'unavailable',
+    enforcement: (await enforcementActive(project.root, project.paths, m, project.env)) ? 'available' : 'unavailable',
     call_skeleton: ['xforge state', 'xforge show <ref>（需要正文时）', 'xforge attest …（本站有人的介入点时）', 'xforge advance'],
   };
 }

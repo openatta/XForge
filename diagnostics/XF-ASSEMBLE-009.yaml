@@ -1,0 +1,7 @@
+code: XF-ASSEMBLE-009
+title: "脚手架版本与 CLI 版本不一致"
+meaning: "清单的 scaffold.version 不是本 CLI 带的载荷版本：项目跑在旧脚手架上，新版的流程、门与 Skill 都还没进来。"
+remedy:
+  command: "xforge update"
+  text: "三段式升级：暂存、人合并项目改过的文件、--finish。"
+variants: []

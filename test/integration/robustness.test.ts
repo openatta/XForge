@@ -85,7 +85,12 @@ describe('robustness', () => {
   });
 
   it('CLI-10 run has no way to take a command from the caller', async () => {
-    const r = await p.xforge('run', '--gate', 'unit-tests', '--command', 'echo injected', '--force');
+    // CLI-50 之后这条更强了：夹带的开关当场是用法错，而不是被静默忽略。
+    const smuggled = await p.xforge('run', '--gate', 'unit-tests', '--command', 'echo injected', '--force');
+    expect(smuggled.exit).toBe(2);
+    expect(smuggled.stderr).toContain('--command');
+    // 跑的仍然只有声明里的那条命令。
+    const r = await p.xforge('run', '--gate', 'unit-tests', '--force');
     const gates = (r.env.result as { gates: Array<{ gate: string; result: string; log?: string }> }).gates;
     const log = readFileSync(join(p.root, gates[0]!.log!), 'utf8');
     expect(log).toContain('ran');

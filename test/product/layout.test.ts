@@ -9,7 +9,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 const EXPECTED_SRC_DIRS = [
   'cli', 'verbs', 'assemble', 'enforce', 'meta', 'model', 'machines',
-  'gates', 'baselines', 'audit', 'projection', 'hosts', 'fs', 'mcp',
+  'gates', 'baselines', 'audit', 'projection', 'providers', 'fs', 'mcp',
 ].sort();
 
 function walk(dir: string, out: string[] = []): string[] {
@@ -66,7 +66,7 @@ describe('repository layout (migration §1)', () => {
 
   it('MG-03 the enforcement entry never imports the workflow plane', () => {
     const closure = importClosure(join(root, 'src', 'enforce', 'index.ts'));
-    const forbidden = ['verbs', 'assemble', 'hosts', 'gates', 'baselines'].map((d) => join(root, 'src', d) + '/');
+    const forbidden = ['verbs', 'assemble', 'providers', 'gates', 'baselines'].map((d) => join(root, 'src', d) + '/');
     for (const file of closure) {
       for (const dir of forbidden) expect(file.startsWith(dir), `${file} reachable from enforce`).toBe(false);
     }

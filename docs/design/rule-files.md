@@ -72,6 +72,7 @@ xforge/
       audit-index.yaml
     archived.yaml                        归档标记（Change 级；任一方案归档时写：scheme、receipt、at）
     <scheme-id>/                         具名方案：上面实现侧那一整套（scope.yaml … evidence/）在这里各一份
+  hosts.yaml                           宿主投影台账（派生物）：每个 provider 投出去的文件与校验和
   .audit/
     chain.jsonl                          审计链                    派生物
     chain.lock
@@ -92,6 +93,7 @@ xforge/
 | `changes/*/{change.yaml,proposal.md,specs,interfaces,scope.yaml,design.md,assurance.md,work-packages.yaml}` | 写 | 写 | 只起草（不落盘） | 声明层 |
 | `changes/*/ledgers/**` | 写 | 写 | 只起草（不落盘） | 断言层 |
 | `changes/*/evidence/**` `.audit/**` | 拒 | 拒 | 写 | 证据 |
+| `hosts.yaml` | 拒 | 拒 | 写（`sync` `repair` `remove`） | 派生物；删了重投一次就有 |
 | 归档后的 `changes/<id>/**` | 拒 | 拒 | 拒 | `归档后不再变` |
 
 `RF-03` 这张矩阵与分发策略 `protected-governance`（§4.3）逐格一致：矩阵里「拒」的格子，策略里都有一条 deny。
@@ -114,7 +116,7 @@ flow:
 modules:
   - id: core
     paths: ["src/core/**"]
-platforms: [claude, codex]
+platforms: [claude, codex]        # provider 名，开放集（命令行设计 D14）；不认得的名字是 XF-ASSEMBLE-005
 language: zh-CN
 verification:                       # 人声明；由「证」的 verification 子命令写入，留审计
   commands:
@@ -397,7 +399,8 @@ events: [pre-tool-use]
 command: "xforge-enforce --host ${platform}"
 ```
 
-宿主投影把它写到宿主原生位置（命令行设计 §5）。
+`${platform}` 在投影时展开成该 provider 的 id。**这份声明是执法钩子命令串的唯一出处**：provider 不许把命令串写死在代码里，`sync` 从这里读、`doctor` 拿它判钩子在不在（命令行设计 §5.2、§5.4）。
+没有执法能力的 provider 不投它。
 
 ### 3.6 执行者定义 `scaffold/agents/xforge-executor.yaml`
 
@@ -420,6 +423,28 @@ files:
 ```
 
 `RF-16` 带本地化区的文件，校验和对「去掉 `local:begin…end` 之间内容」的文本计算，所以填写本地化区不算「项目改过」。
+
+### 3.8 宿主投影台账 `xforge/hosts.yaml`
+
+```yaml
+version: 1
+providers:
+  - id: claude
+    files:
+      - {path: .claude/skills/xforge/SKILL.md, kind: owned, checksum: sha256:…}
+      - {path: .claude/settings.json, kind: shared, checksum: sha256:…}
+  - id: codex
+    files:
+      - {path: AGENTS.md, kind: shared, checksum: sha256:…}
+```
+
+`sync` 每次投完重写它；它是派生物，删了重投一次就有，不进升级事务的作用域（它在 `scaffold/` 之外）。
+
+- `kind: owned`：整个文件是投影，孤儿时删掉，空下来的目录跟着删。
+- `kind: shared`：与人共用，只有标记块（或我们那条钩子记录）归我们，孤儿时摘掉那一块，块外逐字节保留。
+- 校验和对**文件原文**算（不像完整性清单那样去掉本地化区）：投影里的任何一处手改都要能看见。
+
+`RF-37` 台账里 provider 按 id、文件按 path 排序：同一棵树连跑两次 `sync`，台账逐字节相同（`CLI-22` 的前提）。
 
 ---
 

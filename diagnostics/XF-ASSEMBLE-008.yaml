@@ -1,0 +1,7 @@
+code: XF-ASSEMBLE-008
+title: "执法钩子不在"
+meaning: "这个宿主有执法能力，但宿主原生位置里没有 scaffold/hooks/enforce.yaml 声明的那条钩子：写入范围此刻没有人拦。"
+remedy:
+  command: "xforge repair"
+  text: "补回钩子；补之前 Agent 的写入只有事后检测（交付登记时的路径核对）兜底。"
+variants: []

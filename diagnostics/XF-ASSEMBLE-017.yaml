@@ -1,0 +1,7 @@
+code: XF-ASSEMBLE-017
+title: "投影台账读不出"
+meaning: "xforge/hosts.yaml 解析不了或不合形状。台账是派生物，不是真相：控制面按空台账继续，这一次投影照投、台账重写。代价是这一轮认不出旧的孤儿。"
+remedy:
+  command: "xforge sync"
+  text: "重投一次台账就回来了；投影目录里若有上一版留下的文件，跑 xforge doctor 看还认不认得出。"
+variants: []

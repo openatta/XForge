@@ -75,10 +75,7 @@
       "type": "array",
       "items": {
         "type": "string",
-        "enum": [
-          "claude",
-          "codex"
-        ]
+        "pattern": "^[a-z][a-z0-9-]*$"
       }
     },
     "language": {

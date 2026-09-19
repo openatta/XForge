@@ -1,0 +1,7 @@
+code: XF-ASSEMBLE-006
+title: "宿主投影缺失或漂移"
+meaning: "台账里记着的生成物不在磁盘上，或内容与台账的校验和不符（被人手改过）。生成物以 xforge/scaffold/ 为源，手改会在下一次投影时被覆盖。"
+remedy:
+  command: "xforge repair"
+  text: "要保留的改动写进 xforge/scaffold/ 的本地化区，再重投。"
+variants: []

@@ -1,0 +1,7 @@
+code: XF-ASSEMBLE-015
+title: "骨架不完整"
+meaning: "xforge/scaffold/ 与它自己的完整性清单对不上：受管文件缺了，或在本地化区之外被改过；也可能清单语言对应的 Skill 源文件不在——那一份缺了，sync 会静默地少投影一个 Skill。"
+remedy:
+  command: "xforge repair"
+  text: "缺的从本 CLI 自带的载荷补回（校验和对得上才补）；被改过的正文不动，要合并去 xforge update。"
+variants: []

@@ -34,8 +34,8 @@
   src/
     cli/          参数解析、统一信封、--text 渲染、退出码
     verbs/        state · inspect · run · attest · advance        ← 命令行设计 §2
-    assemble/     init · sync · upgrade（升级事务：暂存 / 合并 / 完成 / 回滚）
-    enforce/      载荷解析、策略集装载、投影查找、决策           ← 命令行设计 §4
+    assemble/     init · update · sync · doctor · repair · remove       ← 命令行设计 §5
+    enforce/      策略集装载、投影查找、决策；payloads/ 每 provider 的载荷解析与决策渲染  ← 命令行设计 §4
     meta/         help · version · explain（诊断码字典）
     model/        每种规则文件的加载器与校验                      ← 规则文件设计
     machines/     Stage 机与工作包机：转换表、前置条件、receipt 链
@@ -43,7 +43,7 @@
     baselines/    规格 / 接口的 delta 合并与两层索引
     audit/        审计链、身份、HMAC、锁
     projection/   作用域与写入路径 → 策略
-    hosts/        宿主适配：claude · codex
+    providers/    宿主适配（装配侧）：探测 · 能力 · 投影 · 诊断 · 修复；claude · codex  ← 命令行设计 §5
     mcp/          MCP 审批的客户端：stdio JSON-RPC，一次 initialize 加一次 tools/call  ← 命令行设计 §2.4
     fs/           受治理写入（原子、可回退）、路径安全、标记块、所有权分区
   schemas/        JSON Schema，随包发布                          ← 规则文件设计
@@ -57,7 +57,7 @@
 ```
 
 `MG-01` 仓库根含 `package.json`，其 `bin.xforge` 指向 `bin/xforge.js`，`bin.xforge-enforce` 指向 `bin/xforge-enforce.js`。
-`MG-02` `src/` 顶层目录集合恰好是上表那 14 个；新增目录要先改这份文档。
+`MG-02` `src/` 顶层目录集合恰好是上表那 14 个；新增目录要先改这份文档。`providers/`（装配侧）与 `enforce/payloads/`（执法侧）是同一个 provider 的两半，互不 import：执法进程的模块图不许触及装配侧（`MG-03`）。
 `MG-03` `src/enforce/**` 与 `bin/xforge-enforce.js` 的静态导入闭包不含 `src/verbs`、`src/assemble`、`src/hosts`、`src/gates`、`src/baselines`（一个单元测试遍历 import 图断言）。
 `MG-04` `npm pack` 的内容恰好是 `bin/ dist/ schemas/ scaffold/ diagnostics/ README.md LICENSE NOTICE`；不含 `legacy/`。
 `MG-05` `src/**` 与 `test/**` 里没有任何 import 指向 `legacy/`；`legacy/` 里没有任何文件被 `tsconfig`、`vitest.config`、`package.json#files` 包含。

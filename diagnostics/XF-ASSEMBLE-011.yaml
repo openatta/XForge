@@ -1,0 +1,7 @@
+code: XF-ASSEMBLE-011
+title: "upgrade 是旧名"
+meaning: "装配面的升级命令已改名为 update；upgrade 仍然可用，行为完全相同，但会在下一个小版本里去掉。"
+remedy:
+  command: "xforge update"
+  text: "把脚本与文档里的 xforge upgrade 换成 xforge update。"
+variants: []

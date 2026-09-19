@@ -23,7 +23,7 @@ describe('meta verbs and the no-project paths', () => {
       const r = await bare.xforge(...args);
       expect(r.exit).toBe(0);
       expect(raw(r)).toContain('xforge <命令>');
-      for (const verb of ['state', 'show', 'inspect', 'run', 'attest', 'advance', 'init', 'sync', 'upgrade', 'remove', 'explain']) expect(raw(r)).toContain(verb);
+      for (const verb of ['state', 'show', 'inspect', 'run', 'attest', 'advance', 'init', 'sync', 'update', 'doctor', 'repair', 'remove', 'explain']) expect(raw(r)).toContain(verb);
     }
   });
 
@@ -51,7 +51,7 @@ describe('meta verbs and the no-project paths', () => {
   });
 
   it('XF-STATE-002 every project verb outside a governed tree exits 3 and points at init', async () => {
-    for (const args of [['state'], ['state', '--orient'], ['show', 'receipts'], ['inspect'], ['run'], ['advance'], ['attest', 'receipt'], ['sync'], ['upgrade'], ['remove', '--confirm', basename(bare.root)]]) {
+    for (const args of [['state'], ['state', '--orient'], ['show', 'receipts'], ['inspect'], ['run'], ['advance'], ['attest', 'receipt'], ['sync'], ['update'], ['remove', '--confirm', basename(bare.root)]]) {
       const r = await bare.xforge(...args);
       expect(r.exit, args.join(' ')).toBe(3);
       expect(code(r), args.join(' ')).toBe('XF-STATE-002');
@@ -82,6 +82,15 @@ describe('meta verbs and the no-project paths', () => {
     expect(manifest.language).toBe('en');
     expect(manifest.platforms).toEqual(['claude']);
     expect(readFileSync(join(bare.root, '.claude', 'skills', 'xforge', 'SKILL.md'), 'utf8')).toContain('You are the orchestrator');
+  });
+
+  it('CLI-44 with no tty and no options init takes the defaults instead of asking', async () => {
+    const fresh = await Project.create('noninteractive');
+    const r = await fresh.xforge('init'); // 没有 TTY：不问，不挂
+    expect(r.exit, JSON.stringify(r.env)).toBe(0);
+    const manifest = parse(readFileSync(join(fresh.root, 'xforge', 'manifest.yaml'), 'utf8')) as { language: string; platforms: string[]; flow: { default: string } };
+    expect(manifest).toMatchObject({ language: 'zh-CN', platforms: ['claude'], flow: { default: 'solid' } });
+    expect((await fresh.xforge('init', '--no-input')).exit).toBe(0); // 显式非交互：重入幂等，什么都不问
   });
 
   it('sync --platform projects only the named host, leaving the others alone', async () => {
@@ -285,5 +294,39 @@ describe('the command surface on a quick change', () => {
     expect((done.env.result as { to: string }).to).toBe('archived');
     const receipts = await p.xforge('show', 'receipts', '--change', CHANGE);
     expect((receipts.env.result as { content: Array<{ kind: string }> }).content.map((r) => r.kind)).toContain('archive');
+  });
+});
+
+describe('a flag the command does not know is a usage error (CLI-50)', () => {
+  let p: Project;
+  beforeAll(async () => {
+    p = await Project.create('flags');
+    await p.xforge('init', '--flow', 'quick');
+  });
+
+  it('打错的开关当场退出 2 并列出认得的，而不是被吞掉', async () => {
+    const r = await p.xforge('doctor', '--whatever');
+    expect(r.exit).toBe(2);
+    expect(r.stderr).toContain('--whatever');
+    expect(r.stderr).toContain('--platform');
+  });
+
+  it('不支持的开关也是用法错：吞掉它等于对调用方撒谎', async () => {
+    // repair 没有 --platform（它按发现算范围）：吞掉就会「说改了 codex、其实改了 claude」。
+    const wrong = await p.xforge('repair', '--platform', 'codex');
+    expect(wrong.exit).toBe(2);
+    expect(wrong.stderr).toContain('--platform');
+    // 而 doctor 有它，同一个开关在那里照常工作。
+    expect((await p.xforge('doctor', '--platform', 'claude')).exit).toBe(0);
+  });
+
+  it('通用开关对每个命令都认', async () => {
+    expect((await p.xforge('doctor', '--text')).exit).toBe(0);
+    // --field 以信封为根：断言取回的值本身，否则 --field 整个坏掉这条也会过。
+    const field = await p.xforge('state', '--field', 'result.position');
+    expect(field.exit).toBe(0);
+    // --field 的 stdout 就是那一段本身，不是信封；helper 直接把它 JSON.parse 了。
+    expect(field.env as unknown as { status: string }).toHaveProperty('status');
+    expect((await p.xforge('repair', '--dry-run')).exit).toBe(0);
   });
 });

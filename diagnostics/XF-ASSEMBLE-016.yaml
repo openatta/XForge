@@ -1,0 +1,6 @@
+code: XF-ASSEMBLE-016
+title: "修完之后还是不对"
+meaning: "repair 写完盘再核对了一遍，内容仍与该有的不一致：那个位置多半写不进去（只读、权限不对，或被别的进程占着）。一次没落盘的修复比不修更坏，所以它要说出来而不是报成功。"
+remedy:
+  text: "看那个路径的权限与占用；处理完再跑一次 xforge repair。"
+variants: []

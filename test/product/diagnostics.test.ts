@@ -47,6 +47,16 @@ describe('diagnostics dictionary', () => {
     for (const code of dictCodes) expect(used.has(code), `${code} is defined but never used`).toBe(true);
   });
 
+  it('upgrade 这个旧名说好只留一个小版本：到点就该删（D12）', () => {
+    const { version } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { version: string };
+    const [major, minor] = version.split('.').map(Number) as [number, number];
+    const expired = (major ?? 0) > 1 || (minor ?? 0) >= 1;
+    expect(
+      expired,
+      `CLI 已经到 ${version}：把 upgrade 这个旧名、XF-ASSEMBLE-011、以及 cli.md D12 里那句「保留一个小版本」一起删掉，再删这条测试`,
+    ).toBe(false);
+  });
+
   it('RF-28 a remedy command is a call to this CLI', () => {
     for (const f of dictFiles) {
       const data = parse(readFileSync(join(root, 'diagnostics', f), 'utf8')) as Diagnostic;

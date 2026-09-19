@@ -5,7 +5,8 @@ import { dirname, join, relative } from 'node:path';
 type Op =
   | { kind: 'write'; path: string; content: string; existed: boolean; backup?: string }
   | { kind: 'append'; path: string; content: string; priorSize: number }
-  | { kind: 'rmdir'; path: string };
+  | { kind: 'rmdir'; path: string }
+  | { kind: 'remove'; path: string; backup?: string };
 
 export class Transaction {
   private readonly ops: Op[] = [];
@@ -24,6 +25,12 @@ export class Transaction {
 
   append(path: string, content: string): void {
     this.ops.push({ kind: 'append', path, content, priorSize: -1 });
+    this.touched.add(path);
+  }
+
+  /** 删一个文件；备份在事务目录里，回滚时原样放回。 */
+  removeFile(path: string): void {
+    this.ops.push({ kind: 'remove', path });
     this.touched.add(path);
   }
 
@@ -96,6 +103,18 @@ export class Transaction {
       }
       return;
     }
+    if (op.kind === 'remove') {
+      try {
+        await stat(op.path);
+        op.backup = join(this.txDir, `${this.id}-${this.ops.indexOf(op)}.del`);
+        await mkdir(this.txDir, { recursive: true });
+        await copyFile(op.path, op.backup);
+      } catch {
+        delete op.backup;
+      }
+      await rm(op.path, { force: true });
+      return;
+    }
     await rm(op.path, { recursive: true, force: true });
   }
 
@@ -110,6 +129,11 @@ export class Transaction {
       return;
     }
     if (op.kind === 'append' && op.priorSize >= 0) await truncate(op.path, op.priorSize);
+    if (op.kind === 'remove' && op.backup) {
+      await mkdir(dirname(op.path), { recursive: true });
+      await copyFile(op.backup, op.path);
+      await rm(op.backup, { force: true });
+    }
   }
 }
 

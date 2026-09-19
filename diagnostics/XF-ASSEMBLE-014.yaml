@@ -1,0 +1,6 @@
+code: XF-ASSEMBLE-014
+title: "执法钩子跑不起来"
+meaning: "钩子已经装进宿主原生位置，但它的命令在这台机器的 PATH 上解析不到：宿主会照常发起钩子、拿不到决策然后继续执行。装上了与跑得起来是两件事。"
+remedy:
+  text: "把 CLI 装到宿主进程也看得见的 PATH 上（npm i -g @xforge/cli），或把钩子声明里的命令改成绝对路径。"
+variants: []

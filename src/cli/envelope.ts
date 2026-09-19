@@ -5,8 +5,11 @@ import type { ExitCode } from './errors.js';
 export interface Io {
   cwd: string;
   env: NodeJS.ProcessEnv;
+  /** 只有 init 的交互用得上；没有它就一律非交互（命令行设计 D15）。 */
+  stdin?: NodeJS.ReadableStream & { isTTY?: boolean; setRawMode?: (on: boolean) => void };
   stdout: NodeJS.WritableStream;
-  stderr: NodeJS.WritableStream;
+  /** 交互的画面全写这里（stdout 只有信封）；`isTTY` 与 `columns` 因此也从这一头看。 */
+  stderr: NodeJS.WritableStream & { isTTY?: boolean; columns?: number };
 }
 
 export interface Outcome<R = unknown> {
@@ -45,8 +48,9 @@ export function renderText(env: Envelope): string {
   lines.push(`${env.ok ? 'ok' : 'blocked'} · ${env.verb}${env.change ? ` · ${env.change}` : ''}`);
   for (const d of env.diagnostics) {
     lines.push(`  [${d.severity}] ${d.code} ${d.message}`);
+    // 「做什么」与「为什么」都要看得见：只显示其中一个，人就得自己去猜另一半。
     if (d.remedy?.command) lines.push(`      → ${d.remedy.command}`);
-    else if (d.remedy?.text) lines.push(`      → ${d.remedy.text}`);
+    if (d.remedy?.text) lines.push(`      ${d.remedy.command ? '  ' : '→ '}${d.remedy.text}`);
   }
   if (env.result !== undefined && env.result !== null && Object.keys(env.result as object).length) {
     lines.push(JSON.stringify(env.result, null, 2));
