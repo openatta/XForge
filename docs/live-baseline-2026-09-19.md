@@ -123,3 +123,62 @@ node scripts/live-matrix.mjs --engine A --only quick:TT --ref 58e6dec
 ```
 
 summary 落在 `test/.tmp/live/<claude|gateway>/<场景>/<时间>/summary.{json,md}`。
+
+## 8. v1.0.2 的引擎 B 全矩阵（`23c1bfa`，2026-09-19 下午）
+
+跑 1.0.0 基线里引擎 B 那五场的同一组合，专门看 v1.0.2 三处改动有没有副作用：
+design 站新增 `exit/spec-conflicts` 台账与 `ledgers` 门、codex 获得执法能力、
+`currentProvider()` 改成优先挑不需要宿主放行的 provider。
+五场各自一个 detached worktree 并行跑，结果目录由 `XF_LIVE_RESULTS_ROOT` 收回主仓。
+
+| 场景 | 治理 | 驱动 | 结果 | 外层轮 | 内部轮 | 返工 | oracle | input | output | cache_read | xforge 调用 | show | 直读 changes/** | 工具调用 | 执法 deny | inspect | 用时（分） | 人的动作 | 装配体检 | 运行目录 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| quick | TT | orchestrated | archived | 2 | 50 | 0 | 5/5 | 67192 | 26176 | 1350016 | 59 | 5 | 40 | 174 | 0 | 0 | 10.4 | 7 | 干净 | `2026-09-19T15-35-01-004Z` |
+| quick | FF | orchestrated | archived | 3 | 36 | 0 | 5/5 | 84115 | 33699 | 762752 | 63 | 3 | 11 | 111 | 0 | 0 | 14.6 | 8 | 干净 | `2026-09-19T15-35-00-681Z` |
+| solid | TT | orchestrated | archived | 4 | 149 | 0 | 7/7 | 208897 | 121033 | 6148608 | 182 | 13 | 45 | 322 | 0 | 0 | 37.1 | 14 | 干净 | `2026-09-19T15-34-58-461Z` |
+| solid | FF | orchestrated | archived | 3 | 49 | 0 | 7/7 | 95973 | 42947 | 1207808 | 106 | 8 | 31 | 213 | 0 | 0 | 23.6 | 10 | 干净 | `2026-09-19T15-34-59-475Z` |
+| solid | FF | stepwise | archived | 8 | 419 | 0 | 7/7 | 468333 | 291217 | 15355136 | 337 | 6 | 43 | 486 | 0 | 8 | 62.5 | 10 | 干净 | `2026-09-19T15-35-01-363Z` |
+
+五场全部 `archived`、退出 0、返工 0、oracle 全过、篡改检测全部退出码 3 报 `XF-INSPECT-001`。
+「装配体检」干净的意思是：`doctor` 非 info 的码为 0、退出 0、**没有写盘**（`LT-10`），
+注入一处漂移后 `repair` 改回 2 个文件、修完无残留（`LT-11`）。
+
+### 对 1.0.0 基线（同引擎、同场景）
+
+output / `xforge` 调用 / 工具调用 / 人的动作：
+
+| 场景 | 1.0.0 | 本次 |
+|---|---|---|
+| quick TT | 48911 / 78 / 169 / 9 | 26176 / 59 / 174 / 7 |
+| quick FF | 64849 / 75 / 152 / 7 | 33699 / 63 / 111 / 8 |
+| solid TT | 81367 / 126 / 302 / 13 | **121033 / 182 / 322 / 14** |
+| solid FF | 157603 / 162 / 335 / 25 | 42947 / 106 / 213 / 10 |
+| solid FF · stepwise | 293128 / 306 / 484 / 12 | 291217 / 337 / 486 / 10 |
+
+> 注：1.0.0 那批的 oracle 是加强前的 3/4/4，本次是 5/7/7，oracle 一列不可直接比。
+
+四降一平一升里，唯一上行的是 `solid TT`（output +49%、`xforge` +44%）。
+它集中在第 3 轮：1295 秒、46 个内部轮次、47185 output，而同场另外三轮是 683/164/82 秒 ——
+是实现轮自己跑长了。**新门不是原因**：新门的代价是固定的「一次写 + 一次校验」，
+治理最重的 `solid FF stepwise` 会把它放得最大，而那一场对基线基本持平
+（output 291217 对 293128，工具 486 对 484），外层轮还少了 3 轮、人的动作少了 2 次。
+所以 `solid TT` 的上行按单场方差读。
+
+### 新台账的真机行为
+
+- **两场 solid（orchestrated 与 stepwise）都落了 `ledgers/exit/spec-conflicts.yaml`，内容都是 `entries: []`。**
+  stepwise 那份还带了逐条核对的注释（哪几条 Requirement、为什么不构成冲突）。
+- **写空不要钱。** `xforge-commands.log` 里没有 `attest entry exit/spec-conflicts`；
+  出口条件 `{kind: attested}` 只对需要署名的条目要签（`src/verbs/exit.ts:88`），
+  空台账一条都不需要，靠文件存在即满足。人的动作数没有因此增加。
+- **门确实会咬。** stepwise 第 1–2 轮出现过 `ledger-missing: exit/spec-conflicts` ——
+  站想空着出去，控制面拦下，执行者补写后继续。**在站内解决，没惊动人，也没算返工。**
+- quick 流程没有 design 站，因此没有这个文件，符合预期。
+
+### codex 那笔改动没有波及 claude-only 的树
+
+这五场都是 `--platform claude`：`doctor` 全干净，`currentProvider()` 改成
+「优先挑不需要宿主放行的」之后 claude 仍是当前宿主，没有一场被 codex 抢走。
+执法 `deny` 五场全为 0（按规矩非零要逐条看，这次不用看）。
+
+复现：`node scripts/live-matrix.mjs --engine B --concurrency 5`
