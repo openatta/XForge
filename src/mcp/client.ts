@@ -1,6 +1,7 @@
 // design: cli §2.4 — MCP 审批的客户端：stdio 上的 JSON-RPC（MCP 2024-11-05），只做 initialize 与一次 tools/call。
 // 控制面不关心 MCP 内部做了什么：它回 approved 就是同意，与人批同形。
 import { spawn } from 'node:child_process';
+import { externalEnv } from '../model/env.js';
 
 export interface McpStdioServer {
   command: string;
@@ -30,7 +31,8 @@ interface RpcResponse {
 
 /** 起一个 stdio MCP 服务，握手，调一次工具，取回它的文本或结构化结果，然后结束它。 */
 export async function callMcpTool(o: McpCallOptions): Promise<unknown> {
-  const child = spawn(o.server.command, o.server.args ?? [], { cwd: o.cwd, env: { ...process.env, ...(o.server.env ?? {}) }, stdio: ['pipe', 'pipe', 'pipe'] });
+  // 审批者是外部进程：给它 XFORGE_AUDIT_HMAC 就等于让它能伪造自己的审批事件。
+  const child = spawn(o.server.command, o.server.args ?? [], { cwd: o.cwd, env: { ...externalEnv(), ...(o.server.env ?? {}) }, stdio: ['pipe', 'pipe', 'pipe'] });
   const pending = new Map<number, { resolve: (v: RpcResponse) => void }>();
   let nextId = 1;
   let buffer = '';

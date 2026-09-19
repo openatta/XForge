@@ -1,7 +1,7 @@
 // design: cli §1 §2 — 破坏与边界：CLI-01/02/04/05/06/07/08/10/12/14/16/17/21/23/25/28，RF-11/12/30/31。
 import { beforeAll, describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parse } from 'yaml';
@@ -281,5 +281,55 @@ describe('robustness', () => {
     expect(readFileSync(abs('evidence/audit-index.yaml'), 'utf8')).toBe(before.index);
     expect((await p.xforge('state')).env.result).toMatchObject({ position: { status: 'ready-to-archive' } });
     expectOk(await p.xforge('advance', '--archive'), "advance, --archive");
+  });
+});
+
+describe('记录读不出来是发现，不是崩溃（CLI-56）', () => {
+  it('审计链有一行坏 JSON：inspect 报 XF-INSPECT-001，退出 3，不是裸栈', async () => {
+    const p = await Project.create('badchain');
+    await p.xforge('init', '--flow', 'quick');
+    await p.xforge('attest', 'verification', '--command', 'unit-tests=echo ran');
+    const chain = join(p.root, 'xforge', '.audit', 'chain.jsonl');
+    appendFileSync(chain, 'this is not json\n'); // 一次写到一半被杀就长这样
+    const r = await p.xforge('inspect', '--all');
+    expect(r.stderr).not.toContain('内部错误');
+    expect(r.exit).toBe(3);
+    expect(r.env.diagnostics.map((d) => d.code)).toContain('XF-INSPECT-001');
+  });
+
+  it('受管文件的本地化区标记不成对：doctor 报 015，退出 1，不是裸栈', async () => {
+    const p = await Project.create('badzone');
+    await p.xforge('init', '--flow', 'quick');
+    const skill = join(p.root, 'xforge', 'scaffold', 'skills', 'xforge', 'SKILL_cn.md');
+    appendFileSync(skill, '\n<!-- xforge:local:begin -->\n人写的\n'); // 只有 begin
+    const r = await p.xforge('doctor');
+    expect(r.stderr).not.toContain('内部错误');
+    expect(r.exit).toBe(1);
+    const found = r.env.diagnostics.find((d) => d.code === 'XF-ASSEMBLE-015' && d.message.includes('标记不成对'));
+    expect(found?.severity).toBe('blocking');
+  });
+
+  it('诊断里的路径是项目根相对，不漏机器上的目录结构', async () => {
+    const p = await Project.create('abspath');
+    await p.xforge('init', '--flow', 'quick');
+    writeFileSync(join(p.root, 'xforge', 'manifest.yaml'), 'x: [[[\n');
+    const r = await p.xforge('doctor');
+    expect(r.env.diagnostics[0]?.message).toContain('xforge/manifest.yaml');
+    expect(r.env.diagnostics[0]?.message).not.toContain(p.root);
+  });
+});
+
+describe('spawn 出去的进程拿不到 XFORGE_*（CLI-55）', () => {
+  it('门命令看不见审计密钥 —— 看得见就等于防伪失效', async () => {
+    const p = await Project.create('gateenv');
+    await p.xforge('init', '--flow', 'quick');
+    await p.xforge('attest', 'verification', '--command', 'unit-tests=env | grep -c XFORGE_ || true');
+    const head = p.commit('seed'); // baseline_commit 要是一个真的 sha
+    await p.write('xforge/changes/C-20260918-env/change.yaml', `id: C-20260918-env\ntitle: t\nflow: quick\nrisk: low\nimpact: []\nbaseline_commit: ${head}\n`);
+    const r = await p.xforgeIn({ env: { XFORGE_AUDIT_HMAC: 'secret-must-not-leak' } }, 'run', '--gate', 'unit-tests', '--force');
+    const gates = (r.env.result as { gates: Array<{ log?: string }> }).gates;
+    const log = gates[0]?.log ? readFileSync(join(p.root, gates[0].log), 'utf8') : '';
+    expect(log.trim()).toBe('0'); // 一个 XFORGE_* 都没有
+    expect(log).not.toContain('secret-must-not-leak');
   });
 });

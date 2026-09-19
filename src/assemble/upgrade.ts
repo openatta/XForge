@@ -1,12 +1,13 @@
 // design: cli §5.3 — 升级是三段式：暂存（快照 + 铺开 + 逐文件分类）→ 人合并 → 完成或回滚；在途时磁盘上有哨兵。
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { cpSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import fg from 'fast-glob';
 import type { Outcome } from '../cli/envelope.js';
 import { CliError } from '../cli/errors.js';
 import { appendEvent, readChain } from '../audit/chain.js';
 import { gitIdentity } from '../audit/identity.js';
 import { readText, Transaction } from '../fs/transaction.js';
+import { pruneEmptyDirs } from './hosts.js';
 import { computeIntegrity, classifyFile, INTEGRITY_FILE, type FileClass } from '../model/integrity.js';
 import { transplantLocalZone } from '../model/markdown.js';
 import type { GovernancePaths } from '../model/paths.js';
@@ -128,13 +129,28 @@ export async function upgradeFinish(ctx: UpgradeContext): Promise<Outcome<{ from
   return { result: { from: status.from, to: status.to, kept, event: event.hash }, changed, next: [{ command: 'xforge sync', why: '把新脚手架投影到宿主' }] };
 }
 
-/** 回滚：从快照整树恢复，删哨兵。 */
+/**
+ * 回滚：从快照整树恢复，删哨兵。
+ *
+ * **走受治理写入**（§1.2）。先 `rm -rf scaffold` 再 `cp` 的话，中途死一次脚手架就没了 ——
+ * 一个以「可回退」为全部卖点的命令，它自己的回退不可回退。这里逐文件写 + 逐文件删，
+ * 全在一个事务里，失败整体回滚。
+ */
 export async function upgradeRollback(ctx: UpgradeContext): Promise<Outcome<{ restored: number }>> {
   if (!upgradeInFlight(ctx.paths)) throw new CliError('XF-ASSEMBLE-003', '没有在途的升级', 1, { command: 'xforge update', text: '先暂存' });
   const snapshot = snapshotDir(ctx.paths);
   const files = await fg('**/*', { cwd: snapshot, onlyFiles: true, dot: false });
-  rmSync(ctx.paths.scaffold, { recursive: true, force: true });
-  cpSync(snapshot, ctx.paths.scaffold, { recursive: true });
-  rmSync(ctx.paths.upgradeDir, { recursive: true, force: true });
-  return { result: { restored: files.length }, changed: files.map((f) => relative(ctx.root, join(ctx.paths.scaffold, f))), next: [] };
+  const current = await fg('**/*', { cwd: ctx.paths.scaffold, onlyFiles: true, dot: false });
+  const tx = new Transaction(ctx.root, ctx.paths.txDir);
+  for (const f of files) {
+    const text = await readText(join(snapshot, f));
+    if (text !== null && text !== (await readText(join(ctx.paths.scaffold, f)))) tx.write(join(ctx.paths.scaffold, f), text);
+  }
+  // 快照之后新冒出来的文件要去掉：回滚是「回到那一刻」，不是「把那一刻叠上来」。
+  const keep = new Set(files);
+  for (const f of current) if (!keep.has(f)) tx.removeFile(join(ctx.paths.scaffold, f));
+  tx.removeDir(ctx.paths.upgradeDir);
+  const changed = await tx.commit();
+  await pruneEmptyDirs(ctx.paths.scaffold, current.filter((f) => !keep.has(f)));
+  return { result: { restored: files.length }, changed, next: [] };
 }

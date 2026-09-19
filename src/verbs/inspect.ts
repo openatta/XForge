@@ -82,8 +82,13 @@ export async function runInspect(ctx: ChangeCtx | Project, opts: { hygiene: bool
 
   // 4 审计链
   checks += 1;
-  const chain = 'chain' in ctx ? ctx.chain : (await import('../audit/chain.js')).readChain(ctx.paths);
-  for (const p of verifyAuditChain(await chain, ctx.env[AUDIT_HMAC_ENV])) push('XF-INSPECT-004', p.message, p.severity === 'info' ? 'info' : 'blocking');
+  // 链读不出来也是一种「记录损坏」，正是 inspect 要报的东西 —— 不能让它把 inspect 自己掀翻。
+  try {
+    const chain = 'chain' in ctx ? ctx.chain : (await import('../audit/chain.js')).readChain(ctx.paths);
+    for (const p of verifyAuditChain(await chain, ctx.env[AUDIT_HMAC_ENV])) push('XF-INSPECT-004', p.message, p.severity === 'info' ? 'info' : 'blocking');
+  } catch (error) {
+    push('XF-INSPECT-001', `审计链读不出来：${(error as Error).message}`);
+  }
 
   // 5 索引与基线
   checks += 1;

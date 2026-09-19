@@ -14,7 +14,7 @@ export interface ScaffoldIssue {
   subject: string;
   /** 相对 scaffold/ 的路径；`missing` 的那些按它去载荷里取。 */
   rel: string | null;
-  kind: 'missing' | 'modified' | 'no-integrity' | 'skill-source';
+  kind: 'missing' | 'modified' | 'unreadable' | 'no-integrity' | 'skill-source';
   message: string;
 }
 
@@ -49,6 +49,7 @@ export async function scaffoldIssues(paths: GovernancePaths, manifest: Manifest,
       const current = tx?.pending().get(path) ?? (await readText(path));
       const cls = classifyFile(recorded, current ?? undefined);
       if (cls === 'missing') out.push({ subject: rel(file), rel: file, kind: 'missing', message: `受管文件 ${rel(file)} 不在` });
+      else if (cls === 'unreadable') out.push({ subject: rel(file), rel: file, kind: 'unreadable', message: `受管文件 ${rel(file)} 的本地化区标记不成对，校验和算不出来` });
       else if (cls === 'modified') out.push({ subject: rel(file), rel: file, kind: 'modified', message: `受管文件 ${rel(file)} 在本地化区之外被改过` });
     }
   }

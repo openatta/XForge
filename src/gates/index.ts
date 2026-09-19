@@ -1,5 +1,6 @@
 // design: rule-files §3.2 — 门：读定义、算输入修订、跑命令或内置逻辑、受理台账、写运行记录。
 import { spawn } from 'node:child_process';
+import { externalEnv } from '../model/env.js';
 import { readFile, readdir } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import fg from 'fast-glob';
@@ -174,22 +175,59 @@ export async function runGate(ctx: ChangeCtx, gate: Gate, tx: Transaction, opts:
   return outcome;
 }
 
+/** 门的输出上限：日志要进证据，一个话多的门不该把内存与磁盘吃满。超出的部分截掉并注明。 */
+const OUTPUT_LIMIT = 4 * 1024 * 1024;
+
 async function runCommand(command: string, cwd: string, timeoutMs: number): Promise<{ code: number; output: string; timedOut: boolean }> {
   return new Promise((resolve) => {
-    const child = spawn('sh', ['-c', command], { cwd, env: process.env });
+    // 门命令是项目声明的 shell，也就是受治理的一方写的：不交给它 XFORGE_*（见 model/env.ts）。
+    // `detached` 让它自成进程组，超时才杀得干净 —— 只杀 sh 会把 `npm test` 起的孙进程留成孤儿。
+    const child = spawn('sh', ['-c', command], { cwd, env: externalEnv(), detached: true });
     let output = '';
+    let truncated = false;
     let timedOut = false;
+    let done = false;
+    const finish = (code: number): void => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      resolve({ code, output: truncated ? `${output}\n…（输出超过 ${OUTPUT_LIMIT} 字节，其余截掉）` : output, timedOut });
+    };
+    const take = (d: Buffer): void => {
+      if (truncated) return;
+      output += d.toString();
+      if (output.length > OUTPUT_LIMIT) {
+        output = output.slice(0, OUTPUT_LIMIT);
+        truncated = true;
+      }
+    };
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill('SIGKILL');
+      kill(child.pid);
     }, timeoutMs);
-    child.stdout.on('data', (d: Buffer) => (output += d.toString()));
-    child.stderr.on('data', (d: Buffer) => (output += d.toString()));
-    child.on('close', (code) => {
-      clearTimeout(timer);
-      resolve({ code: code ?? 1, output, timedOut });
+    child.stdout.on('data', take);
+    child.stderr.on('data', take);
+    // 起不来（没有 sh、cwd 不在）也要有结论：不给 error 一个出口，这个 Promise 就永远不 resolve。
+    child.on('error', (e) => {
+      output += `\n${e.message}`;
+      finish(127);
     });
+    child.on('close', (code) => finish(code ?? 1));
   });
+}
+
+/** 杀掉整个进程组；进程组没了（已经退干净）就退回杀自己。 */
+function kill(pid: number | undefined): void {
+  if (pid === undefined) return;
+  try {
+    process.kill(-pid, 'SIGKILL');
+  } catch {
+    try {
+      process.kill(pid, 'SIGKILL');
+    } catch {
+      // 已经退了。
+    }
+  }
 }
 
 interface Verdict {

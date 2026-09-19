@@ -25,12 +25,17 @@ function yyyymmdd(date: Date): string {
   return date.toISOString().slice(0, 10).replaceAll('-', '');
 }
 
+/**
+ * 标题 → Change id 里的那一段。**产出必须合 `ID.change`**：那条正则只认小写字母数字与连字符，
+ * 所以这里也只留它们 —— 曾经放行过 CJK，结果是中文标题直接把 `newChangeId` 抛掉，
+ * 而不是退回缺省。一个纯非 ASCII 的标题回 `change`，由人改。
+ */
 export function slugify(title: string): string {
   const slug = title
     .toLowerCase()
-    .replace(/[^a-z0-9一-鿿]+/g, '-')
+    .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
-  return slug.length ? slug : 'change';
+  return /^[a-z0-9]/.test(slug) ? slug : 'change';
 }
 
 export function newChangeId(slug: string, date = new Date()): string {
@@ -39,8 +44,9 @@ export function newChangeId(slug: string, date = new Date()): string {
   return id;
 }
 
-export function newExecutionId(date = new Date(), random: () => Buffer = () => randomBytes(4)): string {
+export function newExecutionId(date = new Date(), random: () => Buffer = () => randomBytes(6)): string {
   const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  // 六个字符要六个字节：四个字节绕着用，第 5、6 位就是第 1、2 位的函数。
   const bytes = random();
   let suffix = '';
   for (let i = 0; i < 6; i += 1) suffix += alphabet[(bytes[i % bytes.length] ?? 0) % alphabet.length];

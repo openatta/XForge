@@ -1,6 +1,6 @@
 // design: cli §5 — 宿主投影的计算与台账：sync 投它、doctor 验它、repair 修它，三个命令同一份算法。
 import { readdir, stat } from 'node:fs/promises';
-import { readdirSync, rmSync } from 'node:fs';
+import { rmdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { CliError } from '../cli/errors.js';
 import { exists, readText } from '../fs/transaction.js';
@@ -118,8 +118,9 @@ export async function pruneEmptyDirs(root: string, removed: readonly string[]): 
     let dir = join(root, r, '..');
     while (dir.startsWith(root) && dir !== root) {
       try {
-        if (readdirSync(dir).length) break;
-        rmSync(dir, { recursive: true, force: true }); // 上一行已确认它是空的
+        // 不带 recursive：非空就自然失败。先 readdir 再 recursive 删是一段竞态窗口 ——
+        // 这中间落进来一个文件，它会跟着目录一起没。
+        rmdirSync(dir);
       } catch {
         break;
       }

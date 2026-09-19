@@ -80,15 +80,10 @@ export async function runAssemble(verb: AssembleVerb, parsed: Parsed, cwd: strin
 /** 清单读不出是损坏（退出码 3），不是「不能」。 */
 async function loadManifest(paths: GovernancePaths): Promise<Manifest> {
   return readYaml<Manifest>(paths.manifest, 'manifest').catch((error: unknown) => {
-    // 诊断里的路径一律项目根相对（§1.1）：绝对路径把机器上的目录结构漏进信封，和别的诊断也不一致。
-    if (error instanceof ModelError) throw new CliError(error.code, relativize(paths.projectRoot, error.message), 3, { text: '按诊断里的路径与字段改清单' }, error.details.map((d) => relativize(paths.projectRoot, d)));
+    // 路径相对化在 readYaml 那一头统一做（model/yaml.ts 的 shortPath）。
+    if (error instanceof ModelError) throw new CliError(error.code, error.message, 3, { text: '按诊断里的路径与字段改清单' }, error.details);
     throw error;
   });
-}
-
-/** 把消息里出现的绝对项目路径换成项目根相对写法。 */
-function relativize(root: string, text: string): string {
-  return text.split(`${root}/`).join('').split(root).join('.');
 }
 
 /** 旧名 `upgrade`：行为完全相同，只在信封里多一条 warning（命令行设计 D12）。 */

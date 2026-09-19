@@ -1,5 +1,6 @@
 // design: rule-files §5.3 — 审计链：hash 覆盖 prev，可选 HMAC；署名匹配规则。
 import { hmacSha256, recordHash } from './digest.js';
+import { ModelError } from './errors.js';
 import type { AuditActor, AuditEvent, LedgerEntry } from './types.js';
 
 export const AUDIT_HMAC_ENV = 'XFORGE_AUDIT_HMAC';
@@ -43,11 +44,21 @@ export function verifyAuditChain(events: readonly AuditEvent[], secret: string |
   return problems;
 }
 
+/**
+ * 读审计链。坏行**不抛** —— `inspect` 的职责就是发现记录损坏，
+ * 它自己因为一行坏 JSON 倒下，就什么也发现不了了（一次写到一半被杀就够）。
+ */
 export function parseChain(text: string): AuditEvent[] {
-  return text
-    .split('\n')
-    .filter((line) => line.trim().length)
-    .map((line) => JSON.parse(line) as AuditEvent);
+  const out: AuditEvent[] = [];
+  for (const [i, line] of text.split('\n').entries()) {
+    if (!line.trim().length) continue;
+    try {
+      out.push(JSON.parse(line) as AuditEvent);
+    } catch {
+      throw new ModelError('XF-MODEL-001', `审计链第 ${i + 1} 行不是合法 JSON`, ['xforge/.audit/chain.jsonl']);
+    }
+  }
+  return out;
 }
 
 export function serializeEvent(event: AuditEvent): string {

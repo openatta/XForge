@@ -1,6 +1,6 @@
 // design: cli §2 — 五个动词的分发：参数 → 上下文 → 动词函数 → 信封。
 import type { Parsed } from '../cli/args.js';
-import { flagBool, flagList, flagString } from '../cli/args.js';
+import { flagBool, flagList, flagString, flagValues } from '../cli/args.js';
 import { CliError } from '../cli/errors.js';
 import type { Outcome } from '../cli/envelope.js';
 import { UsageError } from '../cli/errors.js';
@@ -79,7 +79,7 @@ async function attest(project: Project, parsed: Parsed, needChange: () => Promis
       return attestReceipt(await needChange());
     case 'verification': {
       const commands: Record<string, string> = {};
-      for (const kv of flagList(parsed, 'command')) {
+      for (const kv of flagValues(parsed, 'command')) {
         const eq = kv.indexOf('=');
         if (eq === -1) throw new UsageError('用法: xforge attest verification --command <name>=<command>');
         commands[kv.slice(0, eq)] = kv.slice(eq + 1);
