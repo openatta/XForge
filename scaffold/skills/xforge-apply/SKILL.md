@@ -18,7 +18,7 @@ Use the brief if you were given one; otherwise run `xforge state --orient` first
 
 ## 停下
 - Registering the delivery (`advance package <id> --deliver`) is the integration; no person confirms that step. Registration is refused while the verify gate is not current or the changed paths disagree; fix first, then register.
-- Unclaimed changes appear → `blocked unclaimed`.
+- Unclaimed changes appear → `blocked unclaimed:<path>` (copy the token from `blockers` verbatim, suffix included).
 
 ## 本项目
 <!-- xforge:local:begin -->

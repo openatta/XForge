@@ -74,3 +74,43 @@ describe('executor prompt', () => {
     });
   }
 });
+
+describe('停下条件与控制面的词汇要对得上（SK-14）', () => {
+  /** 控制面真会产出的 blocker token。带后缀的（`unclaimed:<路径>`）在这里记前缀。 */
+  const produced = (): Set<string> => {
+    const src = readFileSync(join(root, 'src', 'verbs', 'exit.ts'), 'utf8') + readFileSync(join(root, 'src', 'verbs', 'state.ts'), 'utf8');
+    const out = new Set<string>();
+    for (const m of src.matchAll(/token: '([a-z-]+)'/g)) out.add(m[1]!);
+    for (const m of src.matchAll(/token: `([a-z-]+):\$\{/g)) out.add(m[1]!);
+    for (const m of src.matchAll(/token: status === 'stale' \? '([a-z-]+)' : '([a-z-]+)'/g)) {
+      out.add(m[1]!);
+      out.add(m[2]!);
+    }
+    return out;
+  };
+
+  it('站 Skill 里每个 blocked <token> 都是控制面产得出来的', () => {
+    const known = produced();
+    expect(known.size, '没从 exit.ts / state.ts 里解析出 token，正则该跟着改').toBeGreaterThan(8);
+    const offenders: string[] = [];
+    for (const station of STATIONS) {
+      for (const file of [`SKILL_cn.md`, `SKILL.md`]) {
+        const text = read(`xforge-${station}`, file);
+        for (const m of text.matchAll(/`blocked ([a-z-]+)(?::[^`]*)?`/g)) {
+          const token = m[1]!;
+          if (!known.has(token)) offenders.push(`xforge-${station}/${file}: blocked ${token}`);
+        }
+      }
+    }
+    // 控制面判不出来的理由要走 needs-human：拿一个查不到的 token 去问 blockers，
+    // 入口什么也说不出来，用户看到的是「被挡住了，但控制面说没东西挡着」。
+    expect(offenders, `这些 token 控制面从不产出：\n${offenders.join('\n')}\n认得的是：${[...known].sort().join('、')}`).toEqual([]);
+  });
+
+  it('入口 Skill 写明查不到 remedy 时要原样转述，不许哑掉', () => {
+    for (const file of ['SKILL_cn.md', 'SKILL.md']) {
+      const text = read('xforge', file);
+      expect(/没有这个 token|no such token/.test(text), file).toBe(true);
+    }
+  });
+});

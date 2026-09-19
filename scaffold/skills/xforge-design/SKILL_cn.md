@@ -20,7 +20,8 @@ description: design 站：把提案变成技术路径、作用域与工作包计
 - 不写代码，不改提案与规格 delta。
 
 ## 停下
-- 规格里有矛盾 → 不要自己裁决，最后一行 `blocked spec-conflict`，交给 propose 返工。
+- 规格里有矛盾 → 不要自己裁决，最后一行 `needs-human <哪两条冲突、为什么不能两立>`，交给人。
+  不要用 `blocked`：那条道是给控制面算得出来的阻塞用的，规格的意思它读不出来，也就没有 remedy 可念。
 
 ## 本项目
 <!-- xforge:local:begin -->

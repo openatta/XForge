@@ -14,7 +14,8 @@ You are the orchestrator; you do none of the stage work yourself. Loop until the
 3. When a stage ends, take the control plane's word for it; do not confirm with another `state`:
    - An `xforge advance` run in this session succeeded: its reply's `stage` is the next stage's orientation. `isolate: false` → do that stage right away from it; `isolate: true` → back to 1 for the full brief; no `stage` in the reply → ready-to-archive is reached, hand the final approval under the reply's `next` to the user and stop.
    - The executor's last line is `done` → back to 1 (the control plane is the truth, not the report's details).
-   - `blocked <token>` → back to 1, and tell the user the remedy listed under that token in `blockers`.
+   - `blocked <token>` → back to 1, and tell the user the remedy listed under that token in `blockers`;
+     if `blockers` has no such token, relay the executor's line verbatim and say the control plane has no remedy registered for it — do not go silent just because the lookup failed.
    - `needs-human <question>` → hand the question to the user verbatim; once handled, back to 1.
 4. When the control plane reports `position.status: archived`, stop.
 

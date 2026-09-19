@@ -15,11 +15,12 @@ import { logXforgeTo, repoRoot, useInstalledBin, xforge } from './xforge.js';
 
 export type Scenario = 'quick' | 'solid' | 'major' | 'solid-rework';
 
-export const SCENARIOS: Record<Scenario, { flow: 'quick' | 'solid' | 'major'; request: string; oracle: string; expect: { outcome: 'archived'; reworks: number | { max: number } }; plant?: true }> = {
+export const SCENARIOS: Record<Scenario, { flow: 'quick' | 'solid' | 'major'; request: string; oracle: string; expect: { outcome: 'archived'; reworks: number | { min?: number; max: number } }; plant?: true }> = {
   quick: { flow: 'quick', request: 'quick.md', oracle: 'test_quick.py', expect: { outcome: 'archived', reworks: 0 } },
   solid: { flow: 'solid', request: 'solid.md', oracle: 'test_solid.py', expect: { outcome: 'archived', reworks: 0 } },
   major: { flow: 'major', request: 'major.md', oracle: 'test_major.py', expect: { outcome: 'archived', reworks: { max: 1 } } },
-  'solid-rework': { flow: 'solid', request: 'solid.md', oracle: 'test_solid.py', expect: { outcome: 'archived', reworks: 1 }, plant: true },
+  // 植入的矛盾必须至少引起一次返工（下限）；模型另外发现真实规格歧义再返工一次是更好的结果，不是失败（上限）。
+  'solid-rework': { flow: 'solid', request: 'solid.md', oracle: 'test_solid.py', expect: { outcome: 'archived', reworks: { min: 1, max: 2 } }, plant: true },
 };
 
 export type Driver = 'orchestrated' | 'stepwise';
@@ -294,7 +295,8 @@ export function meetsExpectation(s: Summary, scenario: Scenario): string[] {
   }
   if (s.outcome !== spec.expect.outcome) problems.push(`outcome ${s.outcome} ≠ ${spec.expect.outcome}`);
   const r = spec.expect.reworks;
-  if (typeof r === 'number' ? s.reworks !== r : s.reworks > r.max) problems.push(`reworks ${s.reworks} 不符合期望 ${JSON.stringify(r)}`);
+  const badRework = typeof r === 'number' ? s.reworks !== r : s.reworks > r.max || s.reworks < (r.min ?? 0);
+  if (badRework) problems.push(`reworks ${s.reworks} 不符合期望 ${JSON.stringify(r)}`);
   if (s.oracle.failed !== 0 || s.oracle.ran === 0) problems.push(`oracle ${s.oracle.ran - s.oracle.failed}/${s.oracle.ran}`);
   if (s.inspect_exit !== 0) problems.push(`inspect 退出码 ${s.inspect_exit}`);
   if (s.tamper && (s.tamper.exit !== 3 || !s.tamper.codes.includes('XF-INSPECT-001'))) problems.push(`篡改未被检出：${JSON.stringify(s.tamper)}`);

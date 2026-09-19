@@ -18,7 +18,7 @@ description: apply 站：按计划派工、跑验证、登记交付；每个包�
 
 ## 停下
 - 交付登记（`advance package <id> --deliver`）成功就是集成，没有人确认这一格；验证门不当前或改动路径不符时登记会被拒，先修再登记。
-- 出现无归属改动 → `blocked unclaimed`。
+- 出现无归属改动 → `blocked unclaimed:<路径>`（照抄 `blockers` 里那一条的 token，连后缀一起）。
 
 ## 本项目
 <!-- xforge:local:begin -->

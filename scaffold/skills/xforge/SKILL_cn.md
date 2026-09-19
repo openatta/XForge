@@ -14,7 +14,8 @@ description: 推进当前 Change 的下一站。用户唯一需要记住的名�
 3. 一站结束时听控制面的话，不再用 `state` 核实：
    - 本会话里跑的 `xforge advance` 成功了：回复里的 `stage` 就是下一站的定向。它 `isolate: false` → 直接按它做下一站；`isolate: true` → 回到 1 取完整简报；回复里没有 `stage` → 到了 ready-to-archive，把回复 `next` 里的终局审批交给用户，停下。
    - 执行者最后一行 `done` → 回到 1（以控制面为准，不信回报的细节）。
-   - `blocked <token>` → 回到 1，把 `blockers` 里该 token 的 remedy 告诉用户。
+   - `blocked <token>` → 回到 1，把 `blockers` 里该 token 的 remedy 告诉用户；
+     `blockers` 里没有这个 token 时，原样转述执行者那一行并说明控制面没有为它登记补救 —— 不要因为查不到就什么都不说。
    - `needs-human <问题>` → 把问题原样交给用户；用户处理后回到 1。
 4. 控制面回 `position.status: archived` → 结束。
 

@@ -20,7 +20,8 @@ Use the brief if you were given one; otherwise run `xforge state --orient` first
 - No code; do not edit the proposal or the spec delta.
 
 ## 停下
-- A contradiction in the spec → do not resolve it yourself; end with `blocked spec-conflict` so propose can rework.
+- A contradiction in the spec → do not resolve it yourself; end with `needs-human <which two clauses conflict and why they cannot both hold>`.
+  Do not use `blocked`: that channel is for blockers the control plane computes, and it cannot read what prose means, so it has no remedy to offer.
 
 ## 本项目
 <!-- xforge:local:begin -->
