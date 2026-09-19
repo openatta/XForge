@@ -23,7 +23,7 @@
 | **D10** | 拆除是独立命令 `xforge remove --confirm <project-name>`（`project-name` 是项目根目录名），删 `xforge/` 与全部宿主投影（Skill、执行者、钩子、`AGENTS.md` 标记块）；不带或带错确认是 `XF-ASSEMBLE-004`；日常命令没有这个开关 | 破坏性动作要显式确认 |
 | **D11** | 「验」对 Skill 只做存在性检查（文件在、四节标题在、本地化区标记成对） | `不读散文的意思`；覆盖判定在 Skill 设计里由「本站承诺」条目化后再考虑 |
 | **D12** | 装配面是五个命令：`init` `update` `sync` `doctor` `repair`；`update` 是原 `upgrade` 的新名（三段式不变），旧名保留一个小版本并在信封里 `warning`。改名只改命令：哨兵目录仍是 `.upgrade/`、审计事件仍是 `scaffold.upgraded`、schema 仍叫 `upgrade-status` | 装配的生命周期要在命令名上看得见（建起来 / 跟上新版 / 投出去 / 看对不对 / 修回去）。磁盘与审计里的名字是历史，改了旧链读不出，收益为零 |
-| **D13** | 宿主适配叫 **provider**，一分为二：装配侧（探测、能力、投影、诊断、修复）在 `src/providers/`，执法侧（载荷解析、决策渲染）在 `src/enforce/payloads/`；两侧不共享类型，也不互相 import | 执法入口的模块图不许触及装配侧（迁移方案 `MG-03`）。provider 会继续增加，两侧的变化频率与约束都不同 |
+| **D13** | 宿主适配叫 **provider**，一分为二：装配侧（探测、能力、投影、诊断、修复）在 `src/providers/`，执法侧（载荷解析、决策渲染）在 `src/enforce/payloads/`；两侧不共享类型，也不互相 import。能力里的 `enforcement` 点名**机制**（`hook` / `none`）而不是有无，钩子落进哪个共用文件由 `hookFile` 声明 | 执法入口的模块图不许触及装配侧（迁移方案 `MG-03`）。provider 会继续增加，两侧的变化频率与约束都不同 |
 | **D14** | 清单 `platforms` 的取值由闭集改为开放名字（`^[a-z][a-z0-9-]*$`）；认不认得由控制面运行时判，不认得是 `XF-ASSEMBLE-005` | 加一个 provider 不该改 schema、不该升清单格式版本 |
 | **D15** | `init` 在 **`stdin` 与 `stderr` 都是 TTY**、没有 `--no-input`、也没有 `CI` 环境变量时进交互：先探测，再**只问命令行没给的那一半** —— 工具（多选）与语言（单选），英文。交互 UI 全部走 stderr，stdout 仍只有信封。探测结果可由 `XFORGE_DETECT` 注入 | 人第一次装的那一屏不能污染 Agent 读的那条流（D2）。判的是 stderr 而不是 stdout：画面写在 stderr，判 stdout 会让 `xforge init > out.json` 在真人的终端里悄悄变成不问。已经用选项说出来的答案再问一遍是噪音。探测要能在没装任何工具的 CI 上测，就不能直接 spawn |
 | **D16** | 宿主投影有台账 `xforge/hosts.yaml`（provider → 投出去的文件 + 校验和）：`sync` 据它回收孤儿，`doctor` 据它判缺失与漂移，`remove` 据它拆除 | 「哪些文件是我投的」现在靠硬编码目录名猜，加到第三个 provider 就断。台账是派生物，丢了重投一次就有 |
@@ -55,7 +55,8 @@
 - `severity ∈ blocking · warning · info`；`ok = false` 当且仅当存在 `blocking`。
 - `changed` 列出本次落盘的每个路径；`验`与`读`永远为空数组。
 - `next` 至多三条，每条是可直接执行的命令。
-- `--field <json-path>` 只回信封里那一段（`窄是默认`）。
+- `--field <json-path>` 只回信封里那一段（`窄是默认`），路径以**信封**为根（`result.position`，不是 `position`）。
+- 诊断 `message` 里的路径一律**项目根相对**；`--text` 把 `remedy` 的 `command` 与 `text` 都显示出来 —— 只显示其中一个，人就看不全「做什么」与「为什么」。
 
 `CLI-01` 每个命令的每条输出都通过 `envelope.schema.json` 校验（product 层对每个命令的样例信封校验）。
 `CLI-02` `ok=false` ⇔ 存在 `blocking` 诊断 ⇔ 退出码 `1`；退出码 `3` 时 `diagnostics` 至少一条 `code` 以 `XF-INSPECT-` 或 `XF-MODEL-` 开头。
@@ -416,6 +417,7 @@ xforge init [--flow <name>] [--platform <name>]... [--language zh-CN|en] [--no-i
 **交互（D15）**：`stdin` 与 `stderr` 都是 TTY、没有 `--no-input`、也没有 `CI` 时，先探测，再问命令行还没回答的那几道 —— 工具（多选，至少一个）与语言（单选）—— 文案用英文。两个都给了就一道也不问。其余情况一律按选项与缺省直接跑，行为与没有这个特性时完全一样。
 
 - 交互 UI 全部写 stderr；stdout 仍然只有信封（D2）。
+- **取消是人的决定，不是用法错**：`Esc` / `Ctrl-C` / 输入结束都回 `XF-ASSEMBLE-018` 的信封、退出码 `1`，树上一个字节不动。报成退出码 `2` 会让调用方以为命令行写错了。
 - 探测不到的 provider 灰显但**可以选**，选中时标注未探测到：投影只是写文件，本机装没装是另一件事（先装 XForge 后装工具、A 机生成 B 机用，都是合法的）。
 - 探测结果可注入：`XFORGE_DETECT=claude:2.1.0,codex:none`；不给才真的去探。CI 与 integration 测试靠它，探测本身不进测试路径。
 
@@ -424,6 +426,7 @@ xforge init [--flow <name>] [--platform <name>]... [--language zh-CN|en] [--no-i
 一个 provider 都没探测到时，全部改为可选并注明「本机没探测到，文件照写」：否则新机器、容器与 CI 上这一问无解。
 
 `CLI-44` 交互只在 `stdin` 与 `stderr` 都是 TTY、没有 `--no-input`、也没有 `CI` 时发生，且**只问命令行没给的那一半**（`--platform` 给了就只问语言，两个都给了一道也不问）；非交互的 `init` 行为与没有这个特性时逐字节相同（缺省 `claude` + `zh-CN` + `solid`，不问也不挂）。画面全部在 stderr，stdout 不是 TTY 也照问：stdout 仍然只有信封。灰显项按空格不选中并说明「命令行上可以点名」；一个都没选中时回车不放行；一个都没探测到时全部可选。
+`CLI-53` 画面的细节：选中画 `[✓]`（不是 `[x]`）；**单选光标停在哪就是答案**，回车即确认，不需要先按空格；一问答完就收起成两行回执（`? 问题` + `  ✓ 答案`），不把带光标的半截画面留在屏上。
 `CLI-51` 画面按**列**算而不是按字符算：CJK 占两列，每行先截到终端宽度之内 —— 一旦有行折了，重画的「往上退 N 行」就退错，整屏花掉。按键读的是终端报的具名键（方向键发的是 `ESC [ A`），不自己解转义序列：自己解就得在「裸 `ESC` 是取消」与「`ESC` 是方向键的头一个字节」之间赌读不会被拆包。
 
 ### 5.2 `sync`
@@ -482,7 +485,7 @@ xforge doctor [--platform <name>]...
 | --- | --- | --- |
 | `XF-ASSEMBLE-005` | 清单 `platforms` 里有控制面不认得的 provider | 不能：人改清单 |
 | `XF-ASSEMBLE-006` | 投影缺失或漂移：该投的文件不在了、内容与脚手架不符，或共有文件里我们那一块被整块拿掉了 | 能：重投 |
-| `XF-ASSEMBLE-007` | 孤儿：台账里有、按现在的脚手架与清单不该再有的文件 | 能：删 |
+| `XF-ASSEMBLE-007` | 孤儿：我投过、按现在的脚手架与清单不该再有的文件 | 能：删 |
 | `XF-ASSEMBLE-008` | 该有执法钩子的宿主上，钩子不在原生位置里 | 能：补 |
 | `XF-ASSEMBLE-009` | 清单的 `scaffold.version` 与本 CLI 版本不一致 | 不能：`xforge update` |
 | `XF-ASSEMBLE-010` | 共有文件的标记块被破坏（标记不成对、顺序反了） | 不能：人看，机器动它会毁掉块外的内容 |
@@ -491,11 +494,18 @@ xforge doctor [--platform <name>]...
 | `XF-ASSEMBLE-015` | 骨架与 `scaffold/integrity.yaml` 对不上：受管文件缺失、本地化区之外被改过，或清单语言对应的 Skill 源文件不在 | 缺的能：从载荷补回；改过的不能 |
 | `XF-ASSEMBLE-017` | 投影台账读不出（按空台账继续） | 能：重投一次台账就回来 |
 
+**「脚手架缺了它」不算「宿主上多了它」**：一个受管文件从 `scaffold/` 里没了，投影自然也不该再算出它来 ——
+这时只报 `XF-ASSEMBLE-015`（骨架缺失），**不再同时报 `XF-ASSEMBLE-007`**。两条一起报会自相矛盾：
+一边说「宿主上不该有它」，一边说「脚手架里该有它」，而 `repair` 的做法是把脚手架补回来再重投，孤儿随之消失。
+真正的孤儿只在 Skill 被新版载荷下线（`update` 之后）或清单里去掉某个 provider 时出现。
+
 **「块被整块拿掉」与「块被破坏」是两件事**：前者（`006`）边界仍然清楚，重投一次就对；后者（`010`）边界已经不可信，机器再写会毁掉块外的内容。两者都不能判成健康 —— 一个 `doctor` 说没问题、紧接着 `sync` 就改写那个文件的组合，比报错更坏。
 
-另报每个 provider 的事实：探测结果（装没装、版本）、能力（能不能执法、能不能隔离）、投了多少文件。这些既在 `result.providers` 里，也各有一条 `XF-ASSEMBLE-012` 的 `info` 诊断，好让 `--text` 对人可读。升级在途时报 `XF-ASSEMBLE-001` 并停在那里 —— 半升级的树没有「对不对」可言。
+另报每个 provider 的事实：探测结果（装没装、版本）、能力（能不能执法、能不能隔离）、投了多少文件。这些**只在 `result.providers` 里说一遍** —— 再发一条常开的 `info` 诊断，就是把同一件事说两次，还把「有没有问题」这条流冲淡了。升级在途时报 `XF-ASSEMBLE-001` 并停在那里 —— 半升级的树没有「对不对」可言。
 
-退出码按 D3：有 `blocking` 发现 → `1`；清单或台账读不出 → `3`；干净 → `0`。`doctor` 在执法的出路名单里（§4.1）；`repair` 不在，它是写动作。
+`result.problems` 只数 `blocking` 的发现，`warnings` 另数一格 —— 两个数与 `ok` 同源，不能一个看 blocking、另一个把 warning 也算进去。
+
+退出码按 D3：有 `blocking` 发现 → `1`；清单读不出 → `3`；干净 → `0`。`doctor` 在执法的出路名单里（§4.1）；`repair` 不在，它是写动作。
 
 `CLI-42` 发现表逐条：缺失、漂移、孤儿、钩子不在、标记块破坏、脚手架版本落后、不认得的 provider 各报对应的码，严重度按上表（`006` `008` `010` `005` `013` `014` `015` 阻塞，`007` `009` `017` 只是 `warning`）；干净的树退出码 `0`、`problems` 为 `0`；任何一次 `doctor` 的 `changed` 恒空；升级在途时只报 `XF-ASSEMBLE-001`。
 `CLI-47` 共有文件里我们那一块被整块删掉之后 `doctor` 报 `XF-ASSEMBLE-006`（不是判健康），`repair` 把块补回来且块外逐字节不动；同一棵树上 `doctor` 干净时 `sync` 的 `changed` 必为空 —— 「医生说没病、下一步就改文件」这种组合不许存在。
@@ -505,7 +515,7 @@ xforge doctor [--platform <name>]...
 ### 5.5 `repair`
 
 ```
-xforge repair [--only <code>]... [--dry-run]
+xforge repair [--dry-run]
 ```
 
 先跑一次 `doctor`，再对报了问题的 provider 动手。修法只有两个，**顺序由依赖定**：
@@ -520,13 +530,13 @@ xforge repair [--only <code>]... [--dry-run]
 不能自动修的原样报出来，附人的下一步：`XF-ASSEMBLE-005`（清单里的名字）、`XF-ASSEMBLE-009`（版本落后，去 `update`）、`XF-ASSEMBLE-010`（标记块被破坏）、`XF-ASSEMBLE-013`（共享文件读不懂）、`XF-ASSEMBLE-014`（钩子跑不起来）、`XF-ASSEMBLE-015` 里被改过的那些。
 **报了 `XF-ASSEMBLE-010` 的 provider 这一轮整个不碰**：标记块的边界已经不可信，投影会把块外的内容一起毁掉。
 
-- `--dry-run`：只报打算重投哪些 provider、为了哪几条发现，`changed` 为空。
-- `--only <code>`：只处理报了这个码的 provider。
+- `--dry-run`：只报打算补哪些文件、重投哪些 provider、为了哪几条发现，`changed` 为空。**退出码仍按树的结论算** —— 它是一次「预演」，不是一次「通过」；树上还有 `blocking` 就退 `1`，否则 `0`。报成 `0` 会让 CI 把一棵坏树当成好的。
 - 写盘走受治理写入（§1.2）：一次 `repair` 的全部改动在同一事务里，失败整体回滚。
 - **repair 不改清单，也不碰标记块之外的任何字节。**
 - 幂等：`repair` 之后 `doctor` 只剩不能自动修的那些，再 `repair` 一次 `changed` 为空。
 
-`CLI-43` 注入缺失、漂移、孤儿、钩子不在四种问题各一处：一次 `repair` 之后 `doctor` 干净、再 `repair` 一次 `changed` 为空；`--dry-run` 不写盘；标记块被破坏的 provider 在 `repair` 前后逐字节不变，且那条发现仍在。
+`CLI-43` 注入缺失、漂移、孤儿、钩子不在四种问题各一处：一次 `repair` 之后 `doctor` 干净、再 `repair` 一次 `changed` 为空；`--dry-run` 不写盘且**退出码与同一棵树上的 `doctor` 相同**；标记块被破坏的 provider 在 `repair` 前后逐字节不变，且那条发现仍在。
+`CLI-52` 从 `scaffold/` 删掉一个 Skill 目录：只报 `XF-ASSEMBLE-015`，不报 `XF-ASSEMBLE-007`；`repair` 之后两条都没了。清单里去掉一个 provider 才是真孤儿，那时报 `007`。
 
 ### 5.6 `remove`
 

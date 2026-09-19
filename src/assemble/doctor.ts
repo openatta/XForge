@@ -4,7 +4,7 @@ import { readText } from '../fs/transaction.js';
 import { cliVersion } from '../meta/index.js';
 import type { GovernancePaths } from '../model/paths.js';
 import type { EnvelopeDiagnostic, Manifest } from '../model/types.js';
-import { BLOCK_BEGIN, BLOCK_END, detect, hookCommandFor, hookRunnable, knownProviderIds, providerFor } from '../providers/index.js';
+import { BLOCK_BEGIN, BLOCK_END, canEnforce, detect, hookCommandFor, hookRunnable, knownProviderIds, providerFor } from '../providers/index.js';
 import { footprintOf, ledgerUnreadable, projectedFiles, readLedger, rel } from './hosts.js';
 import { backfillable, scaffoldIssues } from './scaffold.js';
 import { upgradeInFlight } from './upgrade.js';
@@ -22,7 +22,10 @@ export interface ProviderReport {
 
 export interface DoctorResult {
   checks: number;
+  /** 只数 blocking：它与 `ok` 同源，不能一个看 blocking、另一个把 warning 也算进去。 */
   problems: number;
+  /** 知道一下就好的那些，另数一格。 */
+  warnings: number;
   scaffold: { version: string; cli: string };
   providers: ProviderReport[];
 }
@@ -45,7 +48,7 @@ export async function doctorReport(root: string, paths: GovernancePaths, manifes
   let checks = 1;
   if (upgradeInFlight(paths)) {
     findings.push({ subject: 'xforge/.upgrade', code: 'XF-ASSEMBLE-001', severity: 'blocking', message: '一次脚手架升级在途：半升级的树没有「对不对」可言', remedy: { command: 'xforge update --status', text: '先完成或回滚' } });
-    return { findings, result: { checks, problems: 1, scaffold: { version: manifest.scaffold.version, cli: cliVersion() }, providers: [] } };
+    return { findings, result: { checks, problems: 1, warnings: 0, scaffold: { version: manifest.scaffold.version, cli: cliVersion() }, providers: [] } };
   }
 
   checks += 1;
@@ -55,7 +58,10 @@ export async function doctorReport(root: string, paths: GovernancePaths, manifes
 
   // 骨架：受管文件与完整性清单对不对得上，以及清单语言对应的 Skill 源在不在（sync 少投影它是静默的）。
   checks += 1;
-  for (const issue of await scaffoldIssues(paths, manifest)) {
+  const scaffoldGaps = await scaffoldIssues(paths, manifest);
+  // 脚手架里缺了哪些 Skill：它们的宿主投影这一轮不算孤儿（见 §5.4「脚手架缺了它不算宿主上多了它」）。
+  const skillsMissing = new Set(scaffoldGaps.map((i) => /^skills\/([^/]+)\//.exec(i.rel ?? '')?.[1]).filter((n): n is string => n !== undefined));
+  for (const issue of scaffoldGaps) {
     findings.push({
       subject: issue.subject,
       code: 'XF-ASSEMBLE-015',
@@ -66,7 +72,6 @@ export async function doctorReport(root: string, paths: GovernancePaths, manifes
   }
 
   const declared = only ?? manifest.platforms;
-  const known = declared.filter((id) => providerFor(id));
   for (const id of declared) {
     if (providerFor(id)) continue;
     findings.push({ subject: id, code: 'XF-ASSEMBLE-005', severity: 'blocking', message: `清单里的 ${id} 不是这个版本认得的 provider`, remedy: { text: `认得的是：${knownProviderIds().join('、')}；改清单或升级 CLI` } });
@@ -74,6 +79,20 @@ export async function doctorReport(root: string, paths: GovernancePaths, manifes
 
   const { ledger, unreadable } = await readLedger(paths);
   if (unreadable) findings.push({ subject: 'xforge/hosts.yaml', ...ledgerUnreadable() });
+  const known = declared.filter((id) => providerFor(id));
+
+  // 台账里有、清单里已经没有的 provider：它此刻**一个文件都不该有**，投过的全是孤儿。
+  // `sync` 正是这么回收的；`doctor` 不说就成了同一棵树两个说法。
+  if (!only) {
+    for (const id of ledger.providers.map((x) => x.id).filter((id) => !declared.includes(id))) {
+      const provider = providerFor(id);
+      if (!provider) continue;
+      checks += 1;
+      for (const record of await footprintOf(root, ledger, provider)) {
+        findings.push({ subject: record.path, provider: id, code: 'XF-ASSEMBLE-007', severity: 'warning', message: `${record.path} 是 ${id} 留下的孤儿：清单里已经没有这个 provider 了`, remedy: { command: 'xforge repair', text: record.kind === 'owned' ? '删掉它' : '摘掉里面 XFORGE 的那块' } });
+      }
+    }
+  }
   const reports: ProviderReport[] = [];
   for (const p of await projectedFiles(root, paths, manifest, known)) {
     const issues = new Set<string>();
@@ -121,6 +140,8 @@ export async function doctorReport(root: string, paths: GovernancePaths, manifes
     checks += 1;
     for (const record of await footprintOf(root, ledger, p.provider)) {
       if (expected.has(record.path)) continue;
+      // 它算不出来是因为脚手架里那个 Skill 没了 —— 那是 015 的事，别再说一遍「宿主上不该有它」。
+      if ([...skillsMissing].some((name) => record.path.includes(`/skills/${name}/`))) continue;
       issues.add('XF-ASSEMBLE-007');
       findings.push({ subject: record.path, provider: p.provider.id, code: 'XF-ASSEMBLE-007', severity: 'warning', message: `${record.path} 是 ${p.provider.id} 留下的孤儿`, remedy: { command: 'xforge repair', text: record.kind === 'owned' ? '删掉它' : '摘掉里面 XFORGE 的那块' } });
     }
@@ -129,7 +150,7 @@ export async function doctorReport(root: string, paths: GovernancePaths, manifes
     checks += 1;
     const hookCommand = await hookCommandFor(paths, p.provider);
     let enforcement: ProviderReport['enforcement'] = 'not-supported';
-    if (p.provider.capabilities.enforcement) {
+    if (canEnforce(p.provider)) {
       const installed = await p.provider.hookInstalled(root, hookCommand);
       const runnable = hookRunnable(hookCommand, env);
       enforcement = installed && runnable ? 'available' : 'unavailable';
@@ -157,19 +178,13 @@ export async function doctorReport(root: string, paths: GovernancePaths, manifes
     const found = detect(p.provider, env);
     const report: ProviderReport = { id: p.provider.id, installed: found.installed, enforcement, isolation: p.provider.capabilities.isolation, projected: p.files.length, issues: [...issues].sort() };
     if (found.version !== undefined) report.version = found.version;
+    // provider 的事实只说一遍：它在 `result.providers` 里，不再另发一条常开的 info 诊断。
     reports.push(report);
-    findings.push({
-      subject: p.provider.id,
-      provider: p.provider.id,
-      code: 'XF-ASSEMBLE-012',
-      severity: 'info',
-      message: `${p.provider.displayName}：本机${found.installed ? `已装${found.version ? ` ${found.version}` : ''}` : '未探测到'}，执法 ${enforcement}，隔离 ${p.provider.capabilities.isolation ? '有' : '无'}，投影 ${p.files.length} 个文件`,
-      remedy: { text: found.installed ? '这条只是事实' : '装它，或从清单 platforms 里去掉；投影本身不需要它在场' },
-    });
   }
 
-  const problems = findings.filter((f) => f.severity !== 'info').length;
-  return { findings, result: { checks, problems, scaffold: { version: manifest.scaffold.version, cli: cliVersion() }, providers: reports } };
+  const problems = findings.filter((f) => f.severity === 'blocking').length;
+  const warnings = findings.filter((f) => f.severity === 'warning').length;
+  return { findings, result: { checks, problems, warnings, scaffold: { version: manifest.scaffold.version, cli: cliVersion() }, providers: reports } };
 }
 
 export async function runDoctor(root: string, paths: GovernancePaths, manifest: Manifest, env: NodeJS.ProcessEnv, only: readonly string[] | undefined): Promise<Outcome<DoctorResult>> {

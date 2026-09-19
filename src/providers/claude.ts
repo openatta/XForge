@@ -4,6 +4,9 @@ import { readText } from '../fs/transaction.js';
 import { generatedNote, scanHostDir, type HostFile } from './shared.js';
 import type { Provider, ProjectionInput } from './index.js';
 
+/** 执法钩子落在这里（项目根相对）：投影、检查、拆除都从这一处取，不各写一遍。 */
+const SETTINGS = '.claude/settings.json';
+
 /** 钩子命令串都以它开头；换了声明也要能认出旧的那条并替换掉。 */
 const ENFORCE_PREFIX = 'xforge-enforce';
 
@@ -16,7 +19,8 @@ export const claudeProvider: Provider = {
   id: 'claude',
   displayName: 'Claude Code',
   binary: 'claude',
-  capabilities: { enforcement: true, isolation: true },
+  capabilities: { enforcement: 'hook', isolation: true },
+  hookFile: SETTINGS,
 
   async project(input: ProjectionInput): Promise<HostFile[]> {
     const out: HostFile[] = [];
@@ -27,7 +31,7 @@ export const claudeProvider: Provider = {
       out.push({ path: join(input.root, '.claude', 'agents', `${input.executor.def.name}.md`), content: generatedNote(body) });
     }
     if (input.hookCommand) {
-      const path = join(input.root, '.claude', 'settings.json');
+      const path = join(input.root, SETTINGS);
       out.push({ path, content: await settingsWithHook(path, input.hookCommand), shared: true });
     }
     return out;
@@ -35,23 +39,23 @@ export const claudeProvider: Provider = {
 
   async hookInstalled(root: string, command: string | null): Promise<boolean> {
     if (!command) return false;
-    return (await enforceEntries(join(root, '.claude', 'settings.json'))).some((c) => c === command);
+    return (await enforceEntries(join(root, SETTINGS))).some((c) => c === command);
   },
 
   async footprint(root: string): Promise<Array<{ path: string; kind: 'owned' | 'shared' }>> {
     const out = scanHostDir(root, '.claude', 'xforge-executor.md');
-    const settings = join(root, '.claude', 'settings.json');
+    const settings = join(root, SETTINGS);
     if ((await enforceEntries(settings)).some((c) => isEnforceCommand(c))) out.push({ path: settings, kind: 'shared' });
     return out;
   },
 
   async hookBlocked(root: string): Promise<string | null> {
-    const path = join(root, '.claude', 'settings.json');
+    const path = join(root, SETTINGS);
     return (await readSettings(path)) === null ? path : null;
   },
 
   async detach(root: string, path: string): Promise<HostFile | null> {
-    if (path !== join(root, '.claude', 'settings.json')) return null;
+    if (path !== join(root, SETTINGS)) return null;
     const settings = await readSettings(path);
     if (settings === null) return null; // 读不懂就不动（同 settingsWithHook）
     const hooks = settings['hooks'] as Record<string, HookEntry[]> | undefined;

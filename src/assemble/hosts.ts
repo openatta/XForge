@@ -7,7 +7,7 @@ import { exists, readText } from '../fs/transaction.js';
 import type { GovernancePaths } from '../model/paths.js';
 import type { EnvelopeDiagnostic, Executor, HostsLedger, Language, Manifest } from '../model/types.js';
 import { readYaml } from '../model/yaml.js';
-import { hookCommandFor, knownProviderIds, providerFor, type HostFile, type Provider, type SkillSource } from '../providers/index.js';
+import { canEnforce, hookCommandFor, knownProviderIds, providerFor, type HostFile, type Provider, type SkillSource } from '../providers/index.js';
 
 /** 项目根相对的 posix 路径：台账里的键。 */
 export function rel(root: string, path: string): string {
@@ -77,7 +77,7 @@ export async function projectedFiles(root: string, paths: GovernancePaths, manif
     const blocked = hookCommand === null ? null : ((await provider.hookBlocked?.(root)) ?? null);
     out.push({
       provider,
-      hookMissing: provider.capabilities.enforcement && hookCommand === null,
+      hookMissing: canEnforce(provider) && hookCommand === null,
       hookBlocked: blocked === null ? null : rel(root, blocked),
       files: await provider.project({ root, skills, executor, language: manifest.language, hookCommand }),
     });

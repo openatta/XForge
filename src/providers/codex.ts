@@ -11,7 +11,7 @@ export const codexProvider: Provider = {
   id: 'codex',
   displayName: 'Codex CLI',
   binary: 'codex',
-  capabilities: { enforcement: false, isolation: false },
+  capabilities: { enforcement: 'none', isolation: false },
 
   async project(input: ProjectionInput): Promise<HostFile[]> {
     const out: HostFile[] = [];

@@ -20,7 +20,6 @@ export interface RepairResult {
 }
 
 export interface RepairOptions {
-  only: readonly string[];
   dryRun: boolean;
   /** 重投一组 provider；由装配入口注入 sync，两个模块不互相 import。 */
   reproject: (ids: readonly string[]) => Promise<{ changed: string[]; diagnostics: EnvelopeDiagnostic[] }>;
@@ -32,15 +31,14 @@ const ref = (f: Finding): { code: string; subject: string } => ({ code: f.code, 
 export async function runRepair(root: string, paths: GovernancePaths, manifest: Manifest, env: NodeJS.ProcessEnv, opts: RepairOptions): Promise<Outcome<RepairResult>> {
   const before = await doctorReport(root, paths, manifest, env, undefined);
   const problems = before.findings.filter((f) => f.severity !== 'info');
-  const asked = (code: string): boolean => opts.only.length === 0 || opts.only.includes(code);
-  const wanted = (f: Finding): boolean => REPAIRABLE.has(f.code) && asked(f.code);
+  const wanted = (f: Finding): boolean => REPAIRABLE.has(f.code);
 
   // 标记块坏了的 provider 这一轮整个不碰：块的边界已经不可信，投影会毁掉块外的内容。
   const untouchable = new Set(problems.filter((f) => f.code === 'XF-ASSEMBLE-010').map((f) => f.provider).filter((id): id is string => id !== undefined));
   const targets = [...new Set(problems.filter(wanted).map((f) => f.provider).filter((id): id is string => id !== undefined && !untouchable.has(id)))].sort();
 
   // 骨架先算：缺的能从载荷补回，改过的不动。补回来的 Skill 与钩子要在同一轮里投出去，所以它排在重投之前。
-  const issues = asked(SCAFFOLD_CODE) ? (await scaffoldIssues(paths, manifest)).filter(backfillable) : [];
+  const issues = (await scaffoldIssues(paths, manifest)).filter(backfillable);
   const willFix = [
     ...problems.filter((f) => wanted(f) && f.provider !== undefined && targets.includes(f.provider)),
     ...problems.filter((f) => f.code === SCAFFOLD_CODE && issues.some((i) => i.subject === f.subject)),
@@ -49,10 +47,12 @@ export async function runRepair(root: string, paths: GovernancePaths, manifest: 
   if (opts.dryRun) {
     const planned = new Set(willFix.map(key));
     const left = problems.filter((f) => !planned.has(key(f)));
+    // **严重度照原样留着**：这是一次预演，不是一次通过。全降成 info 会让退出码变 0，
+    // CI 就把一棵坏树当成好的了（命令行设计 §5.5）。
     return {
       result: { restored: issues.map((i) => i.rel ?? i.subject), repaired: targets, fixed: [], left: left.map(ref), dry_run: true },
       changed: [],
-      diagnostics: [...willFix.map((f) => ({ ...strip(f), severity: 'info' as const, message: `会修：${f.message}` })), ...left.map(strip)],
+      diagnostics: [...willFix.map((f) => ({ ...strip(f), message: `会修：${f.message}` })), ...left.map(strip)],
       next: willFix.length ? [{ command: 'xforge repair', why: '真的修' }] : [],
     };
   }

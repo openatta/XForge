@@ -1,7 +1,7 @@
 // design: cli §5.1 — CLI-44 的组件那一半：按键 → 状态 → 画面是纯函数，灰显不可选，必选未满足不放行；CLI-51：按列算宽度、读具名键。
 import { describe, expect, it } from 'vitest';
 import { PassThrough } from 'node:stream';
-import { ask, clip, displayWidth, initialState, keyOf, onKey, renderQuestion, type Question, type View } from '../../../src/cli/prompt.js';
+import { ask, clip, displayWidth, initialState, keyOf, onKey, renderAnswer, renderQuestion, type Question, type View } from '../../../src/cli/prompt.js';
 
 const ESC = String.fromCharCode(27);
 
@@ -78,9 +78,14 @@ describe('selection', () => {
     expect(onDisabled.state.error).toContain('command line');
   });
 
-  it('single select replaces instead of accumulating', () => {
-    const en = onKey(language, { cursor: 1, selected: ['zh-CN'] }, 'space');
-    expect(en.state.selected).toEqual(['en']);
+  it('单选：光标停在哪就是答案，不用先按空格（CLI-53）', () => {
+    const start = initialState(language);
+    expect(start).toEqual({ cursor: 0, selected: ['zh-CN'] });
+    const moved = onKey(language, start, 'down');
+    expect(moved.state.cursor).toBe(1);
+    expect(moved.state.selected).toEqual(['en']); // 移动光标就换了答案
+    expect(onKey(language, moved.state, 'space').state.selected).toEqual(['en']); // 空格在单选里什么都不做
+    expect(onKey(language, moved.state, 'enter').done).toBe(true);
   });
 
   it('enter with nothing chosen does not pass', () => {
@@ -97,10 +102,18 @@ describe('the picture', () => {
     const view: View = { color: false, columns: 200 };
     const lines = renderQuestion(tools, { cursor: 0, selected: ['claude'] }, view);
     expect(lines[0]).toBe('? Which AI coding tools should XForge project into? (space to select, enter to confirm)');
-    expect(lines[1]).toBe('> [x] Claude Code  detected 2.1.0');
+    expect(lines[1]).toBe('> [✓] Claude Code  detected 2.1.0');
     expect(lines[2]).toBe('  [ ] Codex CLI  not detected');
     expect(lines[3]).toBe('  [ ] Zed  detected');
     expect(lines.join('\n')).not.toContain(ESC);
+  });
+
+  it('答完收起成两行回执，不留带光标的半截画面（CLI-53）', () => {
+    const view: View = { color: false, columns: 200 };
+    expect(renderAnswer(tools, { cursor: 0, selected: ['claude', 'zed'] }, view)).toEqual([
+      '? Which AI coding tools should XForge project into?',
+      '  ✓ Claude Code, Zed',
+    ]);
   });
 
   it('every line fits the terminal, so the redraw can count rows', () => {

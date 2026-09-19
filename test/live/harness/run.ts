@@ -1,10 +1,11 @@
 // design: live-test §3 §4 D12 — 循环：一轮模型 → state → 人 → 下一轮；archived 后跑 oracle、篡改检测、写 summary。
 // LT-06：stepwise 驱动每轮只点名一个站 Skill，名字来自 harness 自己的 state --orient；每轮记模型有没有报下一步。
 // LT-07：归档后核对规格 delta 里的每条 Requirement 都被模型自写的测试或 assurance.md 的覆盖表引用；规格治理开着时缺一条就判失败。
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runTurn, type TurnResult } from './engine.js';
 import { engineEnv, engineModel, type Engine } from './env.js';
+import { assemblyProblems, probeAssembly } from './assembly.js';
 import { plantDesignFault, PLANTED_SENTENCE, tamperReceiptAndInspect } from './faults.js';
 import { actAsHuman, type Blocker, type HumanContext } from './human.js';
 import { runOracle } from './oracle.js';
@@ -188,6 +189,11 @@ export async function runScenario(opts: RunOptions): Promise<Summary> {
   writeFileSync(join(paths.runDir, 'oracle.txt'), oracle.output);
   const inspect = changeId ? await xforge(paths.project, ['inspect', '--change', changeId, '--hygiene']) : await xforge(paths.project, ['inspect', '--all']);
   const tamper = outcome === 'archived' && changeId ? await tamperReceiptAndInspect(paths.project, changeId) : null;
+  // LT-09/10/11：真机上把装配面的「验」与「修」各走一遍 —— 注入一处投影漂移，看 repair 能不能收敛。
+  const assembly = await probeAssembly(paths.project, () => {
+    const skill = join(paths.project, '.claude', 'skills', 'xforge', 'SKILL.md');
+    if (existsSync(skill)) appendFileSync(skill, '\n<!-- live drift -->\n');
+  });
   writeFileSync(join(paths.runDir, 'workdir.txt'), paths.workDir + '\n');
   const sessionsSrc = join(paths.claudeConfig, 'projects');
   const sessionsDst = join(paths.runDir, 'sessions');
@@ -218,6 +224,7 @@ export async function runScenario(opts: RunOptions): Promise<Summary> {
     reworks,
     oracle: { ran: oracle.ran, failed: oracle.failed },
     inspect_exit: inspect.exit,
+    assembly,
     tamper,
     tokens: { ...sumUsage(turns), per_turn: turns.map((t) => ({ turn: t.turn, ...t.usage, duration_ms: t.durationMs, num_turns: t.numTurns })) },
     observations: observe(transcriptFiles(paths.transcripts, sessionsDst)),
@@ -291,6 +298,8 @@ export function meetsExpectation(s: Summary, scenario: Scenario): string[] {
   if (s.oracle.failed !== 0 || s.oracle.ran === 0) problems.push(`oracle ${s.oracle.ran - s.oracle.failed}/${s.oracle.ran}`);
   if (s.inspect_exit !== 0) problems.push(`inspect 退出码 ${s.inspect_exit}`);
   if (s.tamper && (s.tamper.exit !== 3 || !s.tamper.codes.includes('XF-INSPECT-001'))) problems.push(`篡改未被检出：${JSON.stringify(s.tamper)}`);
+  // LT-09/10/11：装配面在真机上也要干净、doctor 不写盘、注入的漂移被 repair 收敛。
+  if (s.assembly) problems.push(...assemblyProblems(s.assembly));
   // LT-07：规格治理开着，delta 里的每条 Requirement 都得有测试或覆盖表引用；一条没有就是「做了却没证明」。
   if (s.requirement_coverage && s.requirement_coverage.missing.length) problems.push(`Requirement 没有测试或覆盖表引用：${s.requirement_coverage.missing.join('、')}`);
   if (s.requirement_coverage && s.requirement_coverage.total === 0) problems.push('规格治理开着却没有任何 Requirement delta');

@@ -49,10 +49,12 @@ describe('repair (CLI-43)', () => {
     expect(repaired(again).repaired).toEqual([]);
   });
 
-  it('--dry-run says what it would do and writes nothing', async () => {
+  it('--dry-run says what it would do, writes nothing, and keeps the tree\'s own verdict (CLI-43)', async () => {
     await breakFour();
     const r = await p.xforge('repair', '--dry-run');
-    expect(r.exit).toBe(0);
+    // 预演不是通过：树上还坏着，退出码就得跟 doctor 一样，否则 CI 把坏树当好的。
+    expect(r.exit).toBe(1);
+    expect(r.exit).toBe((await p.xforge('doctor')).exit);
     expect(r.env.changed).toEqual([]);
     expect(repaired(r).dry_run).toBe(true);
     expect(repaired(r).repaired).toEqual(['claude', 'codex']);
@@ -61,13 +63,6 @@ describe('repair (CLI-43)', () => {
     expect((await p.xforge('doctor')).exit).toBe(1); // 还坏着
   });
 
-  it('--only narrows it to the providers that reported that code', async () => {
-    await breakFour();
-    const r = await p.xforge('repair', '--only', 'XF-ASSEMBLE-008');
-    expect(repaired(r).repaired).toEqual(['claude']);
-    expect(repaired(r).left.map((f) => f.code)).toContain('XF-ASSEMBLE-006'); // codex 的漂移还在
-    expect(readFileSync(join(p.root, '.codex', 'skills', 'xforge', 'SKILL.md'), 'utf8')).toContain('人手加的一句');
-  });
 
   it('a provider whose marker block a person broke is left alone, byte for byte', async () => {
     const agents = join(p.root, 'AGENTS.md');
@@ -141,5 +136,34 @@ describe('the scaffold checks itself against its own integrity manifest (CLI-49)
     expect((r.env.result as { restored: string[]; dry_run: boolean }).dry_run).toBe(true);
     expect((r.env.result as { restored: string[] }).restored).toContain('gates/ledgers.yaml');
     expect(existsSync(scaffold('gates/ledgers.yaml'))).toBe(false);
+  });
+});
+
+describe('缺的与多的不打架（CLI-52）', () => {
+  let p: Project;
+  const codesOf = async (): Promise<string[]> => (await p.xforge('doctor')).env.diagnostics.filter((d) => d.severity !== 'info').map((d) => d.code);
+
+  beforeEach(async () => {
+    p = await Project.create('conflict');
+    await p.xforge('init', '--flow', 'quick', '--platform', 'claude');
+  });
+
+  it('从脚手架删一个 Skill：只报 015，不报 007', async () => {
+    rmSync(join(p.root, 'xforge', 'scaffold', 'skills', 'xforge-design'), { recursive: true });
+    const codes = await codesOf();
+    // 一边说「宿主上不该有它」一边说「脚手架里该有它」是自相矛盾：这时只有后一句成立。
+    expect(codes).toContain('XF-ASSEMBLE-015');
+    expect(codes).not.toContain('XF-ASSEMBLE-007');
+    expect((await p.xforge('repair')).exit).toBe(0);
+    expect(await codesOf()).toEqual([]);
+  });
+
+  it('清单里去掉一个 provider 才是真孤儿：那时报 007', async () => {
+    await p.xforge('sync', '--platform', 'claude');
+    const manifest = join(p.root, 'xforge', 'manifest.yaml');
+    writeFileSync(manifest, readFileSync(manifest, 'utf8').replace('platforms:\n  - claude\n', 'platforms:\n  - codex\n'));
+    const codes = await codesOf();
+    expect(codes).toContain('XF-ASSEMBLE-007');
+    expect(codes).not.toContain('XF-ASSEMBLE-015');
   });
 });

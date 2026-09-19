@@ -48,8 +48,9 @@ export function renderText(env: Envelope): string {
   lines.push(`${env.ok ? 'ok' : 'blocked'} · ${env.verb}${env.change ? ` · ${env.change}` : ''}`);
   for (const d of env.diagnostics) {
     lines.push(`  [${d.severity}] ${d.code} ${d.message}`);
+    // 「做什么」与「为什么」都要看得见：只显示其中一个，人就得自己去猜另一半。
     if (d.remedy?.command) lines.push(`      → ${d.remedy.command}`);
-    else if (d.remedy?.text) lines.push(`      → ${d.remedy.text}`);
+    if (d.remedy?.text) lines.push(`      ${d.remedy.command ? '  ' : '→ '}${d.remedy.text}`);
   }
   if (env.result !== undefined && env.result !== null && Object.keys(env.result as object).length) {
     lines.push(JSON.stringify(env.result, null, 2));

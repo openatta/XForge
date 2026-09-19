@@ -46,7 +46,6 @@ export async function runAssemble(verb: AssembleVerb, parsed: Parsed, cwd: strin
       if (!root) throw new CliError('XF-STATE-002', '找不到治理根', 3, { command: 'xforge init', text: '先初始化' });
       const paths = governancePaths(root);
       return runRepair(root, paths, await loadManifest(paths), env, {
-        only: flagList(parsed, 'only'),
         dryRun: flagBool(parsed, 'dry-run'),
         reproject: async (ids) => {
           const outcome = await sync(root, ids);
@@ -81,9 +80,15 @@ export async function runAssemble(verb: AssembleVerb, parsed: Parsed, cwd: strin
 /** 清单读不出是损坏（退出码 3），不是「不能」。 */
 async function loadManifest(paths: GovernancePaths): Promise<Manifest> {
   return readYaml<Manifest>(paths.manifest, 'manifest').catch((error: unknown) => {
-    if (error instanceof ModelError) throw new CliError(error.code, error.message, 3, { text: '按诊断里的路径与字段改清单' }, error.details);
+    // 诊断里的路径一律项目根相对（§1.1）：绝对路径把机器上的目录结构漏进信封，和别的诊断也不一致。
+    if (error instanceof ModelError) throw new CliError(error.code, relativize(paths.projectRoot, error.message), 3, { text: '按诊断里的路径与字段改清单' }, error.details.map((d) => relativize(paths.projectRoot, d)));
     throw error;
   });
+}
+
+/** 把消息里出现的绝对项目路径换成项目根相对写法。 */
+function relativize(root: string, text: string): string {
+  return text.split(`${root}/`).join('').split(root).join('.');
 }
 
 /** 旧名 `upgrade`：行为完全相同，只在信封里多一条 warning（命令行设计 D12）。 */
@@ -152,7 +157,7 @@ const CONSTITUTION_TEMPLATE = `# 章程
 任何改变对外行为的改动，都要有能证明它的测试；没有测试的行为变更不进主线。
 `;
 
-async function init(cwd: string, parsed: Parsed, env: NodeJS.ProcessEnv, io?: Io): Promise<Outcome<{ created: string[]; synced: string[] }>> {
+async function init(cwd: string, parsed: Parsed, env: NodeJS.ProcessEnv, io?: Io): Promise<Outcome<{ created: number; synced: number }>> {
   const root = (await findProjectRoot(cwd, env)) ?? cwd;
   const paths = governancePaths(root);
   const payload = payloadDir();
@@ -198,7 +203,8 @@ async function init(cwd: string, parsed: Parsed, env: NodeJS.ProcessEnv, io?: Io
   await mkdir(paths.changes, { recursive: true });
   created.push(...(await tx.commit()));
   const synced = await sync(root, undefined);
-  return { result: { created, synced: synced.changed ?? [] }, changed: [...created, ...(synced.changed ?? [])], next: [{ command: 'xforge state --orient', why: '看这个项目的定向' }] };
+  // 路径只出现在 `changed` 里一次：`result` 再列一遍等于把同一份清单说两遍（D2 的读者是 Agent）。
+  return { result: { created: created.length, synced: (synced.changed ?? []).length }, changed: [...created, ...(synced.changed ?? [])], next: [{ command: 'xforge state --orient', why: '看这个项目的定向' }] };
 }
 
 /**
@@ -256,7 +262,8 @@ async function askAtInit(env: NodeJS.ProcessEnv, io: Io, given: { platforms: Pla
       ...(given.language ? { language: given.language } : answers['language']?.[0] ? { language: answers['language'][0] as Language } : {}),
     };
   } catch (error) {
-    if (error instanceof Aborted) throw new UsageError('init cancelled');
+    // 取消是人的决定，不是命令行写错了：给信封、退出码 1、树上一个字节不动（§5.1）。
+    if (error instanceof Aborted) throw new CliError('XF-ASSEMBLE-018', 'init 的提问被取消了，什么都没建', 1, { command: 'xforge init --platform claude --language zh-CN', text: '想好了再答，或者一开始就把答案写在命令行上' });
     throw error;
   }
 }

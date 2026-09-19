@@ -322,7 +322,11 @@ describe('a flag the command does not know is a usage error (CLI-50)', () => {
 
   it('通用开关对每个命令都认', async () => {
     expect((await p.xforge('doctor', '--text')).exit).toBe(0);
-    expect((await p.xforge('state', '--field', 'position')).exit).toBe(0);
+    // --field 以信封为根：断言取回的值本身，否则 --field 整个坏掉这条也会过。
+    const field = await p.xforge('state', '--field', 'result.position');
+    expect(field.exit).toBe(0);
+    // --field 的 stdout 就是那一段本身，不是信封；helper 直接把它 JSON.parse 了。
+    expect(field.env as unknown as { status: string }).toHaveProperty('status');
     expect((await p.xforge('repair', '--dry-run')).exit).toBe(0);
   });
 });

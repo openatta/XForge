@@ -1,5 +1,5 @@
 // design: skills §5 — 宿主投影共用：生成物注记、共有文件的标记块合并、台账不在时的兜底扫描。
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 export interface SkillSource {
@@ -16,7 +16,8 @@ export interface HostFile {
 
 export const BLOCK_BEGIN = '<!-- XFORGE:BEGIN -->';
 export const BLOCK_END = '<!-- XFORGE:END -->';
-const NOTE = '<!-- 由 xforge sync 生成；改 xforge/scaffold/ 后重跑，手改会被覆盖 -->';
+/** 生成物的头注记。也是「这份文件是我投的」的凭据：兜底扫描按它认，而不是按目录名猜。 */
+export const NOTE = '<!-- 由 xforge sync 生成；改 xforge/scaffold/ 后重跑，手改会被覆盖 -->';
 
 /** 在 frontmatter 之后插入生成注记（注记放在 frontmatter 之前会破坏它）。 */
 export function generatedNote(text: string): string {
@@ -44,8 +45,11 @@ export function mergeMarkerBlock(existing: string, block: string): string {
 export const SKILL_PREFIX = 'xforge';
 
 /**
- * 按已知布局扫这个宿主目录下属于我们的文件：`<host>/skills/xforge*` 下的每一个文件，
- * 加上执行者定义。台账在的时候用不上它 —— 这是台账不在时的兜底（命令行设计 `CLI-46`）。
+ * 按已知布局扫这个宿主目录下属于我们的文件：`<host>/skills/xforge*` 与执行者定义里，
+ * **头上带生成注记的那些**。台账在的时候用不上它 —— 这是台账不在时的兜底（命令行设计 `CLI-46`）。
+ *
+ * 为什么还要看内容：删文件的依据不能是「名字像我们的」。有人手写一个 `.claude/skills/xforge-mine/`
+ * 完全合法，按前缀猜就把它删了。带注记 = 这一份确实是 `sync` 写出去的。
  */
 export function scanHostDir(root: string, hostDir: string, executor: string | null): Array<{ path: string; kind: 'owned' | 'shared' }> {
   const out: Array<{ path: string; kind: 'owned' | 'shared' }> = [];
@@ -53,14 +57,23 @@ export function scanHostDir(root: string, hostDir: string, executor: string | nu
   if (existsSync(skills)) {
     for (const name of readdirSync(skills).sort()) {
       if (name !== SKILL_PREFIX && !name.startsWith(`${SKILL_PREFIX}-`)) continue;
-      for (const file of filesUnder(join(skills, name))) out.push({ path: file, kind: 'owned' });
+      for (const file of filesUnder(join(skills, name))) if (isGenerated(file)) out.push({ path: file, kind: 'owned' });
     }
   }
   if (executor) {
     const agent = join(root, hostDir, 'agents', executor);
-    if (existsSync(agent)) out.push({ path: agent, kind: 'owned' });
+    if (existsSync(agent) && isGenerated(agent)) out.push({ path: agent, kind: 'owned' });
   }
   return out;
+}
+
+/** 这份文件是不是 `sync` 写出去的：头注记在，就是。 */
+function isGenerated(path: string): boolean {
+  try {
+    return readFileSync(path, 'utf8').includes(NOTE);
+  } catch {
+    return false;
+  }
 }
 
 function filesUnder(dir: string): string[] {

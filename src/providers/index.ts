@@ -11,11 +11,17 @@ import type { HostFile, SkillSource } from './shared.js';
 
 export * from './shared.js';
 
-/** 这个宿主能做什么：执法钩子、隔离的执行者。 */
+/**
+ * 这个宿主能做什么。`enforcement` 点名的是**机制**而不是有无：
+ * 将来遇到不靠钩子执法的宿主（比如宿主自己有策略引擎），加一个取值就行，不用改判定的写法。
+ */
 export interface Capabilities {
-  enforcement: boolean;
+  enforcement: 'hook' | 'none';
   isolation: boolean;
 }
+
+/** 有没有执法这回事。判定集中在这里，别处不写 `=== 'hook'`。 */
+export const canEnforce = (p: Provider): boolean => p.capabilities.enforcement !== 'none';
 
 /** 本机装没装。`why` 说明为什么判成没装（给人看，不参与判定）。 */
 export interface Detection {
@@ -40,6 +46,8 @@ export interface Provider {
   /** 探测时找的可执行文件名。 */
   binary: string;
   capabilities: Capabilities;
+  /** 执法钩子落进哪个**宿主共用文件**（项目根相对）；`enforcement: 'none'` 的 provider 没有这一项。 */
+  hookFile?: string;
   project(input: ProjectionInput): Promise<HostFile[]>;
   /** 钩子是否确实在宿主原生位置里；没有执法能力的 provider 恒 false。 */
   hookInstalled(root: string, command: string | null): Promise<boolean>;
@@ -131,7 +139,7 @@ export function hookRunnable(command: string | null, env: NodeJS.ProcessEnv): bo
 
 /** 执法钩子命令串：声明是唯一出处（规则文件设计 §3.5），provider 不许写死。 */
 export async function hookCommandFor(paths: GovernancePaths, provider: Provider): Promise<string | null> {
-  if (!provider.capabilities.enforcement) return null;
+  if (!canEnforce(provider)) return null;
   const path = paths.hook('enforce');
   if (!(await exists(path))) return null;
   const hook = await readYaml<Hook>(path, 'hook');
@@ -146,7 +154,7 @@ export function currentProvider(manifest: Manifest, env: NodeJS.ProcessEnv): Pro
   const named = env['XFORGE_HOST'];
   if (named) return providerFor(named);
   const known = manifest.platforms.map((id) => providerFor(id)).filter((p): p is Provider => p !== undefined);
-  return known.find((p) => p.capabilities.enforcement) ?? known[0];
+  return known.find((p) => canEnforce(p)) ?? known[0];
 }
 
 /**
@@ -156,7 +164,7 @@ export function currentProvider(manifest: Manifest, env: NodeJS.ProcessEnv): Pro
  */
 export async function enforcementActive(root: string, paths: GovernancePaths, manifest: Manifest, env: NodeJS.ProcessEnv): Promise<boolean> {
   const provider = currentProvider(manifest, env);
-  if (!provider || !provider.capabilities.enforcement) return false;
+  if (!provider || !canEnforce(provider)) return false;
   if (!manifest.platforms.includes(provider.id)) return false;
   const command = await hookCommandFor(paths, provider);
   if (!(await provider.hookInstalled(root, command))) return false;

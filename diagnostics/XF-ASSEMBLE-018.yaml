@@ -1,0 +1,7 @@
+code: XF-ASSEMBLE-018
+title: "交互被取消"
+meaning: "人在 init 的提问里按了 Esc / Ctrl-C，或者输入流结束了。取消是一个决定，不是一次写错的命令行：树上一个字节都没动。"
+remedy:
+  command: "xforge init --platform claude --language zh-CN"
+  text: "想好了再答，或者一开始就把答案写在命令行上（那样不会问）。"
+variants: []

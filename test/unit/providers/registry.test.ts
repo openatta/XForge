@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { governancePaths } from '../../../src/model/paths.js';
 import type { Manifest } from '../../../src/model/types.js';
-import { currentProvider, detect, hookCommandFor, knownProviderIds, parseDetect, providerFor, providers } from '../../../src/providers/index.js';
+import { canEnforce, currentProvider, detect, hookCommandFor, knownProviderIds, parseDetect, providerFor, providers } from '../../../src/providers/index.js';
 
 const manifest = (platforms: string[]): Manifest => ({ platforms } as unknown as Manifest);
 
@@ -17,9 +17,13 @@ describe('provider registry', () => {
     expect(providers().every((p) => p.id && p.binary)).toBe(true);
   });
 
-  it('capabilities say what each host can do', () => {
-    expect(providerFor('claude')!.capabilities).toEqual({ enforcement: true, isolation: true });
-    expect(providerFor('codex')!.capabilities).toEqual({ enforcement: false, isolation: false });
+  it('capabilities say what each host can do, and name the mechanism (D13)', () => {
+    expect(providerFor('claude')!.capabilities).toEqual({ enforcement: 'hook', isolation: true });
+    expect(providerFor('claude')!.hookFile).toBe('.claude/settings.json'); // 落点是声明，不是写死在判定里
+    expect(providerFor('codex')!.capabilities).toEqual({ enforcement: 'none', isolation: false });
+    expect(providerFor('codex')!.hookFile).toBeUndefined();
+    expect(canEnforce(providerFor('claude')!)).toBe(true);
+    expect(canEnforce(providerFor('codex')!)).toBe(false);
   });
 });
 
@@ -69,5 +73,15 @@ describe('hook command (rule-files §3.5)', () => {
   it('is null when the declaration is gone', async () => {
     const root = await mkdtemp(join(tmpdir(), 'xforge-hook-'));
     expect(await hookCommandFor(governancePaths(root), providerFor('claude')!)).toBeNull();
+  });
+});
+
+describe('注册表是名字的唯一来源（D14）', () => {
+  it('id 合法且不重复 —— Platform 放宽成 string 之后，这条由运行时守', () => {
+    const ids = providers().map((p) => p.id);
+    expect(ids).toEqual([...new Set(ids)]);
+    for (const id of ids) expect(id).toMatch(/^[a-z][a-z0-9-]*$/);
+    // help 里的 provider 列表也从这里来，加一个 provider 不用改帮助文本。
+    expect(knownProviderIds()).toEqual(ids);
   });
 });

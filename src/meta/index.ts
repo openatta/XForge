@@ -5,6 +5,7 @@ import type { Outcome } from '../cli/envelope.js';
 import { CliError } from '../cli/errors.js';
 import { loadDiagnostic } from '../model/diagnostics.js';
 import { findProjectRoot, governancePaths } from '../model/paths.js';
+import { knownProviderIds } from '../providers/index.js';
 import { readYaml } from '../model/yaml.js';
 import type { Manifest } from '../model/types.js';
 
@@ -24,12 +25,12 @@ export const HELP = `xforge <命令> [选项]
       advance package <id> --dispatch [--workdir <path>]    派工
       advance package <id> --deliver                        交付登记（验证门当前且通过就直接集成）
       advance --archive                                     归档
-装配  init [--flow <n>] [--platform claude|codex]... [--language zh-CN|en]
+装配  init [--flow <n>] [--platform ${knownProviderIds().join('|')}]... [--language zh-CN|en]
       sync [--platform <n>]...
       update                                               暂存：快照、铺开新版、逐文件分类；项目改过的留在 xforge/.upgrade/incoming/
       update --status | --finish | --rollback              在途状态 / 完成（推进版本、写审计、重投宿主）/ 从快照恢复
       doctor [--platform <n>]...                           装配还对不对：骨架、投影、钩子（在不在 / 跑不跑得起来）、孤儿、版本；不写盘
-      repair [--only <code>]... [--dry-run]                 把 doctor 报的、能自动修的修掉：补回缺的受管文件，再重投出问题的宿主
+      repair [--dry-run]                                   把 doctor 报的、能自动修的修掉：补回缺的受管文件，再重投出问题的宿主
       remove --confirm <项目目录名>                          拆除：删 xforge/ 与全部宿主投影，不可逆
 元    help · version · explain <code>
 

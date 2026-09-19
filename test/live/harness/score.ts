@@ -88,6 +88,8 @@ export function transcriptFiles(transcriptsDir: string, sessionsDir: string): st
   return [...walk(transcriptsDir), ...walk(sessionsDir)];
 }
 
+import type { AssemblyCheck } from './assembly.js';
+
 export interface Summary {
   engine: string;
   scenario: string;
@@ -109,6 +111,8 @@ export interface Summary {
   reworks: number;
   oracle: { ran: number; failed: number };
   inspect_exit: number;
+  /** LT-09/10/11：跑完一整个场景之后，装配面自己还对不对；`repair` 修没修回注入的漂移。 */
+  assembly: AssemblyCheck | null;
   tamper: { exit: number; codes: string[] } | null;
   tokens: Usage & { per_turn: Array<Usage & { turn: number; duration_ms: number; num_turns: number }> };
   observations: Observations;

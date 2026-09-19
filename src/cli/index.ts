@@ -30,7 +30,7 @@ const FLAGS: Record<string, readonly string[]> = {
   init: ['flow', 'platform', 'language', 'no-input'],
   sync: ['platform'],
   doctor: ['platform'],
-  repair: ['only', 'dry-run'],
+  repair: ['dry-run'],
   update: ['status', 'finish', 'rollback', 'payload', 'to'],
   upgrade: ['status', 'finish', 'rollback', 'payload', 'to'],
   remove: ['confirm'],

@@ -269,7 +269,7 @@ describe('a hook that is installed but cannot run is not available (CLI-48)', ()
 describe('the ledger is a derived file, not the truth (CLI-46)', () => {
   let p: Project;
   const ledgerPath = (): string => join(p.root, 'xforge', 'hosts.yaml');
-  const orphan = (): string => join(p.root, '.claude', 'skills', 'xforge-design', 'SKILL.md');
+  const orphan = (): string => join(p.root, '.claude', 'skills', 'xforge-extra', 'SKILL.md');
 
   beforeAll(async () => {
     p = await Project.create('ledgerloss');
@@ -290,16 +290,30 @@ describe('the ledger is a derived file, not the truth (CLI-46)', () => {
   });
 
   it('台账被删掉之后孤儿仍然认得出来，不永久失忆', async () => {
-    rmSync(join(p.root, 'xforge', 'scaffold', 'skills', 'xforge-design'), { recursive: true });
-    rmSync(ledgerPath());
+    // 真孤儿：脚手架里本来就没有的 Skill（受管文件缺失是 015 的事，见 CLI-52）。
+    mkdirSync(join(p.root, 'xforge', 'scaffold', 'skills', 'xforge-extra'), { recursive: true });
+    writeFileSync(join(p.root, 'xforge', 'scaffold', 'skills', 'xforge-extra', 'SKILL_cn.md'), '# extra\n');
+    await p.xforge('sync');
     expect(existsSync(orphan())).toBe(true);
+    rmSync(join(p.root, 'xforge', 'scaffold', 'skills', 'xforge-extra'), { recursive: true });
+    rmSync(ledgerPath());
 
     const d = await p.xforge('doctor');
     expect(d.env.diagnostics.some((x) => x.code === 'XF-ASSEMBLE-007')).toBe(true);
     const r = await p.xforge('sync');
-    expect((r.env.result as { removed: string[] }).removed).toContain('.claude/skills/xforge-design/SKILL.md');
+    expect((r.env.result as { removed: string[] }).removed).toContain('.claude/skills/xforge-extra/SKILL.md');
     expect(existsSync(orphan())).toBe(false);
     expect((await p.xforge('doctor')).env.diagnostics.some((x) => x.code === 'XF-ASSEMBLE-007')).toBe(false);
+  });
+
+  it('人手写的同名目录不算我们的：兜底扫描按生成注记认，不按名字猜', async () => {
+    const mine = join(p.root, '.claude', 'skills', 'xforge-mine');
+    mkdirSync(mine, { recursive: true });
+    writeFileSync(join(mine, 'SKILL.md'), '# 我自己写的\n');
+    rmSync(ledgerPath());
+    const r = await p.xforge('sync');
+    expect((r.env.result as { removed: string[] }).removed).not.toContain('.claude/skills/xforge-mine/SKILL.md');
+    expect(readFileSync(join(mine, 'SKILL.md'), 'utf8')).toBe('# 我自己写的\n');
   });
 });
 

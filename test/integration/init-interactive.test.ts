@@ -115,12 +115,15 @@ describe('interactive init (CLI-44)', () => {
     expect(manifest).toMatchObject({ platforms: ['claude'], language: 'zh-CN' });
   });
 
-  it('esc leaves the project untouched', async () => {
+  it('取消是人的决定：给信封、退出码 1、树上一个字节不动', async () => {
     const p = await Project.create('interactive-esc');
     const s = start(['init'], p.root, { XFORGE_DETECT: 'claude:2.1.0', XFORGE_NOW: '2026-09-15T10:00:00.000Z' });
     await s.wait('Which AI coding tools should XForge project into?');
     await s.key(ESC);
-    expect(await s.exit).toBe(2);
+    expect(await s.exit).toBe(1); // 不是 2 —— 命令行没写错
+    const env = JSON.parse(s.out().trim()) as { ok: boolean; diagnostics: Array<{ code: string }> };
+    expect(env.ok).toBe(false);
+    expect(env.diagnostics[0]?.code).toBe('XF-ASSEMBLE-018');
     expect(() => readFileSync(join(p.root, 'xforge', 'manifest.yaml'), 'utf8')).toThrow();
   });
 });

@@ -54,7 +54,7 @@ const selectable = (q: Question): Choice[] => q.choices.filter((c) => !c.disable
 export function initialState(q: Question): SelectState {
   const first = q.choices.findIndex((c) => !c.disabled);
   const cursor = first === -1 ? 0 : first;
-  // 单选给一个缺省（第一个可选的）；多选一开始什么都不选，人自己挑。
+  // 多选一开始什么都不选，人自己挑。单选没有「选」这个动作 —— 光标停在哪就是答案。
   return { cursor, selected: q.multi || !selectable(q).length ? [] : [q.choices[cursor]!.value] };
 }
 
@@ -76,14 +76,15 @@ export function onKey(q: Question, state: SelectState, key: Key): Step {
         break;
       }
     }
+    // 单选：光标就是答案，移到哪答案就是哪 —— 不该让人为一个单选题多按一次空格。
+    if (!q.multi && !q.choices[next.cursor]!.disabled) next.selected = [q.choices[next.cursor]!.value];
     return { state: next, done: false };
   }
   if (key === 'space') {
     const choice = q.choices[state.cursor];
-    if (!choice) return { state: next, done: false };
+    if (!choice || !q.multi) return { state: next, done: false }; // 单选没有「切换」这一步
     if (choice.disabled) return { state: { ...next, error: `${choice.label} was not detected here; pass it on the command line to add it anyway.` }, done: false };
-    if (q.multi) next.selected = next.selected.includes(choice.value) ? next.selected.filter((v) => v !== choice.value) : [...next.selected, choice.value];
-    else next.selected = [choice.value];
+    next.selected = next.selected.includes(choice.value) ? next.selected.filter((v) => v !== choice.value) : [...next.selected, choice.value];
     return { state: next, done: false };
   }
   if (key === 'enter') {
@@ -140,10 +141,10 @@ export function renderQuestion(q: Question, state: SelectState, view: View): str
   const dim = (t: string): string => (view.color ? `${DIM}${t}${RESET}` : t);
   const mark = (t: string): string => (view.color ? `${CYAN}${t}${RESET}` : t);
   const line = (t: string): string => clip(t, view.columns);
-  const hint = q.multi ? '(space to select, enter to confirm)' : '(space to choose, enter to confirm)';
+  const hint = q.multi ? '(space to select, enter to confirm)' : '(up/down to choose, enter to confirm)';
   const lines = [`${line(`? ${q.prompt} ${hint}`)}`];
   for (const [i, c] of q.choices.entries()) {
-    const box = state.selected.includes(c.value) ? '[x]' : '[ ]';
+    const box = state.selected.includes(c.value) ? '[✓]' : '[ ]';
     const onCursor = i === state.cursor;
     // 先截再上色：转义序列不占列，算进宽度会把行截短。
     const body = line(`${onCursor ? '>' : ' '} ${box} ${c.label}${c.note ? `  ${c.note}` : ''}`);
@@ -151,6 +152,12 @@ export function renderQuestion(q: Question, state: SelectState, view: View): str
   }
   if (state.error) lines.push(dim(line(`  ${state.error}`)));
   return lines;
+}
+
+/** 答完之后留在屏上的两行回执：问题 + 答案。带光标的半截画面不该留着。 */
+export function renderAnswer(q: Question, state: SelectState, view: View): string[] {
+  const picked = q.choices.filter((c) => state.selected.includes(c.value)).map((c) => c.label);
+  return [clip(`? ${q.prompt}`, view.columns), clip(`  ✓ ${picked.join(', ')}`, view.columns)];
 }
 
 export interface Terminal {
@@ -187,13 +194,13 @@ export async function ask(questions: readonly Question[], term: Terminal): Promi
 async function askOne(q: Question, term: Terminal): Promise<string[]> {
   let state = initialState(q);
   let painted = 0;
-  const paint = (): void => {
+  const paint = (lines: string[]): void => {
     if (painted) term.output.write(`${ESC}[${painted}A${ESC}[0J`);
-    const lines = renderQuestion(q, state, term.view);
     term.output.write(lines.join('\n') + '\n');
     painted = lines.length;
   };
-  paint();
+  const draw = (): void => paint(renderQuestion(q, state, term.view));
+  draw();
   return new Promise<string[]>((resolve, reject) => {
     // 按键可能比重画快（粘贴、连按）：先到的排队，一个都不丢。
     const done = (): void => {
@@ -209,11 +216,14 @@ async function askOne(q: Question, term: Terminal): Promise<string[]> {
       }
       const step = onKey(q, state, key);
       state = step.state;
-      paint();
       if (step.done) {
+        // 答完就收起：留在屏上的是两行回执，不是一幅带光标的半截画面。
+        paint(renderAnswer(q, state, term.view));
         done();
         resolve(state.selected);
+        return;
       }
+      draw();
     };
     const onEnd = (): void => {
       done();

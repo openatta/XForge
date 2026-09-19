@@ -100,6 +100,10 @@ claude -p "<第一轮：需求 + 用 /xforge 推进；之后：/xforge>" \
 判定：`outcome`、`reworks` 与场景期望精确比较；oracle `failed == 0`；`inspect_exit == 0`。观测项只报不判（`CLI-29`、`SK-11` 在这里取数）。
 
 `LT-05` `summary.md` 里没有货币字段。
+`LT-09` 跑完一整个场景之后，那棵真树上的 `xforge doctor` 干净：没有非 `info` 的诊断，退出码 `0`。装配面在合成的临时项目上对不算数 —— 要在模型真动过的树上也对。
+`LT-10` 那一次 `doctor` 的 `changed` 为空：它是「验」，写盘就是它自己坏了。
+`LT-11` 往一份投影里注入一处漂移，`repair` 一次把它收敛：`changed` 非空、之后的 `doctor` 没有非 `info` 的诊断、退出码 `0`。
+三条的判定都在 `test/live/harness/assembly.ts` 的纯函数里（`readAssembly` / `assemblyProblems`），product 层直接喂样例信封测它；真机那一层只负责调命令与搬字段。
 
 ## 5. 落点
 
