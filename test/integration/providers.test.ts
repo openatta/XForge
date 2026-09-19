@@ -230,39 +230,50 @@ describe('a host config file we cannot read is left alone (CLI-23)', () => {
   });
 });
 
-describe('a hook that is installed but cannot run is not available (CLI-48)', () => {
+describe('enforcement 只报验得出来的那一半（CLI-48）', () => {
   let p: Project;
-  /** 这台机器上没装 CLI：PATH 上有 node（否则连命令都起不来），但没有 xforge-enforce。 */
-  const bare = { PATH: `${dirname(process.execPath)}:/usr/bin:/bin` };
+  const settingsPath = (): string => join(p.root, '.claude', 'settings.json');
+  const decl = (): string => join(p.root, 'xforge', 'scaffold', 'hooks', 'enforce.yaml');
+  const orient = async (): Promise<string> =>
+    ((await p.xforge('state', '--orient')).env.result as { orient: { invariants: { enforcement: string } } }).orient.invariants.enforcement;
 
   beforeAll(async () => {
     p = await Project.create('hookpath');
     await p.xforge('init', '--flow', 'quick', '--platform', 'claude');
   });
 
-  it('装上了 ≠ 跑得起来：PATH 上没有就报 XF-ASSEMBLE-014，enforcement 说 unavailable', async () => {
+  it('钩子在就是 available，被删掉就是 unavailable', async () => {
     expect(enforceCommands(p)).toEqual(['xforge-enforce --host claude']);
-    const orient = async (env?: Record<string, string>): Promise<string> =>
-      ((await p.xforgeIn({ ...(env ? { env } : {}) }, 'state', '--orient')).env.result as { orient: { invariants: { enforcement: string } } }).orient.invariants.enforcement;
-
     expect(await orient()).toBe('available');
-    expect(await orient(bare)).toBe('unavailable');
-
-    const d = await p.xforgeIn({ env: bare }, 'doctor');
-    expect(d.exit).toBe(1);
-    const found = d.env.diagnostics.find((x) => x.code === 'XF-ASSEMBLE-014');
-    expect(found?.severity).toBe('blocking');
-    expect(found?.message).toContain('xforge-enforce');
-    // 钩子明明在设置里，所以不该报成「不在」。
-    expect(d.env.diagnostics.some((x) => x.code === 'XF-ASSEMBLE-008')).toBe(false);
-    // 装好的机器上这条发现不存在。
-    expect((await p.xforge('doctor')).env.diagnostics.some((x) => x.code === 'XF-ASSEMBLE-014')).toBe(false);
+    const settings = JSON.parse(readFileSync(settingsPath(), 'utf8')) as { hooks: { PreToolUse: unknown[] } };
+    settings.hooks.PreToolUse = [];
+    writeFileSync(settingsPath(), JSON.stringify(settings, null, 2) + '\n');
+    expect(await orient()).toBe('unavailable');
+    await p.xforge('sync');
+    expect(await orient()).toBe('available');
   });
 
-  it('修不了它：环境与安装方式是人的事，repair 不假装修好', async () => {
-    const r = await p.xforgeIn({ env: bare }, 'repair');
-    expect(r.exit).toBe(1);
-    expect((r.env.result as { left: Array<{ code: string }> }).left.map((x) => x.code)).toContain('XF-ASSEMBLE-014');
+  it('命令谁都找不到时只是一条 warning：宿主的 PATH 不归我们猜', async () => {
+    writeFileSync(decl(), 'name: enforce\nevents: [pre-tool-use]\ncommand: "nobody-has-this-binary --host ${platform}"\n');
+    expect((await p.xforge('sync')).exit).toBe(0);
+
+    const d = await p.xforge('doctor');
+    const found = d.env.diagnostics.find((x) => x.code === 'XF-ASSEMBLE-014');
+    expect(found?.severity).toBe('warning'); // 提醒，不是判决
+    expect(found?.message).toContain('nobody-has-this-binary');
+    // 钩子确实装进去了，所以 enforcement 照说 available —— 不拿自己的 PATH 替宿主回答。
+    expect(await orient()).toBe('available');
+    // 这棵树上唯一的 blocking 是「改过钩子声明」那条，014 自己不阻塞。
+    expect(d.env.diagnostics.filter((x) => x.severity === 'blocking').map((x) => x.code)).toEqual(['XF-ASSEMBLE-015']);
+  });
+
+  it('随包发出去的那个命令不报：它就在本包 bin/ 里', async () => {
+    writeFileSync(decl(), 'name: enforce\nevents: [pre-tool-use]\ncommand: "xforge-enforce --host ${platform}"\n');
+    await p.xforge('sync');
+    const bare = { PATH: `${dirname(process.execPath)}:/usr/bin:/bin` }; // PATH 上没有 xforge-enforce
+    const d = await p.xforgeIn({ env: bare }, 'doctor');
+    expect(d.env.diagnostics.some((x) => x.code === 'XF-ASSEMBLE-014')).toBe(false);
+    expect(d.exit).toBe(0);
   });
 });
 

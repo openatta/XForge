@@ -1,5 +1,6 @@
 // design: cli §5 — provider 装配侧：接口、注册表、探测、执法钩子命令串、当前宿主。
 import { accessSync, constants } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { delimiter, join } from 'node:path';
 import { exists } from '../fs/transaction.js';
 import type { GovernancePaths } from '../model/paths.js';
@@ -129,12 +130,33 @@ function onPath(binary: string, env: NodeJS.ProcessEnv): string | null {
 }
 
 /**
- * 钩子的命令跑不跑得起来：宿主是拿这条命令去起进程的，第一个词解析不到就是起不来 ——
- * 宿主照常发起钩子、拿不到决策、然后继续执行，与没装钩子没有区别（命令行设计 D8）。
+ * 钩子的命令**看起来**跑不跑得起来。注意这只是一个猜测，不是事实：
+ * 钩子是**宿主进程**拿这条命令去起的，用的是宿主的 PATH；而我们只看得见自己这个进程的 PATH。
+ * 两者不一样是常态（从别的 shell 调 `xforge doctor`、CI、装在 worktree 里的包）。
+ *
+ * 所以这里放宽到两条任一成立：命令在我们的 PATH 上解析得到，
+ * 或者它就是本包自带的那个可执行文件（那说明它随包装好了，宿主从正常 shell 起得来）。
+ * 判断结果只用来给一条 `warning`，不参与 `enforcement` 的判定（D8）。
  */
 export function hookRunnable(command: string | null, env: NodeJS.ProcessEnv): boolean {
   const binary = command?.trim().split(/\s+/)[0];
-  return binary ? onPath(binary, env) !== null : false;
+  if (!binary) return false;
+  if (onPath(binary, env) !== null) return true;
+  return ownBin(binary) !== null;
+}
+
+/** 本包 `bin/` 下的同名可执行文件（`xforge-enforce` 是我们自己发出去的）。 */
+function ownBin(binary: string): string | null {
+  for (const name of [binary, `${binary}.js`]) {
+    const candidate = fileURLToPath(new URL(`../../bin/${name}`, import.meta.url));
+    try {
+      accessSync(candidate, constants.F_OK);
+      return candidate;
+    } catch {
+      // 下一个
+    }
+  }
+  return null;
 }
 
 /** 执法钩子命令串：声明是唯一出处（规则文件设计 §3.5），provider 不许写死。 */
@@ -158,15 +180,15 @@ export function currentProvider(manifest: Manifest, env: NodeJS.ProcessEnv): Pro
 }
 
 /**
- * 写入范围此刻拦不拦得住（命令行设计 D8）。三件事缺一不可：
- * 当前宿主有执法能力、钩子确实在它的原生位置里、钩子命令在这台机器上跑得起来。
- * 少判最后一条，就会在「装上了但 PATH 上没有」时报 `available` —— 那是句半真的谎。
+ * 写入范围此刻拦不拦得住（命令行设计 D8）：当前宿主有执法能力，且钩子确实在它的原生位置里。
+ *
+ * **只报我们验得出来的。** 「钩子起不起得来」要看宿主进程的 PATH，我们看不见它；
+ * 拿自己的 PATH 去替它回答，在两边不一样时就会把「拦得住」报成「拦不住」——
+ * 那与反过来谎报同样是错，只是错在另一头。那条猜测留给 `doctor` 的 `XF-ASSEMBLE-014` warning。
  */
 export async function enforcementActive(root: string, paths: GovernancePaths, manifest: Manifest, env: NodeJS.ProcessEnv): Promise<boolean> {
   const provider = currentProvider(manifest, env);
   if (!provider || !canEnforce(provider)) return false;
   if (!manifest.platforms.includes(provider.id)) return false;
-  const command = await hookCommandFor(paths, provider);
-  if (!(await provider.hookInstalled(root, command))) return false;
-  return hookRunnable(command, env);
+  return provider.hookInstalled(root, await hookCommandFor(paths, provider));
 }

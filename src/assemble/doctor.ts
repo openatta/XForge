@@ -153,7 +153,8 @@ export async function doctorReport(root: string, paths: GovernancePaths, manifes
     if (canEnforce(p.provider)) {
       const installed = await p.provider.hookInstalled(root, hookCommand);
       const runnable = hookRunnable(hookCommand, env);
-      enforcement = installed && runnable ? 'available' : 'unavailable';
+      // enforcement 只认验得出来的那一半：钩子在不在。跑不跑得起来是对宿主 PATH 的猜测（见下）。
+      enforcement = installed ? 'available' : 'unavailable';
       if (p.hookBlocked) {
         // 装不进去的原因比「不在」更具体：那份文件不是我们的，修它是人的事。
         issues.add('XF-ASSEMBLE-013');
@@ -169,9 +170,10 @@ export async function doctorReport(root: string, paths: GovernancePaths, manifes
           remedy: p.hookMissing ? { text: '把 scaffold/hooks/enforce.yaml 放回去，再 xforge repair' } : { command: 'xforge repair', text: '补回钩子' },
         });
       } else if (!runnable) {
-        // 装上了 ≠ 跑得起来：宿主起不了这个进程，就拿不到决策然后继续执行。
+        // 装上了 ≠ 跑得起来。但这一条是**猜测**：钩子由宿主进程起，用的是宿主的 PATH，
+        // 我们只看得见自己的。所以它是 warning，也不参与上面的 enforcement 判定。
         issues.add('XF-ASSEMBLE-014');
-        findings.push({ subject: p.provider.id, provider: p.provider.id, code: 'XF-ASSEMBLE-014', severity: 'blocking', message: `${p.provider.id} 的钩子装上了，但 ${hookCommand?.trim().split(/\s+/)[0]} 在本机 PATH 上解析不到：宿主起不了它，写入范围此刻没有人拦`, remedy: { text: '把 CLI 装到宿主进程也看得见的 PATH 上（npm i -g @xforge/cli），或把钩子声明里的命令改成绝对路径' } });
+        findings.push({ subject: p.provider.id, provider: p.provider.id, code: 'XF-ASSEMBLE-014', severity: 'warning', message: `${p.provider.id} 的钩子装上了，但 ${hookCommand?.trim().split(/\s+/)[0]} 在**这个进程**的 PATH 上解析不到；宿主的 PATH 可能不同，这里只是提醒`, remedy: { text: '如果宿主那边也找不到它，钩子起不来：把 CLI 装到宿主进程也看得见的 PATH 上（npm i -g @xforge/cli），或把钩子声明里的命令改成绝对路径' } });
       }
     }
 
